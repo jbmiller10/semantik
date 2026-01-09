@@ -13,7 +13,6 @@ from shared.config import settings
 from shared.contracts.search import (
     BatchSearchRequest,
     BatchSearchResponse,
-    HybridSearchResponse,
     SearchRequest,
     SearchResponse,
 )
@@ -107,9 +106,6 @@ async def search_get(
         rerank_model=None,
         rerank_quantization=None,
         score_threshold=0.0,
-        hybrid_alpha=0.7,
-        hybrid_mode="weighted",
-        keyword_mode="any",
     )
     result = await service.perform_search(request)
     return SearchResponse(**result.model_dump())
@@ -120,42 +116,9 @@ async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
     return await service.perform_search(request)
 
 
-@router.get("/hybrid_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
-async def hybrid_search(
-    q: str = Query(..., description="Search query"),
-    k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: str | None = Query(None, description="Collection name"),
-    mode: str = Query("filter", description="Hybrid search mode: 'filter' or 'weighted'"),
-    keyword_mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
-    score_threshold: float | None = Query(None, description="Minimum similarity score threshold"),
-    model_name: str | None = Query(None, description="Override embedding model"),
-    quantization: str | None = Query(None, description="Override quantization"),
-) -> HybridSearchResponse:
-    return await service.perform_hybrid_search(
-        query=q,
-        k=k,
-        collection=collection,
-        mode=mode,
-        keyword_mode=keyword_mode,
-        score_threshold=score_threshold,
-        model_name=model_name,
-        quantization=quantization,
-    )
-
-
 @router.post("/search/batch", response_model=BatchSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchResponse:
     return await service.perform_batch_search(request)
-
-
-@router.get("/keyword_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
-async def keyword_search(
-    q: str = Query(..., description="Keywords to search for"),
-    k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
-    collection: str | None = Query(None, description="Collection name"),
-    mode: str = Query("any", description="Keyword matching: 'any' or 'all'"),
-) -> HybridSearchResponse:
-    return await service.perform_keyword_search(query=q, k=k, collection=collection, mode=mode)
 
 
 @router.get("/collection/info")

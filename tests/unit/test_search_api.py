@@ -708,29 +708,7 @@ class TestSearchAPI:
             assert response.status_code == 503
             assert "Embedding service error" in response.json()["detail"]
 
-    def test_hybrid_search_endpoint(
-        self, mock_settings, mock_qdrant_client, mock_hybrid_engine, test_client_for_search_api
-    ) -> None:
-        """Test /hybrid_search endpoint."""
-        mock_settings.USE_MOCK_EMBEDDINGS = True
-
-        # Mock collection info
-        mock_response = Mock()
-        mock_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
-        mock_response.raise_for_status = Mock()
-        mock_qdrant_client.get.return_value = mock_response
-
-        response = test_client_for_search_api.get(
-            "/hybrid_search", params={"q": "test query", "k": 10, "mode": "filter", "keyword_mode": "any"}
-        )
-
-        assert response.status_code == 200
-        result = response.json()
-        assert result["query"] == "test query"
-        assert len(result["results"]) == 1
-        assert result["results"][0]["matched_keywords"] == ["test"]
-        assert result["keywords_extracted"] == ["test", "query"]
-        assert result["search_mode"] == "filter"
+    # NOTE: test_hybrid_search_endpoint removed - legacy /hybrid_search endpoint deleted
 
     def test_batch_search_endpoint(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
@@ -757,19 +735,7 @@ class TestSearchAPI:
             # Verify embeddings were generated for all queries
             assert mock_model_manager.generate_embedding_async.call_count == 3
 
-    def test_keyword_search_endpoint(self, mock_hybrid_engine, test_client_for_search_api) -> None:
-        """Test /keyword_search endpoint."""
-        response = test_client_for_search_api.get(
-            "/keyword_search", params={"q": "test keywords", "k": 20, "mode": "all"}
-        )
-
-        assert response.status_code == 200
-        result = response.json()
-        assert result["query"] == "test keywords"
-        assert result["search_mode"] == "keywords_only"
-        assert result["keywords_extracted"] == ["test", "query"]
-        assert len(result["results"]) == 1
-        assert result["results"][0]["score"] == 0.0  # No vector score for keyword search
+    # NOTE: test_keyword_search_endpoint removed - use search_mode="sparse" instead
 
     def test_collection_info_endpoint(self, mock_qdrant_client, test_client_for_search_api) -> None:
         """Test /collection/info endpoint."""
@@ -1425,73 +1391,8 @@ class TestCollectionResolution:
             assert result is None
 
 
-class TestHybridSearchRouting:
-    """Test hybrid search_type routing through /search endpoint."""
-
-    def test_search_type_hybrid_routes_to_hybrid_search(
-        self, mock_qdrant_client, mock_model_manager, mock_hybrid_engine, test_client_for_search_api
-    ) -> None:
-        """search_type='hybrid' should route to perform_hybrid_search."""
-        # Mock collection info - must match 1024 dimensions from mock_model_manager
-        mock_get_response = Mock()
-        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
-        mock_get_response.raise_for_status = Mock()
-        mock_qdrant_client.get.return_value = mock_get_response
-
-        # Mock collection metadata
-        with patch("vecpipe.search.service._get_cached_collection_metadata") as mock_meta:
-            mock_meta.return_value = {"model_name": "test-model", "quantization": "float32"}
-
-            # Mock dimension validation to always pass
-            with patch("vecpipe.search.service.validate_dimension_compatibility"):
-                response = test_client_for_search_api.post(
-                    "/search",
-                    json={
-                        "query": "test query",
-                        "k": 10,
-                        "search_type": "hybrid",
-                        "hybrid_mode": "filter",
-                        "keyword_mode": "any",
-                    },
-                )
-
-                assert response.status_code == 200
-                result = response.json()
-                assert result["search_type"] == "hybrid"
-
-    def test_hybrid_results_mapped_correctly(self) -> None:
-        """Hybrid results should be properly mapped to SearchResponse format."""
-        from shared.contracts.search import HybridSearchResponse, HybridSearchResult
-        from vecpipe.search.service import _map_hybrid_to_search_response
-
-        hybrid_response = HybridSearchResponse(
-            query="test query",
-            results=[
-                HybridSearchResult(
-                    path="/test/file.txt",
-                    chunk_id="chunk-1",
-                    score=0.8,
-                    doc_id="doc-1",
-                    content="Test content",
-                    metadata={"type": "document"},
-                    matched_keywords=["test"],
-                    keyword_score=0.7,
-                    combined_score=0.85,
-                )
-            ],
-            num_results=1,
-            keywords_extracted=["test", "query"],
-            search_mode="filter",
-        )
-        result = _map_hybrid_to_search_response(hybrid_response)
-
-        assert result.query == "test query"
-        assert result.search_type == "hybrid"
-        assert result.num_results == 1
-        assert len(result.results) == 1
-        assert result.results[0].path == "/test/file.txt"
-        assert result.results[0].score == 0.85  # combined_score used
-        assert result.results[0].doc_id == "doc-1"
+# NOTE: TestHybridSearchRouting class removed - legacy hybrid search deleted
+# Use search_mode="hybrid" with RRF fusion instead
 
 
 class TestScoreThresholdFiltering:

@@ -27,8 +27,22 @@ def build_search_tool(*, name: str, description: str, profile: dict[str, Any]) -
                 },
                 "search_type": {
                     "type": "string",
-                    "enum": ["semantic", "hybrid", "keyword", "question", "code"],
+                    "enum": ["semantic", "question", "code"],
                     "description": f"Search type (default: {profile.get('search_type', 'semantic')}).",
+                },
+                "search_mode": {
+                    "type": "string",
+                    "enum": ["dense", "sparse", "hybrid"],
+                    "description": (
+                        "Search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE only), "
+                        "'hybrid' (dense + sparse with RRF fusion). Default: 'dense'."
+                    ),
+                },
+                "rrf_k": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "RRF constant k for hybrid mode ranking (default: 60).",
                 },
                 "use_reranker": {
                     "type": "boolean",
@@ -39,22 +53,6 @@ def build_search_tool(*, name: str, description: str, profile: dict[str, Any]) -
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Minimum score threshold (overrides profile default if set).",
-                },
-                "hybrid_alpha": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Hybrid alpha (only when search_type=hybrid).",
-                },
-                "hybrid_mode": {
-                    "type": "string",
-                    "enum": ["weighted", "filter"],
-                    "description": "Hybrid mode (weighted or filter).",
-                },
-                "keyword_mode": {
-                    "type": "string",
-                    "enum": ["any", "all"],
-                    "description": "Keyword matching mode when using hybrid search.",
                 },
             },
             "required": ["query"],

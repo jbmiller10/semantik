@@ -375,10 +375,10 @@ class TestSearchService:
 
     @pytest.mark.asyncio()
     @patch("webui.services.search_service.httpx.AsyncClient")
-    async def test_multi_collection_search_hybrid_params(
+    async def test_multi_collection_search_hybrid_mode(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
-        """Test multi-collection search with hybrid search parameters"""
+        """Test multi-collection search with search_mode=hybrid and RRF parameters"""
         # Mock collection
         mock_collection = Mock(spec=Collection)
         mock_collection.id = "collection-1"
@@ -399,24 +399,23 @@ class TestSearchService:
         mock_client.post.return_value = mock_response
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
-        # Test with hybrid search
+        # Test with hybrid search mode (new RRF-based hybrid)
         _ = await search_service.multi_collection_search(
             user_id=123,
             collection_uuids=["uuid-1"],
             query="test query",
             k=10,
-            search_type="hybrid",
-            hybrid_alpha=0.7,
-            hybrid_mode="weighted",
+            search_type="semantic",
+            search_mode="hybrid",
+            rrf_k=80,
         )
 
-        # Verify hybrid parameters were included
+        # Verify hybrid/sparse parameters were included
         call_args = mock_client.post.call_args
         request_data = call_args[1]["json"]
-        assert request_data["search_type"] == "hybrid"
-        assert request_data["hybrid_alpha"] == 0.7
-        assert request_data["hybrid_mode"] == "weighted"
-        assert "hybrid_search_mode" not in request_data
+        assert request_data["search_type"] == "semantic"
+        assert request_data["search_mode"] == "hybrid"
+        assert request_data["rrf_k"] == 80
 
     @pytest.mark.asyncio()
     @patch("webui.services.search_service.httpx.AsyncClient")
@@ -592,8 +591,8 @@ class TestSearchService:
             )
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_validates_modes_and_sorts(self, search_service) -> None:
-        """Canonical modes are preserved and results sort by reranked_score."""
+    async def test_multi_collection_search_validates_search_mode_and_sorts(self, search_service) -> None:
+        """search_mode parameter is preserved and results sort by reranked_score."""
 
         collection1 = Mock(spec=Collection)
         collection1.id = "col-1"
@@ -649,17 +648,17 @@ class TestSearchService:
             collection_uuids=["col-1", "col-2"],
             query="mixed",
             k=10,
-            search_type="hybrid",
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            search_type="semantic",
+            search_mode="hybrid",
+            rrf_k=60,
         )
 
         call_args = search_service.search_single_collection.call_args_list[0][0]
         search_params = call_args[3]
-        assert search_params["hybrid_mode"] == "weighted"
-        assert search_params["keyword_mode"] == "any"
-        assert "hybrid_search_mode" not in search_params
+        assert search_params["search_mode"] == "hybrid"
+        assert search_params["rrf_k"] == 60
 
+        # Results are sorted by reranked_score (d1 has 0.95, d2 has 0.5)
         assert result["results"][0]["doc_id"] == "d1"
 
 

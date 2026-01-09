@@ -232,25 +232,20 @@ class SemantikMCPServer:
             score_threshold = profile.get("score_threshold")
         score_threshold_value = float(score_threshold or 0.0)
 
-        hybrid_alpha = arguments.get("hybrid_alpha")
-        if hybrid_alpha is None:
-            hybrid_alpha = profile.get("hybrid_alpha")
-        hybrid_alpha_value = float(hybrid_alpha if hybrid_alpha is not None else 0.7)
-
-        hybrid_mode = str(arguments.get("hybrid_mode") or "weighted")
-        keyword_mode = str(arguments.get("keyword_mode") or "any")
+        # New search_mode parameter for sparse/hybrid search
+        search_mode = str(arguments.get("search_mode") or "dense")
+        rrf_k = int(arguments.get("rrf_k") or 60)
 
         data = await self.api_client.search(
             collection_uuids=collection_uuids,
             query=query,
             k=k,
             search_type=search_type,
+            search_mode=search_mode,
+            rrf_k=rrf_k,
             use_reranker=use_reranker,
             score_threshold=score_threshold_value,
             include_content=True,
-            hybrid_alpha=hybrid_alpha_value,
-            hybrid_mode=hybrid_mode,
-            keyword_mode=keyword_mode,
         )
 
         return self._format_search_results(data, max_snippet_chars=400)

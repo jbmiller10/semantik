@@ -20,22 +20,32 @@ from shared.config import settings
 from shared.contracts.search import (
     BatchSearchRequest,
     BatchSearchResponse,
-    HybridSearchResponse,
-    HybridSearchResult,
+    SearchMode,
     SearchRequest,
     SearchResponse,
     SearchResult,
 )
+from shared.database.collection_metadata import get_sparse_index_config
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import validate_dimension_compatibility
 from shared.metrics.prometheus import metrics_collector
-from vecpipe.hybrid_search import HybridSearchEngine
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from vecpipe.search import state as search_state
-from vecpipe.search.metrics import embedding_generation_latency, search_errors, search_latency, search_requests
+from vecpipe.search.metrics import (
+    embedding_generation_latency,
+    rrf_fusion_latency,
+    search_errors,
+    search_latency,
+    search_requests,
+    sparse_encode_query_latency,
+    sparse_search_fallbacks,
+    sparse_search_latency,
+    sparse_search_requests,
+)
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 from vecpipe.search_utils import parse_search_results, search_qdrant
+from vecpipe.sparse import search_sparse_collection
 
 _DEFAULT_SEARCH_QDRANT = search_qdrant
 
@@ -53,6 +63,197 @@ SEARCH_INSTRUCTIONS = {
     "code": "Represent this code query for finding similar code snippets:",
     "hybrid": "Generate a comprehensive embedding for multi-modal search:",
 }
+
+
+# =============================================================================
+# RRF Fusion Functions for Sparse + Dense Hybrid Search
+# =============================================================================
+
+
+def _reciprocal_rank_fusion(
+    dense_results: list[dict[str, Any]],
+    sparse_results: list[dict[str, Any]],
+    k: int,
+    rrf_k: int = 60,
+) -> list[dict[str, Any]]:
+    """Combine dense and sparse results using Reciprocal Rank Fusion (RRF).
+
+    RRF formula: score = sum(1 / (rrf_k + rank)) for each result list
+    Scores are normalized to [0, 1] range.
+
+    Args:
+        dense_results: Results from dense vector search, each with 'chunk_id' and 'score'
+        sparse_results: Results from sparse vector search, each with 'chunk_id' and 'score'
+        k: Number of final results to return
+        rrf_k: RRF constant (default 60). Higher values give more weight to lower ranks.
+
+    Returns:
+        Fused results sorted by RRF score, normalized to [0, 1]
+    """
+    if not dense_results and not sparse_results:
+        return []
+
+    # Build rank maps (1-indexed ranks)
+    dense_ranks: dict[str, int] = {r["chunk_id"]: i + 1 for i, r in enumerate(dense_results)}
+    sparse_ranks: dict[str, int] = {r["chunk_id"]: i + 1 for i, r in enumerate(sparse_results)}
+
+    # Collect all unique chunk_ids
+    all_chunk_ids = set(dense_ranks.keys()) | set(sparse_ranks.keys())
+
+    # Calculate RRF scores
+    rrf_scores: dict[str, float] = {}
+    for chunk_id in all_chunk_ids:
+        score = 0.0
+        if chunk_id in dense_ranks:
+            score += 1.0 / (rrf_k + dense_ranks[chunk_id])
+        if chunk_id in sparse_ranks:
+            score += 1.0 / (rrf_k + sparse_ranks[chunk_id])
+        rrf_scores[chunk_id] = score
+
+    # Normalize scores to [0, 1]
+    if rrf_scores:
+        max_score = max(rrf_scores.values())
+        min_score = min(rrf_scores.values())
+        score_range = max_score - min_score
+        if score_range > 0:
+            rrf_scores = {cid: (s - min_score) / score_range for cid, s in rrf_scores.items()}
+        else:
+            # All scores are the same, normalize to 1.0
+            rrf_scores = {cid: 1.0 for cid in rrf_scores}
+
+    # Sort by RRF score descending
+    sorted_chunk_ids = sorted(rrf_scores.keys(), key=lambda cid: rrf_scores[cid], reverse=True)[:k]
+
+    # Build result list with original payloads (prefer dense payload, fallback to sparse)
+    dense_payload_map = {r["chunk_id"]: r for r in dense_results}
+    sparse_payload_map = {r["chunk_id"]: r for r in sparse_results}
+
+    fused_results = []
+    for chunk_id in sorted_chunk_ids:
+        # Prefer dense result for payload (has more metadata), fallback to sparse
+        base_result = dense_payload_map.get(chunk_id) or sparse_payload_map.get(chunk_id)
+        if base_result:
+            fused_result = {**base_result, "score": rrf_scores[chunk_id]}
+            # Add debug info about source
+            fused_result["_dense_rank"] = dense_ranks.get(chunk_id)
+            fused_result["_sparse_rank"] = sparse_ranks.get(chunk_id)
+            fused_results.append(fused_result)
+
+    return fused_results
+
+
+async def _get_sparse_config_for_collection(collection_name: str) -> dict[str, Any] | None:
+    """Get sparse index configuration for a collection.
+
+    Args:
+        collection_name: Name of the collection
+
+    Returns:
+        Sparse config dict if enabled, None if not available
+    """
+    cfg = _get_settings()
+    try:
+        from qdrant_client import AsyncQdrantClient
+
+        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        try:
+            sparse_config = await get_sparse_index_config(async_client, collection_name)
+            if sparse_config and sparse_config.get("enabled"):
+                return sparse_config
+            return None
+        finally:
+            await async_client.close()
+    except Exception as e:
+        logger.warning("Failed to get sparse config for collection %s: %s", collection_name, e)
+        return None
+
+
+async def _perform_sparse_search(
+    collection_name: str,
+    sparse_config: dict[str, Any],
+    query: str,
+    k: int,
+) -> tuple[list[dict[str, Any]], float]:
+    """Perform sparse-only search using the configured sparse indexer.
+
+    Args:
+        collection_name: Name of the collection
+        sparse_config: Sparse index configuration
+        query: Search query
+        k: Number of results
+
+    Returns:
+        Tuple of (results list, search time in ms)
+    """
+    cfg = _get_settings()
+    start_time = time.time()
+
+    try:
+        # Get the sparse indexer plugin
+        from shared.plugins import plugin_registry
+
+        plugin_id = sparse_config.get("plugin_id")
+        if not plugin_id:
+            logger.warning("No plugin_id in sparse config for collection %s", collection_name)
+            sparse_search_fallbacks.labels(reason="no_plugin_id").inc()
+            return [], 0.0
+
+        record = plugin_registry.get("sparse_indexer", plugin_id)
+        if not record:
+            logger.warning("Sparse indexer plugin '%s' not found", plugin_id)
+            sparse_search_fallbacks.labels(reason="plugin_not_found").inc()
+            return [], 0.0
+
+        # Get sparse type for metrics
+        sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown")
+
+        # Instantiate the plugin and encode the query
+        plugin = record.plugin_class()
+        encode_start = time.time()
+        query_vector = await plugin.encode_query(query)
+        encode_time = time.time() - encode_start
+        sparse_encode_query_latency.labels(sparse_type=sparse_type).observe(encode_time)
+        logger.debug("Sparse query encoding took %.3fs for plugin %s", encode_time, plugin_id)
+
+        # Search the sparse collection
+        from qdrant_client import AsyncQdrantClient
+
+        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        try:
+            sparse_collection_name = sparse_config.get("sparse_collection_name")
+            if not sparse_collection_name:
+                logger.warning("No sparse_collection_name in sparse config")
+                sparse_search_fallbacks.labels(reason="no_collection_name").inc()
+                return [], 0.0
+
+            search_start = time.time()
+            results = await search_sparse_collection(
+                sparse_collection_name=sparse_collection_name,
+                query_indices=query_vector["indices"],
+                query_values=query_vector["values"],
+                limit=k,
+                qdrant_client=async_client,
+            )
+            qdrant_search_time = time.time() - search_start
+            sparse_search_latency.labels(sparse_type=sparse_type).observe(qdrant_search_time)
+
+            total_time = (time.time() - start_time) * 1000
+            logger.debug(
+                "Sparse search for %s: %d results in %.1fms (encode: %.1fms, qdrant: %.1fms)",
+                collection_name,
+                len(results),
+                total_time,
+                encode_time * 1000,
+                qdrant_search_time * 1000,
+            )
+            return results, total_time
+        finally:
+            await async_client.close()
+
+    except Exception as e:
+        logger.error("Sparse search failed for collection %s: %s", collection_name, e, exc_info=True)
+        sparse_search_fallbacks.labels(reason="error").inc()
+        return [], (time.time() - start_time) * 1000
 
 
 def _get_patched_callable(name: str, default: Any) -> Any:
@@ -273,38 +474,8 @@ async def resolve_collection_name(
     return default_collection
 
 
-def _map_hybrid_to_search_response(hybrid_response: HybridSearchResponse) -> SearchResponse:
-    """Map HybridSearchResponse to SearchResponse for unified API."""
-    results = []
-    for hr in hybrid_response.results:
-        results.append(
-            SearchResult(
-                path=hr.path,
-                chunk_id=hr.chunk_id,
-                score=hr.combined_score if hr.combined_score is not None else hr.score,
-                doc_id=hr.doc_id,
-                content=hr.content,
-                metadata=hr.metadata,
-                file_path=None,
-                file_name=None,
-                operation_uuid=None,
-                chunk_index=hr.chunk_index,
-                total_chunks=hr.total_chunks,
-            )
-        )
-
-    return SearchResponse(
-        query=hybrid_response.query,
-        results=results,
-        num_results=hybrid_response.num_results,
-        search_type="hybrid",
-        model_used=None,
-        embedding_time_ms=None,
-        search_time_ms=None,
-        reranking_used=False,
-        reranker_model=None,
-        reranking_time_ms=None,
-    )
+# NOTE: _map_hybrid_to_search_response removed - legacy hybrid search is deprecated.
+# Use search_mode="hybrid" with RRF fusion instead.
 
 
 def generate_mock_embedding(text: str, vector_dim: int | None = None) -> list[float]:
@@ -499,24 +670,38 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         dummy_mgr.rerank_async = AsyncMock(return_value=[])
         search_state.model_manager = dummy_mgr
 
+    # Track sparse search state
+    search_mode_used: SearchMode = "dense"
+    sparse_search_time_ms: float | None = None
+    rrf_fusion_time_ms: float | None = None
+    warnings: list[str] = []
+    sparse_results: list[dict[str, Any]] = []
+    sparse_config: dict[str, Any] | None = None
+
     try:
         collection_name = await resolve_collection_name(
             request.collection, request.operation_uuid, cfg.DEFAULT_COLLECTION
         )
 
-        # Route hybrid search_type to dedicated hybrid search
-        if request.search_type == "hybrid":
-            hybrid_response = await perform_hybrid_search(
-                query=request.query,
-                k=request.k,
-                collection=collection_name,
-                mode=request.hybrid_mode,
-                keyword_mode=request.keyword_mode,
-                score_threshold=request.score_threshold if request.score_threshold > 0 else None,
-                model_name=request.model_name,
-                quantization=request.quantization,
-            )
-            return _map_hybrid_to_search_response(hybrid_response)
+        # Check for sparse index availability if needed
+        if request.search_mode in ("sparse", "hybrid"):
+            sparse_config = await _get_sparse_config_for_collection(collection_name)
+            if sparse_config:
+                search_mode_used = request.search_mode
+            else:
+                # Fallback to dense with warning
+                warnings.append(
+                    f"Sparse index not available for collection '{collection_name}'. "
+                    "Falling back to dense search."
+                )
+                search_mode_used = "dense"
+                sparse_search_fallbacks.labels(reason="sparse_not_enabled").inc()
+                logger.info(
+                    "Sparse index not available for collection %s, falling back to dense search",
+                    collection_name,
+                )
+        else:
+            search_mode_used = "dense"
 
         vector_dim, collection_info = await _get_collection_info(collection_name)
 
@@ -677,6 +862,67 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
         search_time = (time.time() - search_start) * 1000
 
+        # Convert dense results to dict format for RRF fusion
+        dense_results_for_fusion: list[dict[str, Any]] = []
+        for point in qdrant_results:
+            if isinstance(point, dict) and "payload" in point:
+                payload = point["payload"]
+                dense_results_for_fusion.append({
+                    "chunk_id": payload.get("chunk_id", ""),
+                    "score": point["score"],
+                    "payload": payload,
+                })
+            else:
+                # Handle SDK-style results
+                dense_results_for_fusion.append({
+                    "chunk_id": point.get("payload", {}).get("chunk_id", str(point.get("id", ""))),
+                    "score": point.get("score", 0.0),
+                    "payload": point.get("payload", {}),
+                })
+
+        # Perform sparse search if needed
+        if search_mode_used in ("sparse", "hybrid") and sparse_config:
+            sparse_results, sparse_search_time_ms = await _perform_sparse_search(
+                collection_name=collection_name,
+                sparse_config=sparse_config,
+                query=request.query,
+                k=search_k,
+            )
+
+            if search_mode_used == "hybrid" and sparse_results:
+                # Apply RRF fusion
+                rrf_start = time.time()
+                fused_results = _reciprocal_rank_fusion(
+                    dense_results=dense_results_for_fusion,
+                    sparse_results=sparse_results,
+                    k=search_k,
+                    rrf_k=request.rrf_k,
+                )
+                rrf_fusion_time_ms = (time.time() - rrf_start) * 1000
+                rrf_fusion_latency.observe(rrf_fusion_time_ms / 1000)  # Convert to seconds for histogram
+                logger.debug(
+                    "RRF fusion: %d dense + %d sparse -> %d fused in %.2fms",
+                    len(dense_results_for_fusion),
+                    len(sparse_results),
+                    len(fused_results),
+                    rrf_fusion_time_ms,
+                )
+
+                # Replace qdrant_results with fused results
+                qdrant_results = [
+                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})}
+                    for r in fused_results
+                ]
+            elif search_mode_used == "sparse":
+                # Sparse-only mode: use sparse results
+                # Need to fetch payloads from dense collection for full metadata
+                qdrant_results = [
+                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})}
+                    for r in sparse_results
+                ]
+                # Note: For sparse-only, we may need to fetch full payload from dense collection
+                # This is handled below when building SearchResult objects
+
         results: list[SearchResult] = []
         should_include_content = request.include_content or request.use_reranker
 
@@ -824,6 +1070,11 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         search_latency.labels(endpoint="/search", search_type=request.search_type).observe(time.time() - start_time)
         metrics_collector.update_resource_metrics()
 
+        # Record sparse search metrics
+        if search_mode_used in ("sparse", "hybrid"):
+            sparse_type = sparse_config.get("plugin_id", "unknown").split("-")[0] if sparse_config else "unknown"
+            sparse_search_requests.labels(search_mode=search_mode_used, sparse_type=sparse_type).inc()
+
         return SearchResponse(
             query=request.query,
             results=results,
@@ -835,6 +1086,11 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             reranking_used=request.use_reranker,
             reranker_model=reranker_model_used,
             reranking_time_ms=reranking_time_ms,
+            # Sparse search fields
+            search_mode_used=search_mode_used,
+            sparse_search_time_ms=sparse_search_time_ms,
+            rrf_fusion_time_ms=rrf_fusion_time_ms,
+            warnings=warnings,
         )
 
     except httpx.HTTPStatusError as e:
@@ -853,154 +1109,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
-async def perform_hybrid_search(
-    *,
-    query: str,
-    k: int = DEFAULT_K,
-    collection: str | None = None,
-    mode: str = "filter",
-    keyword_mode: str = "any",
-    score_threshold: float | None = None,
-    model_name: str | None = None,
-    quantization: str | None = None,
-) -> HybridSearchResponse:
-    """Perform hybrid search combining vector similarity and keyword filtering."""
-    cfg = _get_settings()
-    start_time = time.time()
-    search_requests.labels(endpoint="/hybrid_search", search_type="hybrid").inc()
-
-    try:
-        collection_name = collection or cfg.DEFAULT_COLLECTION
-
-        client = _get_qdrant_client()
-        if cfg.USE_MOCK_EMBEDDINGS:
-            keywords = query.split()
-            result = HybridSearchResult(
-                path="/mock/path.txt",
-                chunk_id="mock-1",
-                score=0.9,
-                doc_id="mock-doc",
-                matched_keywords=[keywords[0]] if keywords else [],
-                keyword_score=0.8,
-                combined_score=0.85,
-                metadata=None,
-                content=None,
-            )
-            return HybridSearchResponse(
-                query=query,
-                results=[result],
-                num_results=1,
-                keywords_extracted=keywords or [query],
-                search_mode=mode,
-            )
-
-        collection_model = None
-        collection_quantization = None
-
-        metadata = await _get_cached_collection_metadata(collection_name, cfg)
-        if metadata:
-            collection_model = metadata.get("model_name")
-            collection_quantization = metadata.get("quantization")
-            logger.info(
-                "Found metadata for collection %s: model=%s quantization=%s",
-                collection_name,
-                collection_model,
-                collection_quantization,
-            )
-
-        model_name = model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
-        quantization = quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION
-
-        if collection_model and model_name != collection_model:
-            logger.warning(
-                "Collection %s created with model %s but searching with %s",
-                collection_name,
-                collection_model,
-                model_name,
-            )
-
-        hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
-        hybrid_engine = hybrid_engine_cls(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name)
-        keywords = hybrid_engine.extract_keywords(query)
-
-        vector_dim, _ = await _get_collection_info(collection_name)
-
-        if not cfg.USE_MOCK_EMBEDDINGS:
-            generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
-            query_vector = await generate_fn(query, model_name, quantization)
-            query_dim = len(query_vector)
-            try:
-                validate_dimension_compatibility(
-                    expected_dimension=vector_dim,
-                    actual_dimension=query_dim,
-                    collection_name=collection_name,
-                    model_name=model_name,
-                )
-            except DimensionMismatchError as e:
-                logger.error("Hybrid search query embedding dimension mismatch: %s", e)
-                search_errors.labels(endpoint="/hybrid_search", error_type="dimension_mismatch").inc()
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "dimension_mismatch",
-                        "message": str(e),
-                        "expected_dimension": e.expected_dimension,
-                        "actual_dimension": e.actual_dimension,
-                        "suggestion": (
-                            "Use the same model that was used to create the collection, "
-                            f"or ensure the model outputs {e.expected_dimension}-dimensional vectors"
-                        ),
-                    },
-                ) from e
-        else:
-            query_vector = generate_mock_embedding(query, vector_dim)
-
-        results = await asyncio.to_thread(
-            hybrid_engine.hybrid_search,
-            query_vector=query_vector,
-            query_text=query,
-            limit=k,
-            keyword_mode=keyword_mode,
-            score_threshold=score_threshold,
-            hybrid_mode=mode,
-        )
-
-        hybrid_results: list[HybridSearchResult] = []
-        for r in results:
-            hybrid_results.append(
-                HybridSearchResult(
-                    path=r["payload"].get("path", ""),
-                    chunk_id=r["payload"].get("chunk_id", ""),
-                    score=r["score"],
-                    doc_id=r["payload"]["doc_id"],
-                    matched_keywords=r.get("matched_keywords", []),
-                    keyword_score=r.get("keyword_score"),
-                    combined_score=r.get("combined_score"),
-                    metadata=r["payload"].get("metadata"),
-                    content=None,
-                    chunk_index=r["payload"].get("chunk_index"),
-                    total_chunks=r["payload"].get("total_chunks"),
-                )
-            )
-
-        logger.info("Found %s results for hybrid query '%s'", len(hybrid_results), query)
-        search_latency.labels(endpoint="/hybrid_search", search_type="hybrid").observe(time.time() - start_time)
-
-        return HybridSearchResponse(
-            query=query,
-            results=hybrid_results,
-            num_results=len(hybrid_results),
-            keywords_extracted=keywords,
-            search_mode=mode,
-        )
-    except Exception as e:  # pragma: no cover - failure path
-        logger.error("Hybrid search error: %s", e, exc_info=True)
-        search_errors.labels(endpoint="/hybrid_search", error_type="search_error").inc()
-        raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
-    finally:
-        if "hybrid_engine" in locals():
-            with suppress(Exception):
-                await asyncio.to_thread(hybrid_engine.close)
+# NOTE: perform_hybrid_search removed - legacy hybrid search is deprecated.
+# Use search_mode="hybrid" with RRF fusion in perform_search() instead.
 
 
 async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchResponse:
@@ -1073,6 +1183,11 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
                     num_results=len(parsed_results),
                     search_type=request.search_type,
                     model_used=f"{model_name}/{quantization}" if not cfg.USE_MOCK_EMBEDDINGS else "mock",
+                    # Batch search doesn't support sparse mode yet
+                    search_mode_used="dense",
+                    sparse_search_time_ms=None,
+                    rrf_fusion_time_ms=None,
+                    warnings=[],
                 )
             )
 
@@ -1085,87 +1200,7 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
         raise HTTPException(status_code=500, detail=f"Batch search failed: {str(e)}") from e
 
 
-async def perform_keyword_search(
-    *, query: str, k: int = DEFAULT_K, collection: str | None = None, mode: str = "any"
-) -> HybridSearchResponse:
-    """Keyword-only search."""
-    cfg = _get_settings()
-    try:
-        collection_name = collection if collection else cfg.DEFAULT_COLLECTION
-
-        client = _get_qdrant_client()
-
-        hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
-        engine_is_patched = hybrid_engine_cls is not HybridSearchEngine
-
-        if (cfg.USE_MOCK_EMBEDDINGS or isinstance(client, AsyncMock | Mock)) and not engine_is_patched:
-            keywords = query.split() or [query]
-            if len(keywords) >= 2 and keywords[0] == "test" and keywords[1] == "keywords":
-                keywords = ["test", "query"]
-            result = HybridSearchResult(
-                path="/mock/path.txt",
-                chunk_id="mock-kw-1",
-                score=0.0,
-                doc_id="mock-doc",
-                matched_keywords=keywords,
-                keyword_score=None,
-                combined_score=None,
-                metadata=None,
-                content=None,
-            )
-            return HybridSearchResponse(
-                query=query,
-                results=[result],
-                num_results=1,
-                keywords_extracted=keywords,
-                search_mode="keywords_only",
-            )
-
-        hybrid_engine = hybrid_engine_cls(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name)
-
-        keywords = hybrid_engine.extract_keywords(query)
-        logger.info(
-            "Processing keyword search '%s' -> %s (k=%s, collection=%s, mode=%s)",
-            query,
-            keywords,
-            k,
-            collection_name,
-            mode,
-        )
-
-        results = await asyncio.to_thread(hybrid_engine.search_by_keywords, keywords=keywords, limit=k, mode=mode)
-
-        hybrid_results: list[HybridSearchResult] = []
-        for r in results:
-            hybrid_results.append(
-                HybridSearchResult(
-                    path=r["payload"].get("path", ""),
-                    chunk_id=r["payload"].get("chunk_id", ""),
-                    score=0.0,
-                    doc_id=r["payload"]["doc_id"],
-                    matched_keywords=r.get("matched_keywords", []),
-                    content=None,
-                    chunk_index=r["payload"].get("chunk_index"),
-                    total_chunks=r["payload"].get("total_chunks"),
-                )
-            )
-
-        logger.info("Found %s results for keyword search '%s'", len(hybrid_results), query)
-
-        return HybridSearchResponse(
-            query=query,
-            results=hybrid_results,
-            num_results=len(hybrid_results),
-            keywords_extracted=keywords,
-            search_mode="keywords_only",
-        )
-    except Exception as e:  # pragma: no cover - failure path
-        logger.error("Keyword search error: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
-    finally:
-        if "hybrid_engine" in locals():
-            with suppress(Exception):
-                await asyncio.to_thread(hybrid_engine.close)
+# NOTE: perform_keyword_search removed - use search_mode="sparse" instead.
 
 
 async def embed_texts(request: EmbedRequest) -> EmbedResponse:

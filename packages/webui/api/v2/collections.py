@@ -26,8 +26,12 @@ from webui.api.schemas import (
     CollectionSyncRunResponse,
     CollectionUpdate,
     DocumentListResponse,
+    EnableSparseIndexRequest,
     ErrorResponse,
     OperationResponse,
+    SparseIndexStatusResponse,
+    SparseReindexProgressResponse,
+    SparseReindexResponse,
     SyncRunListResponse,
 )
 from webui.auth import get_current_user
@@ -976,4 +980,293 @@ async def list_collection_sync_runs(
         raise HTTPException(
             status_code=500,
             detail="Failed to list sync runs",
+        ) from e
+
+
+# =============================================================================
+# Sparse Index Management Endpoints (Phase 3)
+# =============================================================================
+
+
+@router.get(
+    "/{collection_uuid}/sparse-index",
+    response_model=SparseIndexStatusResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+    },
+)
+async def get_sparse_index_status(
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> SparseIndexStatusResponse:
+    """Get sparse index status for a collection.
+
+    Returns the current sparse indexing configuration and statistics.
+    """
+    try:
+        sparse_config = await service.get_sparse_index_config(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+        )
+
+        if sparse_config is None:
+            return SparseIndexStatusResponse(enabled=False)
+
+        return SparseIndexStatusResponse(
+            enabled=sparse_config.get("enabled", False),
+            plugin_id=sparse_config.get("plugin_id"),
+            sparse_collection_name=sparse_config.get("sparse_collection_name"),
+            model_config_data=sparse_config.get("model_config"),
+            document_count=sparse_config.get("document_count"),
+            created_at=sparse_config.get("created_at"),
+            last_indexed_at=sparse_config.get("last_indexed_at"),
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this collection",
+        ) from e
+    except Exception as e:
+        logger.error("Failed to get sparse index status: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get sparse index status",
+        ) from e
+
+
+@router.post(
+    "/{collection_uuid}/sparse-index",
+    response_model=SparseIndexStatusResponse,
+    status_code=201,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        400: {"model": ErrorResponse, "description": "Invalid request or plugin not found"},
+        409: {"model": ErrorResponse, "description": "Sparse indexing already enabled"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/hour")
+async def enable_sparse_index(
+    request: Request,  # noqa: ARG001
+    collection_uuid: str,
+    enable_request: EnableSparseIndexRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> SparseIndexStatusResponse:
+    """Enable sparse indexing for a collection.
+
+    Creates a sparse Qdrant collection and optionally triggers reindexing
+    of existing documents.
+    """
+    try:
+        sparse_config = await service.enable_sparse_index(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            plugin_id=enable_request.plugin_id,
+            model_config=enable_request.model_config_data,
+            reindex_existing=enable_request.reindex_existing,
+        )
+
+        return SparseIndexStatusResponse(
+            enabled=True,
+            plugin_id=sparse_config.get("plugin_id"),
+            sparse_collection_name=sparse_config.get("sparse_collection_name"),
+            model_config_data=sparse_config.get("model_config"),
+            document_count=sparse_config.get("document_count", 0),
+            created_at=sparse_config.get("created_at"),
+            last_indexed_at=sparse_config.get("last_indexed_at"),
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to modify this collection",
+        ) from e
+    except InvalidStateError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        ) from e
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error("Failed to enable sparse index: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to enable sparse indexing",
+        ) from e
+
+
+@router.delete(
+    "/{collection_uuid}/sparse-index",
+    status_code=204,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/hour")
+async def disable_sparse_index(
+    request: Request,  # noqa: ARG001
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> None:
+    """Disable sparse indexing for a collection.
+
+    Deletes the sparse Qdrant collection and removes configuration.
+    """
+    try:
+        await service.disable_sparse_index(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to modify this collection",
+        ) from e
+    except Exception as e:
+        logger.error("Failed to disable sparse index: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to disable sparse indexing",
+        ) from e
+
+
+@router.post(
+    "/{collection_uuid}/sparse-index/reindex",
+    response_model=SparseReindexResponse,
+    status_code=202,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found or sparse indexing not enabled"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("2/hour")
+async def trigger_sparse_reindex(
+    request: Request,  # noqa: ARG001
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> SparseReindexResponse:
+    """Trigger a full sparse reindex of the collection.
+
+    Returns a job ID that can be used to track progress.
+    """
+    try:
+        job_info = await service.trigger_sparse_reindex(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+        )
+
+        return SparseReindexResponse(
+            job_id=job_info["job_id"],
+            status=job_info["status"],
+            collection_uuid=collection_uuid,
+            plugin_id=job_info["plugin_id"],
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to modify this collection",
+        ) from e
+    except InvalidStateError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error("Failed to trigger sparse reindex: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to trigger sparse reindex",
+        ) from e
+
+
+@router.get(
+    "/{collection_uuid}/sparse-index/reindex/{job_id}",
+    response_model=SparseReindexProgressResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection or job not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+    },
+)
+async def get_sparse_reindex_progress(
+    collection_uuid: str,
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> SparseReindexProgressResponse:
+    """Get progress of a sparse reindex job.
+
+    Polls the Celery task state to report progress.
+    """
+    try:
+        progress = await service.get_sparse_reindex_progress(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            job_id=job_id,
+        )
+
+        return SparseReindexProgressResponse(
+            job_id=job_id,
+            status=progress["status"],
+            progress=progress.get("progress"),
+            documents_processed=progress.get("documents_processed"),
+            total_documents=progress.get("total_documents"),
+            error=progress.get("error"),
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this collection",
+        ) from e
+    except Exception as e:
+        logger.error("Failed to get sparse reindex progress: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get reindex progress",
         ) from e
