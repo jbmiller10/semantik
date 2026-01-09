@@ -691,7 +691,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             else:
                 # Fallback to dense with warning
                 warnings.append(
-                    f"Sparse index not available for collection '{collection_name}'. " "Falling back to dense search."
+                    f"Sparse index not available for collection '{collection_name}'. Falling back to dense search."
                 )
                 search_mode_used = "dense"
                 sparse_search_fallbacks.labels(reason="sparse_not_enabled").inc()
