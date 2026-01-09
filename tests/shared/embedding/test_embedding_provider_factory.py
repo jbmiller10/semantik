@@ -129,7 +129,9 @@ class TestProviderCreation:
 
         assert provider.dimension == 256
 
-    def test_protocol_provider_receives_state_config_via_config(self, empty_registry: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_protocol_provider_receives_state_config_via_config(
+        self, empty_registry: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Protocol providers should not receive plugin_config kwarg from state.
 
         The EmbeddingProtocol __init__ signature is (config: dict | None) and does
@@ -161,7 +163,9 @@ class TestProviderCreation:
                 return {}
 
         EmbeddingProviderFactory.register_provider("proto", DummyProtocolProvider)
-        monkeypatch.setattr(embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"})
+        monkeypatch.setattr(
+            embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"}
+        )
 
         provider = EmbeddingProviderFactory.create_provider("proto-model")
         assert provider.config == {"api_key": "x"}
@@ -235,7 +239,9 @@ class TestProviderCreation:
                 return {}
 
         EmbeddingProviderFactory.register_provider("proto", DummyProtocolProvider)
-        monkeypatch.setattr(embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"})
+        monkeypatch.setattr(
+            embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"}
+        )
 
         provider = EmbeddingProviderFactory.create_provider_by_name("proto")
         assert provider.config == {"api_key": "x"}
