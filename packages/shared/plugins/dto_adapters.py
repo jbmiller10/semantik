@@ -1045,9 +1045,7 @@ def validate_sparse_vector_dict(d: dict[str, Any]) -> SparseVectorDict:
     if not isinstance(values, list):
         raise ValidationError(f"values must be a list, got {type(values).__name__}")
     if len(indices) != len(values):
-        raise ValidationError(
-            f"indices and values must have same length: {len(indices)} != {len(values)}"
-        )
+        raise ValidationError(f"indices and values must have same length: {len(indices)} != {len(values)}")
 
     return cast(SparseVectorDict, d)
 
@@ -1133,9 +1131,7 @@ def validate_sparse_query_vector_dict(d: dict[str, Any]) -> SparseQueryVectorDic
     if not isinstance(values, list):
         raise ValidationError(f"values must be a list, got {type(values).__name__}")
     if len(indices) != len(values):
-        raise ValidationError(
-            f"indices and values must have same length: {len(indices)} != {len(values)}"
-        )
+        raise ValidationError(f"indices and values must have same length: {len(indices)} != {len(values)}")
 
     return cast(SparseQueryVectorDict, d)
 

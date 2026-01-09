@@ -763,11 +763,13 @@ class TestSparseVectorAdapter:
         )
 
         with pytest.raises(ValidationError, match="same length"):
-            dict_to_sparse_vector({
-                "indices": [1, 2, 3],
-                "values": [0.5, 0.8],  # Different length
-                "chunk_id": "chunk-123",
-            })
+            dict_to_sparse_vector(
+                {
+                    "indices": [1, 2, 3],
+                    "values": [0.5, 0.8],  # Different length
+                    "chunk_id": "chunk-123",
+                }
+            )
 
     def test_coerce_from_dict(self):
         """Verify coerce_to_sparse_vector accepts dict."""
@@ -829,10 +831,12 @@ class TestSparseQueryVectorAdapter:
         )
 
         with pytest.raises(ValidationError, match="same length"):
-            dict_to_sparse_query_vector({
-                "indices": [1, 2, 3],
-                "values": [0.5],  # Different length
-            })
+            dict_to_sparse_query_vector(
+                {
+                    "indices": [1, 2, 3],
+                    "values": [0.5],  # Different length
+                }
+            )
 
     def test_coerce_from_dict(self):
         """Verify coerce_to_sparse_query_vector accepts dict."""
@@ -922,10 +926,12 @@ class TestSparseIndexerCapabilitiesAdapter:
         )
 
         with pytest.raises(ValidationError, match="Invalid sparse_type"):
-            dict_to_sparse_indexer_capabilities({
-                "sparse_type": "invalid",
-                "max_tokens": 1000,
-            })
+            dict_to_sparse_indexer_capabilities(
+                {
+                    "sparse_type": "invalid",
+                    "max_tokens": 1000,
+                }
+            )
 
     def test_validation_rejects_missing_required_keys(self):
         """Verify validation catches missing required fields."""
@@ -941,10 +947,12 @@ class TestSparseIndexerCapabilitiesAdapter:
         """Verify default values are applied for optional fields."""
         from shared.plugins.dto_adapters import dict_to_sparse_indexer_capabilities
 
-        result = dict_to_sparse_indexer_capabilities({
-            "sparse_type": "bm25",
-            "max_tokens": 1000,
-        })
+        result = dict_to_sparse_indexer_capabilities(
+            {
+                "sparse_type": "bm25",
+                "max_tokens": 1000,
+            }
+        )
 
         # Check defaults
         assert result.vocabulary_handling == "direct"
