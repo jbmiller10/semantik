@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-import pytest
-
 from shared.plugins.protocols import PROTOCOL_BY_TYPE, SparseIndexerProtocol
 from shared.plugins.typed_dicts import (
     SPARSE_TYPES,
@@ -172,13 +170,8 @@ class TestSparseIndexerProtocolCompliance:
             PLUGIN_VERSION: ClassVar[str] = "1.0.0"
             SPARSE_TYPE: ClassVar[str] = "bm25"
 
-            async def encode_documents(
-                self, documents: list[dict[str, Any]]
-            ) -> list[dict[str, Any]]:
-                return [
-                    {"indices": [1], "values": [1.0], "chunk_id": doc["chunk_id"]}
-                    for doc in documents
-                ]
+            async def encode_documents(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                return [{"indices": [1], "values": [1.0], "chunk_id": doc["chunk_id"]} for doc in documents]
 
             async def encode_query(self, query: str) -> dict[str, Any]:
                 return {"indices": [1], "values": [1.0]}
@@ -211,9 +204,7 @@ class TestSparseIndexerProtocolCompliance:
             PLUGIN_VERSION: ClassVar[str] = "1.0.0"
             # Missing SPARSE_TYPE
 
-            async def encode_documents(
-                self, documents: list[dict[str, Any]]
-            ) -> list[dict[str, Any]]:
+            async def encode_documents(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 return []
 
             async def encode_query(self, query: str) -> dict[str, Any]:
@@ -242,9 +233,7 @@ class TestSparseIndexerProtocolCompliance:
             PLUGIN_VERSION: ClassVar[str] = "1.0.0"
             SPARSE_TYPE: ClassVar[str] = "bm25"
 
-            async def encode_documents(
-                self, documents: list[dict[str, Any]]
-            ) -> list[dict[str, Any]]:
+            async def encode_documents(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 return []
 
             # Missing encode_query, remove_documents
@@ -265,13 +254,8 @@ class TestSparseIndexerProtocolCompliance:
             PLUGIN_VERSION: ClassVar[str] = "1.0.0"
             SPARSE_TYPE: ClassVar[str] = "splade"
 
-            async def encode_documents(
-                self, documents: list[dict[str, Any]]
-            ) -> list[dict[str, Any]]:
-                return [
-                    {"indices": [100, 200], "values": [0.5, 0.8], "chunk_id": doc["chunk_id"]}
-                    for doc in documents
-                ]
+            async def encode_documents(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                return [{"indices": [100, 200], "values": [0.5, 0.8], "chunk_id": doc["chunk_id"]} for doc in documents]
 
             async def encode_query(self, query: str) -> dict[str, Any]:
                 return {"indices": [100], "values": [0.9]}
@@ -308,27 +292,19 @@ class TestSparseIndexerProtocolClassVars:
         # Check that PLUGIN_ID is declared in the protocol
         assert hasattr(SparseIndexerProtocol, "__protocol_attrs__")
         attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_ID" in attrs or "PLUGIN_ID" in getattr(
-            SparseIndexerProtocol, "__annotations__", {}
-        )
+        assert "PLUGIN_ID" in attrs or "PLUGIN_ID" in getattr(SparseIndexerProtocol, "__annotations__", {})
 
     def test_protocol_requires_plugin_type(self) -> None:
         """Protocol should require PLUGIN_TYPE."""
         attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_TYPE" in attrs or "PLUGIN_TYPE" in getattr(
-            SparseIndexerProtocol, "__annotations__", {}
-        )
+        assert "PLUGIN_TYPE" in attrs or "PLUGIN_TYPE" in getattr(SparseIndexerProtocol, "__annotations__", {})
 
     def test_protocol_requires_plugin_version(self) -> None:
         """Protocol should require PLUGIN_VERSION."""
         attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_VERSION" in attrs or "PLUGIN_VERSION" in getattr(
-            SparseIndexerProtocol, "__annotations__", {}
-        )
+        assert "PLUGIN_VERSION" in attrs or "PLUGIN_VERSION" in getattr(SparseIndexerProtocol, "__annotations__", {})
 
     def test_protocol_requires_sparse_type(self) -> None:
         """Protocol should require SPARSE_TYPE."""
         attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "SPARSE_TYPE" in attrs or "SPARSE_TYPE" in getattr(
-            SparseIndexerProtocol, "__annotations__", {}
-        )
+        assert "SPARSE_TYPE" in attrs or "SPARSE_TYPE" in getattr(SparseIndexerProtocol, "__annotations__", {})

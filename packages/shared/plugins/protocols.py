@@ -629,9 +629,7 @@ class SparseIndexerProtocol(Protocol):
     SPARSE_TYPE: ClassVar[str]
     """Sparse representation type: 'bm25' or 'splade'."""
 
-    async def encode_documents(
-        self, documents: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    async def encode_documents(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Generate sparse vectors for documents.
 
         NOTE: This method generates vectors only. Persistence to Qdrant
