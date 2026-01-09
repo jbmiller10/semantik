@@ -289,22 +289,21 @@ class TestSparseIndexerProtocolClassVars:
 
     def test_protocol_requires_plugin_id(self) -> None:
         """Protocol should require PLUGIN_ID."""
-        # Check that PLUGIN_ID is declared in the protocol
-        assert hasattr(SparseIndexerProtocol, "__protocol_attrs__")
-        attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_ID" in attrs or "PLUGIN_ID" in getattr(SparseIndexerProtocol, "__annotations__", {})
+        # Check that PLUGIN_ID is declared in the protocol annotations
+        annotations = getattr(SparseIndexerProtocol, "__annotations__", {})
+        assert "PLUGIN_ID" in annotations
 
     def test_protocol_requires_plugin_type(self) -> None:
         """Protocol should require PLUGIN_TYPE."""
-        attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_TYPE" in attrs or "PLUGIN_TYPE" in getattr(SparseIndexerProtocol, "__annotations__", {})
+        annotations = getattr(SparseIndexerProtocol, "__annotations__", {})
+        assert "PLUGIN_TYPE" in annotations
 
     def test_protocol_requires_plugin_version(self) -> None:
         """Protocol should require PLUGIN_VERSION."""
-        attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "PLUGIN_VERSION" in attrs or "PLUGIN_VERSION" in getattr(SparseIndexerProtocol, "__annotations__", {})
+        annotations = getattr(SparseIndexerProtocol, "__annotations__", {})
+        assert "PLUGIN_VERSION" in annotations
 
     def test_protocol_requires_sparse_type(self) -> None:
         """Protocol should require SPARSE_TYPE."""
-        attrs = SparseIndexerProtocol.__protocol_attrs__
-        assert "SPARSE_TYPE" in attrs or "SPARSE_TYPE" in getattr(SparseIndexerProtocol, "__annotations__", {})
+        annotations = getattr(SparseIndexerProtocol, "__annotations__", {})
+        assert "SPARSE_TYPE" in annotations
