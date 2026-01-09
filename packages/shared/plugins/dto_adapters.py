@@ -32,6 +32,7 @@ from shared.embedding.plugin_base import EmbeddingProviderDefinition
 from shared.plugins.typed_dicts import (
     MESSAGE_ROLES,
     MESSAGE_TYPES,
+    SPARSE_TYPES,
     AgentCapabilitiesDict,
     AgentContextDict,
     AgentMessageDict,
@@ -43,10 +44,18 @@ from shared.plugins.typed_dicts import (
     IngestedDocumentDict,
     RerankerCapabilitiesDict,
     RerankResultDict,
+    SparseIndexerCapabilitiesDict,
+    SparseQueryVectorDict,
+    SparseVectorDict,
     TokenUsageDict,
 )
 from shared.plugins.types.extractor import Entity, ExtractionResult
 from shared.plugins.types.reranker import RerankerCapabilities, RerankResult
+from shared.plugins.types.sparse_indexer import (
+    SparseIndexerCapabilities,
+    SparseQueryVector,
+    SparseVector,
+)
 
 # ============================================================================
 # Validation Error
@@ -1006,4 +1015,245 @@ def dict_to_embedding_provider_definition(d: dict[str, Any]) -> EmbeddingProvide
         supported_models=tuple(d.get("supported_models", [])),
         default_config=d.get("default_config", {}),
         is_plugin=d.get("is_plugin", False),
+    )
+
+
+# ============================================================================
+# SparseVector Adapters (Sparse Indexer)
+# ============================================================================
+
+
+def validate_sparse_vector_dict(d: dict[str, Any]) -> SparseVectorDict:
+    """Validate and cast dict to SparseVectorDict.
+
+    Args:
+        d: Dictionary to validate.
+
+    Returns:
+        The validated dict cast to SparseVectorDict.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    _validate_required_keys(d, {"indices", "values", "chunk_id"}, "SparseVectorDict")
+
+    indices = d["indices"]
+    values = d["values"]
+
+    if not isinstance(indices, list):
+        raise ValidationError(f"indices must be a list, got {type(indices).__name__}")
+    if not isinstance(values, list):
+        raise ValidationError(f"values must be a list, got {type(values).__name__}")
+    if len(indices) != len(values):
+        raise ValidationError(
+            f"indices and values must have same length: {len(indices)} != {len(values)}"
+        )
+
+    return cast(SparseVectorDict, d)
+
+
+def sparse_vector_to_dict(vec: SparseVector) -> SparseVectorDict:
+    """Convert SparseVector dataclass to TypedDict.
+
+    Args:
+        vec: SparseVector dataclass instance.
+
+    Returns:
+        SparseVectorDict representation.
+    """
+    result: SparseVectorDict = {
+        "indices": list(vec.indices),
+        "values": list(vec.values),
+        "chunk_id": vec.chunk_id,
+    }
+    if vec.metadata:
+        result["metadata"] = vec.metadata
+    return result
+
+
+def dict_to_sparse_vector(d: dict[str, Any]) -> SparseVector:
+    """Convert TypedDict to SparseVector dataclass with validation.
+
+    Args:
+        d: Dictionary conforming to SparseVectorDict schema.
+
+    Returns:
+        SparseVector dataclass instance.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    validated = validate_sparse_vector_dict(d)
+    return SparseVector(
+        indices=tuple(validated["indices"]),
+        values=tuple(validated["values"]),
+        chunk_id=validated["chunk_id"],
+        metadata=validated.get("metadata", {}),
+    )
+
+
+def coerce_to_sparse_vector(vec: SparseVector | dict[str, Any]) -> SparseVector:
+    """Accept either dataclass or dict, return dataclass.
+
+    Args:
+        vec: Either a SparseVector or a dict conforming to the schema.
+
+    Returns:
+        SparseVector dataclass instance.
+    """
+    if isinstance(vec, SparseVector):
+        return vec
+    return dict_to_sparse_vector(vec)
+
+
+# ============================================================================
+# SparseQueryVector Adapters (Sparse Indexer)
+# ============================================================================
+
+
+def validate_sparse_query_vector_dict(d: dict[str, Any]) -> SparseQueryVectorDict:
+    """Validate and cast dict to SparseQueryVectorDict.
+
+    Args:
+        d: Dictionary to validate.
+
+    Returns:
+        The validated dict cast to SparseQueryVectorDict.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    _validate_required_keys(d, {"indices", "values"}, "SparseQueryVectorDict")
+
+    indices = d["indices"]
+    values = d["values"]
+
+    if not isinstance(indices, list):
+        raise ValidationError(f"indices must be a list, got {type(indices).__name__}")
+    if not isinstance(values, list):
+        raise ValidationError(f"values must be a list, got {type(values).__name__}")
+    if len(indices) != len(values):
+        raise ValidationError(
+            f"indices and values must have same length: {len(indices)} != {len(values)}"
+        )
+
+    return cast(SparseQueryVectorDict, d)
+
+
+def sparse_query_vector_to_dict(vec: SparseQueryVector) -> SparseQueryVectorDict:
+    """Convert SparseQueryVector dataclass to TypedDict.
+
+    Args:
+        vec: SparseQueryVector dataclass instance.
+
+    Returns:
+        SparseQueryVectorDict representation.
+    """
+    return {
+        "indices": list(vec.indices),
+        "values": list(vec.values),
+    }
+
+
+def dict_to_sparse_query_vector(d: dict[str, Any]) -> SparseQueryVector:
+    """Convert TypedDict to SparseQueryVector dataclass with validation.
+
+    Args:
+        d: Dictionary conforming to SparseQueryVectorDict schema.
+
+    Returns:
+        SparseQueryVector dataclass instance.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    validated = validate_sparse_query_vector_dict(d)
+    return SparseQueryVector(
+        indices=tuple(validated["indices"]),
+        values=tuple(validated["values"]),
+    )
+
+
+def coerce_to_sparse_query_vector(
+    vec: SparseQueryVector | dict[str, Any],
+) -> SparseQueryVector:
+    """Accept either dataclass or dict, return dataclass.
+
+    Args:
+        vec: Either a SparseQueryVector or a dict conforming to the schema.
+
+    Returns:
+        SparseQueryVector dataclass instance.
+    """
+    if isinstance(vec, SparseQueryVector):
+        return vec
+    return dict_to_sparse_query_vector(vec)
+
+
+# ============================================================================
+# SparseIndexerCapabilities Adapters (Sparse Indexer)
+# ============================================================================
+
+
+def sparse_indexer_capabilities_to_dict(
+    caps: SparseIndexerCapabilities,
+) -> SparseIndexerCapabilitiesDict:
+    """Convert SparseIndexerCapabilities dataclass to TypedDict.
+
+    Args:
+        caps: SparseIndexerCapabilities dataclass instance.
+
+    Returns:
+        SparseIndexerCapabilitiesDict representation.
+    """
+    result: SparseIndexerCapabilitiesDict = {
+        "sparse_type": caps.sparse_type,
+        "max_tokens": caps.max_tokens,
+        "vocabulary_handling": caps.vocabulary_handling,
+        "supports_batching": caps.supports_batching,
+        "max_batch_size": caps.max_batch_size,
+        "requires_corpus_stats": caps.requires_corpus_stats,
+        "supports_filters": caps.supports_filters,
+        "idf_storage": caps.idf_storage,
+    }
+    if caps.max_terms_per_vector is not None:
+        result["max_terms_per_vector"] = caps.max_terms_per_vector
+    if caps.vocabulary_size is not None:
+        result["vocabulary_size"] = caps.vocabulary_size
+    if caps.supported_languages is not None:
+        result["supported_languages"] = list(caps.supported_languages)
+    return result
+
+
+def dict_to_sparse_indexer_capabilities(d: dict[str, Any]) -> SparseIndexerCapabilities:
+    """Convert TypedDict to SparseIndexerCapabilities dataclass.
+
+    Args:
+        d: Dictionary conforming to SparseIndexerCapabilitiesDict schema.
+
+    Returns:
+        SparseIndexerCapabilities dataclass instance.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    _validate_required_keys(d, {"sparse_type", "max_tokens"}, "SparseIndexerCapabilitiesDict")
+    _validate_string_enum(d["sparse_type"], SPARSE_TYPES, "sparse_type")
+
+    supported_languages = d.get("supported_languages")
+    if supported_languages is not None:
+        supported_languages = tuple(supported_languages)
+
+    return SparseIndexerCapabilities(
+        sparse_type=d["sparse_type"],
+        max_tokens=d["max_tokens"],
+        vocabulary_handling=d.get("vocabulary_handling", "direct"),
+        supports_batching=d.get("supports_batching", True),
+        max_batch_size=d.get("max_batch_size", 64),
+        requires_corpus_stats=d.get("requires_corpus_stats", False),
+        max_terms_per_vector=d.get("max_terms_per_vector"),
+        vocabulary_size=d.get("vocabulary_size"),
+        supports_filters=d.get("supports_filters", False),
+        idf_storage=d.get("idf_storage", "file"),
+        supported_languages=supported_languages,
     )

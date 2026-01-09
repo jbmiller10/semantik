@@ -11,6 +11,12 @@ from .extractor import (
     ExtractorPlugin,
 )
 from .reranker import RerankerCapabilities, RerankerPlugin, RerankResult
+from .sparse_indexer import (
+    SparseIndexerCapabilities,
+    SparseIndexerPlugin,
+    SparseQueryVector,
+    SparseVector,
+)
 
 __all__ = [
     "AgentPlugin",
@@ -24,4 +30,8 @@ __all__ = [
     "RerankerCapabilities",
     "RerankerPlugin",
     "RerankResult",
+    "SparseIndexerCapabilities",
+    "SparseIndexerPlugin",
+    "SparseQueryVector",
+    "SparseVector",
 ]
