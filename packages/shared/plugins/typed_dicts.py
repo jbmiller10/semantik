@@ -85,6 +85,9 @@ AGENT_USE_CASES = frozenset(
 )
 """Valid values for AgentProtocol.supported_use_cases()."""
 
+SPARSE_TYPES = frozenset({"bm25", "splade"})
+"""Valid values for SparseIndexerCapabilitiesDict.sparse_type field."""
+
 
 # ============================================================================
 # Common DTOs
@@ -392,3 +395,89 @@ class EmbeddingProviderDefinitionDict(TypedDict):
     default_config: NotRequired[dict[str, Any]]
     performance_characteristics: NotRequired[dict[str, Any]]
     is_plugin: NotRequired[bool]
+
+
+# ============================================================================
+# Sparse Indexer DTOs
+# ============================================================================
+
+
+class SparseVectorDict(TypedDict):
+    """Sparse vector representation for indexing.
+
+    For BM25: indices are term IDs, values are TF-IDF scores.
+    For SPLADE: indices are token IDs, values are learned weights.
+
+    Uses chunk_id (not document_id) to align 1:1 with dense vectors for RRF fusion.
+
+    Attributes:
+        indices: Sparse vector indices (term/token IDs).
+        values: Corresponding weights/scores.
+        chunk_id: Chunk identifier (aligns with dense vectors).
+        metadata: Additional indexing metadata.
+    """
+
+    indices: list[int]
+    values: list[float]
+    chunk_id: str
+    metadata: NotRequired[dict[str, Any]]
+
+
+class SparseQueryVectorDict(TypedDict):
+    """Sparse vector representation for query.
+
+    Attributes:
+        indices: Sparse vector indices (term/token IDs).
+        values: Corresponding weights/scores.
+    """
+
+    indices: list[int]
+    values: list[float]
+
+
+class SparseSearchResultDict(TypedDict):
+    """Search result from sparse indexing.
+
+    Attributes:
+        chunk_id: Chunk identifier (aligns with dense vectors for RRF fusion).
+        score: Relevance score (higher = more relevant).
+        matched_terms: Terms that matched the query (for BM25).
+        sparse_vector: Original sparse vector (optional).
+        payload: Chunk payload from Qdrant.
+    """
+
+    chunk_id: str
+    score: float
+    matched_terms: NotRequired[list[str]]
+    sparse_vector: NotRequired[SparseVectorDict]
+    payload: NotRequired[dict[str, Any]]
+
+
+class SparseIndexerCapabilitiesDict(TypedDict, total=False):
+    """Sparse indexer capability declaration.
+
+    Attributes:
+        sparse_type: Type: 'bm25' or 'splade'. See SPARSE_TYPES.
+        max_tokens: Maximum tokens per document.
+        max_terms_per_vector: Maximum non-zero terms in output sparse vector.
+        vocabulary_size: Vocabulary size (if fixed). None = open vocabulary.
+        vocabulary_handling: How vocabulary maps to sparse dimensions.
+        supports_batching: Whether batch encoding is supported.
+        max_batch_size: Maximum documents per batch.
+        supports_filters: Whether metadata filters are supported during search.
+        requires_corpus_stats: Whether indexer needs corpus statistics (e.g., BM25 IDF).
+        idf_storage: IDF storage backend: 'file' or 'qdrant_point'.
+        supported_languages: Supported languages (ISO 639-1 codes).
+    """
+
+    sparse_type: str
+    max_tokens: int
+    max_terms_per_vector: int | None
+    vocabulary_size: int | None
+    vocabulary_handling: str
+    supports_batching: bool
+    max_batch_size: int
+    supports_filters: bool
+    requires_corpus_stats: bool
+    idf_storage: str
+    supported_languages: list[str] | None

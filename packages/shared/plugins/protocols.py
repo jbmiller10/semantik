@@ -583,6 +583,111 @@ class AgentProtocol(Protocol):
 
 
 # ============================================================================
+# Sparse Indexer Protocol
+# ============================================================================
+
+
+@runtime_checkable
+class SparseIndexerProtocol(Protocol):
+    """Protocol for sparse indexing plugins (BM25, SPLADE, etc.).
+
+    Sparse indexers generate sparse vector representations for documents.
+    The plugin is responsible ONLY for vector generation - persistence to
+    Qdrant is handled by vecpipe infrastructure.
+
+    Two main types:
+    - BM25: Classic term-frequency based retrieval (indices=term_ids, values=tf-idf)
+    - SPLADE: Learned sparse representations (indices=token_ids, values=learned_weights)
+
+    Return Type Convention:
+    - External plugins (dict-based): Return list[dict] from encode_documents()
+    - Built-in plugins (ABC-based): Return list[SparseVector] from encode_documents()
+
+    The DTO adapter layer handles bidirectional conversion.
+
+    Example external implementation:
+        class MyBM25Indexer:
+            PLUGIN_ID = "my-bm25"
+            PLUGIN_TYPE = "sparse_indexer"
+            PLUGIN_VERSION = "1.0.0"
+            SPARSE_TYPE = "bm25"
+
+            async def encode_documents(self, documents):
+                return [{
+                    "indices": [1, 5, 42],
+                    "values": [2.3, 1.8, 3.1],
+                    "chunk_id": "chunk-1",
+                }]
+
+            async def encode_query(self, query):
+                return {"indices": [1, 42], "values": [1.0, 2.5]}
+    """
+
+    PLUGIN_ID: ClassVar[str]
+    PLUGIN_TYPE: ClassVar[str]
+    PLUGIN_VERSION: ClassVar[str]
+    SPARSE_TYPE: ClassVar[str]
+    """Sparse representation type: 'bm25' or 'splade'."""
+
+    async def encode_documents(
+        self, documents: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Generate sparse vectors for documents.
+
+        NOTE: This method generates vectors only. Persistence to Qdrant
+        is handled by vecpipe infrastructure, not the plugin.
+
+        Args:
+            documents: List of documents with keys:
+                - content (str): Document/chunk text
+                - chunk_id (str): Unique chunk identifier (aligns with dense vectors)
+                - metadata (dict, optional): Additional metadata
+
+        Returns:
+            List of SparseVectorDict with keys:
+                - indices (list[int]): Sparse vector indices
+                - values (list[float]): Corresponding weights/scores
+                - chunk_id (str): Chunk identifier
+        """
+        ...
+
+    async def encode_query(self, query: str) -> dict[str, Any]:
+        """Generate sparse vector for a search query.
+
+        Args:
+            query: Search query text
+
+        Returns:
+            SparseQueryVectorDict with keys:
+                - indices (list[int]): Sparse vector indices
+                - values (list[float]): Corresponding weights/scores
+        """
+        ...
+
+    async def remove_documents(self, chunk_ids: list[str]) -> None:
+        """Clean up any plugin-internal state for removed chunks.
+
+        Called when chunks are deleted from the collection.
+        For stateless plugins (like SPLADE), this may be a no-op.
+        For BM25, this updates IDF statistics.
+
+        Args:
+            chunk_ids: List of chunk IDs being removed (aligns with dense vectors)
+        """
+        ...
+
+    @classmethod
+    def get_capabilities(cls) -> dict[str, Any]:
+        """Declare sparse indexer capabilities."""
+        ...
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        """Return plugin metadata for discovery."""
+        ...
+
+
+# ============================================================================
 # Protocol Type Mapping
 # ============================================================================
 
@@ -593,6 +698,7 @@ PROTOCOL_BY_TYPE: dict[str, type] = {
     "reranker": RerankerProtocol,
     "extractor": ExtractorProtocol,
     "agent": AgentProtocol,
+    "sparse_indexer": SparseIndexerProtocol,
 }
 """Mapping from plugin type string to corresponding protocol class.
 

@@ -27,6 +27,7 @@ from .protocols import (
     EmbeddingProtocol,
     ExtractorProtocol,
     RerankerProtocol,
+    SparseIndexerProtocol,
 )
 from .registry import PluginRecord, PluginSource, plugin_registry
 from .security import audit_log
@@ -123,6 +124,14 @@ def _satisfies_protocol(plugin_cls: type, protocol: type) -> bool:
         required_methods = {"extract", "supported_extractions", "get_manifest"}
     elif protocol is AgentProtocol:
         required_methods = {"execute", "get_capabilities", "supported_use_cases", "get_manifest"}
+    elif protocol is SparseIndexerProtocol:
+        required_methods = {
+            "encode_documents",
+            "encode_query",
+            "remove_documents",
+            "get_capabilities",
+            "get_manifest",
+        }
     else:
         required_methods = {"get_manifest"}
 
