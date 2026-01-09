@@ -51,7 +51,7 @@ class SparseVector:
     def __post_init__(self) -> None:
         """Validate indices and values have matching lengths."""
         if len(self.indices) != len(self.values):
-            msg = f"indices and values must have same length: " f"{len(self.indices)} != {len(self.values)}"
+            msg = f"indices and values must have same length: {len(self.indices)} != {len(self.values)}"
             raise ValueError(msg)
 
 
@@ -72,7 +72,7 @@ class SparseQueryVector:
     def __post_init__(self) -> None:
         """Validate indices and values have matching lengths."""
         if len(self.indices) != len(self.values):
-            msg = f"indices and values must have same length: " f"{len(self.indices)} != {len(self.values)}"
+            msg = f"indices and values must have same length: {len(self.indices)} != {len(self.values)}"
             raise ValueError(msg)
 
 
@@ -122,7 +122,7 @@ class SparseIndexerCapabilities:
     def __post_init__(self) -> None:
         """Validate sparse_type is valid."""
         if self.sparse_type not in SPARSE_TYPES:
-            msg = f"Invalid sparse_type: '{self.sparse_type}'. " f"Must be one of: {sorted(SPARSE_TYPES)}"
+            msg = f"Invalid sparse_type: '{self.sparse_type}'. Must be one of: {sorted(SPARSE_TYPES)}"
             raise ValueError(msg)
 
 
