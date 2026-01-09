@@ -43,12 +43,13 @@ class SearchRequest(BaseModel):
     rrf_k: int = Field(
         default=60,
         ge=1,
-        le=200,
+        le=1000,
         description="RRF constant for hybrid search score fusion (higher = more emphasis on lower ranks)",
     )
 
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
+        extra = "forbid"
 
     @field_validator("query")
     @classmethod

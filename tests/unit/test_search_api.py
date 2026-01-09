@@ -544,6 +544,58 @@ class TestSearchAPI:
             assert result["results"][0]["score"] == 0.95
             assert result["model_used"] == "test-model/float32"
 
+    def test_search_sparse_only_skips_dense_embedding_and_search(
+        self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """Sparse-only mode should not depend on dense embedding/vector search."""
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        # Mock collection info
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_response
+
+        sparse_results = [{"chunk_id": "chunk-1", "score": 0.42}]
+        payload_map = {
+            "chunk-1": {
+                "path": "/test/file1.txt",
+                "chunk_id": "chunk-1",
+                "doc_id": "doc-1",
+                "content": "Test content 1",
+            }
+        }
+
+        with (
+            patch(
+                "vecpipe.search.service._get_sparse_config_for_collection",
+                new=AsyncMock(
+                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+                ),
+            ),
+            patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
+            patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(return_value=payload_map)),
+            patch("vecpipe.search.service.search_qdrant") as mock_search,
+            patch("vecpipe.search.service.generate_embedding_async") as mock_embed,
+            patch("qdrant_client.QdrantClient"),
+            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
+        ):
+            response = test_client_for_search_api.post(
+                "/search",
+                json={"query": "test query", "k": 5, "search_type": "semantic", "search_mode": "sparse"},
+            )
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["search_mode_used"] == "sparse"
+            assert len(result["results"]) == 1
+            assert result["results"][0]["chunk_id"] == "chunk-1"
+            assert result["results"][0]["doc_id"] == "doc-1"
+
+            assert mock_model_manager.generate_embedding_async.call_count == 0
+            assert mock_search.call_count == 0
+            assert mock_embed.call_count == 0
+
     def test_search_with_reranking(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
     ) -> None:
