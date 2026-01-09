@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import Any
 
 from .manifest import PluginManifest
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +22,14 @@ def manifest_from_embedding_plugin(
     definition: Any,
 ) -> PluginManifest:
     """Build a plugin manifest for an embedding provider."""
+    if isinstance(definition, Mapping):
+        from .dto_adapters import ValidationError, dict_to_embedding_provider_definition
+
+        try:
+            definition = dict_to_embedding_provider_definition(dict(definition))
+        except ValidationError as exc:  # pragma: no cover - defensive
+            raise ValueError(f"Invalid embedding provider definition dict: {exc}") from exc
+
     metadata = getattr(plugin_cls, "METADATA", {}) or {}
     display_name = _metadata_value(metadata, "display_name", definition.display_name or definition.api_id)
     description = _metadata_value(metadata, "description", definition.description or "")

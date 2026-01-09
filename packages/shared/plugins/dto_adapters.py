@@ -12,8 +12,10 @@ Protocol Version: 1.0.0
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, cast
+from uuid import uuid4
 
 from shared.agents.types import (
     AgentCapabilities,
@@ -313,7 +315,19 @@ def dict_to_agent_message(d: dict[str, Any]) -> AgentMessage:
 
     timestamp = validated.get("timestamp")
     if isinstance(timestamp, str):
-        timestamp = datetime.fromisoformat(timestamp)
+        timestamp_str = timestamp.strip()
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str)
+        except ValueError:
+            # Tolerate common ISO 8601 UTC suffixes (e.g., "Z") and avoid
+            # crashing streaming on non-critical timestamp formatting issues.
+            if timestamp_str.endswith(("Z", "z")):
+                try:
+                    timestamp = datetime.fromisoformat(f"{timestamp_str[:-1]}+00:00")
+                except ValueError:
+                    timestamp = datetime.now(UTC)
+            else:
+                timestamp = datetime.now(UTC)
     elif timestamp is None:
         timestamp = datetime.now(UTC)
 
@@ -486,6 +500,45 @@ def dict_to_agent_context(d: dict[str, Any]) -> AgentContext:
 # ChunkMetadata Adapters (Chunking)
 # ============================================================================
 
+_CHUNK_ID_TRAILING_INDEX_RE = re.compile(r"^(?P<prefix>.+)_(?P<index>[0-9]+)$")
+
+
+def _estimate_token_count(text: str) -> int:
+    """Estimate token count for protocol chunks when plugins don't provide it.
+
+    This is intentionally lightweight (no model-specific tokenizer dependency).
+    """
+
+    # Approximate tokens via whitespace splitting; guarantee > 0 for non-empty text.
+    token_count = len(text.split())
+    return max(1, token_count)
+
+
+def _infer_document_id_from_chunk_id(chunk_id: str) -> str | None:
+    """Infer document_id from chunk_id patterns like '<doc_id>_<index>'."""
+
+    match = _CHUNK_ID_TRAILING_INDEX_RE.match(chunk_id)
+    if match:
+        return match.group("prefix")
+    return None
+
+
+def _infer_chunk_index_from_chunk_id(chunk_id: str) -> int | None:
+    """Infer chunk_index from chunk_id patterns like '<prefix>_<index>'."""
+
+    match = _CHUNK_ID_TRAILING_INDEX_RE.match(chunk_id)
+    if match:
+        try:
+            return int(match.group("index"))
+        except ValueError:
+            return None
+    return None
+
+
+def _generate_chunk_id(strategy_name: str, chunk_index: int) -> str:
+    safe_strategy = strategy_name.strip() or "external"
+    return f"{safe_strategy}_{chunk_index:04d}_{uuid4().hex}"
+
 
 def chunk_metadata_to_dict(metadata: ChunkMetadata) -> ChunkMetadataDict:
     """Convert ChunkMetadata dataclass to TypedDict.
@@ -529,23 +582,53 @@ def dict_to_chunk_metadata(d: dict[str, Any]) -> ChunkMetadata:
         ChunkMetadata dataclass instance.
 
     Raises:
-        ValidationError: If required fields are missing.
         ValueError: If ChunkMetadata validation fails.
     """
-    _validate_required_keys(
-        d,
-        {"chunk_id", "document_id", "chunk_index", "start_offset", "end_offset", "token_count", "strategy_name"},
-        "ChunkMetadataDict",
-    )
+    # ChunkMetadataDict is defined as total=False (all fields optional). Provide
+    # sensible defaults for internal ChunkMetadata requirements.
+    chunk_id = d.get("chunk_id")
+    if not isinstance(chunk_id, str) or not chunk_id.strip():
+        strategy_name = d.get("strategy_name")
+        inferred_strategy = strategy_name if isinstance(strategy_name, str) and strategy_name.strip() else "external"
+        chunk_index_value = d.get("chunk_index")
+        inferred_index = chunk_index_value if isinstance(chunk_index_value, int) else 0
+        chunk_id = _generate_chunk_id(inferred_strategy, inferred_index)
+
+    document_id = d.get("document_id")
+    if not isinstance(document_id, str):
+        inferred = _infer_document_id_from_chunk_id(chunk_id)
+        document_id = inferred or ""
+
+    chunk_index = d.get("chunk_index")
+    if not isinstance(chunk_index, int):
+        inferred = _infer_chunk_index_from_chunk_id(chunk_id)
+        chunk_index = inferred if inferred is not None else 0
+
+    start_offset = d.get("start_offset")
+    if not isinstance(start_offset, int):
+        start_offset = 0
+
+    end_offset = d.get("end_offset")
+    if not isinstance(end_offset, int):
+        # Ensure the default satisfies ChunkMetadata invariant end_offset > start_offset.
+        end_offset = start_offset + 1
+
+    token_count = d.get("token_count")
+    if not isinstance(token_count, int) or token_count <= 0:
+        token_count = 1
+
+    strategy_name = d.get("strategy_name")
+    if not isinstance(strategy_name, str) or not strategy_name.strip():
+        strategy_name = "external"
 
     return ChunkMetadata(
-        chunk_id=d["chunk_id"],
-        document_id=d["document_id"],
-        chunk_index=d["chunk_index"],
-        start_offset=d["start_offset"],
-        end_offset=d["end_offset"],
-        token_count=d["token_count"],
-        strategy_name=d["strategy_name"],
+        chunk_id=chunk_id,
+        document_id=document_id,
+        chunk_index=chunk_index,
+        start_offset=start_offset,
+        end_offset=end_offset,
+        token_count=token_count,
+        strategy_name=strategy_name,
         semantic_score=d.get("semantic_score"),
         semantic_density=d.get("semantic_density", 0.5),
         confidence_score=d.get("confidence_score", 1.0),
@@ -599,9 +682,36 @@ def dict_to_chunk(d: dict[str, Any], min_tokens: int = 10, max_tokens: int = 100
     """
     _validate_required_keys(d, {"content", "metadata"}, "ChunkDict")
 
-    metadata = dict_to_chunk_metadata(d["metadata"])
+    content = d["content"]
+    metadata_dict = dict(d["metadata"])
+
+    # ChunkDict supports chunk_id at top-level; prefer it if metadata omitted it.
+    if "chunk_id" in d and "chunk_id" not in metadata_dict:
+        metadata_dict["chunk_id"] = d["chunk_id"]
+
+    # Fill optional protocol metadata fields that are required by internal ChunkMetadata/Chunk.
+    if "token_count" not in metadata_dict:
+        metadata_dict["token_count"] = _estimate_token_count(content)
+
+    start_offset = metadata_dict.get("start_offset")
+    if not isinstance(start_offset, int):
+        start_offset = 0
+        metadata_dict["start_offset"] = start_offset
+
+    end_offset = metadata_dict.get("end_offset")
+    if not isinstance(end_offset, int):
+        # Ensure end_offset > start_offset to satisfy ChunkMetadata invariants.
+        metadata_dict["end_offset"] = start_offset + max(1, len(content))
+
+    if "chunk_index" not in metadata_dict:
+        metadata_dict["chunk_index"] = 0
+
+    if "strategy_name" not in metadata_dict:
+        metadata_dict["strategy_name"] = "external"
+
+    metadata = dict_to_chunk_metadata(metadata_dict)
     chunk = Chunk(
-        content=d["content"],
+        content=content,
         metadata=metadata,
         min_tokens=min_tokens,
         max_tokens=max_tokens,

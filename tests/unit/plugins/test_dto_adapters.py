@@ -275,6 +275,53 @@ class TestAgentMessageAdapter:
         result = coerce_to_agent_message(msg)
         assert result is msg
 
+    def test_parses_iso8601_z_suffix_timestamp(self):
+        """Verify ISO 8601 timestamps with 'Z' are accepted."""
+        from shared.plugins.dto_adapters import dict_to_agent_message
+
+        msg = dict_to_agent_message(
+            {
+                "id": "msg-1",
+                "role": "assistant",
+                "type": "text",
+                "content": "test",
+                "timestamp": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert msg.timestamp == datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+    def test_parses_iso8601_lowercase_z_suffix_timestamp(self):
+        """Verify ISO 8601 timestamps with lowercase 'z' are accepted."""
+        from shared.plugins.dto_adapters import dict_to_agent_message
+
+        msg = dict_to_agent_message(
+            {
+                "id": "msg-1",
+                "role": "assistant",
+                "type": "text",
+                "content": "test",
+                "timestamp": "2024-01-01T00:00:00z",
+            }
+        )
+        assert msg.timestamp == datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+    def test_invalid_timestamp_falls_back_to_now(self):
+        """Verify invalid timestamp strings don't crash adapter."""
+        from shared.plugins.dto_adapters import dict_to_agent_message
+
+        start = datetime.now(UTC)
+        msg = dict_to_agent_message(
+            {
+                "id": "msg-1",
+                "role": "assistant",
+                "type": "text",
+                "content": "test",
+                "timestamp": "not-a-timestamp",
+            }
+        )
+        end = datetime.now(UTC)
+        assert start <= msg.timestamp <= end
+
 
 class TestAgentCapabilitiesAdapter:
     """Test AgentCapabilities round-trip conversion."""
@@ -381,12 +428,18 @@ class TestChunkMetadataAdapter:
         assert restored.semantic_score == original.semantic_score
         assert restored.hierarchy_level == original.hierarchy_level
 
-    def test_validation_rejects_missing_required_keys(self):
-        """Verify validation catches missing required fields."""
-        from shared.plugins.dto_adapters import ValidationError, dict_to_chunk_metadata
+    def test_accepts_partial_metadata(self):
+        """Verify protocol allows optional metadata fields."""
+        from shared.plugins.dto_adapters import dict_to_chunk_metadata
 
-        with pytest.raises(ValidationError, match="missing required keys"):
-            dict_to_chunk_metadata({"chunk_id": "chunk-1"})
+        restored = dict_to_chunk_metadata({"chunk_index": 0})
+
+        assert restored.chunk_index == 0
+        assert isinstance(restored.chunk_id, str)
+        assert restored.chunk_id
+        assert restored.token_count == 1
+        assert restored.end_offset > restored.start_offset
+        assert restored.strategy_name == "external"
 
 
 class TestChunkAdapter:
@@ -423,6 +476,27 @@ class TestChunkAdapter:
 
         with pytest.raises(ValidationError, match="missing required keys"):
             dict_to_chunk({"metadata": {}})
+
+    def test_accepts_minimal_protocol_chunk(self):
+        """Verify minimal protocol-compliant chunk dict is accepted."""
+        from shared.plugins.dto_adapters import dict_to_chunk
+
+        content = "one two three four five six seven eight nine ten"
+        chunk = dict_to_chunk({"content": content, "metadata": {"chunk_index": 0}})
+
+        assert chunk.content == content
+        assert chunk.metadata.chunk_index == 0
+        assert chunk.metadata.token_count == 10
+        assert chunk.metadata.end_offset > chunk.metadata.start_offset
+
+    def test_top_level_chunk_id_applied_to_metadata(self):
+        """Verify ChunkDict.chunk_id is used when metadata.chunk_id is missing."""
+        from shared.plugins.dto_adapters import dict_to_chunk
+
+        content = "one two three four five six seven eight nine ten"
+        chunk = dict_to_chunk({"content": content, "metadata": {"chunk_index": 1}, "chunk_id": "my-chunk-id"})
+
+        assert chunk.metadata.chunk_id == "my-chunk-id"
 
 
 class TestRerankResultAdapter:

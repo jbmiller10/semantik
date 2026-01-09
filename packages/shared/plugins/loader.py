@@ -486,6 +486,17 @@ def _register_embedding_plugin(
         logger.warning("Skipping embedding plugin '%s': get_definition() failed: %s", plugin_cls, exc)
         return
 
+    from collections.abc import Mapping
+
+    if isinstance(definition, Mapping):
+        from .dto_adapters import ValidationError, dict_to_embedding_provider_definition
+
+        try:
+            definition = dict_to_embedding_provider_definition(dict(definition))
+        except ValidationError as exc:
+            logger.warning("Skipping embedding plugin '%s': invalid get_definition() dict: %s", plugin_cls, exc)
+            return
+
     if source == PluginSource.EXTERNAL and not definition.is_plugin:
         definition = EmbeddingProviderDefinition(
             api_id=definition.api_id,

@@ -11,6 +11,7 @@ Plugin Configuration:
 
 from __future__ import annotations
 
+import inspect
 import logging
 from threading import Lock
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,38 @@ logger = logging.getLogger(__name__)
 # Accepts both ABC-based plugins (BaseEmbeddingPlugin) and Protocol-based plugins
 _PROVIDER_CLASSES: dict[str, type[BaseEmbeddingPlugin] | type[EmbeddingProtocol]] = {}
 _PROVIDER_CLASSES_LOCK = Lock()
+
+
+def _provider_accepts_kwarg(provider_cls: type[Any], kwarg_name: str) -> bool:
+    """Return True if provider_cls.__init__ can accept kwarg_name."""
+
+    try:
+        signature = inspect.signature(provider_cls.__init__)
+    except (TypeError, ValueError):
+        # If we can't introspect, be permissive and let the constructor raise if needed.
+        return True
+
+    if kwarg_name in signature.parameters:
+        return True
+
+    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+
+
+def _merge_plugin_config_into_config(config: Any, plugin_config: dict[str, Any]) -> dict[str, Any]:
+    """Merge plugin_config into config for providers that don't accept plugin_config kwarg.
+
+    Explicit config values win over plugin_config values.
+    """
+
+    if config is None:
+        return dict(plugin_config)
+    if isinstance(config, dict):
+        return {**plugin_config, **config}
+    logger.warning(
+        "Embedding provider config is %s, expected dict for protocol provider; using plugin state config only",
+        type(config).__name__,
+    )
+    return dict(plugin_config)
 
 
 class EmbeddingProviderFactory:
@@ -138,6 +171,11 @@ class EmbeddingProviderFactory:
                         kwargs["plugin_config"] = state_config
                         logger.debug("Loaded config for plugin '%s' from state file", plugin_id)
 
+                plugin_config = kwargs.get("plugin_config")
+                if plugin_config and not _provider_accepts_kwarg(provider_cls, "plugin_config"):
+                    kwargs.pop("plugin_config", None)
+                    config = _merge_plugin_config_into_config(config, plugin_config)
+
                 return provider_cls(config=config, **kwargs)
 
         with _PROVIDER_CLASSES_LOCK:
@@ -187,6 +225,11 @@ class EmbeddingProviderFactory:
                 logger.debug("Loaded config for plugin '%s' from state file", plugin_id)
 
         logger.info("Creating provider by name: %s (%s)", provider_name, provider_cls.__name__)
+        plugin_config = kwargs.get("plugin_config")
+        if plugin_config and not _provider_accepts_kwarg(provider_cls, "plugin_config"):
+            kwargs.pop("plugin_config", None)
+            config = _merge_plugin_config_into_config(config, plugin_config)
+
         return provider_cls(config=config, **kwargs)
 
     @classmethod
