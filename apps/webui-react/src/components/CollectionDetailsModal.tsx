@@ -10,6 +10,7 @@ import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
+import { SparseIndexPanel } from './collection/SparseIndexPanel';
 import type { DocumentResponse, SourceResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
@@ -755,6 +756,15 @@ function CollectionDetailsModal() {
                 <p className="mt-2 text-sm text-gray-500">
                   Click to change chunking strategy or other configuration options
                 </p>
+              </div>
+
+              {/* Sparse Indexing Section */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Sparse Indexing</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Enable BM25 or SPLADE sparse indexing for hybrid search capabilities.
+                </p>
+                <SparseIndexPanel collection={collection} />
               </div>
             </div>
           )}

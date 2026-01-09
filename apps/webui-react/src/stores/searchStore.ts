@@ -6,6 +6,8 @@ import {
   clampValue,
   DEFAULT_VALIDATION_RULES
 } from '../utils/searchValidation';
+import type { SearchMode } from '../types/sparse-index';
+import { RRF_DEFAULTS } from '../types/sparse-index';
 
 export interface SearchResult {
   doc_id: string;
@@ -29,12 +31,24 @@ export interface SearchParams {
   selectedCollections: string[];
   topK: number;
   scoreThreshold: number;
+  /** Embedding mode instruction (semantic/question/code) */
   searchType: 'semantic' | 'question' | 'code' | 'hybrid';
   rerankModel?: string;
   rerankQuantization?: string;
   useReranker: boolean;
+
+  // New sparse/hybrid search parameters
+  /** Search mode: dense (vector), sparse (BM25/SPLADE), or hybrid (RRF fusion) */
+  searchMode: SearchMode;
+  /** RRF constant k for hybrid search (higher values give more weight to top results) */
+  rrfK: number;
+
+  // Legacy hybrid parameters (deprecated - kept for backward compatibility)
+  /** @deprecated Use searchMode='hybrid' instead */
   hybridAlpha?: number;
+  /** @deprecated Use searchMode='hybrid' instead */
   hybridMode?: 'filter' | 'weighted';
+  /** @deprecated Use searchMode='hybrid' instead */
   keywordMode?: 'any' | 'all';
 }
 
@@ -101,6 +115,10 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     scoreThreshold: 0.0,
     searchType: 'semantic',
     useReranker: false,
+    // New sparse/hybrid search parameters
+    searchMode: 'dense',
+    rrfK: RRF_DEFAULTS.k,
+    // Legacy parameters (deprecated)
     hybridAlpha: 0.7,
     hybridMode: 'weighted',
     keywordMode: 'any',
@@ -184,6 +202,18 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }
     if (params.keywordMode !== undefined) {
       updatedParams.keywordMode = params.keywordMode;
+    }
+
+    // New sparse/hybrid search parameters
+    if (params.searchMode !== undefined) {
+      updatedParams.searchMode = params.searchMode;
+    }
+    if (params.rrfK !== undefined) {
+      updatedParams.rrfK = clampValue(
+        params.rrfK,
+        RRF_DEFAULTS.min,
+        RRF_DEFAULTS.max
+      );
     }
 
     // Validate all params but only return errors for touched fields or critical ones
