@@ -312,10 +312,37 @@ def _register_builtin_agent_plugins() -> None:
 
 
 def _register_builtin_sparse_indexer_plugins() -> None:
-    """Register built-in sparse indexer plugins.
+    """Register built-in sparse indexer plugins."""
+    from shared.plugins.builtins.bm25_sparse_indexer import BM25SparseIndexerPlugin
 
-    Placeholder - will be populated in Phase 4 when BM25 plugin is implemented.
-    """
+    for plugin_cls in (BM25SparseIndexerPlugin,):
+        plugin_id = getattr(plugin_cls, "PLUGIN_ID", "") or ""
+        if not plugin_id:
+            logger.warning("Skipping sparse_indexer without PLUGIN_ID: %s", plugin_cls)
+            continue
+        manifest = manifest_from_sparse_indexer_plugin(plugin_cls, plugin_id)
+        _register_plugin_record(
+            plugin_type="sparse_indexer",
+            plugin_id=plugin_id,
+            plugin_cls=plugin_cls,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+
+    try:
+        from shared.plugins.builtins.splade_indexer import SPLADESparseIndexerPlugin
+
+        plugin_id = SPLADESparseIndexerPlugin.PLUGIN_ID
+        manifest = manifest_from_sparse_indexer_plugin(SPLADESparseIndexerPlugin, plugin_id)
+        _register_plugin_record(
+            plugin_type="sparse_indexer",
+            plugin_id=plugin_id,
+            plugin_cls=SPLADESparseIndexerPlugin,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+    except ImportError:
+        logger.debug("SPLADE sparse indexer plugin not available (torch/transformers not installed)")
 
 
 def _load_external_plugins(

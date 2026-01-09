@@ -13,6 +13,7 @@ from shared.config import settings
 from shared.contracts.search import (
     BatchSearchRequest,
     BatchSearchResponse,
+    SearchMode,
     SearchRequest,
     SearchResponse,
 )
@@ -89,9 +90,21 @@ async def search_get(
     k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
     collection: str | None = Query(None, description="Collection name"),
     search_type: str = Query("semantic", description="Type of search: semantic, question, code, hybrid"),
+    search_mode: SearchMode | None = Query(
+        None,
+        description="Search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE only), 'hybrid' (dense + sparse with RRF)",
+    ),
+    rrf_k: int = Query(60, ge=1, le=1000, description="RRF constant for hybrid search score fusion"),
     model_name: str | None = Query(None, description="Override embedding model"),
     quantization: str | None = Query(None, description="Override quantization"),
 ) -> SearchResponse:
+    # Backward-compat: legacy callers may pass search_type=hybrid without specifying search_mode.
+    if search_mode is not None:
+        effective_search_mode: SearchMode = search_mode
+    elif search_type == "hybrid":
+        effective_search_mode = "hybrid"
+    else:
+        effective_search_mode = "dense"
     request = SearchRequest(
         query=q,
         top_k=k,
@@ -106,6 +119,8 @@ async def search_get(
         rerank_model=None,
         rerank_quantization=None,
         score_threshold=0.0,
+        search_mode=effective_search_mode,
+        rrf_k=rrf_k,
     )
     result = await service.perform_search(request)
     return SearchResponse(**result.model_dump())
@@ -113,6 +128,10 @@ async def search_get(
 
 @router.post("/search", response_model=SearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
+    # Backward-compat: legacy callers may send search_type=hybrid without specifying search_mode.
+    # Preserve explicit search_mode when provided.
+    if request.search_type == "hybrid" and "search_mode" not in request.model_fields_set:
+        request = request.model_copy(update={"search_mode": "hybrid"})
     return await service.perform_search(request)
 
 

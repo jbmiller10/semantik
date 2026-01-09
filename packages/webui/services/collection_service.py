@@ -1541,7 +1541,7 @@ class CollectionService:
             get_sparse_index_config,
             store_sparse_index_config,
         )
-        from shared.plugins import plugin_registry
+        from shared.plugins import load_plugins, plugin_registry
         from vecpipe.sparse import ensure_sparse_collection, generate_sparse_collection_name
 
         # Get collection with permission check
@@ -1556,6 +1556,9 @@ class CollectionService:
             existing_config = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
             if existing_config and existing_config.get("enabled"):
                 raise InvalidStateError(f"Sparse indexing already enabled for collection '{collection_id}'")
+
+            # Ensure sparse indexer plugins are loaded before validation.
+            load_plugins(plugin_types={"sparse_indexer"})
 
             # Validate plugin exists
             plugin_record = plugin_registry.find_by_id(plugin_id)

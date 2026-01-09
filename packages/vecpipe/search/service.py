@@ -155,7 +155,10 @@ async def _get_sparse_config_for_collection(collection_name: str) -> dict[str, A
     try:
         from qdrant_client import AsyncQdrantClient
 
-        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        async_client = AsyncQdrantClient(
+            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            api_key=cfg.QDRANT_API_KEY,
+        )
         try:
             sparse_config = await get_sparse_index_config(async_client, collection_name)
             if sparse_config and sparse_config.get("enabled"):
@@ -190,7 +193,9 @@ async def _perform_sparse_search(
 
     try:
         # Get the sparse indexer plugin
-        from shared.plugins import plugin_registry
+        from shared.plugins import load_plugins, plugin_registry
+
+        load_plugins(plugin_types={"sparse_indexer"})
 
         plugin_id = sparse_config.get("plugin_id")
         if not plugin_id:
@@ -207,18 +212,69 @@ async def _perform_sparse_search(
         # Get sparse type for metrics
         sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown")
 
-        # Instantiate the plugin and encode the query
+        # Instantiate the plugin and initialize it with stored config.
         plugin = record.plugin_class()
-        encode_start = time.time()
-        query_vector = await plugin.encode_query(query)
-        encode_time = time.time() - encode_start
-        sparse_encode_query_latency.labels(sparse_type=sparse_type).observe(encode_time)
-        logger.debug("Sparse query encoding took %.3fs for plugin %s", encode_time, plugin_id)
+        plugin_config = sparse_config.get("model_config") or {}
+        if not isinstance(plugin_config, dict):
+            plugin_config = {}
+
+        init_config = dict(plugin_config)
+        init_config.setdefault("collection_name", collection_name)
+
+        try:
+            initialize_fn = getattr(plugin, "initialize", None)
+            if callable(initialize_fn):
+                maybe_coro = initialize_fn(init_config)
+                if inspect.isawaitable(maybe_coro):
+                    await maybe_coro
+
+            encode_start = time.time()
+            query_vector = await plugin.encode_query(query)
+            encode_time = time.time() - encode_start
+            sparse_encode_query_latency.labels(sparse_type=sparse_type).observe(encode_time)
+            logger.debug("Sparse query encoding took %.3fs for plugin %s", encode_time, plugin_id)
+        finally:
+            cleanup_fn = getattr(plugin, "cleanup", None)
+            if callable(cleanup_fn):
+                with suppress(Exception):
+                    maybe_coro = cleanup_fn()
+                    if inspect.isawaitable(maybe_coro):
+                        await maybe_coro
+
+        query_indices: list[int]
+        query_values: list[float]
+
+        if hasattr(query_vector, "indices") and hasattr(query_vector, "values"):
+            query_indices = list(getattr(query_vector, "indices"))
+            query_values = list(getattr(query_vector, "values"))
+        elif isinstance(query_vector, dict):
+            query_indices = list(query_vector.get("indices") or [])
+            query_values = list(query_vector.get("values") or [])
+        else:
+            logger.warning("Unsupported sparse query vector type: %s", type(query_vector))
+            sparse_search_fallbacks.labels(reason="invalid_query_vector").inc()
+            return [], (time.time() - start_time) * 1000
+
+        if len(query_indices) != len(query_values):
+            logger.warning(
+                "Sparse query vector indices/values length mismatch: %d != %d",
+                len(query_indices),
+                len(query_values),
+            )
+            sparse_search_fallbacks.labels(reason="invalid_query_vector").inc()
+            return [], (time.time() - start_time) * 1000
+
+        if not query_indices:
+            # Empty sparse vector => no results; avoid unnecessary Qdrant call.
+            return [], (time.time() - start_time) * 1000
 
         # Search the sparse collection
         from qdrant_client import AsyncQdrantClient
 
-        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        async_client = AsyncQdrantClient(
+            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            api_key=cfg.QDRANT_API_KEY,
+        )
         try:
             sparse_collection_name = sparse_config.get("sparse_collection_name")
             if not sparse_collection_name:
@@ -229,8 +285,8 @@ async def _perform_sparse_search(
             search_start = time.time()
             results = await search_sparse_collection(
                 sparse_collection_name=sparse_collection_name,
-                query_indices=query_vector["indices"],
-                query_values=query_vector["values"],
+                query_indices=query_indices,
+                query_values=query_values,
                 limit=k,
                 qdrant_client=async_client,
             )
@@ -259,6 +315,7 @@ async def _perform_sparse_search(
 async def _fetch_payloads_for_chunk_ids(
     collection_name: str,
     chunk_ids: list[str],
+    filters: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Fetch full payloads for chunk IDs from the dense collection.
 
@@ -284,8 +341,23 @@ async def _fetch_payloads_for_chunk_ids(
         created_client = True
 
     try:
+        chunk_filter = {"key": "chunk_id", "match": {"any": chunk_ids}}
+        scroll_filter: dict[str, Any]
+        if filters and isinstance(filters, dict):
+            scroll_filter = dict(filters)
+
+            existing_must = scroll_filter.get("must")
+            if existing_must is None:
+                scroll_filter["must"] = [chunk_filter]
+            elif isinstance(existing_must, list):
+                scroll_filter["must"] = [*existing_must, chunk_filter]
+            else:
+                scroll_filter["must"] = [existing_must, chunk_filter]
+        else:
+            scroll_filter = {"must": [chunk_filter]}
+
         fetch_request = {
-            "filter": {"must": [{"key": "chunk_id", "match": {"any": chunk_ids}}]},
+            "filter": scroll_filter,
             "with_payload": True,
             "with_vector": False,
             "limit": len(chunk_ids),
@@ -966,11 +1038,21 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                     if search_mode_used == "sparse"
                     else [cid for cid in sparse_chunk_ids if cid and cid not in dense_chunk_ids]
                 )
-                payloads_by_chunk_id = await _fetch_payloads_for_chunk_ids(collection_name, chunk_ids_to_fetch)
+                payloads_by_chunk_id = await _fetch_payloads_for_chunk_ids(
+                    collection_name,
+                    chunk_ids_to_fetch,
+                    filters=request.filters,
+                )
                 for item in sparse_results:
                     chunk_id = item.get("chunk_id", "")
                     if chunk_id and chunk_id in payloads_by_chunk_id:
                         item["payload"] = payloads_by_chunk_id[chunk_id]
+
+                # Ensure filtered searches don't leak sparse hits that are outside the filter scope.
+                # We consider a sparse hit "valid" if it already appeared in the filtered dense
+                # results, or if we can fetch its dense payload under the same filter.
+                valid_sparse_chunk_ids = dense_chunk_ids | set(payloads_by_chunk_id)
+                sparse_results = [item for item in sparse_results if item.get("chunk_id", "") in valid_sparse_chunk_ids]
 
             if search_mode_used == "hybrid" and sparse_results:
                 # Apply RRF fusion

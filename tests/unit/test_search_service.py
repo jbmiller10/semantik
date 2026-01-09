@@ -113,7 +113,7 @@ class TestSearchService:
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         # Test search
-        collection, results, error = await search_service.search_single_collection(
+        collection, response, error = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
@@ -121,8 +121,11 @@ class TestSearchService:
         )
 
         assert collection == mock_collection
-        assert len(results) == 2
-        assert results[0]["score"] == 0.95
+        assert response is not None
+        assert len(response["results"]) == 2
+        assert response["results"][0]["score"] == 0.95
+        assert response["search_mode_used"] == "dense"
+        assert response["warnings"] == []
         assert error is None
 
         # Verify HTTP request
@@ -142,7 +145,7 @@ class TestSearchService:
         mock_collection.status = CollectionStatus.PROCESSING
         mock_collection.name = "Processing Collection"
 
-        collection, results, error = await search_service.search_single_collection(
+        collection, response, error = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
@@ -150,7 +153,7 @@ class TestSearchService:
         )
 
         assert collection == mock_collection
-        assert results is None
+        assert response is None
         assert "not ready for search" in error
 
     @pytest.mark.asyncio()
@@ -179,7 +182,7 @@ class TestSearchService:
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         # Test search
-        collection, results, error = await search_service.search_single_collection(
+        collection, response, error = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
@@ -187,7 +190,8 @@ class TestSearchService:
         )
 
         assert collection == mock_collection
-        assert len(results) == 1
+        assert response is not None
+        assert len(response["results"]) == 1
         assert error is None
 
         # Verify retry happened
@@ -224,7 +228,7 @@ class TestSearchService:
             mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
             # Test search
-            collection, results, error = await search_service.search_single_collection(
+            collection, response, error = await search_service.search_single_collection(
                 collection=mock_collection,
                 query="test query",
                 k=10,
@@ -232,7 +236,7 @@ class TestSearchService:
             )
 
             assert collection == mock_collection
-            assert results is None
+            assert response is None
             assert expected_error in error
 
     @pytest.mark.asyncio()
@@ -250,7 +254,7 @@ class TestSearchService:
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         # Test search
-        collection, results, error = await search_service.search_single_collection(
+        collection, response, error = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
@@ -258,7 +262,7 @@ class TestSearchService:
         )
 
         assert collection == mock_collection
-        assert results is None
+        assert response is None
         assert "Cannot connect to search service" in error
 
     @pytest.mark.asyncio()
@@ -372,6 +376,67 @@ class TestSearchService:
         collection_details = result["metadata"]["collection_details"]
         assert len(collection_details) == 3
         assert sum(1 for c in collection_details if "error" in c) == 2
+
+    @pytest.mark.asyncio()
+    async def test_multi_collection_search_propagates_sparse_fallback_metadata(self, search_service) -> None:
+        """Multi-collection search should surface per-collection search_mode_used + warnings."""
+        collection1 = Mock(spec=Collection)
+        collection1.id = "col-1"
+        collection1.name = "One"
+        collection1.status = CollectionStatus.READY
+        collection1.vector_store_name = "collection_one"
+        collection1.embedding_model = "model-1"
+        collection1.quantization = "float16"
+
+        collection2 = Mock(spec=Collection)
+        collection2.id = "col-2"
+        collection2.name = "Two"
+        collection2.status = CollectionStatus.READY
+        collection2.vector_store_name = "collection_two"
+        collection2.embedding_model = "model-2"
+        collection2.quantization = "float16"
+
+        warning = "Sparse index not available for collection 'collection_two'. Falling back to dense search."
+
+        search_service.validate_collection_access = AsyncMock(return_value=[collection1, collection2])
+
+        async def fake_search_single_collection(collection: Collection, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            if collection.vector_store_name == "collection_one":
+                return (
+                    collection,
+                    {
+                        "results": [{"doc_id": "d1", "chunk_id": "c1", "score": 0.9}],
+                        "search_mode_used": "hybrid",
+                        "warnings": [],
+                    },
+                    None,
+                )
+            return (
+                collection,
+                {
+                    "results": [{"doc_id": "d2", "chunk_id": "c2", "score": 0.8}],
+                    "search_mode_used": "dense",
+                    "warnings": [warning],
+                },
+                None,
+            )
+
+        search_service.search_single_collection = AsyncMock(side_effect=fake_search_single_collection)
+
+        result = await search_service.multi_collection_search(
+            user_id=42,
+            collection_uuids=["col-1", "col-2"],
+            query="mixed",
+            k=10,
+            search_mode="hybrid",
+        )
+
+        assert result["metadata"]["warnings"] == [warning]
+        assert result["metadata"]["search_mode_used"] == "dense"
+
+        details_by_id = {d["collection_id"]: d for d in result["metadata"]["collection_details"]}
+        assert details_by_id["col-1"]["search_mode_used"] == "hybrid"
+        assert details_by_id["col-2"]["search_mode_used"] == "dense"
 
     @pytest.mark.asyncio()
     @patch("webui.services.search_service.httpx.AsyncClient")
@@ -616,28 +681,36 @@ class TestSearchService:
             side_effect=[
                 (
                     collection1,
-                    [
-                        {
-                            "doc_id": "d1",
-                            "chunk_id": "c1",
-                            "score": 0.4,
-                            "reranked_score": 0.95,
-                            "content": "high rerank",
-                        }
-                    ],
+                    {
+                        "results": [
+                            {
+                                "doc_id": "d1",
+                                "chunk_id": "c1",
+                                "score": 0.4,
+                                "reranked_score": 0.95,
+                                "content": "high rerank",
+                            }
+                        ],
+                        "search_mode_used": "hybrid",
+                        "warnings": [],
+                    },
                     None,
                 ),
                 (
                     collection2,
-                    [
-                        {
-                            "doc_id": "d2",
-                            "chunk_id": "c2",
-                            "score": 0.9,
-                            "reranked_score": 0.5,
-                            "content": "high raw",
-                        }
-                    ],
+                    {
+                        "results": [
+                            {
+                                "doc_id": "d2",
+                                "chunk_id": "c2",
+                                "score": 0.9,
+                                "reranked_score": 0.5,
+                                "content": "high raw",
+                            }
+                        ],
+                        "search_mode_used": "hybrid",
+                        "warnings": [],
+                    },
                     None,
                 ),
             ]
@@ -689,7 +762,7 @@ class TestSearchServiceErrorHandling:
         mock_httpx_client.return_value.__aenter__.return_value = mock_client
 
         # Test search
-        collection, results, error = await search_service.search_single_collection(
+        collection, response, error = await search_service.search_single_collection(
             collection=mock_collection,
             query="test query",
             k=10,
@@ -697,7 +770,7 @@ class TestSearchServiceErrorHandling:
         )
 
         assert collection == mock_collection
-        assert results is None
+        assert response is None
         assert "Unexpected error" in error
 
     @pytest.mark.asyncio()

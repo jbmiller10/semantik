@@ -18,6 +18,8 @@ from prometheus_client import Counter, Histogram
 import vecpipe.search_api as search_api_module
 from vecpipe.search import state as search_state
 
+from shared.contracts.search import SearchResponse as ContractSearchResponse
+
 # Import InsufficientMemoryError from the service module to ensure class identity
 # matches what the exception handler catches (avoids dual-path import issues)
 from vecpipe.search.service import InsufficientMemoryError
@@ -595,6 +597,139 @@ class TestSearchAPI:
             assert mock_model_manager.generate_embedding_async.call_count == 0
             assert mock_search.call_count == 0
             assert mock_embed.call_count == 0
+
+    def test_search_sparse_only_with_filters_drops_sparse_hits_outside_scope(
+        self,
+        mock_settings,
+        mock_qdrant_client,
+        test_client_for_search_api,
+    ) -> None:
+        """Sparse-only mode should enforce filters by dropping unscoped sparse hits."""
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        # Mock collection info
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_response
+
+        sparse_results = [
+            {"chunk_id": "chunk-allowed", "score": 0.42},
+            {"chunk_id": "chunk-blocked", "score": 0.41},
+        ]
+        allowed_payload = {
+            "path": "/test/allowed.txt",
+            "chunk_id": "chunk-allowed",
+            "doc_id": "doc-allowed",
+            "content": "Allowed content",
+        }
+        expected_filters = {"must": [{"key": "tenant", "match": {"value": "t1"}}]}
+
+        async def fetch_side_effect(collection_name, chunk_ids, *, filters=None):  # type: ignore[no-untyped-def]
+            assert collection_name == "test_collection"
+            assert set(chunk_ids) == {"chunk-allowed", "chunk-blocked"}
+            assert filters == expected_filters
+            return {"chunk-allowed": allowed_payload}
+
+        with (
+            patch(
+                "vecpipe.search.service._get_sparse_config_for_collection",
+                new=AsyncMock(
+                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+                ),
+            ),
+            patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
+            patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(side_effect=fetch_side_effect)),
+            patch("qdrant_client.QdrantClient"),
+            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
+        ):
+            response = test_client_for_search_api.post(
+                "/search",
+                json={
+                    "query": "test query",
+                    "k": 5,
+                    "search_mode": "sparse",
+                    "filters": expected_filters,
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "sparse"
+        assert [item["chunk_id"] for item in result["results"]] == ["chunk-allowed"]
+
+    def test_search_hybrid_with_filters_drops_sparse_hits_outside_scope(
+        self,
+        mock_settings,
+        mock_qdrant_client,
+        test_client_for_search_api,
+    ) -> None:
+        """Hybrid mode should not fuse unfiltered sparse hits into filtered results."""
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        # Mock collection info
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_response
+
+        # Dense filtered search returns only the allowed hit.
+        mock_dense_search_response = Mock()
+        mock_dense_search_response.json.return_value = {
+            "result": [
+                {
+                    "id": "chunk-allowed",
+                    "score": 0.95,
+                    "payload": {
+                        "path": "/test/allowed.txt",
+                        "chunk_id": "chunk-allowed",
+                        "doc_id": "doc-allowed",
+                        "content": "Allowed content",
+                    },
+                }
+            ]
+        }
+        mock_dense_search_response.raise_for_status = Mock()
+        mock_qdrant_client.post.return_value = mock_dense_search_response
+
+        sparse_results = [
+            {"chunk_id": "chunk-allowed", "score": 0.42},
+            {"chunk_id": "chunk-blocked", "score": 0.41},
+        ]
+        expected_filters = {"must": [{"key": "tenant", "match": {"value": "t1"}}]}
+
+        async def fetch_side_effect(collection_name, chunk_ids, *, filters=None):  # type: ignore[no-untyped-def]
+            assert collection_name == "test_collection"
+            assert chunk_ids == ["chunk-blocked"]
+            assert filters == expected_filters
+            return {}
+
+        with (
+            patch(
+                "vecpipe.search.service._get_sparse_config_for_collection",
+                new=AsyncMock(
+                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+                ),
+            ),
+            patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
+            patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(side_effect=fetch_side_effect)),
+            patch("qdrant_client.QdrantClient"),
+            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
+        ):
+            response = test_client_for_search_api.post(
+                "/search",
+                json={
+                    "query": "test query",
+                    "k": 5,
+                    "search_mode": "hybrid",
+                    "filters": expected_filters,
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "hybrid"
+        assert [item["chunk_id"] for item in result["results"]] == ["chunk-allowed"]
 
     def test_search_with_reranking(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
@@ -1248,6 +1383,143 @@ class TestSearchAPI:
                 call_args = mock_model_manager.generate_embedding_async.call_args
                 assert call_args[0][1] == "custom-model"  # model_name
                 assert call_args[0][2] == "int8"  # quantization
+
+    def test_search_get_endpoint_accepts_search_mode_and_rrf_k(
+        self,
+        test_client_for_search_api,
+    ) -> None:
+        async def fake_perform_search(request):  # type: ignore[no-untyped-def]
+            assert request.search_mode == "hybrid"
+            assert request.rrf_k == 77
+            return ContractSearchResponse(
+                query=request.query,
+                results=[],
+                num_results=0,
+                search_type=request.search_type,
+                search_mode_used=request.search_mode,
+                warnings=[],
+            )
+
+        with patch(
+            "vecpipe.search.router.service.perform_search",
+            new=AsyncMock(side_effect=fake_perform_search),
+        ):
+            response = test_client_for_search_api.get(
+                "/search",
+                params={
+                    "q": "test query",
+                    "k": 10,
+                    "search_type": "semantic",
+                    "search_mode": "hybrid",
+                    "rrf_k": 77,
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "hybrid"
+
+    def test_search_get_endpoint_legacy_hybrid_search_type_maps_to_hybrid_mode(
+        self,
+        test_client_for_search_api,
+    ) -> None:
+        async def fake_perform_search(request):  # type: ignore[no-untyped-def]
+            assert request.search_type == "hybrid"
+            assert request.search_mode == "hybrid"
+            assert request.rrf_k == 60
+            return ContractSearchResponse(
+                query=request.query,
+                results=[],
+                num_results=0,
+                search_type=request.search_type,
+                search_mode_used=request.search_mode,
+                warnings=[],
+            )
+
+        with patch(
+            "vecpipe.search.router.service.perform_search",
+            new=AsyncMock(side_effect=fake_perform_search),
+        ):
+            response = test_client_for_search_api.get(
+                "/search",
+                params={
+                    "q": "test query",
+                    "k": 10,
+                    "search_type": "hybrid",
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "hybrid"
+
+    def test_search_post_endpoint_legacy_hybrid_search_type_maps_to_hybrid_mode(
+        self,
+        test_client_for_search_api,
+    ) -> None:
+        async def fake_perform_search(request):  # type: ignore[no-untyped-def]
+            assert request.search_type == "hybrid"
+            assert request.search_mode == "hybrid"
+            assert request.rrf_k == 60
+            return ContractSearchResponse(
+                query=request.query,
+                results=[],
+                num_results=0,
+                search_type=request.search_type,
+                search_mode_used=request.search_mode,
+                warnings=[],
+            )
+
+        with patch(
+            "vecpipe.search.router.service.perform_search",
+            new=AsyncMock(side_effect=fake_perform_search),
+        ):
+            response = test_client_for_search_api.post(
+                "/search",
+                json={
+                    "query": "test query",
+                    "k": 10,
+                    "search_type": "hybrid",
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "hybrid"
+
+    def test_search_post_endpoint_explicit_search_mode_not_overridden(
+        self,
+        test_client_for_search_api,
+    ) -> None:
+        async def fake_perform_search(request):  # type: ignore[no-untyped-def]
+            assert request.search_type == "hybrid"
+            assert request.search_mode == "dense"
+            return ContractSearchResponse(
+                query=request.query,
+                results=[],
+                num_results=0,
+                search_type=request.search_type,
+                search_mode_used=request.search_mode,
+                warnings=[],
+            )
+
+        with patch(
+            "vecpipe.search.router.service.perform_search",
+            new=AsyncMock(side_effect=fake_perform_search),
+        ):
+            response = test_client_for_search_api.post(
+                "/search",
+                json={
+                    "query": "test query",
+                    "k": 10,
+                    "search_type": "hybrid",
+                    "search_mode": "dense",
+                },
+            )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["search_mode_used"] == "dense"
 
     def test_load_model_endpoint_mock_mode(self, mock_settings, test_client_for_search_api) -> None:
         """Test /models/load endpoint in mock mode."""

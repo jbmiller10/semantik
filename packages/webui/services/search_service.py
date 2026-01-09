@@ -140,7 +140,7 @@ class SearchService:
         k: int,
         search_params: dict[str, Any],
         timeout: httpx.Timeout | None = None,
-    ) -> tuple[Collection, list[dict[str, Any]] | None, str | None]:
+    ) -> tuple[Collection, dict[str, Any] | None, str | None]:
         """Search a single collection and return results.
 
         Args:
@@ -151,7 +151,7 @@ class SearchService:
             timeout: HTTP timeout settings
 
         Returns:
-            Tuple of (collection, results, error_message)
+            Tuple of (collection, search_response, error_message)
         """
         # Skip collections that aren't ready
         if collection.status != CollectionStatus.READY:
@@ -193,8 +193,12 @@ class SearchService:
                 )
                 response.raise_for_status()
 
-            result = response.json()
-            return (collection, result.get("results", []), None)
+            result: dict[str, Any] = response.json()
+            # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+            result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+            if not isinstance(result.get("warnings"), list):
+                result["warnings"] = []
+            return (collection, result, None)
 
         except httpx.ReadTimeout:
             # Retry with longer timeout
@@ -223,8 +227,12 @@ class SearchService:
                     )
                     response.raise_for_status()
 
-                result = response.json()
-                return (collection, result.get("results", []), None)
+                result: dict[str, Any] = response.json()
+                # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+                result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+                if not isinstance(result.get("warnings"), list):
+                    result["warnings"] = []
+                return (collection, result, None)
 
             except httpx.HTTPStatusError as e:
                 return self._handle_http_error(e, collection, retry=True)
@@ -317,6 +325,8 @@ class SearchService:
         start_time = time.time()
         warnings: list[str] = []
         search_mode_used: SearchMode = search_mode
+        search_modes_used: set[SearchMode] = set()
+        warning_set: set[str] = set()
 
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
@@ -354,7 +364,7 @@ class SearchService:
         collection_results = []
         errors = []
 
-        for collection, results, error in search_results:
+        for collection, response, error in search_results:
             if error:
                 errors.append(error)
                 collection_results.append(
@@ -366,6 +376,22 @@ class SearchService:
                     }
                 )
             else:
+                response = response or {}
+                collection_warnings = response.get("warnings", [])
+                if isinstance(collection_warnings, list):
+                    for warning in collection_warnings:
+                        if isinstance(warning, str) and warning and warning not in warning_set:
+                            warning_set.add(warning)
+                            warnings.append(warning)
+
+                collection_search_mode_used = response.get("search_mode_used", search_mode)
+                if collection_search_mode_used in ("dense", "sparse", "hybrid"):
+                    search_modes_used.add(collection_search_mode_used)
+
+                results = response.get("results", [])
+                if not isinstance(results, list):
+                    results = []
+
                 if results:
                     # Add collection info to each result
                     for result in results:
@@ -382,8 +408,23 @@ class SearchService:
                         "collection_id": collection.id,
                         "collection_name": collection.name,
                         "result_count": len(results) if results else 0,
+                        "search_mode_used": collection_search_mode_used,
+                        "warnings": collection_warnings if isinstance(collection_warnings, list) else [],
                     }
                 )
+
+        # If sparse/hybrid search was requested, vecpipe may fall back to dense per collection.
+        # Report the most conservative mode when collection modes differ.
+        if search_modes_used:
+            if len(search_modes_used) == 1:
+                search_mode_used = next(iter(search_modes_used))
+            else:
+                if "dense" in search_modes_used:
+                    search_mode_used = "dense"
+                elif "hybrid" in search_modes_used:
+                    search_mode_used = "hybrid"
+                else:
+                    search_mode_used = "sparse"
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
         all_results.sort(key=self._result_sort_key, reverse=True)

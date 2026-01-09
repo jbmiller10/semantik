@@ -118,7 +118,7 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
     """
 
     PLUGIN_TYPE: ClassVar[str] = "sparse_indexer"
-    PLUGIN_ID: ClassVar[str] = "splade"
+    PLUGIN_ID: ClassVar[str] = "splade-local"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
     SPARSE_TYPE: ClassVar[str] = "splade"
 

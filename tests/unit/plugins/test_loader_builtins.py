@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource, plugin_registry
 
@@ -30,3 +32,28 @@ def test_loader_registers_builtin_reranker() -> None:
     assert record is not None
     assert record.source == PluginSource.BUILTIN
     assert registry.is_loaded({"reranker"})
+
+
+def test_loader_registers_builtin_sparse_indexer_bm25() -> None:
+    registry = load_plugins(plugin_types={"sparse_indexer"}, include_external=False)
+
+    record = registry.get("sparse_indexer", "bm25-local")
+    assert record is not None
+    assert record.source == PluginSource.BUILTIN
+    assert registry.is_loaded({"sparse_indexer"})
+
+
+def test_loader_registers_builtin_sparse_indexer_splade_when_available() -> None:
+    has_deps = (
+        importlib.util.find_spec("torch") is not None
+        and importlib.util.find_spec("transformers") is not None
+    )
+
+    registry = load_plugins(plugin_types={"sparse_indexer"}, include_external=False)
+
+    record = registry.get("sparse_indexer", "splade-local")
+    if has_deps:
+        assert record is not None
+        assert record.source == PluginSource.BUILTIN
+    else:
+        assert record is None

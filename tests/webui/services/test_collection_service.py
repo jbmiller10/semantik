@@ -2307,3 +2307,48 @@ class TestUpdateChunkingValidation:
                 user_id=mock_collection.owner_id,
                 updates={"chunking_config": {"max_chunk_size": 1000}},
             )
+
+
+class TestEnableSparseIndex:
+    @pytest.mark.asyncio()
+    async def test_enable_sparse_index_loads_sparse_indexer_plugins_before_validation(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """enable_sparse_index should load sparse indexer plugins before validating plugin_id."""
+
+        class DummySparseIndexer:
+            SPARSE_TYPE = "bm25"
+
+        plugin_record = MagicMock()
+        plugin_record.plugin_type = "sparse_indexer"
+        plugin_record.plugin_class = DummySparseIndexer
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant),
+            patch("shared.config.settings", new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333)),
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=None)),
+            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock()),
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="sparse_test_collection"),
+            patch("shared.plugins.load_plugins") as mock_load_plugins,
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record) as mock_find_by_id,
+        ):
+            result = await collection_service.enable_sparse_index(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+                plugin_id="bm25-local",
+            )
+
+        mock_load_plugins.assert_called_once_with(plugin_types={"sparse_indexer"})
+        mock_find_by_id.assert_called_once_with("bm25-local")
+        assert result["enabled"] is True
+        assert result["plugin_id"] == "bm25-local"
+        assert result["sparse_collection_name"] == "sparse_test_collection"

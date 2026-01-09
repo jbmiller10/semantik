@@ -42,7 +42,6 @@
     <purpose>Core business logic: embedding generation, search execution, reranking</purpose>
     <key-functions>
       - perform_search(): Semantic/question/code/hybrid search with optional reranking
-      - perform_hybrid_search(): Vector + keyword fusion search
       - resolve_collection_name(): Priority resolution (explicit > operation_uuid > default)
       - embed_texts(): Batch embedding generation
       - upsert_points(): Qdrant vector upsert
@@ -242,7 +241,7 @@
   3. Handle search_mode:
      - "dense": Standard dense vector search
      - "sparse": Sparse-only search (if sparse index exists), fallback to dense with warning
-     - "hybrid": Parallel dense+sparse search with RRF fusion (rrf_k parameter)
+     - "hybrid": Dense + sparse search with RRF fusion (rrf_k parameter)
   4. Embed query using same model that indexed the collection
   5. Search Qdrant for top-k similar vectors
   6. Filter results by score_threshold (BEFORE reranking)
