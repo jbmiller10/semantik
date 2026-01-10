@@ -65,9 +65,6 @@ async def test_reindex_collection_async_returns_completed_when_no_chunks() -> No
     collection_repo = AsyncMock()
     collection_repo.get_by_uuid = AsyncMock(return_value=collection)
 
-    chunk_repo = AsyncMock()
-    chunk_repo.get_chunks_paginated = AsyncMock(return_value=([], 0))
-
     class DummySessionContext:
         async def __aenter__(self):
             return object()
@@ -82,12 +79,17 @@ async def test_reindex_collection_async_returns_completed_when_no_chunks() -> No
     mock_engine = AsyncMock()
     mock_engine.dispose = AsyncMock()
 
+    # Mock Qdrant client with empty collection (0 points)
+    mock_qdrant = AsyncMock()
+    mock_qdrant.get_collection = AsyncMock(return_value=SimpleNamespace(points_count=0))
+    mock_qdrant.close = AsyncMock()
+
     with (
         patch("webui.sparse_tasks._load_sparse_indexer_plugin", return_value=DummyIndexer()),
         patch("webui.sparse_tasks.create_async_engine", return_value=mock_engine),
         patch("webui.sparse_tasks.async_sessionmaker", return_value=mock_session_factory),
         patch("webui.sparse_tasks.CollectionRepository", return_value=collection_repo),
-        patch("webui.sparse_tasks.ChunkRepository", return_value=chunk_repo),
+        patch("webui.sparse_tasks.AsyncQdrantClient", return_value=mock_qdrant),
     ):
         result = await _reindex_collection_async(
             task=dummy_task,

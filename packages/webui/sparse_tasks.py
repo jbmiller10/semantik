@@ -24,7 +24,6 @@ from shared.database.collection_metadata import (
     get_sparse_index_config,
     store_sparse_index_config,
 )
-from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
@@ -133,9 +132,15 @@ async def _reindex_collection_async(
 
             vector_store_name = collection.vector_store_name
 
-            # Get total chunks count using paginated query
-            chunk_repo = ChunkRepository(session)
-            _, total_chunks = await chunk_repo.get_chunks_paginated(collection_id=collection_uuid, page=1, page_size=1)
+        # Create Qdrant client
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
+        # Get total chunks count from Qdrant collection
+        collection_info = await async_qdrant.get_collection(vector_store_name)
+        total_chunks = collection_info.points_count or 0
 
         if total_chunks == 0:
             logger.info("Collection %s has no chunks to reindex", collection_uuid)
@@ -145,44 +150,48 @@ async def _reindex_collection_async(
                 "total_documents": 0,
             }
 
-        # Create Qdrant client
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
-            api_key=settings.QDRANT_API_KEY,
-        )
-
         # Generate sparse collection name
         sparse_collection_name = indexer.get_sparse_collection_name(vector_store_name)
 
         # Ensure sparse collection exists
         await ensure_sparse_collection(sparse_collection_name, async_qdrant)
 
-        # Process chunks in batches
+        # Process chunks in batches using Qdrant scroll
         processed = 0
-        offset = 0
+        next_offset = None  # Qdrant scroll uses point ID as offset
 
-        while offset < total_chunks:
-            # Fetch batch of chunks
-            async with session_factory() as session:
-                chunk_repo = ChunkRepository(session)
-                chunks = await chunk_repo.get_chunks_by_collection(
-                    collection_id=collection_uuid,
-                    offset=offset,
-                    limit=batch_size,
-                )
+        while True:
+            # Fetch batch of points from Qdrant
+            scroll_result = await async_qdrant.scroll(
+                collection_name=vector_store_name,
+                limit=batch_size,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
 
-            if not chunks:
+            points, next_offset = scroll_result
+
+            if not points:
                 break
 
-            # Prepare documents for encoding
-            documents = [
-                {
-                    "content": chunk.content,
-                    "chunk_id": chunk.id,
-                    "metadata": chunk.metadata or {},
-                }
-                for chunk in chunks
-            ]
+            # Prepare documents for encoding from Qdrant payloads
+            documents = []
+            for point in points:
+                payload = point.payload or {}
+                content = payload.get("content", "")
+                chunk_id = payload.get("chunk_id", str(point.id))
+                if content:
+                    documents.append({
+                        "content": content,
+                        "chunk_id": chunk_id,
+                        "metadata": {k: v for k, v in payload.items() if k not in ("content", "chunk_id")},
+                    })
+
+            if not documents:
+                if next_offset is None:
+                    break
+                continue
 
             # Encode documents
             sparse_vectors = await indexer.encode_documents(documents)
@@ -203,8 +212,7 @@ async def _reindex_collection_async(
                 qdrant_client=async_qdrant,
             )
 
-            processed += len(chunks)
-            offset += batch_size
+            processed += len(documents)
 
             # Update progress
             progress = (processed / total_chunks) * 100
@@ -223,6 +231,10 @@ async def _reindex_collection_async(
                 total_chunks,
                 progress,
             )
+
+            # Check if we've reached the end of the scroll
+            if next_offset is None:
+                break
 
         # Update sparse config with completion info
         existing_config = await get_sparse_index_config(async_qdrant, vector_store_name)
