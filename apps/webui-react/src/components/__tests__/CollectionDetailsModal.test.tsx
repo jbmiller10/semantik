@@ -105,6 +105,18 @@ vi.mock('../ReindexCollectionModal', () => ({
   )),
 }));
 
+const mockEmbeddingVisualizationTab = vi.fn(({ collectionId }: { collectionId: string }) => (
+  <div data-testid="embedding-visualization" data-collection-id={collectionId} />
+));
+
+vi.mock('../EmbeddingVisualizationTab', () => ({
+  default: mockEmbeddingVisualizationTab,
+}));
+
+vi.mock('../collection/SparseIndexPanel', () => ({
+  SparseIndexPanel: () => <div data-testid="sparse-index-panel" />,
+}));
+
 // Import components after mocks
 import CollectionDetailsModal from '../CollectionDetailsModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
@@ -790,6 +802,191 @@ describe('CollectionDetailsModal', () => {
       expect(screen.queryByText(/Showing page/)).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /previous/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /next/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Document Status and Retry Actions', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should display failed document details and allow retry', async () => {
+      const failedDoc = {
+        ...mockDocuments[0],
+        id: 'failed-doc',
+        status: 'failed' as const,
+        error_message: 'Extraction error',
+        error_category: 'transient' as const,
+        retry_count: 1,
+        chunk_count: 0,
+      };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [failedDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+      mockDocumentsApi.getFailedCount.mockResolvedValue({
+        data: { transient: 1, permanent: 0, unknown: 0, total: 1 },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('(transient)')).toBeInTheDocument();
+      expect(screen.getByText('Extraction error')).toBeInTheDocument();
+
+      const retryButton = screen.getByRole('button', { name: /^retry$/i });
+      await user.click(retryButton);
+
+      await waitFor(() => {
+        expect(mockDocumentsApi.retry).toHaveBeenCalledWith('test-collection-id', 'failed-doc');
+      });
+      expect(mockAddToast).toHaveBeenCalledWith({
+        message: 'Document queued for retry',
+        type: 'success',
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['collections', 'detail', 'test-collection-id', 'failed-counts'],
+      });
+    });
+
+    it('should show permanent failures as non-retryable', async () => {
+      const permanentDoc = {
+        ...mockDocuments[0],
+        id: 'permanent-doc',
+        status: 'failed' as const,
+        error_category: 'permanent' as const,
+        error_message: 'Unsupported format',
+      };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [permanentDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+      mockDocumentsApi.getFailedCount.mockResolvedValue({
+        data: { transient: 0, permanent: 1, unknown: 0, total: 1 },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      expect(screen.getByText('(permanent)')).toBeInTheDocument();
+      expect(screen.getByText('Cannot retry')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^retry$/i })).not.toBeInTheDocument();
+    });
+
+    it('should allow retrying all failed documents', async () => {
+      const failedDoc = {
+        ...mockDocuments[0],
+        id: 'failed-doc',
+        status: 'failed' as const,
+        error_category: 'transient' as const,
+      };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [failedDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+      mockDocumentsApi.getFailedCount.mockResolvedValue({
+        data: { transient: 1, permanent: 1, unknown: 0, total: 2 },
+      });
+      mockDocumentsApi.retryFailed.mockResolvedValue({
+        data: { reset_count: 2, message: 'Reset 2 failed document(s) for retry' },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      const retryAllButton = await screen.findByRole('button', { name: /retry all failed/i });
+      expect(retryAllButton).toBeEnabled();
+      await user.click(retryAllButton);
+
+      await waitFor(() => {
+        expect(mockDocumentsApi.retryFailed).toHaveBeenCalledWith('test-collection-id');
+      });
+      expect(mockAddToast).toHaveBeenCalledWith({
+        message: '2 document(s) queued for retry',
+        type: 'success',
+      });
+    });
+
+    it('should render processing and pending status badges', async () => {
+      const processingDoc = { ...mockDocuments[0], id: 'processing-doc', status: 'processing' as const };
+      const pendingDoc = { ...mockDocuments[1], id: 'pending-doc', status: 'pending' as const, retry_count: 2 };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [processingDoc, pendingDoc],
+          total: 2,
+          page: 1,
+          per_page: 50,
+        },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      expect(screen.getByText('Processing')).toBeInTheDocument();
+      expect(screen.getByText('Pending')).toBeInTheDocument();
+      expect(screen.getByText('(retry #2)')).toBeInTheDocument();
+    });
+  });
+
+  describe('Visualize Tab', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should render EmbeddingVisualizationTab with collection props', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /visualize/i }));
+
+      expect(await screen.findByTestId('embedding-visualization')).toBeInTheDocument();
+      expect(mockEmbeddingVisualizationTab).toHaveBeenCalledWith(
+        expect.objectContaining({
+          collectionId: 'test-collection-id',
+          collectionEmbeddingModel: mockCollection.embedding_model,
+          collectionVectorCount: mockCollection.vector_count,
+        })
+      );
     });
   });
 

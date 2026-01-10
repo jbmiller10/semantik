@@ -1,7 +1,9 @@
 """Security and behaviour tests for the v2 document content endpoint."""
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
+import urllib.parse
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.config import settings
 from shared.database.exceptions import EntityNotFoundError
 from shared.database.models import Collection, Document, DocumentStatus
-from webui.api.v2.documents import get_document_content
+from webui.api.v2.documents import (
+    get_document_content,
+    get_failed_document_count,
+    retry_document,
+    retry_failed_documents,
+    sanitize_filename_for_header,
+)
 
 
 @pytest.fixture()
@@ -472,3 +480,184 @@ class TestGetDocumentContent:
 
         # Check cache control header
         assert result.headers["Cache-Control"] == "private, max-age=3600"
+
+    @pytest.mark.asyncio()
+    async def test_get_document_content_uses_artifact_content(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
+    ) -> None:
+        """Test artifact content is returned when present."""
+        mock_document.file_name = 'report "2024".txt'
+        mock_artifact_repo.get_content.return_value = ("hello", "text/plain", "utf-8")
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id.return_value = mock_document
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
+            result = await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert result.body == b"hello"
+        assert result.media_type == "text/plain; charset=utf-8"
+        safe_filename = sanitize_filename_for_header(mock_document.file_name)
+        assert result.headers["Content-Disposition"] == f"inline; filename*=UTF-8''{safe_filename}"
+
+
+def test_sanitize_filename_for_header_strips_control_chars() -> None:
+    unsafe = 'bad"file\r\nname.txt'
+    expected = urllib.parse.quote("bad'filename.txt", safe="")
+    assert sanitize_filename_for_header(unsafe) == expected
+
+
+class TestRetryEndpoints:
+    """Tests for retry-related endpoints."""
+
+    @pytest.mark.asyncio()
+    async def test_retry_document_success(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock, mock_document: MagicMock
+    ) -> None:
+        mock_document.status = DocumentStatus.FAILED
+        mock_document.retry_count = 1
+
+        reset_doc = MagicMock(spec=Document)
+        reset_doc.id = mock_document.id
+        reset_doc.collection_id = mock_document.collection_id
+        reset_doc.file_name = mock_document.file_name
+        reset_doc.file_path = mock_document.file_path
+        reset_doc.file_size = 100
+        reset_doc.mime_type = "text/plain"
+        reset_doc.content_hash = "a" * 64
+        reset_doc.status = DocumentStatus.PENDING
+        reset_doc.error_message = None
+        reset_doc.chunk_count = 0
+        reset_doc.retry_count = 2
+        reset_doc.last_retry_at = None
+        reset_doc.error_category = None
+        reset_doc.meta = {}
+        reset_doc.created_at = datetime.now(UTC)
+        reset_doc.updated_at = datetime.now(UTC)
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_document
+        mock_repo.reset_for_retry.return_value = reset_doc
+
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo):
+            result = await retry_document(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_db.commit.assert_awaited_once()
+        assert result.retry_count == 2
+        assert result.status == DocumentStatus.PENDING.value
+
+    @pytest.mark.asyncio()
+    async def test_retry_document_rejects_non_failed(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock, mock_document: MagicMock
+    ) -> None:
+        mock_document.status = DocumentStatus.COMPLETED
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_document
+        mock_repo.reset_for_retry.side_effect = RuntimeError("not in FAILED status")
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await retry_document(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_db.rollback.assert_awaited_once()
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio()
+    async def test_retry_document_cross_collection(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock, mock_document: MagicMock
+    ) -> None:
+        mock_document.collection_id = "different"
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_document
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await retry_document(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_success(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.bulk_reset_failed_for_retry.return_value = 3
+
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo):
+            result = await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_db.commit.assert_awaited_once()
+        assert result["reset_count"] == 3
+        assert "Reset 3 failed document(s) for retry" in result["message"]
+
+    @pytest.mark.asyncio()
+    async def test_get_failed_document_count_success(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.get_failed_document_count.return_value = {
+            "transient": 1,
+            "permanent": 0,
+            "unknown": 0,
+            "total": 1,
+        }
+
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo):
+            result = await get_failed_document_count(
+                collection_uuid=mock_collection.id,
+                retryable_only=True,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert result["transient"] == 1
+        assert result["total"] == 1

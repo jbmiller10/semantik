@@ -4,6 +4,7 @@ This module tests document CRUD operations, deduplication, and sync tracking.
 """
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -327,3 +328,352 @@ class TestDocumentRepositoryValidation:
 
         assert result is not None
         assert result.content_hash == "A" * 64
+
+
+class TestDocumentRepositoryListing:
+    """Tests for list and duplicate utilities."""
+
+    @pytest.mark.asyncio()
+    async def test_list_by_collection_filters_status(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """list_by_collection() should filter by status and return total count."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+
+        completed_doc = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.COMPLETED,
+        )
+        failed_doc_1 = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+        )
+        failed_doc_2 = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+        )
+
+        repo = DocumentRepository(db_session)
+        docs, total = await repo.list_by_collection(collection.id, status=DocumentStatus.FAILED)
+
+        assert total == 2
+        assert {doc.id for doc in docs} == {failed_doc_1.id, failed_doc_2.id}
+        assert completed_doc.id not in {doc.id for doc in docs}
+
+    @pytest.mark.asyncio()
+    async def test_list_by_source_id_filters(
+        self, db_session, test_user_db, collection_factory, document_factory, source_factory
+    ):
+        """list_by_source_id() should filter by source and status."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+        source = await source_factory(collection_id=collection.id)
+
+        matching_doc = await document_factory(
+            collection_id=collection.id,
+            source_id=source.id,
+            status=DocumentStatus.COMPLETED,
+        )
+        await document_factory(
+            collection_id=collection.id,
+            source_id=source.id,
+            status=DocumentStatus.FAILED,
+        )
+        await document_factory(
+            collection_id=collection.id,
+            source_id=None,
+            status=DocumentStatus.COMPLETED,
+        )
+
+        repo = DocumentRepository(db_session)
+        docs = await repo.list_by_source_id(collection.id, source.id, status=DocumentStatus.COMPLETED)
+
+        assert [doc.id for doc in docs] == [matching_doc.id]
+
+    @pytest.mark.asyncio()
+    async def test_list_and_delete_duplicates(self):
+        """list_duplicates() and delete_duplicates() should identify and remove duplicates."""
+        dup_hash = "a" * 64
+        older = MagicMock()
+        older.id = "doc-1"
+        older.content_hash = dup_hash
+        older.created_at = datetime.now(UTC) - timedelta(minutes=5)
+        newer = MagicMock()
+        newer.id = "doc-2"
+        newer.content_hash = dup_hash
+        newer.created_at = datetime.now(UTC)
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [older, newer]
+
+        session = AsyncMock()
+        session.execute.return_value = result
+
+        repo = DocumentRepository(session)
+
+        duplicates = await repo.list_duplicates("collection-1")
+        assert len(duplicates) == 1
+        content_hash, count, docs = duplicates[0]
+        assert content_hash == dup_hash
+        assert count == 2
+        assert {doc.id for doc in docs} == {older.id, newer.id}
+
+        delete_result = MagicMock()
+        delete_result.rowcount = 1
+        session.execute.return_value = delete_result
+        repo.list_duplicates = AsyncMock(return_value=[(dup_hash, 2, [older, newer])])  # type: ignore[assignment]
+
+        deleted = await repo.delete_duplicates("collection-1", keep_oldest=True)
+        assert deleted == 1
+
+
+class TestDocumentRepositoryStatsAndSync:
+    """Tests for stats and sync-related helpers."""
+
+    @pytest.mark.asyncio()
+    async def test_get_stats_by_collection(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """get_stats_by_collection() should aggregate counts and sizes."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+
+        dup_hash = "c" * 64
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.COMPLETED,
+            file_size=100,
+            chunk_count=2,
+            content_hash=dup_hash,
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            file_size=200,
+            chunk_count=3,
+            content_hash=dup_hash,
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.COMPLETED,
+            file_size=50,
+            chunk_count=1,
+            content_hash="d" * 64,
+        )
+
+        repo = DocumentRepository(db_session)
+        stats = await repo.get_stats_by_collection(collection.id)
+
+        assert stats["total_documents"] == 3
+        assert stats["by_status"]["completed"] == 2
+        assert stats["by_status"]["failed"] == 1
+        assert stats["total_size_bytes"] == 350
+        assert stats["total_chunks"] == 6
+        assert stats["duplicate_groups"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_update_last_seen_and_clear_stale_flag(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """update_last_seen() and clear_stale_flag() should clear stale state."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+        document = await document_factory(collection_id=collection.id)
+        document.is_stale = True
+        await db_session.flush()
+
+        repo = DocumentRepository(db_session)
+
+        updated = await repo.update_last_seen(document.id)
+        assert updated.last_seen_at is not None
+        assert updated.is_stale is False
+
+        document.is_stale = True
+        await db_session.flush()
+
+        cleared = await repo.clear_stale_flag(document.id)
+        assert cleared.is_stale is False
+
+    @pytest.mark.asyncio()
+    async def test_update_content_resets_status_and_chunking_fields(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """update_content() should reset processing fields for re-ingestion."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+        document = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            error_message="boom",
+            chunk_count=5,
+            chunks_count=5,
+        )
+        document.chunking_started_at = datetime.now(UTC)
+        document.chunking_completed_at = datetime.now(UTC)
+        document.is_stale = True
+        await db_session.flush()
+
+        repo = DocumentRepository(db_session)
+        updated = await repo.update_content(
+            document_id=document.id,
+            content_hash="e" * 64,
+            file_size=999,
+            file_path="/new/path/file.txt",
+            mime_type="text/plain",
+            source_metadata={"source": "test"},
+        )
+
+        assert updated.content_hash == "e" * 64
+        assert updated.file_size == 999
+        assert updated.file_path == "/new/path/file.txt"
+        assert updated.mime_type == "text/plain"
+        assert updated.source_metadata == {"source": "test"}
+        assert updated.status == DocumentStatus.PENDING.value
+        assert updated.error_message is None
+        assert updated.chunk_count == 0
+        assert updated.chunks_count == 0
+        assert updated.chunking_started_at is None
+        assert updated.chunking_completed_at is None
+        assert updated.is_stale is False
+
+
+class TestDocumentRepositoryRetryUtilities:
+    """Tests for retry-related repository helpers."""
+
+    @pytest.mark.asyncio()
+    async def test_reset_for_retry_success(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """reset_for_retry() should reset failed docs and increment retry count."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+        document = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=1,
+            error_message="boom",
+            error_category="transient",
+            chunk_count=3,
+        )
+
+        repo = DocumentRepository(db_session)
+        updated = await repo.reset_for_retry(document.id)
+
+        assert updated.status == DocumentStatus.PENDING.value
+        assert updated.retry_count == 2
+        assert updated.last_retry_at is not None
+        assert updated.error_message is None
+        assert updated.error_category is None
+        assert updated.chunk_count == 0
+
+    @pytest.mark.asyncio()
+    async def test_reset_for_retry_requires_failed_status(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """reset_for_retry() should reject non-failed docs."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+        document = await document_factory(collection_id=collection.id, status=DocumentStatus.COMPLETED)
+
+        repo = DocumentRepository(db_session)
+        with pytest.raises(ValidationError, match="not in FAILED status"):
+            await repo.reset_for_retry(document.id)
+
+    @pytest.mark.asyncio()
+    async def test_bulk_reset_failed_for_retry_filters_docs(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """bulk_reset_failed_for_retry() should only reset retryable docs."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+
+        doc_retryable = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=0,
+            error_category="transient",
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=3,
+            error_category="transient",
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=0,
+            error_category="permanent",
+        )
+        doc_null_category = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=0,
+            error_category=None,
+        )
+
+        repo = DocumentRepository(db_session)
+        count = await repo.bulk_reset_failed_for_retry(collection.id, max_retry_count=3)
+
+        assert count == 2
+
+        updated_retryable = await repo.get_by_id(doc_retryable.id)
+        updated_null = await repo.get_by_id(doc_null_category.id)
+        assert updated_retryable.status == DocumentStatus.PENDING.value
+        assert updated_retryable.retry_count == 1
+        assert updated_null.status == DocumentStatus.PENDING.value
+        assert updated_null.retry_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_list_failed_documents_and_counts(
+        self, db_session, test_user_db, collection_factory, document_factory
+    ):
+        """list_failed_documents() and get_failed_document_count() should respect filters."""
+        user = test_user_db
+        collection = await collection_factory(owner_id=user.id)
+
+        retryable = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=0,
+            error_category="transient",
+        )
+        permanent = await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=0,
+            error_category="permanent",
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.FAILED,
+            retry_count=3,
+            error_category="transient",
+        )
+        await document_factory(
+            collection_id=collection.id,
+            status=DocumentStatus.COMPLETED,
+        )
+
+        repo = DocumentRepository(db_session)
+
+        docs, total = await repo.list_failed_documents(
+            collection_id=collection.id,
+            retryable_only=True,
+            max_retry_count=3,
+        )
+        assert total == 1
+        assert [doc.id for doc in docs] == [retryable.id]
+
+        docs, total = await repo.list_failed_documents(
+            collection_id=collection.id,
+            error_category="permanent",
+        )
+        assert total == 1
+        assert [doc.id for doc in docs] == [permanent.id]
+
+        counts = await repo.get_failed_document_count(collection.id, retryable_only=False)
+        assert counts["transient"] == 2
+        assert counts["permanent"] == 1
+        assert counts["total"] == 3
