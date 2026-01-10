@@ -18,9 +18,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Add retry_documents value to operationtype enum."""
+    """Add retry_documents value to operation_type enum."""
     # Add the new enum value to the PostgreSQL enum type
-    op.execute("ALTER TYPE operationtype ADD VALUE IF NOT EXISTS 'retry_documents'")
+    op.execute("ALTER TYPE operation_type ADD VALUE IF NOT EXISTS 'retry_documents'")
 
 
 def downgrade() -> None:
