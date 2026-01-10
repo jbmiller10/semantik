@@ -67,6 +67,8 @@ export interface DocumentResponse {
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Legacy field - not always present in backend response
+  source_path?: string;
 }
 
 export interface DocumentListResponse {
