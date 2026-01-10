@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
-const mockDefaults = { baseURL: 'http://api.example' };
+// Use vi.hoisted to define mocks that will be used in hoisted vi.mock calls
+const { mockGet, mockPost, mockDefaults, mockGetState } = vi.hoisted(() => ({
+  mockGet: vi.fn(),
+  mockPost: vi.fn(),
+  mockDefaults: { baseURL: 'http://api.example' },
+  mockGetState: vi.fn(),
+}));
 
 vi.mock('../client', () => ({
   default: {
@@ -12,7 +16,6 @@ vi.mock('../client', () => ({
   },
 }));
 
-const mockGetState = vi.fn();
 vi.mock('../../../../stores/authStore', () => ({
   useAuthStore: {
     getState: mockGetState,
