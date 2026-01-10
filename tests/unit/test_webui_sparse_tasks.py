@@ -75,9 +75,16 @@ async def test_reindex_collection_async_returns_completed_when_no_chunks() -> No
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
+    # Mock the session factory to return our dummy session context
+    mock_session_factory = Mock(return_value=DummySessionContext())
+
+    # Mock pg_connection_manager with sessionmaker=None to force ensure_async_sessionmaker call
+    mock_pg_manager = SimpleNamespace(sessionmaker=None)
+
     with (
         patch("webui.sparse_tasks._load_sparse_indexer_plugin", return_value=DummyIndexer()),
-        patch("webui.sparse_tasks.AsyncSessionLocal", return_value=DummySessionContext()),
+        patch("webui.sparse_tasks.pg_connection_manager", mock_pg_manager),
+        patch("webui.sparse_tasks.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
         patch("webui.sparse_tasks.CollectionRepository", return_value=collection_repo),
         patch("webui.sparse_tasks.ChunkRepository", return_value=chunk_repo),
     ):

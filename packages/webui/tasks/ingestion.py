@@ -906,9 +906,11 @@ async def _maybe_generate_sparse_vectors(
     Checks if sparse indexing is enabled for the collection and generates
     sparse vectors using the configured plugin.
     """
+    from datetime import UTC, datetime
+
     from qdrant_client import AsyncQdrantClient
 
-    from shared.database.collection_metadata import get_sparse_index_config
+    from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
     from shared.plugins import load_plugins, plugin_registry
     from vecpipe.sparse import upsert_sparse_vectors
 
@@ -962,10 +964,18 @@ async def _maybe_generate_sparse_vectors(
             ]
 
             await upsert_sparse_vectors(sparse_collection_name, qdrant_vectors, async_qdrant)
+
+            # Update document count in sparse config
+            current_count = sparse_config.get("document_count", 0) or 0
+            sparse_config["document_count"] = current_count + len(sparse_vectors)
+            sparse_config["last_indexed_at"] = datetime.now(UTC).isoformat()
+            await store_sparse_index_config(async_qdrant, qdrant_collection_name, sparse_config)
+
             logger.debug(
-                "Generated %d sparse vectors for %s",
+                "Generated %d sparse vectors for %s (total: %d)",
                 len(sparse_vectors),
                 qdrant_collection_name,
+                sparse_config["document_count"],
             )
         finally:
             if hasattr(indexer, "cleanup"):
