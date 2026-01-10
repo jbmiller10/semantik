@@ -6,6 +6,7 @@ from shared.version import get_version
 from vecpipe.search.lifespan import lifespan
 from vecpipe.search.memory_api import router as memory_router
 from vecpipe.search.router import router
+from vecpipe.search.sparse_router import router as sparse_router
 
 
 def create_app() -> FastAPI:
@@ -17,6 +18,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(router)
     app.include_router(memory_router)
+    app.include_router(sparse_router)
     return app
 
 

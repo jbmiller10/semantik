@@ -179,6 +179,9 @@ async def _perform_sparse_search(
 ) -> tuple[list[dict[str, Any]], float]:
     """Perform sparse-only search using the configured sparse indexer.
 
+    Uses SparseModelManager for GPU-based plugins (SPLADE) to keep models loaded
+    between queries. BM25 (CPU-only) is fast enough to load per-query if needed.
+
     Args:
         collection_name: Name of the collection
         sparse_config: Sparse index configuration
@@ -192,55 +195,79 @@ async def _perform_sparse_search(
     start_time = time.time()
 
     try:
-        # Get the sparse indexer plugin
-        from shared.plugins import load_plugins, plugin_registry
-
-        load_plugins(plugin_types={"sparse_indexer"})
-
         plugin_id = sparse_config.get("plugin_id")
         if not plugin_id:
             logger.warning("No plugin_id in sparse config for collection %s", collection_name)
             sparse_search_fallbacks.labels(reason="no_plugin_id").inc()
             return [], 0.0
 
-        record = plugin_registry.get("sparse_indexer", plugin_id)
-        if not record:
-            logger.warning("Sparse indexer plugin '%s' not found", plugin_id)
-            sparse_search_fallbacks.labels(reason="plugin_not_found").inc()
-            return [], 0.0
-
-        # Get sparse type for metrics
-        sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown")
-
-        # Instantiate the plugin and initialize it with stored config.
-        plugin = record.plugin_class()
         plugin_config = sparse_config.get("model_config") or {}
         if not isinstance(plugin_config, dict):
             plugin_config = {}
 
-        init_config = dict(plugin_config)
-        init_config.setdefault("collection_name", collection_name)
-
-        try:
-            initialize_fn = getattr(plugin, "initialize", None)
-            if callable(initialize_fn):
-                maybe_coro = initialize_fn(init_config)
-                if inspect.isawaitable(maybe_coro):
-                    await maybe_coro
-
+        # Use SparseModelManager if available (for GPU-based plugins like SPLADE)
+        sparse_manager = search_state.sparse_manager
+        if sparse_manager is not None:
+            # Use managed sparse model - keeps model loaded between queries
             encode_start = time.time()
-            query_vector = await plugin.encode_query(query)
+            query_vector = await sparse_manager.encode_query(
+                plugin_id=plugin_id,
+                query=query,
+                config=plugin_config,
+            )
             encode_time = time.time() - encode_start
+
+            # Get sparse type for metrics from the loaded plugin
+            sparse_type = getattr(query_vector, "_sparse_type", None)
+            if sparse_type is None:
+                # Try to get from registry
+                from shared.plugins import load_plugins, plugin_registry
+                load_plugins(plugin_types={"sparse_indexer"})
+                record = plugin_registry.get("sparse_indexer", plugin_id)
+                sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown") if record else "unknown"
+
             sparse_encode_query_latency.labels(sparse_type=sparse_type).observe(encode_time)
-            logger.debug("Sparse query encoding took %.3fs for plugin %s", encode_time, plugin_id)
-        finally:
-            cleanup_fn = getattr(plugin, "cleanup", None)
-            if callable(cleanup_fn):
-                with suppress(Exception):
-                    maybe_coro = cleanup_fn()
+            logger.debug("Sparse query encoding took %.3fs for plugin %s (managed)", encode_time, plugin_id)
+        else:
+            # Fallback: load plugin directly (for testing or if manager not initialized)
+            from shared.plugins import load_plugins, plugin_registry
+
+            load_plugins(plugin_types={"sparse_indexer"})
+
+            record = plugin_registry.get("sparse_indexer", plugin_id)
+            if not record:
+                logger.warning("Sparse indexer plugin '%s' not found", plugin_id)
+                sparse_search_fallbacks.labels(reason="plugin_not_found").inc()
+                return [], 0.0
+
+            sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown")
+
+            # Instantiate the plugin and initialize it with stored config.
+            plugin = record.plugin_class()
+            init_config = dict(plugin_config)
+            init_config.setdefault("collection_name", collection_name)
+
+            try:
+                initialize_fn = getattr(plugin, "initialize", None)
+                if callable(initialize_fn):
+                    maybe_coro = initialize_fn(init_config)
                     if inspect.isawaitable(maybe_coro):
                         await maybe_coro
 
+                encode_start = time.time()
+                query_vector = await plugin.encode_query(query)
+                encode_time = time.time() - encode_start
+                sparse_encode_query_latency.labels(sparse_type=sparse_type).observe(encode_time)
+                logger.debug("Sparse query encoding took %.3fs for plugin %s (direct)", encode_time, plugin_id)
+            finally:
+                cleanup_fn = getattr(plugin, "cleanup", None)
+                if callable(cleanup_fn):
+                    with suppress(Exception):
+                        maybe_coro = cleanup_fn()
+                        if inspect.isawaitable(maybe_coro):
+                            await maybe_coro
+
+        # Extract indices and values from query vector
         query_indices: list[int]
         query_values: list[float]
 
@@ -341,20 +368,26 @@ async def _fetch_payloads_for_chunk_ids(
         created_client = True
 
     try:
-        chunk_filter = {"key": "chunk_id", "match": {"any": chunk_ids}}
-        scroll_filter: dict[str, Any]
-        if filters and isinstance(filters, dict):
-            scroll_filter = dict(filters)
+        # Sparse search uses chunk_id as the point ID, so we need to filter
+        # the dense collection by payload.chunk_id to get full payloads.
+        # Use Qdrant's "match" with "any" to match any of the chunk_ids.
+        chunk_id_condition = {
+            "key": "chunk_id",
+            "match": {"any": chunk_ids},
+        }
 
-            existing_must = scroll_filter.get("must")
-            if existing_must is None:
-                scroll_filter["must"] = [chunk_filter]
-            elif isinstance(existing_must, list):
-                scroll_filter["must"] = [*existing_must, chunk_filter]
-            else:
-                scroll_filter["must"] = [existing_must, chunk_filter]
+        if filters and isinstance(filters, dict):
+            # Combine user filters with chunk_id filter using "must"
+            scroll_filter = {
+                "must": [
+                    chunk_id_condition,
+                    filters,
+                ]
+            }
         else:
-            scroll_filter = {"must": [chunk_filter]}
+            scroll_filter = {
+                "must": [chunk_id_condition]
+            }
 
         fetch_request = {
             "filter": scroll_filter,
@@ -362,11 +395,24 @@ async def _fetch_payloads_for_chunk_ids(
             "with_vector": False,
             "limit": len(chunk_ids),
         }
+        logger.debug(
+            "Fetching payloads from %s: %d chunk_ids, filter=%s",
+            collection_name,
+            len(chunk_ids),
+            scroll_filter,
+        )
         response = await client.post(f"/collections/{collection_name}/points/scroll", json=fetch_request)
-        if hasattr(response, "raise_for_status"):
-            maybe_coro = response.raise_for_status()
-            if inspect.isawaitable(maybe_coro):
-                await maybe_coro
+
+        # Check for errors before processing
+        if response.status_code != 200:
+            error_text = response.text
+            logger.error(
+                "Failed to fetch payloads from %s: status=%d, error=%s",
+                collection_name,
+                response.status_code,
+                error_text[:500] if error_text else "unknown",
+            )
+            return {}
 
         payload_map: dict[str, dict[str, Any]] = {}
         result = (await _json(response)).get("result", {})
@@ -377,7 +423,8 @@ async def _fetch_payloads_for_chunk_ids(
             payload = point.get("payload", {})
             if not isinstance(payload, dict):
                 continue
-            chunk_id = payload.get("chunk_id") or point.get("id")
+            # Use chunk_id as key to match with sparse results
+            chunk_id = payload.get("chunk_id")
             if chunk_id:
                 payload_map[str(chunk_id)] = payload
 
@@ -1033,28 +1080,69 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             )
 
             if sparse_results:
-                sparse_chunk_ids = [r.get("chunk_id", "") for r in sparse_results]
+                # Sparse results have chunk_id = sparse point ID (UUID), but we need
+                # original_chunk_id from payload.metadata to match with dense collection.
+                # Build mapping: sparse_chunk_id -> original_chunk_id
+                sparse_to_original: dict[str, str] = {}
+                for r in sparse_results:
+                    sparse_cid = r.get("chunk_id", "")
+                    payload = r.get("payload") or {}
+                    # original_chunk_id is stored in metadata or directly in payload
+                    metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                    original_cid = metadata.get("original_chunk_id") or payload.get("original_chunk_id", "")
+                    if sparse_cid and original_cid:
+                        sparse_to_original[sparse_cid] = original_cid
+                    elif sparse_cid:
+                        # Fallback: if no original_chunk_id, use sparse chunk_id directly
+                        sparse_to_original[sparse_cid] = sparse_cid
+
+                # Debug: log sample sparse result structure
+                if sparse_results and logger.isEnabledFor(logging.DEBUG):
+                    sample = sparse_results[0]
+                    logger.debug(
+                        "Sparse result sample: chunk_id=%s, payload_keys=%s, original_cid=%s",
+                        sample.get("chunk_id", ""),
+                        list((sample.get("payload") or {}).keys()),
+                        sparse_to_original.get(sample.get("chunk_id", ""), ""),
+                    )
+
+                # Get original_chunk_ids to fetch from dense collection
+                original_chunk_ids = list(sparse_to_original.values())
                 dense_chunk_ids = {r.get("chunk_id", "") for r in dense_results_for_fusion}
                 chunk_ids_to_fetch = (
-                    [cid for cid in sparse_chunk_ids if cid]
+                    [cid for cid in original_chunk_ids if cid]
                     if search_mode_used == "sparse"
-                    else [cid for cid in sparse_chunk_ids if cid and cid not in dense_chunk_ids]
+                    else [cid for cid in original_chunk_ids if cid and cid not in dense_chunk_ids]
                 )
+
+                logger.debug(
+                    "Fetching dense payloads: %d original_chunk_ids, %d to fetch",
+                    len(original_chunk_ids),
+                    len(chunk_ids_to_fetch),
+                )
+
                 payloads_by_chunk_id = await _fetch_payloads_for_chunk_ids(
                     collection_name,
                     chunk_ids_to_fetch,
                     filters=request.filters,
                 )
+
+                logger.debug("Fetched %d payloads from dense collection", len(payloads_by_chunk_id))
+
+                # Map payloads back to sparse results using original_chunk_id
                 for item in sparse_results:
-                    chunk_id = item.get("chunk_id", "")
-                    if chunk_id and chunk_id in payloads_by_chunk_id:
-                        item["payload"] = payloads_by_chunk_id[chunk_id]
+                    sparse_cid = item.get("chunk_id", "")
+                    original_cid = sparse_to_original.get(sparse_cid, "")
+                    if original_cid and original_cid in payloads_by_chunk_id:
+                        item["payload"] = payloads_by_chunk_id[original_cid]
+                        # Update chunk_id to original for RRF fusion matching
+                        item["chunk_id"] = original_cid
 
                 # Ensure filtered searches don't leak sparse hits that are outside the filter scope.
                 # We consider a sparse hit "valid" if it already appeared in the filtered dense
                 # results, or if we can fetch its dense payload under the same filter.
-                valid_sparse_chunk_ids = dense_chunk_ids | set(payloads_by_chunk_id)
-                sparse_results = [item for item in sparse_results if item.get("chunk_id", "") in valid_sparse_chunk_ids]
+                valid_chunk_ids = dense_chunk_ids | set(payloads_by_chunk_id)
+                sparse_results = [item for item in sparse_results if item.get("chunk_id", "") in valid_chunk_ids]
 
             if search_mode_used == "hybrid" and sparse_results:
                 # Apply RRF fusion

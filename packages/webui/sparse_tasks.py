@@ -5,6 +5,10 @@ This module provides tasks for:
 - Background sparse index management
 
 Progress is tracked via Celery's built-in task state mechanism.
+
+Architecture note:
+- BM25 runs directly in the worker (CPU-only, no GPU needed)
+- SPLADE is routed through VecPipe for centralized GPU memory management
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 from vecpipe.sparse import ensure_sparse_collection, upsert_sparse_vectors
 from webui.celery_app import celery_app
+from webui.clients.sparse_client import SparseEncodingClient
 
 if TYPE_CHECKING:
     from celery import Task
@@ -37,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 # Batch size for processing chunks
 SPARSE_REINDEX_BATCH_SIZE = 100
+
+# Plugins that run locally (CPU-only, no GPU needed)
+# Other plugins (SPLADE) are routed through VecPipe for GPU memory management
+LOCAL_SPARSE_PLUGINS = {"bm25-local"}
 
 
 def _load_sparse_indexer_plugin(plugin_id: str) -> Any:
@@ -84,26 +93,39 @@ async def _reindex_collection_async(
     Returns:
         Dict with reindex results.
     """
+    # Determine if we should use local plugin or VecPipe
+    use_local_plugin = plugin_id in LOCAL_SPARSE_PLUGINS
+
     logger.info(
-        "Starting sparse reindex for collection %s with plugin %s",
+        "Starting sparse reindex for collection %s with plugin %s (local=%s)",
         collection_uuid,
         plugin_id,
+        use_local_plugin,
     )
 
-    # Load the sparse indexer plugin
-    try:
-        indexer = _load_sparse_indexer_plugin(plugin_id)
-    except ValueError as e:
-        logger.error("Failed to load sparse indexer: %s", e)
-        raise
+    # Initialize encoding resources based on plugin type
+    indexer = None
+    vecpipe_client = None
 
-    # Initialize plugin with config if it has an initialize method
-    if hasattr(indexer, "initialize"):
-        await indexer.initialize(model_config)
+    if use_local_plugin:
+        # Load local plugin (BM25 - CPU only)
+        try:
+            indexer = _load_sparse_indexer_plugin(plugin_id)
+        except ValueError as e:
+            logger.error("Failed to load sparse indexer: %s", e)
+            raise
+
+        # Initialize plugin with config if it has an initialize method
+        if hasattr(indexer, "initialize"):
+            await indexer.initialize(model_config)
+    else:
+        # Use VecPipe for GPU-based plugins (SPLADE)
+        vecpipe_client = SparseEncodingClient()
+        logger.info("Using VecPipe for sparse encoding (plugin: %s)", plugin_id)
 
     # Determine batch size from plugin capabilities or use default
     batch_size = SPARSE_REINDEX_BATCH_SIZE
-    if hasattr(indexer, "get_capabilities"):
+    if indexer is not None and hasattr(indexer, "get_capabilities"):
         try:
             capabilities = indexer.get_capabilities()
             if hasattr(capabilities, "max_batch_size") and capabilities.max_batch_size:
@@ -151,7 +173,15 @@ async def _reindex_collection_async(
             }
 
         # Generate sparse collection name
-        sparse_collection_name = indexer.get_sparse_collection_name(vector_store_name)
+        if indexer is not None:
+            sparse_collection_name = indexer.get_sparse_collection_name(vector_store_name)
+        else:
+            # For VecPipe-based plugins, get sparse_type from registry
+            record = plugin_registry.find_by_id(plugin_id)
+            if record is None:
+                raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found in registry")
+            sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "splade")
+            sparse_collection_name = f"{vector_store_name}_sparse_{sparse_type}"
 
         # Ensure sparse collection exists
         await ensure_sparse_collection(sparse_collection_name, async_qdrant)
@@ -201,20 +231,42 @@ async def _reindex_collection_async(
             # Build mapping from point_id to original_chunk_id for search matching
             point_to_original = {doc["chunk_id"]: doc["original_chunk_id"] for doc in documents}
 
-            # Encode documents
-            sparse_vectors = await indexer.encode_documents(documents)
-
-            # Convert to Qdrant format and upsert
-            # Include original_chunk_id in metadata for matching sparse results to dense vectors
-            qdrant_vectors = [
-                {
-                    "chunk_id": sv.chunk_id,
-                    "indices": list(sv.indices),
-                    "values": list(sv.values),
-                    "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
-                }
-                for sv in sparse_vectors
-            ]
+            # Encode documents using appropriate method
+            if use_local_plugin and indexer is not None:
+                # Use local plugin (BM25)
+                sparse_vectors = await indexer.encode_documents(documents)
+                # Convert SparseVector objects to Qdrant format
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv.chunk_id,
+                        "indices": list(sv.indices),
+                        "values": list(sv.values),
+                        "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            elif vecpipe_client is not None:
+                # Use VecPipe for GPU-based plugins (SPLADE)
+                texts = [doc["content"] for doc in documents]
+                chunk_ids = [doc["chunk_id"] for doc in documents]
+                sparse_vectors = await vecpipe_client.encode_documents(
+                    texts=texts,
+                    chunk_ids=chunk_ids,
+                    plugin_id=plugin_id,
+                    model_config=model_config,
+                )
+                # VecPipe returns dicts, add original_chunk_id to metadata
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv["chunk_id"],
+                        "indices": sv["indices"],
+                        "values": sv["values"],
+                        "metadata": {"original_chunk_id": point_to_original.get(sv["chunk_id"], "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            else:
+                raise RuntimeError("No encoding method available: neither local plugin nor VecPipe client")
 
             await upsert_sparse_vectors(
                 sparse_collection_name=sparse_collection_name,
@@ -270,8 +322,8 @@ async def _reindex_collection_async(
         if async_qdrant is not None:
             await async_qdrant.close()
 
-        # Cleanup plugin if it has a cleanup method
-        if hasattr(indexer, "cleanup"):
+        # Cleanup local plugin if it was loaded and has a cleanup method
+        if indexer is not None and hasattr(indexer, "cleanup"):
             await indexer.cleanup()
 
         # Dispose the engine to clean up connections

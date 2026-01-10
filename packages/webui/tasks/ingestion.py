@@ -881,7 +881,12 @@ async def _setup_sparse_collection_for_index(
             "last_indexed_at": None,
         }
 
-        await store_sparse_index_config(async_qdrant, vector_store_name, stored_config)
+        stored = await store_sparse_index_config(async_qdrant, vector_store_name, stored_config)
+        if not stored:
+            raise ValueError(
+                f"Failed to store sparse index config for {vector_store_name}. "
+                "Metadata point may not exist. Ensure collection metadata is stored first."
+            )
 
         logger.info(
             "Configured sparse indexing for %s: collection=%s, plugin=%s",
@@ -905,6 +910,10 @@ async def _maybe_generate_sparse_vectors(
     This is called during APPEND operation after dense vectors are upserted.
     Checks if sparse indexing is enabled for the collection and generates
     sparse vectors using the configured plugin.
+
+    Architecture note:
+    - BM25 runs directly in the worker (CPU-only, no GPU needed)
+    - SPLADE is routed through VecPipe for centralized GPU memory management
     """
     from datetime import UTC, datetime
 
@@ -913,6 +922,10 @@ async def _maybe_generate_sparse_vectors(
     from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
     from shared.plugins import load_plugins, plugin_registry
     from vecpipe.sparse import upsert_sparse_vectors
+    from webui.clients.sparse_client import SparseEncodingClient
+
+    # Plugins that run locally (CPU-only, no GPU needed)
+    LOCAL_SPARSE_PLUGINS = {"bm25-local"}
 
     async_qdrant = AsyncQdrantClient(
         url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
@@ -920,23 +933,43 @@ async def _maybe_generate_sparse_vectors(
     )
     try:
         sparse_config = await get_sparse_index_config(async_qdrant, qdrant_collection_name)
-        if not sparse_config or not sparse_config.get("enabled"):
+        if not sparse_config:
+            logger.debug(
+                "No sparse index config found for collection %s, skipping sparse vectors",
+                qdrant_collection_name,
+            )
+            return
+        if not sparse_config.get("enabled"):
+            logger.debug(
+                "Sparse indexing is disabled for collection %s, skipping sparse vectors",
+                qdrant_collection_name,
+            )
             return
 
         plugin_id = sparse_config["plugin_id"]
         model_config = sparse_config.get("model_config", {})
         sparse_collection_name = sparse_config["sparse_collection_name"]
 
-        # Load and instantiate plugin
-        load_plugins(plugin_types={"sparse_indexer"})
-        plugin_record = plugin_registry.find_by_id(plugin_id)
-        if not plugin_record:
-            logger.warning("Sparse plugin %s not found, skipping sparse vectors", plugin_id)
-            return
+        # Determine if we should use local plugin or VecPipe
+        use_local_plugin = plugin_id in LOCAL_SPARSE_PLUGINS
+        indexer = None
+        vecpipe_client = None
 
-        indexer = plugin_record.plugin_class()
-        if hasattr(indexer, "initialize"):
-            await indexer.initialize(model_config)
+        if use_local_plugin:
+            # Load and instantiate local plugin (BM25 - CPU only)
+            load_plugins(plugin_types={"sparse_indexer"})
+            plugin_record = plugin_registry.find_by_id(plugin_id)
+            if not plugin_record:
+                logger.warning("Sparse plugin %s not found, skipping sparse vectors", plugin_id)
+                return
+
+            indexer = plugin_record.plugin_class()
+            if hasattr(indexer, "initialize"):
+                await indexer.initialize(model_config)
+        else:
+            # Use VecPipe for GPU-based plugins (SPLADE)
+            vecpipe_client = SparseEncodingClient()
+            logger.debug("Using VecPipe for sparse encoding (plugin: %s)", plugin_id)
 
         try:
             # Prepare documents for encoding using chunk IDs from the points
@@ -955,37 +988,61 @@ async def _maybe_generate_sparse_vectors(
                     "metadata": chunk.get("metadata", {}),
                 })
 
-            # Encode documents
-            sparse_vectors = await indexer.encode_documents(documents)
-
-            # Convert to Qdrant format and upsert
-            # Include original_chunk_id in metadata for matching sparse results to dense vectors
-            qdrant_vectors = [
-                {
-                    "chunk_id": sv.chunk_id,
-                    "indices": list(sv.indices),
-                    "values": list(sv.values),
-                    "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
-                }
-                for sv in sparse_vectors
-            ]
+            # Encode documents using appropriate method
+            if use_local_plugin and indexer is not None:
+                # Use local plugin (BM25)
+                sparse_vectors = await indexer.encode_documents(documents)
+                # Convert SparseVector objects to Qdrant format
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv.chunk_id,
+                        "indices": list(sv.indices),
+                        "values": list(sv.values),
+                        "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            elif vecpipe_client is not None:
+                # Use VecPipe for GPU-based plugins (SPLADE)
+                texts = [doc["content"] for doc in documents]
+                chunk_ids = [doc["chunk_id"] for doc in documents]
+                sparse_vectors = await vecpipe_client.encode_documents(
+                    texts=texts,
+                    chunk_ids=chunk_ids,
+                    plugin_id=plugin_id,
+                    model_config=model_config,
+                )
+                # VecPipe returns dicts, add original_chunk_id to metadata
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv["chunk_id"],
+                        "indices": sv["indices"],
+                        "values": sv["values"],
+                        "metadata": {"original_chunk_id": point_to_original.get(sv["chunk_id"], "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            else:
+                logger.warning("No encoding method available for sparse indexing, skipping")
+                return
 
             await upsert_sparse_vectors(sparse_collection_name, qdrant_vectors, async_qdrant)
 
             # Update document count in sparse config
             current_count = sparse_config.get("document_count", 0) or 0
-            sparse_config["document_count"] = current_count + len(sparse_vectors)
+            sparse_config["document_count"] = current_count + len(qdrant_vectors)
             sparse_config["last_indexed_at"] = datetime.now(UTC).isoformat()
             await store_sparse_index_config(async_qdrant, qdrant_collection_name, sparse_config)
 
             logger.debug(
                 "Generated %d sparse vectors for %s (total: %d)",
-                len(sparse_vectors),
+                len(qdrant_vectors),
                 qdrant_collection_name,
                 sparse_config["document_count"],
             )
         finally:
-            if hasattr(indexer, "cleanup"):
+            # Cleanup local plugin if it was loaded
+            if indexer is not None and hasattr(indexer, "cleanup"):
                 await indexer.cleanup()
     except Exception as exc:
         logger.warning(
