@@ -940,13 +940,18 @@ async def _maybe_generate_sparse_vectors(
 
         try:
             # Prepare documents for encoding using chunk IDs from the points
+            # Keep original_chunk_id for matching with dense search results
             documents = []
+            point_to_original: dict[str, str] = {}
             for i, chunk in enumerate(chunks):
-                # Use the point ID as the chunk_id for consistency with dense vectors
-                chunk_id = str(points[i].id) if i < len(points) else chunk.get("chunk_id", str(i))
+                # Use the point ID as the sparse point ID (valid UUID)
+                point_id = str(points[i].id) if i < len(points) else str(i)
+                # Original chunk_id from chunking (format: {uuid}_{index}) for search matching
+                original_chunk_id = chunk.get("chunk_id", "")
+                point_to_original[point_id] = original_chunk_id
                 documents.append({
                     "content": chunk.get("text") or chunk.get("content", ""),
-                    "chunk_id": chunk_id,
+                    "chunk_id": point_id,
                     "metadata": chunk.get("metadata", {}),
                 })
 
@@ -954,11 +959,13 @@ async def _maybe_generate_sparse_vectors(
             sparse_vectors = await indexer.encode_documents(documents)
 
             # Convert to Qdrant format and upsert
+            # Include original_chunk_id in metadata for matching sparse results to dense vectors
             qdrant_vectors = [
                 {
                     "chunk_id": sv.chunk_id,
                     "indices": list(sv.indices),
                     "values": list(sv.values),
+                    "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
                 }
                 for sv in sparse_vectors
             ]

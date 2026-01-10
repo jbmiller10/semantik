@@ -176,15 +176,20 @@ async def _reindex_collection_async(
                 break
 
             # Prepare documents for encoding from Qdrant payloads
+            # Use point.id (valid UUID) as the sparse point ID, but keep chunk_id for matching
             documents = []
             for point in points:
                 payload = point.payload or {}
                 content = payload.get("content", "")
-                chunk_id = payload.get("chunk_id", str(point.id))
+                # chunk_id from payload is for matching with dense search results
+                original_chunk_id = payload.get("chunk_id", "")
+                # Use point.id as the sparse point ID (must be valid UUID or int)
+                point_id = str(point.id)
                 if content:
                     documents.append({
                         "content": content,
-                        "chunk_id": chunk_id,
+                        "chunk_id": point_id,  # Use point.id for sparse point ID
+                        "original_chunk_id": original_chunk_id,  # Keep for payload
                         "metadata": {k: v for k, v in payload.items() if k not in ("content", "chunk_id")},
                     })
 
@@ -193,15 +198,20 @@ async def _reindex_collection_async(
                     break
                 continue
 
+            # Build mapping from point_id to original_chunk_id for search matching
+            point_to_original = {doc["chunk_id"]: doc["original_chunk_id"] for doc in documents}
+
             # Encode documents
             sparse_vectors = await indexer.encode_documents(documents)
 
             # Convert to Qdrant format and upsert
+            # Include original_chunk_id in metadata for matching sparse results to dense vectors
             qdrant_vectors = [
                 {
                     "chunk_id": sv.chunk_id,
                     "indices": list(sv.indices),
                     "values": list(sv.values),
+                    "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
                 }
                 for sv in sparse_vectors
             ]
