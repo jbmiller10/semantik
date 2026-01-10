@@ -79,7 +79,11 @@ def _reciprocal_rank_fusion(
     """Combine dense and sparse results using Reciprocal Rank Fusion (RRF).
 
     RRF formula: score = sum(1 / (rrf_k + rank)) for each result list
-    Scores are normalized to [0, 1] range.
+
+    RRF is purely rank-based and ignores the original score magnitudes. A document
+    appearing in both result lists gets contributions from both ranks. With rrf_k=60:
+    - Rank 1 in one list: 1/(60+1) ≈ 0.0164
+    - Rank 1 in both lists: 2/(60+1) ≈ 0.0328
 
     Args:
         dense_results: Results from dense vector search, each with 'chunk_id' and 'score'
@@ -88,7 +92,7 @@ def _reciprocal_rank_fusion(
         rrf_k: RRF constant (default 60). Higher values give more weight to lower ranks.
 
     Returns:
-        Fused results sorted by RRF score, normalized to [0, 1]
+        Fused results sorted by RRF score (raw scores, not normalized)
     """
     if not dense_results and not sparse_results:
         return []
@@ -110,23 +114,20 @@ def _reciprocal_rank_fusion(
             score += 1.0 / (rrf_k + sparse_ranks[chunk_id])
         rrf_scores[chunk_id] = score
 
-    # Normalize scores to [0, 1]
-    if rrf_scores:
-        max_score = max(rrf_scores.values())
-        min_score = min(rrf_scores.values())
-        score_range = max_score - min_score
-        if score_range > 0:
-            rrf_scores = {cid: (s - min_score) / score_range for cid, s in rrf_scores.items()}
-        else:
-            # All scores are the same, normalize to 1.0
-            rrf_scores = {cid: 1.0 for cid in rrf_scores}
+    # Note: We keep raw RRF scores instead of normalizing to [0, 1].
+    # Raw RRF scores are small (e.g., ~0.033 for rank 1 with k=60) but are
+    # comparable across queries and more informative than min-max normalized scores
+    # which would always put the top result at 1.0.
 
     # Sort by RRF score descending
     sorted_chunk_ids = sorted(rrf_scores.keys(), key=lambda cid: rrf_scores[cid], reverse=True)[:k]
 
     # Build result list with original payloads (prefer dense payload, fallback to sparse)
+    # Also build score maps for debugging
     dense_payload_map = {r["chunk_id"]: r for r in dense_results}
     sparse_payload_map = {r["chunk_id"]: r for r in sparse_results}
+    dense_score_map = {r["chunk_id"]: r.get("score", 0.0) for r in dense_results}
+    sparse_score_map = {r["chunk_id"]: r.get("score", 0.0) for r in sparse_results}
 
     fused_results = []
     for chunk_id in sorted_chunk_ids:
@@ -134,9 +135,11 @@ def _reciprocal_rank_fusion(
         base_result = dense_payload_map.get(chunk_id) or sparse_payload_map.get(chunk_id)
         if base_result:
             fused_result = {**base_result, "score": rrf_scores[chunk_id]}
-            # Add debug info about source
+            # Add debug info about source ranks and original scores
             fused_result["_dense_rank"] = dense_ranks.get(chunk_id)
             fused_result["_sparse_rank"] = sparse_ranks.get(chunk_id)
+            fused_result["_dense_score"] = dense_score_map.get(chunk_id)
+            fused_result["_sparse_score"] = sparse_score_map.get(chunk_id)
             fused_results.append(fused_result)
 
     return fused_results
