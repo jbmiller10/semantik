@@ -277,7 +277,9 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
             return [chunk]
 
         # Calculate chunk size in characters based on token limits
-        chars_per_token = 4  # Domain approximation
+        # Use conservative ratio (3 instead of 4) because tiktoken counts more tokens
+        # than char/4 for word-based content (e.g., "word0" may be 2 tokens)
+        chars_per_token = 3
         chunk_size_chars = config.max_tokens * chars_per_token
         overlap_chars = config.overlap_tokens * chars_per_token
 
