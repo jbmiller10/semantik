@@ -6,7 +6,7 @@ dependency to avoid needing a live DB/Qdrant.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,6 +17,9 @@ from shared.database.exceptions import EntityNotFoundError, InvalidStateError, V
 from webui.auth import get_current_user
 from webui.main import app
 from webui.services.factory import get_collection_service
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 
 @pytest_asyncio.fixture()

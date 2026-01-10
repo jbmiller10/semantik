@@ -44,10 +44,7 @@ def test_loader_registers_builtin_sparse_indexer_bm25() -> None:
 
 
 def test_loader_registers_builtin_sparse_indexer_splade_when_available() -> None:
-    has_deps = (
-        importlib.util.find_spec("torch") is not None
-        and importlib.util.find_spec("transformers") is not None
-    )
+    has_deps = importlib.util.find_spec("torch") is not None and importlib.util.find_spec("transformers") is not None
 
     registry = load_plugins(plugin_types={"sparse_indexer"}, include_external=False)
 

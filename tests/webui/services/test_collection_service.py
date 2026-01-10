@@ -2413,7 +2413,9 @@ class TestDisableSparseIndex:
                 "shared.config.settings",
                 new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
             ),
-            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)
+            ),
             patch("shared.database.collection_metadata.delete_sparse_index_config", new=AsyncMock()) as mock_delete_cfg,
             patch("vecpipe.sparse.delete_sparse_collection", new=AsyncMock()) as mock_delete_collection,
         ):
@@ -2452,7 +2454,9 @@ class TestTriggerSparseReindex:
                 "shared.config.settings",
                 new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
             ),
-            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)
+            ),
             patch("webui.services.collection_service.celery_app.send_task", return_value=job) as mock_send_task,
         ):
             result = await collection_service.trigger_sparse_reindex(

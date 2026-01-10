@@ -92,7 +92,10 @@ async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch("vecpipe.search.service._get_settings", return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None)),
+        patch(
+            "vecpipe.search.service._get_settings",
+            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+        ),
         patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
     ):
         results, time_ms = await _perform_sparse_search(
@@ -115,7 +118,10 @@ async def test_perform_sparse_search_returns_empty_when_plugin_missing() -> None
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch("vecpipe.search.service._get_settings", return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None)),
+        patch(
+            "vecpipe.search.service._get_settings",
+            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=None),
         patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
@@ -149,7 +155,10 @@ async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch("vecpipe.search.service._get_settings", return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None)),
+        patch(
+            "vecpipe.search.service._get_settings",
+            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=record),
         patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
@@ -182,7 +191,10 @@ async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch(
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch("vecpipe.search.service._get_settings", return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None)),
+        patch(
+            "vecpipe.search.service._get_settings",
+            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=record),
         patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),

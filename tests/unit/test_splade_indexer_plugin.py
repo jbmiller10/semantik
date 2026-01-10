@@ -30,7 +30,7 @@ async def test_splade_initialize_updates_config_and_loads_model_cpu_path() -> No
             self.eval_called = False
             self._params = [DummyParam(), DummyParam()]
 
-        def to(self, device: str) -> "DummyModel":
+        def to(self, device: str) -> DummyModel:
             self.to_device = device
             return self
 

@@ -245,8 +245,8 @@ async def _perform_sparse_search(
         query_values: list[float]
 
         if hasattr(query_vector, "indices") and hasattr(query_vector, "values"):
-            query_indices = list(getattr(query_vector, "indices"))
-            query_values = list(getattr(query_vector, "values"))
+            query_indices = list(query_vector.indices)
+            query_values = list(query_vector.values)
         elif isinstance(query_vector, dict):
             query_indices = list(query_vector.get("indices") or [])
             query_values = list(query_vector.get("values") or [])
@@ -996,7 +996,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                 qdrant_results = (await _json(response))["result"]
             else:
                 search_fn = _get_search_qdrant()
-                qdrant_results = await search_fn(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name, query_vector, search_k)
+                qdrant_results = await search_fn(
+                    cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name, query_vector, search_k
+                )
 
             search_time = (time.time() - search_start) * 1000
 

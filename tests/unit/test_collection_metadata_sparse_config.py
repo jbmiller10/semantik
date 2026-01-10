@@ -131,7 +131,9 @@ async def test_delete_sparse_index_config_returns_true_when_absent() -> None:
 async def test_delete_sparse_index_config_removes_field_and_upserts() -> None:
     from shared.database.collection_metadata import delete_sparse_index_config
 
-    point = SimpleNamespace(id="point-1", payload={"collection_name": "dense", "sparse_index_config": {"enabled": True}})
+    point = SimpleNamespace(
+        id="point-1", payload={"collection_name": "dense", "sparse_index_config": {"enabled": True}}
+    )
     qdrant = AsyncMock()
     qdrant.scroll = AsyncMock(return_value=([point], None))
     qdrant.upsert = AsyncMock()
