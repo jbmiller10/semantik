@@ -12,8 +12,8 @@ def test_reindex_sparse_collection_defaults_model_config(monkeypatch) -> None:
 
     monkeypatch.setattr(sparse_tasks, "_reindex_collection_async", _fake_reindex)
 
-    # Call Celery task directly without passing self - Celery handles self internally
-    result = sparse_tasks.reindex_sparse_collection("col-1", "bm25-local", None)
+    # Call the task run method directly to avoid passing task self explicitly
+    result = sparse_tasks.reindex_sparse_collection.run("col-1", "bm25-local", None)
 
     assert result["status"] == "completed"
     assert captured["model_config"] == {}
