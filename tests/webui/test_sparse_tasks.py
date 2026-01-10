@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 from webui import sparse_tasks
 
 
@@ -14,7 +12,8 @@ def test_reindex_sparse_collection_defaults_model_config(monkeypatch) -> None:
 
     monkeypatch.setattr(sparse_tasks, "_reindex_collection_async", _fake_reindex)
 
-    result = sparse_tasks.reindex_sparse_collection(Mock(), "col-1", "bm25-local", None)
+    # Call Celery task directly without passing self - Celery handles self internally
+    result = sparse_tasks.reindex_sparse_collection("col-1", "bm25-local", None)
 
     assert result["status"] == "completed"
     assert captured["model_config"] == {}
