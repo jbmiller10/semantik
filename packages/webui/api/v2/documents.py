@@ -32,6 +32,15 @@ from webui.dependencies import create_document_repository, get_collection_for_us
 logger = logging.getLogger(__name__)
 
 
+def _get_status_value(status: Any) -> str:
+    """Get status value as string, handling both enum and string types.
+
+    SQLAlchemy may return the status as either an enum object (with .value)
+    or as a raw string depending on session state and query patterns.
+    """
+    return status.value if hasattr(status, "value") else str(status)
+
+
 def sanitize_filename_for_header(filename: str) -> str:
     """Sanitize filename for use in Content-Disposition header.
 
@@ -98,7 +107,7 @@ async def get_document(
             file_size=document.file_size,
             mime_type=document.mime_type,
             content_hash=document.content_hash,
-            status=document.status.value,
+            status=_get_status_value(document.status),
             error_message=document.error_message,
             chunk_count=document.chunk_count,
             retry_count=document.retry_count or 0,
@@ -365,7 +374,7 @@ async def retry_document(
             file_size=document.file_size,
             mime_type=document.mime_type,
             content_hash=document.content_hash,
-            status=document.status.value,
+            status=_get_status_value(document.status),
             error_message=document.error_message,
             chunk_count=document.chunk_count,
             retry_count=document.retry_count or 0,
