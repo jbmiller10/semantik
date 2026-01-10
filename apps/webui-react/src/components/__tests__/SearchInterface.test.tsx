@@ -234,7 +234,7 @@ describe('SearchInterface', () => {
 
     // New SearchModeSelector shows RRF config when in hybrid mode
     expect(screen.getByText('Hybrid Search Configuration')).toBeInTheDocument()
-    expect(screen.getByText(/RRF Constant/)).toBeInTheDocument()
+    expect(screen.getByText(/RRF Weighting/)).toBeInTheDocument()
   })
 
   it('toggles reranking options', async () => {

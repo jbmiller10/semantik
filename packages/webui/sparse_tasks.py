@@ -125,9 +125,7 @@ async def _reindex_collection_async(
 
             # Get total chunks count using paginated query
             chunk_repo = ChunkRepository(session)
-            _, total_chunks = await chunk_repo.get_chunks_paginated(
-                collection_id=collection_uuid, page=1, page_size=1
-            )
+            _, total_chunks = await chunk_repo.get_chunks_paginated(collection_id=collection_uuid, page=1, page_size=1)
 
         if total_chunks == 0:
             logger.info("Collection %s has no chunks to reindex", collection_uuid)
@@ -296,8 +294,6 @@ def reindex_sparse_collection(
             )
         )
     except Exception as exc:
-        logger.exception(
-            "Sparse reindex failed for collection %s: %s", collection_uuid, exc
-        )
+        logger.exception("Sparse reindex failed for collection %s: %s", collection_uuid, exc)
         # Let Celery handle retries
         raise
