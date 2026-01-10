@@ -81,7 +81,9 @@ class SparseIndexConfig(BaseModel):
     """Configuration for sparse indexing during collection creation."""
 
     enabled: bool = Field(default=False, description="Whether to enable sparse indexing")
-    plugin_id: str | None = Field(default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')")
+    plugin_id: str | None = Field(
+        default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')"
+    )
     model_config_data: dict[str, Any] | None = Field(
         default=None,
         description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75} for BM25)",

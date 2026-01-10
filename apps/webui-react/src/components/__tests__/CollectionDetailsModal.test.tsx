@@ -24,6 +24,15 @@ vi.mock('../../services/api/v2/collections', () => ({
     get: vi.fn(),
     listOperations: vi.fn(),
     listDocuments: vi.fn(),
+    listSources: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/api/v2/documents', () => ({
+  documentsV2Api: {
+    retry: vi.fn(),
+    retryFailed: vi.fn(),
+    getFailedCount: vi.fn(),
   },
 }));
 
@@ -100,12 +109,20 @@ vi.mock('../ReindexCollectionModal', () => ({
 import CollectionDetailsModal from '../CollectionDetailsModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 import { collectionsV2Api } from '../../services/api/v2/collections';
+import { documentsV2Api } from '../../services/api/v2/documents';
 
 // Get mocked functions
 const mockCollectionsApi = collectionsV2Api as {
   get: ReturnType<typeof vi.fn>;
   listOperations: ReturnType<typeof vi.fn>;
   listDocuments: ReturnType<typeof vi.fn>;
+  listSources: ReturnType<typeof vi.fn>;
+};
+
+const mockDocumentsApi = documentsV2Api as {
+  retry: ReturnType<typeof vi.fn>;
+  retryFailed: ReturnType<typeof vi.fn>;
+  getFailedCount: ReturnType<typeof vi.fn>;
 };
 
 // Test data
@@ -172,18 +189,34 @@ const mockDocuments: DocumentResponse[] = [
   {
     id: 'doc-1',
     collection_id: 'test-collection-id',
-    source_path: '/data/source1',
+    file_name: 'file1.txt',
     file_path: '/data/source1/file1.txt',
+    file_size: 1024,
+    mime_type: 'text/plain',
+    content_hash: 'abc123',
+    status: 'completed',
+    error_message: null,
     chunk_count: 10,
+    retry_count: 0,
+    last_retry_at: null,
+    error_category: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
   {
     id: 'doc-2',
     collection_id: 'test-collection-id',
-    source_path: '/data/source2',
+    file_name: 'file2.txt',
     file_path: '/data/source2/file2.txt',
+    file_size: 2048,
+    mime_type: 'text/plain',
+    content_hash: 'def456',
+    status: 'completed',
+    error_message: null,
     chunk_count: 20,
+    retry_count: 0,
+    last_retry_at: null,
+    error_category: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -204,6 +237,22 @@ describe('CollectionDetailsModal', () => {
         page: 1,
         per_page: 50,
       },
+    });
+    mockCollectionsApi.listSources.mockResolvedValue({
+      data: {
+        items: [],
+        total: 0,
+        offset: 0,
+        limit: 50,
+      },
+    });
+    // Mock documents API for retry functionality
+    mockDocumentsApi.getFailedCount.mockResolvedValue({
+      data: { transient: 0, permanent: 0, unknown: 0, total: 0 },
+    });
+    mockDocumentsApi.retry.mockResolvedValue({ data: mockDocuments[0] });
+    mockDocumentsApi.retryFailed.mockResolvedValue({
+      data: { reset_count: 0, message: 'No documents to retry' },
     });
   });
 
@@ -356,8 +405,9 @@ describe('CollectionDetailsModal', () => {
         expect(screen.getByText('Documents (2)')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('/data/source1/file1.txt')).toBeInTheDocument();
-      expect(screen.getByText('/data/source2/file2.txt')).toBeInTheDocument();
+      // Documents display file_name, with file_path as tooltip
+      expect(screen.getByText('file1.txt')).toBeInTheDocument();
+      expect(screen.getByText('file2.txt')).toBeInTheDocument();
     });
 
     it('should switch to settings tab', async () => {

@@ -596,7 +596,11 @@ async def embedding_worker(
                 # Check if error is transient and we have retries left
                 error_category = classify_error(exc)
                 if error_category == ErrorCategory.TRANSIENT and attempt < MAX_RETRY_ATTEMPTS:
-                    delay = RETRY_BACKOFF_SECONDS[attempt] if attempt < len(RETRY_BACKOFF_SECONDS) else RETRY_BACKOFF_SECONDS[-1]
+                    delay = (
+                        RETRY_BACKOFF_SECONDS[attempt]
+                        if attempt < len(RETRY_BACKOFF_SECONDS)
+                        else RETRY_BACKOFF_SECONDS[-1]
+                    )
                     logger.warning(
                         "Embedding batch failed (attempt %d/%d), retrying in %.1fs: %s",
                         attempt + 1,
@@ -787,7 +791,11 @@ async def result_processor(
 
                         error_category = classify_error(exc)
                         if error_category == ErrorCategory.TRANSIENT and upsert_attempt < MAX_RETRY_ATTEMPTS:
-                            delay = RETRY_BACKOFF_SECONDS[upsert_attempt] if upsert_attempt < len(RETRY_BACKOFF_SECONDS) else RETRY_BACKOFF_SECONDS[-1]
+                            delay = (
+                                RETRY_BACKOFF_SECONDS[upsert_attempt]
+                                if upsert_attempt < len(RETRY_BACKOFF_SECONDS)
+                                else RETRY_BACKOFF_SECONDS[-1]
+                            )
                             logger.warning(
                                 "Upsert batch %d-%d failed (attempt %d/%d), retrying in %.1fs: %s",
                                 batch_start,
@@ -810,6 +818,7 @@ async def result_processor(
             global _maybe_generate_sparse_vectors
             if _maybe_generate_sparse_vectors is None:
                 from webui.tasks.ingestion import _maybe_generate_sparse_vectors as _gen_sparse
+
                 _maybe_generate_sparse_vectors = _gen_sparse
 
             await _maybe_generate_sparse_vectors(

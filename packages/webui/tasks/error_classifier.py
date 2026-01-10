@@ -12,10 +12,6 @@ Categories:
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 # Optional httpx import - gracefully handle if not available
 try:
@@ -162,7 +158,7 @@ def classify_error(error: Exception | str) -> ErrorCategory:
             return ErrorCategory.TRANSIENT
 
     # Check for common transient exception types
-    if isinstance(error, (TimeoutError, ConnectionError, OSError)):
+    if isinstance(error, TimeoutError | ConnectionError | OSError):
         # OSError can be many things, but connection-related ones are transient
         error_str = str(error).lower()
         if any(p in error_str for p in ["connection", "network", "socket", "timeout"]):

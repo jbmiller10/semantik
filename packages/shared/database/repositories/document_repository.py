@@ -798,9 +798,7 @@ class DocumentRepository:
                 raise EntityNotFoundError("document", document_id)
 
             if document.status != DocumentStatus.FAILED.value:
-                raise ValidationError(
-                    f"Document {document_id} is not in FAILED status (current: {document.status})"
-                )
+                raise ValidationError(f"Document {document_id} is not in FAILED status (current: {document.status})")
 
             document.status = DocumentStatus.PENDING.value
             document.retry_count = (document.retry_count or 0) + 1
@@ -861,6 +859,7 @@ class DocumentRepository:
                 category_conditions.append(Document.error_category.is_(None))
 
             from sqlalchemy import or_
+
             conditions.append(or_(*category_conditions))
 
             stmt = (
@@ -923,6 +922,7 @@ class DocumentRepository:
                 conditions.append(Document.retry_count < max_retry_count)
                 # Exclude permanent errors
                 from sqlalchemy import or_
+
                 conditions.append(
                     or_(
                         Document.error_category != "permanent",

@@ -15,7 +15,7 @@ import { SparseIndexPanel } from './collection/SparseIndexPanel';
 import type { DocumentResponse, SourceResponse, FailedDocumentCountResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
-import { Type, GitBranch, FileText, Brain, Network, Sparkles, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { Type, GitBranch, FileText, Brain, Network, Sparkles, RefreshCw, CheckCircle, Clock, XCircle } from 'lucide-react';
 
 function CollectionDetailsModal() {
   const navigate = useNavigate();
