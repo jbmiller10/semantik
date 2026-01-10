@@ -439,27 +439,27 @@ class TestDocumentRepositoryStatsAndSync:
         user = test_user_db
         collection = await collection_factory(owner_id=user.id)
 
-        dup_hash = "c" * 64
+        # Each document needs a unique content_hash due to unique constraint
         await document_factory(
             collection_id=collection.id,
             status=DocumentStatus.COMPLETED,
             file_size=100,
             chunk_count=2,
-            content_hash=dup_hash,
+            content_hash="a" * 64,
         )
         await document_factory(
             collection_id=collection.id,
             status=DocumentStatus.FAILED,
             file_size=200,
             chunk_count=3,
-            content_hash=dup_hash,
+            content_hash="b" * 64,
         )
         await document_factory(
             collection_id=collection.id,
             status=DocumentStatus.COMPLETED,
             file_size=50,
             chunk_count=1,
-            content_hash="d" * 64,
+            content_hash="c" * 64,
         )
 
         repo = DocumentRepository(db_session)
@@ -470,7 +470,8 @@ class TestDocumentRepositoryStatsAndSync:
         assert stats["by_status"]["failed"] == 1
         assert stats["total_size_bytes"] == 350
         assert stats["total_chunks"] == 6
-        assert stats["duplicate_groups"] == 1
+        # No duplicates possible due to unique constraint on (collection_id, content_hash)
+        assert stats["duplicate_groups"] == 0
 
     @pytest.mark.asyncio()
     async def test_update_last_seen_and_clear_stale_flag(
