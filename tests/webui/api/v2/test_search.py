@@ -295,6 +295,42 @@ class TestMultiCollectionSearch:
         assert call_kwargs["rrf_k"] == 80
 
     @pytest.mark.asyncio()
+    async def test_multi_collection_search_infers_hybrid_search_mode_from_legacy_search_type(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy clients may send search_type='hybrid' without search_mode."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.0,
+                "collection_details": [],
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[str(uuid.uuid4())],
+            query="test search",
+            search_type="hybrid",
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["search_mode"] == "hybrid"
+
+    @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
         self, mock_user: dict[str, Any], mock_collections: list[MagicMock]
     ) -> None:
@@ -751,6 +787,38 @@ class TestSingleCollectionSearch:
         assert response.results[0].score == 0.95
         assert response.total_results == 1
         assert response.search_time_ms == 100
+
+    @pytest.mark.asyncio()
+    async def test_single_collection_search_infers_hybrid_search_mode_from_legacy_search_type(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy clients may send search_type='hybrid' without search_mode."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search/single",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.single_collection_search.return_value = {
+            "results": [],
+            "processing_time_ms": 0,
+        }
+
+        search_request = SingleCollectionSearchRequest(
+            collection_id=str(uuid.uuid4()),
+            query="test search",
+            search_type="hybrid",
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.single_collection_search.call_args.kwargs
+        assert call_kwargs["search_mode"] == "hybrid"
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_not_found(self, mock_user: dict[str, Any]) -> None:

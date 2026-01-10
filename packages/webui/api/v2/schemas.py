@@ -8,12 +8,25 @@ multi-collection search and enhanced result metadata.
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from webui.api.schemas import SearchResult as BaseSearchResult
 
 # Type alias for search mode
 SearchMode = Literal["dense", "sparse", "hybrid"]
+
+
+def _infer_search_mode_from_legacy_search_type(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+
+    if "search_mode" in data:
+        return data
+
+    if data.get("search_type") == "hybrid":
+        return {**data, "search_mode": "hybrid"}
+
+    return data
 
 
 class CollectionSearchRequest(BaseModel):
@@ -46,6 +59,11 @@ class CollectionSearchRequest(BaseModel):
     )
     hybrid_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
     keyword_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_infer_search_mode_from_search_type(cls, data: Any) -> Any:
+        return _infer_search_mode_from_legacy_search_type(data)
 
     @field_validator("collection_uuids")
     @classmethod
@@ -205,6 +223,11 @@ class SingleCollectionSearchRequest(BaseModel):
     )
     hybrid_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
     keyword_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_infer_search_mode_from_search_type(cls, data: Any) -> Any:
+        return _infer_search_mode_from_legacy_search_type(data)
 
     model_config = ConfigDict(
         extra="forbid",
