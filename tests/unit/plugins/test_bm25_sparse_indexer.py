@@ -805,7 +805,7 @@ class TestBM25IDFFileLock:
         with plugin._idf_file_lock():
             assert True
 
-    def test_idf_file_lock_acquires_and_releases(self, tmp_path: "Path", monkeypatch) -> None:
+    def test_idf_file_lock_acquires_and_releases(self, tmp_path: Path, monkeypatch) -> None:
         import fcntl
 
         plugin = BM25SparseIndexerPlugin()
@@ -824,7 +824,7 @@ class TestBM25IDFFileLock:
         assert any(flags & fcntl.LOCK_EX for flags in calls)
         assert any(flags & fcntl.LOCK_UN for flags in calls)
 
-    def test_idf_file_lock_times_out(self, tmp_path: "Path", monkeypatch) -> None:
+    def test_idf_file_lock_times_out(self, tmp_path: Path, monkeypatch) -> None:
         import fcntl
         import time as py_time
 
@@ -846,7 +846,7 @@ class TestBM25IDFFileLock:
                 pass
 
     @pytest.mark.asyncio()
-    async def test_save_idf_stats_timeout_is_swallowed(self, tmp_path: "Path", monkeypatch) -> None:
+    async def test_save_idf_stats_timeout_is_swallowed(self, tmp_path: Path, monkeypatch) -> None:
         from contextlib import contextmanager
 
         plugin = BM25SparseIndexerPlugin()

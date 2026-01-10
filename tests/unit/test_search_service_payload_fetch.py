@@ -116,7 +116,7 @@ def test_get_patched_callable_prefers_local_override() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_get_search_qdrant_wraps_sync_callable_from_entrypoint(monkeypatch) -> None:
+async def test_get_search_qdrant_wraps_sync_callable_from_entrypoint() -> None:
     import vecpipe.search_api as search_api
     from vecpipe.search import service as svc
 
@@ -126,4 +126,5 @@ async def test_get_search_qdrant_wraps_sync_callable_from_entrypoint(monkeypatch
     with patch.object(search_api, "search_qdrant", sync_search):
         wrapped = svc._get_search_qdrant()
         res = await wrapped("h", 1, "c", [0.0], 1)  # type: ignore[call-arg]
-        assert res and res[0]["id"] == "1"
+        assert res
+        assert res[0]["id"] == "1"

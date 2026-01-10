@@ -925,7 +925,7 @@ async def _maybe_generate_sparse_vectors(
     from webui.clients.sparse_client import SparseEncodingClient
 
     # Plugins that run locally (CPU-only, no GPU needed)
-    LOCAL_SPARSE_PLUGINS = {"bm25-local"}
+    local_sparse_plugins = {"bm25-local"}
 
     async_qdrant = AsyncQdrantClient(
         url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
@@ -951,7 +951,7 @@ async def _maybe_generate_sparse_vectors(
         sparse_collection_name = sparse_config["sparse_collection_name"]
 
         # Determine if we should use local plugin or VecPipe
-        use_local_plugin = plugin_id in LOCAL_SPARSE_PLUGINS
+        use_local_plugin = plugin_id in local_sparse_plugins
         indexer = None
         vecpipe_client = None
 

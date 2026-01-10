@@ -41,7 +41,7 @@ def test_calculate_optimal_workers_reduces_on_high_load(monkeypatch: pytest.Monk
 
 
 def test_get_container_memory_limit_mb_reads_cgroup(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_open(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_open(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
         if str(self) == "/sys/fs/cgroup/memory.max":
             return io.StringIO("104857600")
         raise FileNotFoundError
@@ -52,7 +52,7 @@ def test_get_container_memory_limit_mb_reads_cgroup(monkeypatch: pytest.MonkeyPa
 
 
 def test_get_container_memory_limit_mb_unlimited(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_open(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_open(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
         if str(self) == "/sys/fs/cgroup/memory.max":
             return io.StringIO("max")
         raise FileNotFoundError

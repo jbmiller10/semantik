@@ -432,9 +432,7 @@ class TestDocumentRepositoryStatsAndSync:
     """Tests for stats and sync-related helpers."""
 
     @pytest.mark.asyncio()
-    async def test_get_stats_by_collection(
-        self, db_session, test_user_db, collection_factory, document_factory
-    ):
+    async def test_get_stats_by_collection(self, db_session, test_user_db, collection_factory, document_factory):
         """get_stats_by_collection() should aggregate counts and sizes."""
         user = test_user_db
         collection = await collection_factory(owner_id=user.id)
@@ -543,9 +541,7 @@ class TestDocumentRepositoryRetryUtilities:
     """Tests for retry-related repository helpers."""
 
     @pytest.mark.asyncio()
-    async def test_reset_for_retry_success(
-        self, db_session, test_user_db, collection_factory, document_factory
-    ):
+    async def test_reset_for_retry_success(self, db_session, test_user_db, collection_factory, document_factory):
         """reset_for_retry() should reset failed docs and increment retry count."""
         user = test_user_db
         collection = await collection_factory(owner_id=user.id)

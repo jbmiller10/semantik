@@ -1,9 +1,9 @@
 """Security and behaviour tests for the v2 document content endpoint."""
 
+import urllib.parse
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-import urllib.parse
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -618,9 +618,7 @@ class TestRetryEndpoints:
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio()
-    async def test_retry_failed_documents_success(
-        self, mock_user: dict[str, Any], mock_collection: MagicMock
-    ) -> None:
+    async def test_retry_failed_documents_success(self, mock_user: dict[str, Any], mock_collection: MagicMock) -> None:
         mock_db = AsyncMock(spec=AsyncSession)
         mock_repo = AsyncMock()
         mock_repo.bulk_reset_failed_for_retry.return_value = 3
