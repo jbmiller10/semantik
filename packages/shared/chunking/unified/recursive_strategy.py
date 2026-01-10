@@ -246,7 +246,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         """
         Chunk using domain implementation (recursive splitting).
         """
-        # Convert token limits to character estimates
+        # Convert token limits to character estimates for initial splitting
+        # Use standard ratio for splitting; we'll truncate to exact tokens later
         chars_per_token = 4
         max_chars = config.max_tokens * chars_per_token
         min_chars = config.min_tokens * chars_per_token
@@ -323,8 +324,13 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if end_offset <= start_offset:
                 continue
 
-            # Create chunk metadata
+            # Count tokens and truncate if needed
             token_count = self.count_tokens(chunk_text)
+            if token_count > config.max_tokens:
+                chunk_text = self.truncate_to_tokens(chunk_text, config.max_tokens)
+                token_count = config.max_tokens
+                # Adjust end_offset to reflect truncation
+                end_offset = start_offset + len(chunk_text)
 
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_{idx:04d}",

@@ -150,6 +150,25 @@ class UnifiedChunkingStrategy(ABC):
             return 0
         return len(_get_tokenizer().encode(text))
 
+    def truncate_to_tokens(self, text: str, max_tokens: int) -> str:
+        """
+        Truncate text to fit within a maximum token count.
+
+        Args:
+            text: Text to truncate
+            max_tokens: Maximum number of tokens
+
+        Returns:
+            Truncated text that fits within max_tokens
+        """
+        if not text or max_tokens <= 0:
+            return ""
+        tokenizer = _get_tokenizer()
+        tokens = tokenizer.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        return tokenizer.decode(tokens[:max_tokens])
+
     def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """
         Calculate overlap size in tokens.

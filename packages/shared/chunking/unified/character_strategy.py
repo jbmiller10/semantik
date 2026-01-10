@@ -277,9 +277,8 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
             return [chunk]
 
         # Calculate chunk size in characters based on token limits
-        # Use conservative ratio (3 instead of 4) because tiktoken counts more tokens
-        # than char/4 for word-based content (e.g., "word0" may be 2 tokens)
-        chars_per_token = 3
+        # Use standard ratio for splitting; we'll truncate to exact tokens later
+        chars_per_token = 4
         chunk_size_chars = config.max_tokens * chars_per_token
         overlap_chars = config.overlap_tokens * chars_per_token
 
@@ -327,8 +326,12 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
                 position = position + max(1, chunk_size_chars // 4) if end <= position else end
                 continue
 
-            # Create chunk metadata
+            # Count tokens and truncate if needed
             token_count = self.count_tokens(chunk_text)
+            if token_count > config.max_tokens:
+                chunk_text = self.truncate_to_tokens(chunk_text, config.max_tokens)
+                token_count = config.max_tokens
+                end = start + len(chunk_text)
 
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
