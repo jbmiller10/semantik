@@ -15,14 +15,15 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from qdrant_client import AsyncQdrantClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from shared.config import settings
-from shared.database import pg_connection_manager
+from shared.config.postgres import postgres_config
 from shared.database.collection_metadata import (
     get_sparse_index_config,
     store_sparse_index_config,
 )
-from shared.database.database import ensure_async_sessionmaker
 from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
@@ -114,10 +115,15 @@ async def _reindex_collection_async(
     # Initialize qdrant client reference for cleanup
     async_qdrant: AsyncQdrantClient | None = None
 
-    try:
-        # Get session factory (properly initialized in worker context)
-        session_factory = pg_connection_manager.sessionmaker or await ensure_async_sessionmaker()
+    # Create a fresh engine and sessionmaker for this asyncio.run() context
+    # This avoids event loop mismatch issues with cached connections
+    engine = create_async_engine(
+        postgres_config.async_database_url,
+        poolclass=NullPool,  # No connection pooling to avoid event loop issues
+    )
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    try:
         # Get collection info
         async with session_factory() as session:
             collection_repo = CollectionRepository(session)
@@ -245,6 +251,9 @@ async def _reindex_collection_async(
         # Cleanup plugin if it has a cleanup method
         if hasattr(indexer, "cleanup"):
             await indexer.cleanup()
+
+        # Dispose the engine to clean up connections
+        await engine.dispose()
 
 
 @celery_app.task(
