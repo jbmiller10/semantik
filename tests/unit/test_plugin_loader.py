@@ -203,6 +203,31 @@ class TestResolvePluginType:
         result = _resolve_plugin_type(RandomClass)
         assert result is None
 
+    def test_legacy_plugin_type_returns_with_warning_when_protocol_incomplete(self, caplog):
+        """Plugins with PLUGIN_TYPE but missing protocol methods should still load with warning."""
+
+        class LegacyEmbeddingPlugin:
+            PLUGIN_TYPE = "embedding"
+            PLUGIN_ID = "legacy-embed"
+            PLUGIN_VERSION = "0.0.1"
+
+            # Intentionally omit supports_model() to fail protocol validation.
+            @classmethod
+            def get_definition(cls):  # noqa: D102
+                return MagicMock()
+
+            @classmethod
+            def get_manifest(cls):  # noqa: D102
+                return MagicMock(id=cls.PLUGIN_ID, type=cls.PLUGIN_TYPE, version=cls.PLUGIN_VERSION)
+
+            async def embed_texts(self, *_args, **_kwargs):  # noqa: D102
+                return []
+
+        caplog.set_level(logging.WARNING)
+        result = _resolve_plugin_type(LegacyEmbeddingPlugin)
+        assert result == "embedding"
+        assert "doesn't fully satisfy" in caplog.text
+
 
 class TestLoadPlugins:
     """Tests for load_plugins function."""
