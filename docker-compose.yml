@@ -324,6 +324,8 @@ services:
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
+      # GPU-specific settings
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Limit concurrent /embed calls per worker process to protect VRAM
       - EMBEDDING_CONCURRENCY_PER_WORKER=${EMBEDDING_CONCURRENCY_PER_WORKER:-1}
       # Cap auto-scaled Celery worker pool to avoid OOM
@@ -369,6 +371,13 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "celery", "-A", "webui.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME" ]
