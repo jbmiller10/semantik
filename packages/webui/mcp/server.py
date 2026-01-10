@@ -233,8 +233,9 @@ class SemantikMCPServer:
         score_threshold_value = float(score_threshold or 0.0)
 
         # New search_mode parameter for sparse/hybrid search
-        search_mode = str(arguments.get("search_mode") or "dense")
-        rrf_k = int(arguments.get("rrf_k") or 60)
+        # Use profile defaults if not specified in arguments
+        search_mode = str(arguments.get("search_mode") or profile.get("search_mode") or "dense")
+        rrf_k = int(arguments.get("rrf_k") or profile.get("rrf_k") or 60)
 
         data = await self.api_client.search(
             collection_uuids=collection_uuids,

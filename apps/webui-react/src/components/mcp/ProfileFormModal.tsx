@@ -3,11 +3,14 @@ import type {
   MCPProfile,
   MCPProfileFormData,
   MCPSearchType,
+  MCPSearchMode,
 } from '../../types/mcp-profile';
 import {
   DEFAULT_PROFILE_FORM_DATA,
   SEARCH_TYPE_LABELS,
   SEARCH_TYPE_DESCRIPTIONS,
+  SEARCH_MODE_LABELS,
+  SEARCH_MODE_DESCRIPTIONS,
 } from '../../types/mcp-profile';
 import { useCollections } from '../../hooks/useCollections';
 import {
@@ -50,9 +53,11 @@ export default function ProfileFormModal({
         use_reranker: profile.use_reranker,
         score_threshold: profile.score_threshold,
         hybrid_alpha: profile.hybrid_alpha,
+        search_mode: profile.search_mode,
+        rrf_k: profile.rrf_k,
       });
       // Show advanced if any advanced fields have values
-      if (profile.score_threshold !== null || profile.hybrid_alpha !== null) {
+      if (profile.score_threshold !== null || profile.hybrid_alpha !== null || profile.rrf_k !== null) {
         setShowAdvanced(true);
       }
     }
@@ -196,6 +201,8 @@ export default function ProfileFormModal({
             use_reranker: formData.use_reranker,
             score_threshold: formData.score_threshold,
             hybrid_alpha: formData.hybrid_alpha,
+            search_mode: formData.search_mode,
+            rrf_k: formData.rrf_k,
           },
         });
       } else {
@@ -209,6 +216,8 @@ export default function ProfileFormModal({
           use_reranker: formData.use_reranker,
           score_threshold: formData.score_threshold,
           hybrid_alpha: formData.hybrid_alpha,
+          search_mode: formData.search_mode,
+          rrf_k: formData.rrf_k,
         });
       }
       onClose();
@@ -436,6 +445,64 @@ export default function ProfileFormModal({
                   <p id="result-count-error" className="mt-1 text-sm text-red-600">{errors.result_count}</p>
                 )}
               </div>
+            </div>
+
+            {/* Search Mode Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Search Mode */}
+              <div>
+                <label
+                  htmlFor="search_mode"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Search Mode
+                </label>
+                <select
+                  id="search_mode"
+                  value={formData.search_mode}
+                  onChange={(e) =>
+                    handleChange('search_mode', e.target.value as MCPSearchMode)
+                  }
+                  disabled={isSubmitting}
+                  className="mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {Object.entries(SEARCH_MODE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {SEARCH_MODE_DESCRIPTIONS[formData.search_mode]}
+                </p>
+              </div>
+
+              {/* RRF K - only show when hybrid mode */}
+              {formData.search_mode === 'hybrid' && (
+                <div>
+                  <label
+                    htmlFor="rrf_k"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    RRF Constant (k)
+                  </label>
+                  <input
+                    type="number"
+                    id="rrf_k"
+                    min={1}
+                    max={1000}
+                    value={formData.rrf_k ?? 60}
+                    onChange={(e) =>
+                      handleChange('rrf_k', e.target.value ? parseInt(e.target.value) : null)
+                    }
+                    disabled={isSubmitting}
+                    className="mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Higher values give more weight to top-ranked results (default: 60)
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Reranker Toggle */}

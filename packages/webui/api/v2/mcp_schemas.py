@@ -68,6 +68,16 @@ class MCPProfileCreate(BaseModel):
         le=1.0,
         description="Hybrid search alpha value (0=keyword, 1=semantic). Only used when search_type=hybrid",
     )
+    search_mode: Literal["dense", "sparse", "hybrid"] = Field(
+        default="dense",
+        description="Default search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE), 'hybrid' (combined with RRF)",
+    )
+    rrf_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="RRF constant k for hybrid search mode (default: 60 if not specified)",
+    )
 
     model_config = ConfigDict(
         extra="forbid",
@@ -78,6 +88,7 @@ class MCPProfileCreate(BaseModel):
                 "collection_ids": ["550e8400-e29b-41d4-a716-446655440000"],
                 "enabled": True,
                 "search_type": "semantic",
+                "search_mode": "dense",
                 "result_count": 10,
                 "use_reranker": True,
             }
@@ -149,6 +160,16 @@ class MCPProfileUpdate(BaseModel):
         le=1.0,
         description="Hybrid alpha value",
     )
+    search_mode: Literal["dense", "sparse", "hybrid"] | None = Field(
+        default=None,
+        description="Default search mode",
+    )
+    rrf_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="RRF constant k for hybrid mode",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -185,6 +206,8 @@ class MCPProfileResponse(BaseModel):
     use_reranker: bool
     score_threshold: float | None
     hybrid_alpha: float | None
+    search_mode: Literal["dense", "sparse", "hybrid"]
+    rrf_k: int | None
     collections: list[CollectionSummary]
     created_at: datetime
     updated_at: datetime

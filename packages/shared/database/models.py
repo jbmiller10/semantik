@@ -914,6 +914,8 @@ class MCPProfile(Base):
     use_reranker = Column(Boolean, nullable=False, default=True)
     score_threshold = Column(Float, nullable=True)
     hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
+    search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
+    rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
 
     # Metadata
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -937,6 +939,14 @@ class MCPProfile(Base):
         CheckConstraint(
             "hybrid_alpha IS NULL OR (hybrid_alpha >= 0 AND hybrid_alpha <= 1)",
             name="ck_mcp_profiles_hybrid_alpha",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_mcp_profiles_search_mode",
+        ),
+        CheckConstraint(
+            "rrf_k IS NULL OR (rrf_k >= 1 AND rrf_k <= 1000)",
+            name="ck_mcp_profiles_rrf_k",
         ),
     )
 
