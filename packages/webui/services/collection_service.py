@@ -92,7 +92,10 @@ class CollectionService:
         )
         from vecpipe.sparse import delete_sparse_collection
 
-        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
 
         try:
             # Check if sparse index config exists
@@ -1502,7 +1505,10 @@ class CollectionService:
         )
 
         # Get sparse config from collection metadata
-        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
         try:
             return await get_sparse_index_config(async_qdrant, collection.vector_store_name)
         finally:
@@ -1549,7 +1555,10 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
 
         try:
             # Check if sparse indexing is already enabled
@@ -1631,7 +1640,10 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
 
         try:
             # Get current sparse config
@@ -1679,7 +1691,10 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
 
         try:
             # Get sparse config

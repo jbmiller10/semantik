@@ -165,13 +165,13 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
                   Reindexing in progress
                 </span>
                 <span className="text-sm text-purple-700">
-                  {Math.round((reindexProgress.progress || 0) * 100)}%
+                  {Math.round(reindexProgress.progress || 0)}%
                 </span>
               </div>
               <div className="w-full bg-purple-200 rounded-full h-2">
                 <div
                   className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(reindexProgress.progress || 0) * 100}%` }}
+                  style={{ width: `${reindexProgress.progress || 0}%` }}
                 />
               </div>
               {reindexProgress.current_step && (

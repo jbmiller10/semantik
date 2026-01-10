@@ -102,7 +102,7 @@ export interface SparseReindexProgress {
   job_id: string;
   /** Current job status */
   status: SparseReindexStatus;
-  /** Progress percentage (0.0 to 1.0) */
+  /** Progress percentage (0-100) */
   progress?: number;
   /** Current step description */
   current_step?: string;
