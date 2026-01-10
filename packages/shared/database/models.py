@@ -320,13 +320,14 @@ class Document(Base):
             postgresql_where=text("uri IS NOT NULL"),
         ),
         # Index for querying retryable failed documents
+        # Note: DocumentStatus enum uses member NAMES (FAILED) not VALUES (failed) in PostgreSQL
         Index(
             "ix_documents_collection_failed_retryable",
             "collection_id",
             "status",
             "error_category",
             "retry_count",
-            postgresql_where=text("status = 'failed'"),
+            postgresql_where=text("status = 'FAILED'"),
         ),
     )
 
