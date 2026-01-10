@@ -6,13 +6,49 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { sparseIndexApi, sparseIndexKeys } from '../services/api/v2/sparse-index';
+import { handleApiError } from '../services/api/v2/collections';
 import { collectionKeys } from './useCollections';
 import { useUIStore } from '../stores/uiStore';
 import type {
   SparseIndexStatus,
   EnableSparseIndexRequest,
+  SparseReindexStatus,
 } from '../types/sparse-index';
+
+function normalizeSparseReindexStatus(status: string | null | undefined): SparseReindexStatus {
+  if (!status) return 'pending';
+
+  const lowered = status.toLowerCase();
+  if (
+    lowered === 'pending' ||
+    lowered === 'processing' ||
+    lowered === 'completed' ||
+    lowered === 'failed'
+  ) {
+    return lowered as SparseReindexStatus;
+  }
+
+  switch (status.toUpperCase()) {
+    case 'QUEUED':
+    case 'RECEIVED':
+    case 'PENDING':
+      return 'pending';
+    case 'STARTED':
+    case 'PROGRESS':
+    case 'RETRY':
+      return 'processing';
+    case 'SUCCESS':
+      return 'completed';
+    case 'FAILURE':
+    case 'REVOKED':
+      return 'failed';
+    default:
+      // Best-effort fallback: keep polling rather than stopping early.
+      return 'processing';
+  }
+}
 
 /**
  * Hook to fetch sparse index status for a collection
@@ -86,13 +122,9 @@ export function useEnableSparseIndex() {
         );
       }
 
-      const errorMessage =
-        (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || error.message;
-
       addToast({
         type: 'error',
-        message: `Failed to enable sparse indexing: ${errorMessage}`,
+        message: `Failed to enable sparse indexing: ${handleApiError(error)}`,
       });
     },
   });
@@ -144,13 +176,9 @@ export function useDisableSparseIndex() {
         );
       }
 
-      const errorMessage =
-        (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || error.message;
-
       addToast({
         type: 'error',
-        message: `Failed to disable sparse indexing: ${errorMessage}`,
+        message: `Failed to disable sparse indexing: ${handleApiError(error)}`,
       });
     },
   });
@@ -166,7 +194,11 @@ export function useTriggerSparseReindex() {
   return useMutation({
     mutationFn: async (collectionUuid: string) => {
       const response = await sparseIndexApi.triggerReindex(collectionUuid);
-      return { collectionUuid, ...response.data };
+      return {
+        collectionUuid,
+        ...response.data,
+        status: normalizeSparseReindexStatus(response.data.status),
+      };
     },
     onSuccess: ({ collectionUuid, job_id }) => {
       addToast({
@@ -180,13 +212,9 @@ export function useTriggerSparseReindex() {
       });
     },
     onError: (error: Error) => {
-      const errorMessage =
-        (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || error.message;
-
       addToast({
         type: 'error',
-        message: `Failed to start reindex: ${errorMessage}`,
+        message: `Failed to start reindex: ${handleApiError(error)}`,
       });
     },
   });
@@ -202,7 +230,7 @@ export function useSparseReindexProgress(
 ) {
   const queryClient = useQueryClient();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: sparseIndexKeys.reindexProgress(collectionUuid || '', jobId || ''),
     queryFn: async () => {
       if (!collectionUuid || !jobId) {
@@ -212,7 +240,10 @@ export function useSparseReindexProgress(
         collectionUuid,
         jobId
       );
-      return response.data;
+      return {
+        ...response.data,
+        status: normalizeSparseReindexStatus(response.data.status),
+      };
     },
     enabled: !!collectionUuid && !!jobId,
     // Poll every 2 seconds while job is in progress
@@ -223,19 +254,19 @@ export function useSparseReindexProgress(
       }
       return false; // Stop polling when done
     },
-    // Handle completion - invalidate sparse status to refresh document count
-    select: (data) => {
-      if (!data) return data;
-
-      if (data.status === 'completed') {
-        queryClient.invalidateQueries({
-          queryKey: sparseIndexKeys.status(collectionUuid || ''),
-        });
-      }
-
-      return data;
-    },
   });
+
+  // Handle completion - invalidate sparse status to refresh document count
+  useEffect(() => {
+    if (!collectionUuid) return;
+    if (query.data?.status !== 'completed') return;
+
+    queryClient.invalidateQueries({
+      queryKey: sparseIndexKeys.status(collectionUuid),
+    });
+  }, [collectionUuid, query.data?.status, queryClient]);
+
+  return query;
 }
 
 /**

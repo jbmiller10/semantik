@@ -24,14 +24,17 @@ Where:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import math
 import re
 import threading
+import time
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.types.sparse_indexer import (
@@ -40,6 +43,9 @@ from shared.plugins.types.sparse_indexer import (
     SparseQueryVector,
     SparseVector,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -677,70 +683,131 @@ class BM25SparseIndexerPlugin(SparseIndexerPlugin):
         data_dir = os.environ.get("SEMANTIK_DATA_DIR", "data")
         return Path(data_dir) / "sparse_indexes" / collection_name / "idf_stats.json"
 
+    @contextmanager
+    def _idf_file_lock(self, timeout: float = 30.0) -> Generator[None, None, None]:
+        """Acquire exclusive file lock for IDF stats access.
+
+        Uses fcntl file locking to prevent concurrent access from multiple
+        Celery workers. The lock is automatically released when the context
+        manager exits or if the process dies.
+
+        Args:
+            timeout: Maximum seconds to wait for lock acquisition.
+
+        Yields:
+            None when lock is acquired.
+
+        Raises:
+            TimeoutError: If lock cannot be acquired within timeout.
+        """
+        if self._idf_path is None:
+            yield
+            return
+
+        lock_path = self._idf_path.with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+        lock_file = lock_path.open("w")  # noqa: SIM115 - need file handle for fcntl
+        start = time.time()
+        try:
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    logger.debug("Acquired IDF file lock for %s", self._idf_path)
+                    break
+                except OSError:
+                    if time.time() - start > timeout:
+                        lock_file.close()
+                        raise TimeoutError(
+                            f"Could not acquire IDF lock for {self._idf_path}. "
+                            "Another process may be updating IDF stats."
+                        ) from None
+                    time.sleep(0.1)
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+            logger.debug("Released IDF file lock for %s", self._idf_path)
+
     async def _load_idf_stats(self) -> None:
-        """Load IDF statistics from file."""
+        """Load IDF statistics from file.
+
+        Uses file locking to prevent race conditions with concurrent workers.
+        """
         if self._idf_path is None or not self._idf_path.exists():
             logger.debug("No IDF stats file found, starting fresh")
             return
 
         try:
-            data = json.loads(self._idf_path.read_text())
+            with self._idf_file_lock():
+                # Re-check existence after acquiring lock (file may have been deleted)
+                if not self._idf_path.exists():
+                    logger.debug("IDF stats file disappeared after acquiring lock")
+                    return
 
-            with self._idf_lock:
-                self._term_to_id = data.get("term_to_id", {})
-                self._term_doc_freqs = data.get("term_doc_frequencies", {})
-                self._document_count = data.get("document_count", 0)
-                self._avg_doc_length = data.get("avg_doc_length", 0.0)
-                self._total_doc_length = int(self._avg_doc_length * self._document_count)
-                self._chunk_terms = {k: set(v) for k, v in data.get("chunk_terms", {}).items()}
-                self._chunk_lengths = data.get("chunk_lengths", {})
-                self._idf_version = data.get("version", 0)
+                data = json.loads(self._idf_path.read_text())
 
-            logger.info(
-                "Loaded IDF stats: %d documents, %d terms",
-                self._document_count,
-                len(self._term_to_id),
-            )
+                with self._idf_lock:
+                    self._term_to_id = data.get("term_to_id", {})
+                    self._term_doc_freqs = data.get("term_doc_frequencies", {})
+                    self._document_count = data.get("document_count", 0)
+                    self._avg_doc_length = data.get("avg_doc_length", 0.0)
+                    self._total_doc_length = int(self._avg_doc_length * self._document_count)
+                    self._chunk_terms = {k: set(v) for k, v in data.get("chunk_terms", {}).items()}
+                    self._chunk_lengths = data.get("chunk_lengths", {})
+                    self._idf_version = data.get("version", 0)
+
+                logger.info(
+                    "Loaded IDF stats: %d documents, %d terms",
+                    self._document_count,
+                    len(self._term_to_id),
+                )
+        except TimeoutError:
+            logger.warning("Timeout acquiring IDF file lock for load, starting fresh")
         except Exception as e:
             logger.warning("Failed to load IDF stats: %s", e)
 
     async def _save_idf_stats(self) -> None:
         """Save IDF statistics to file.
 
-        Uses atomic write (temp file + rename) for safety.
+        Uses file locking to prevent race conditions with concurrent workers,
+        and atomic write (temp file + rename) for crash safety.
         """
         if self._idf_path is None:
             return
 
-        with self._idf_lock:
-            data = {
-                "plugin_id": self.PLUGIN_ID,
-                "document_count": self._document_count,
-                "avg_doc_length": self._avg_doc_length,
-                "term_doc_frequencies": self._term_doc_freqs,
-                "term_to_id": self._term_to_id,
-                "chunk_terms": {k: list(v) for k, v in self._chunk_terms.items()},
-                "chunk_lengths": self._chunk_lengths,
-                "version": self._idf_version + 1,
-                "last_updated_at": datetime.now(UTC).isoformat(),
-            }
-            self._idf_version += 1
-
         try:
-            # Ensure directory exists
-            self._idf_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._idf_file_lock():
+                with self._idf_lock:
+                    data = {
+                        "plugin_id": self.PLUGIN_ID,
+                        "document_count": self._document_count,
+                        "avg_doc_length": self._avg_doc_length,
+                        "term_doc_frequencies": self._term_doc_freqs,
+                        "term_to_id": self._term_to_id,
+                        "chunk_terms": {k: list(v) for k, v in self._chunk_terms.items()},
+                        "chunk_lengths": self._chunk_lengths,
+                        "version": self._idf_version + 1,
+                        "last_updated_at": datetime.now(UTC).isoformat(),
+                    }
+                    self._idf_version += 1
 
-            # Atomic write: write to temp file, then rename
-            tmp_path = self._idf_path.with_suffix(".tmp")
-            tmp_path.write_text(json.dumps(data, indent=2))
-            tmp_path.rename(self._idf_path)
+                # Ensure directory exists
+                self._idf_path.parent.mkdir(parents=True, exist_ok=True)
 
-            self._dirty = False
-            logger.debug(
-                "Saved IDF stats: %d documents, %d terms (version %d)",
-                self._document_count,
-                len(self._term_to_id),
-                self._idf_version,
-            )
+                # Atomic write: write to temp file, then rename
+                tmp_path = self._idf_path.with_suffix(".tmp")
+                tmp_path.write_text(json.dumps(data, indent=2))
+                tmp_path.rename(self._idf_path)
+
+                self._dirty = False
+                logger.debug(
+                    "Saved IDF stats: %d documents, %d terms (version %d)",
+                    self._document_count,
+                    len(self._term_to_id),
+                    self._idf_version,
+                )
+        except TimeoutError:
+            logger.error("Timeout acquiring IDF file lock for save, stats not persisted")
         except Exception as e:
             logger.exception("Failed to save IDF stats: %s", e)

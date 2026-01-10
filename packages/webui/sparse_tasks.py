@@ -83,44 +83,66 @@ async def _reindex_collection_async(
     Returns:
         Dict with reindex results.
     """
-    logger.info(f"Starting sparse reindex for collection {collection_uuid} with plugin {plugin_id}")
+    logger.info(
+        "Starting sparse reindex for collection %s with plugin %s",
+        collection_uuid,
+        plugin_id,
+    )
 
     # Load the sparse indexer plugin
     try:
         indexer = _load_sparse_indexer_plugin(plugin_id)
     except ValueError as e:
-        logger.error(f"Failed to load sparse indexer: {e}")
+        logger.error("Failed to load sparse indexer: %s", e)
         raise
 
     # Initialize plugin with config if it has an initialize method
     if hasattr(indexer, "initialize"):
         await indexer.initialize(model_config)
 
-    # Get collection info
-    async with AsyncSessionLocal() as session:
-        collection_repo = CollectionRepository(session)
-        collection = await collection_repo.get_by_uuid(collection_uuid)
-        if collection is None:
-            raise ValueError(f"Collection '{collection_uuid}' not found")
+    # Determine batch size from plugin capabilities or use default
+    batch_size = SPARSE_REINDEX_BATCH_SIZE
+    if hasattr(indexer, "get_capabilities"):
+        try:
+            capabilities = indexer.get_capabilities()
+            if hasattr(capabilities, "max_batch_size") and capabilities.max_batch_size:
+                batch_size = min(batch_size, capabilities.max_batch_size)
+        except Exception:
+            pass  # Use default if capabilities unavailable
 
-        vector_store_name = collection.vector_store_name
-
-        # Get total chunks count using paginated query
-        chunk_repo = ChunkRepository(session)
-        _, total_chunks = await chunk_repo.get_chunks_paginated(collection_id=collection_uuid, page=1, page_size=1)
-
-    if total_chunks == 0:
-        logger.info(f"Collection {collection_uuid} has no chunks to reindex")
-        return {
-            "status": "completed",
-            "documents_processed": 0,
-            "total_documents": 0,
-        }
-
-    # Create Qdrant client
-    async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+    # Initialize qdrant client reference for cleanup
+    async_qdrant: AsyncQdrantClient | None = None
 
     try:
+        # Get collection info
+        async with AsyncSessionLocal() as session:
+            collection_repo = CollectionRepository(session)
+            collection = await collection_repo.get_by_uuid(collection_uuid)
+            if collection is None:
+                raise ValueError(f"Collection '{collection_uuid}' not found")
+
+            vector_store_name = collection.vector_store_name
+
+            # Get total chunks count using paginated query
+            chunk_repo = ChunkRepository(session)
+            _, total_chunks = await chunk_repo.get_chunks_paginated(
+                collection_id=collection_uuid, page=1, page_size=1
+            )
+
+        if total_chunks == 0:
+            logger.info("Collection %s has no chunks to reindex", collection_uuid)
+            return {
+                "status": "completed",
+                "documents_processed": 0,
+                "total_documents": 0,
+            }
+
+        # Create Qdrant client
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
         # Generate sparse collection name
         sparse_collection_name = indexer.get_sparse_collection_name(vector_store_name)
 
@@ -138,7 +160,7 @@ async def _reindex_collection_async(
                 chunks = await chunk_repo.get_chunks_by_collection(
                     collection_id=collection_uuid,
                     offset=offset,
-                    limit=SPARSE_REINDEX_BATCH_SIZE,
+                    limit=batch_size,
                 )
 
             if not chunks:
@@ -174,7 +196,7 @@ async def _reindex_collection_async(
             )
 
             processed += len(chunks)
-            offset += SPARSE_REINDEX_BATCH_SIZE
+            offset += batch_size
 
             # Update progress
             progress = (processed / total_chunks) * 100
@@ -187,7 +209,12 @@ async def _reindex_collection_async(
                 },
             )
 
-            logger.debug(f"Sparse reindex progress: {processed}/{total_chunks} ({progress:.1f}%)")
+            logger.debug(
+                "Sparse reindex progress: %d/%d (%.1f%%)",
+                processed,
+                total_chunks,
+                progress,
+            )
 
         # Update sparse config with completion info
         existing_config = await get_sparse_index_config(async_qdrant, vector_store_name)
@@ -196,7 +223,11 @@ async def _reindex_collection_async(
             existing_config["last_indexed_at"] = datetime.now(UTC).isoformat()
             await store_sparse_index_config(async_qdrant, vector_store_name, existing_config)
 
-        logger.info(f"Completed sparse reindex for collection {collection_uuid}: {processed} chunks")
+        logger.info(
+            "Completed sparse reindex for collection %s: %d chunks",
+            collection_uuid,
+            processed,
+        )
 
         return {
             "status": "completed",
@@ -205,7 +236,9 @@ async def _reindex_collection_async(
         }
 
     finally:
-        await async_qdrant.close()
+        # Close Qdrant client if it was created
+        if async_qdrant is not None:
+            await async_qdrant.close()
 
         # Cleanup plugin if it has a cleanup method
         if hasattr(indexer, "cleanup"):
@@ -263,6 +296,8 @@ def reindex_sparse_collection(
             )
         )
     except Exception as exc:
-        logger.exception(f"Sparse reindex failed for collection {collection_uuid}: {exc}")
+        logger.exception(
+            "Sparse reindex failed for collection %s: %s", collection_uuid, exc
+        )
         # Let Celery handle retries
         raise
