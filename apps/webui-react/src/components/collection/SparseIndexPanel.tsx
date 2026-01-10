@@ -127,7 +127,7 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-purple-600 uppercase tracking-wide">Documents</dt>
+              <dt className="text-xs text-purple-600 uppercase tracking-wide">Vectors</dt>
               <dd className="mt-1 text-sm font-medium text-purple-900">
                 {status.document_count?.toLocaleString() || '0'}
               </dd>

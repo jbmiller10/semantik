@@ -51,7 +51,7 @@ export interface SparseIndexStatus {
   sparse_collection_name?: string;
   /** Plugin-specific configuration data */
   model_config_data?: SparseModelConfig;
-  /** Number of documents indexed in the sparse collection */
+  /** Number of vectors indexed in the sparse collection (one per chunk) */
   document_count?: number;
   /** When the sparse index was created */
   created_at?: string;
