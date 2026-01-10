@@ -11,6 +11,14 @@ import type {
   PaginationParams,
 } from '../../../types/collection';
 
+import type {
+  SearchMode,
+  SparseIndexStatus,
+  EnableSparseIndexRequest,
+  SparseReindexJobResponse,
+  SparseReindexProgress,
+} from '../../../types/sparse-index';
+
 // Re-export for convenience
 export type {
   Collection,
@@ -23,6 +31,15 @@ export type {
   CollectionListResponse,
   OperationListResponse,
   PaginationParams,
+};
+
+// Re-export sparse index types
+export type {
+  SearchMode,
+  SparseIndexStatus,
+  EnableSparseIndexRequest,
+  SparseReindexJobResponse,
+  SparseReindexProgress,
 };
 
 // Additional v2 API specific types
@@ -49,11 +66,23 @@ export interface SearchRequest {
   collection_uuids?: string[];
   k?: number;
   score_threshold?: number;
+  /** Embedding mode instruction (semantic/question/code) */
   search_type?: 'semantic' | 'question' | 'code' | 'hybrid';
   use_reranker?: boolean;
   rerank_model?: string | null;
+
+  // New sparse/hybrid search parameters
+  /** Search mode: dense (vector), sparse (BM25/SPLADE), or hybrid (RRF fusion) */
+  search_mode?: SearchMode;
+  /** RRF constant k for hybrid search (default: 60) */
+  rrf_k?: number;
+
+  // Legacy hybrid parameters (deprecated - for backward compatibility only)
+  /** @deprecated Use search_mode='hybrid' instead */
   hybrid_alpha?: number;
+  /** @deprecated Use search_mode='hybrid' instead */
   hybrid_mode?: 'filter' | 'weighted';
+  /** @deprecated Use search_mode='hybrid' instead */
   keyword_mode?: 'any' | 'all';
 }
 
@@ -93,6 +122,15 @@ export interface SearchResponse {
   search_time_ms: number;
   reranking_time_ms?: number;
   total_time_ms: number;
+  // Sparse/hybrid search metrics
+  /** Actual search mode used (may differ from requested if sparse unavailable) */
+  search_mode_used?: SearchMode;
+  /** Sparse search time in milliseconds */
+  sparse_search_time_ms?: number;
+  /** RRF fusion time in milliseconds */
+  rrf_fusion_time_ms?: number;
+  /** Warnings about fallbacks (e.g., sparse not enabled, fell back to dense) */
+  warnings?: string[];
   // Failure information
   partial_failure: boolean;
   failed_collections?: Array<{

@@ -42,7 +42,6 @@
     <purpose>Core business logic: embedding generation, search execution, reranking</purpose>
     <key-functions>
       - perform_search(): Semantic/question/code/hybrid search with optional reranking
-      - perform_hybrid_search(): Vector + keyword fusion search
       - resolve_collection_name(): Priority resolution (explicit > operation_uuid > default)
       - embed_texts(): Batch embedding generation
       - upsert_points(): Qdrant vector upsert
@@ -118,14 +117,17 @@
     <optimization>Uses logits_to_keep=1 to reduce VRAM for final token only</optimization>
   </module>
 
-  <module path="hybrid_search.py">
-    <purpose>Vector + keyword fusion search</purpose>
-    <class>HybridSearchEngine</class>
-    <modes>
-      - filter: Use Qdrant MatchText filter on "content" field
-      - rerank: Retrieve 3x candidates, score keywords, weighted combination
-    </modes>
-    <hybrid-weights>70% vector + 30% keywords (in rerank mode)</hybrid-weights>
+  <module path="sparse.py">
+    <purpose>Sparse vector operations for Qdrant (BM25/SPLADE storage)</purpose>
+    <key-functions>
+      - ensure_sparse_collection(): Create sparse Qdrant collection if not exists
+      - upsert_sparse_vectors(): Upsert sparse vectors to Qdrant
+      - search_sparse_collection(): Search sparse collection with query vector
+      - delete_sparse_vectors(): Delete sparse vectors by chunk_id
+      - delete_sparse_collection(): Delete entire sparse collection
+      - generate_sparse_collection_name(): Generate naming convention (e.g., "docs_sparse_bm25")
+    </key-functions>
+    <note>Plugins generate sparse vectors; this module handles storage and retrieval</note>
   </module>
 
   <module path="embed_chunks_unified.py">
@@ -158,21 +160,20 @@
     <reranking>Optional via use_reranker=true</reranking>
   </search>
 
-  <hybrid>
-    <endpoint>GET /hybrid_search</endpoint>
-    <description>Vector + keyword fusion</description>
-    <modes>filter (Qdrant filter), weighted (post-process rerank)</modes>
-  </hybrid>
-
   <batch>
     <endpoint>POST /search/batch</endpoint>
     <description>Multiple queries in one request</description>
   </batch>
 
-  <keyword>
-    <endpoint>GET /keyword_search</endpoint>
-    <description>Keyword-only search via Qdrant scroll</description>
-  </keyword>
+  <search-modes>
+    <description>search_mode parameter controls sparse/hybrid search</description>
+    <modes>
+      - "dense": Dense vector search only (default)
+      - "sparse": Sparse vector search only (BM25/SPLADE, if enabled)
+      - "hybrid": Combined dense + sparse with RRF fusion
+    </modes>
+    <note>Falls back to dense with warning if sparse unavailable</note>
+  </search-modes>
 
   <embed>
     <endpoint>POST /embed</endpoint>
@@ -236,8 +237,11 @@
 
 <search-flow>
   1. Resolve collection: explicit > operation_uuid lookup > DEFAULT_COLLECTION
-  2. If search_type="hybrid", route to perform_hybrid_search()
-  3. Fetch collection metadata for model/quantization/instruction defaults
+  2. Fetch collection metadata for model/quantization/instruction defaults
+  3. Handle search_mode:
+     - "dense": Standard dense vector search
+     - "sparse": Sparse-only search (if sparse index exists), fallback to dense with warning
+     - "hybrid": Dense + sparse search with RRF fusion (rrf_k parameter)
   4. Embed query using same model that indexed the collection
   5. Search Qdrant for top-k similar vectors
   6. Filter results by score_threshold (BEFORE reranking)

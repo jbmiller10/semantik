@@ -30,6 +30,13 @@ MODEL_MEMORY_REQUIREMENTS = {
     ("Qwen/Qwen3-Reranker-8B", "float32"): 32000,
     ("Qwen/Qwen3-Reranker-8B", "float16"): 16000,
     ("Qwen/Qwen3-Reranker-8B", "int8"): 8000,
+    # SPLADE sparse indexer models (~110M params, BERT-base sized)
+    ("naver/splade-cocondenser-ensembledistil", "float32"): 880,
+    ("naver/splade-cocondenser-ensembledistil", "float16"): 440,
+    ("naver/splade-cocondenser-ensembledistil", "int8"): 220,
+    ("naver/splade-v3", "float32"): 880,
+    ("naver/splade-v3", "float16"): 440,
+    ("naver/splade-v3", "int8"): 220,
 }
 
 # Add 20% overhead for activations and temporary buffers

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { MCPProfile } from '../../types/mcp-profile';
-import { SEARCH_TYPE_LABELS } from '../../types/mcp-profile';
+import { SEARCH_TYPE_LABELS, SEARCH_MODE_LABELS } from '../../types/mcp-profile';
 import { useToggleMCPProfileEnabled } from '../../hooks/useMCPProfiles';
 
 interface ProfileCardProps {
@@ -137,11 +137,25 @@ export default function ProfileCard({
               {profile.use_reranker ? 'Yes' : 'No'}
             </span>
           </div>
+          <div>
+            <span className="text-gray-500">Mode:</span>{' '}
+            <span className="font-medium text-gray-900">
+              {SEARCH_MODE_LABELS[profile.search_mode]}
+            </span>
+          </div>
           {profile.search_type === 'hybrid' && profile.hybrid_alpha !== null && (
             <div>
               <span className="text-gray-500">Hybrid Alpha:</span>{' '}
               <span className="font-medium text-gray-900">
                 {profile.hybrid_alpha}
+              </span>
+            </div>
+          )}
+          {profile.search_mode === 'hybrid' && profile.rrf_k !== null && (
+            <div>
+              <span className="text-gray-500">RRF k:</span>{' '}
+              <span className="font-medium text-gray-900">
+                {profile.rrf_k}
               </span>
             </div>
           )}

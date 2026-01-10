@@ -23,6 +23,9 @@ from shared.database.models import DocumentStatus
 from webui.tasks.qdrant_utils import build_chunk_point
 from webui.tasks.utils import _build_internal_api_headers
 
+# Avoid circular import at module load - will import at call site
+_maybe_generate_sparse_vectors = None
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -751,6 +754,19 @@ async def result_processor(
                 except httpx.HTTPStatusError as exc:
                     response = exc.response
                     raise RuntimeError(f"Upsert failed: {response.status_code} - {response.text}") from exc
+
+            # Generate sparse vectors if sparse indexing is enabled
+            # Import lazily to avoid circular imports
+            global _maybe_generate_sparse_vectors
+            if _maybe_generate_sparse_vectors is None:
+                from webui.tasks.ingestion import _maybe_generate_sparse_vectors as _gen_sparse
+                _maybe_generate_sparse_vectors = _gen_sparse
+
+            await _maybe_generate_sparse_vectors(
+                chunks=result.chunks,
+                points=points,
+                qdrant_collection_name=qdrant_collection_name,
+            )
 
             # Update document status
             await _update_document_status(

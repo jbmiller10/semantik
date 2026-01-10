@@ -57,6 +57,7 @@ dependencies = [
     "mcp>=1.0.0,<2",
     "packages>=0.1.0",
     "claude-agent-sdk>=0.1.0,<1",
+    "rank-bm25>=0.2.2,<0.3",
 ]
 
 [project.scripts]
@@ -82,6 +83,8 @@ connector-git = "shared.connectors.git:GitConnector"
 connector-imap = "shared.connectors.imap:ImapConnector"
 # Agent plugins (Phase 3)
 agent-claude = "shared.plugins.builtins.claude_agent:ClaudeAgentPlugin"
+# Sparse indexer plugins (Phase 4)
+sparse_indexer-bm25 = "shared.plugins.builtins.bm25_sparse_indexer:BM25SparseIndexerPlugin"
 
 [dependency-groups]
 dev = [

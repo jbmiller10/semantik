@@ -76,6 +76,25 @@ class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Sparse indexing configuration
+class SparseIndexConfig(BaseModel):
+    """Configuration for sparse indexing during collection creation."""
+
+    enabled: bool = Field(default=False, description="Whether to enable sparse indexing")
+    plugin_id: str | None = Field(default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')")
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75} for BM25)",
+    )
+
+    @model_validator(mode="after")
+    def validate_plugin_required_when_enabled(self) -> "SparseIndexConfig":
+        """Validate that plugin_id is provided when enabled is True."""
+        if self.enabled and not self.plugin_id:
+            raise ValueError("plugin_id is required when sparse indexing is enabled")
+        return self
+
+
 # Collection schemas
 class CollectionBase(BaseModel):
     """Base collection schema."""
@@ -149,6 +168,12 @@ class CollectionCreate(CollectionBase):
         default=None,
         ge=15,
         description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    # Sparse indexing configuration
+    sparse_index_config: SparseIndexConfig | None = Field(
+        default=None,
+        description="Optional sparse indexing configuration (BM25/SPLADE) for hybrid search",
     )
 
     @model_validator(mode="after")
@@ -1050,4 +1075,158 @@ class ImapPreviewResponse(BaseModel):
                 "error": None,
             }
         }
+    )
+
+
+# =============================================================================
+# Sparse Index Schemas (Phase 3)
+# =============================================================================
+
+
+class SparseIndexStatusResponse(BaseModel):
+    """Status of sparse indexing for a collection."""
+
+    enabled: bool = Field(
+        description="Whether sparse indexing is enabled for this collection",
+    )
+    plugin_id: str | None = Field(
+        default=None,
+        description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')",
+    )
+    sparse_collection_name: str | None = Field(
+        default=None,
+        description="Name of the Qdrant sparse collection",
+    )
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        alias="model_config",
+        description="Plugin-specific configuration (e.g., BM25 k1/b parameters)",
+    )
+    document_count: int | None = Field(
+        default=None,
+        description="Number of documents in the sparse index",
+    )
+    created_at: str | None = Field(
+        default=None,
+        description="ISO datetime when sparse indexing was enabled",
+    )
+    last_indexed_at: str | None = Field(
+        default=None,
+        description="ISO datetime of last successful indexing",
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "enabled": True,
+                "plugin_id": "bm25-local",
+                "sparse_collection_name": "work_docs_sparse_bm25",
+                "model_config": {"k1": 1.2, "b": 0.75},
+                "document_count": 1234,
+                "created_at": "2025-01-08T12:00:00Z",
+                "last_indexed_at": "2025-01-08T14:30:00Z",
+            }
+        },
+    )
+
+
+class EnableSparseIndexRequest(BaseModel):
+    """Request to enable sparse indexing for a collection."""
+
+    plugin_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')",
+    )
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        alias="model_config",
+        description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75})",
+    )
+    reindex_existing: bool = Field(
+        default=False,
+        description="If True, immediately reindex all existing documents",
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "plugin_id": "bm25-local",
+                "model_config": {"k1": 1.2, "b": 0.75},
+                "reindex_existing": True,
+            }
+        },
+    )
+
+
+class SparseReindexResponse(BaseModel):
+    """Response for sparse index reindex request."""
+
+    job_id: str = Field(
+        description="Celery task ID for tracking progress",
+    )
+    status: str = Field(
+        description="Initial job status (typically 'queued')",
+    )
+    collection_uuid: str = Field(
+        description="UUID of the collection being reindexed",
+    )
+    plugin_id: str = Field(
+        description="Sparse indexer plugin being used",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "abc123-task-id",
+                "status": "queued",
+                "collection_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                "plugin_id": "bm25-local",
+            }
+        },
+    )
+
+
+class SparseReindexProgressResponse(BaseModel):
+    """Response for checking sparse reindex job progress."""
+
+    job_id: str = Field(
+        description="Celery task ID",
+    )
+    status: str = Field(
+        description="Job status: PENDING, STARTED, PROGRESS, SUCCESS, FAILURE",
+    )
+    progress: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Progress percentage (0-100)",
+    )
+    documents_processed: int | None = Field(
+        default=None,
+        description="Number of documents processed so far",
+    )
+    total_documents: int | None = Field(
+        default=None,
+        description="Total documents to process",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if job failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "abc123-task-id",
+                "status": "PROGRESS",
+                "progress": 45.0,
+                "documents_processed": 450,
+                "total_documents": 1000,
+                "error": None,
+            }
+        },
     )

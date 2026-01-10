@@ -80,6 +80,17 @@ export interface Operation {
   eta?: number;                    // Estimated time remaining in seconds
 }
 
+// Sparse indexing configuration for hybrid search
+export interface SparseIndexConfig {
+  enabled: boolean;
+  plugin_id?: 'bm25-local' | 'splade-local' | string;
+  model_config_data?: {
+    k1?: number;  // BM25 parameter: term frequency saturation (0.5-3.0)
+    b?: number;   // BM25 parameter: document length normalization (0.0-1.0)
+    max_sparse_length?: number;  // SPLADE parameter
+  };
+}
+
 // Request types for API calls
 export interface CreateCollectionRequest {
   name: string;
@@ -95,6 +106,8 @@ export interface CreateCollectionRequest {
   // Sync configuration
   sync_mode?: SyncMode;           // 'one_time' (default) or 'continuous'
   sync_interval_minutes?: number; // Required for continuous mode, minimum 15
+  // Sparse indexing configuration
+  sparse_index_config?: SparseIndexConfig;
 }
 
 export interface UpdateCollectionRequest {

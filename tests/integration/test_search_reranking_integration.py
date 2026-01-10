@@ -279,21 +279,17 @@ class TestSearchRerankingIntegration:
         assert data["results"][0]["collection_id"] == str(mock_collections[0].id)
         assert data["results"][1]["collection_id"] == str(mock_collections[1].id)
 
-    def test_search_api_reranking_with_hybrid_search(
-        self, client: TestClient, mock_collections: list[MagicMock]
-    ) -> None:
-        """Test search API with reranking and hybrid search."""
+    def test_search_api_reranking_with_hybrid_mode(self, client: TestClient, mock_collections: list[MagicMock]) -> None:
+        """Test search API with reranking and hybrid search mode."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
 
         # Create async mock for the method
         async def mock_multi_search(*args: Any, **kwargs: Any) -> dict[str, Any]:  # noqa: ARG001
             # Verify hybrid search parameters
-            assert kwargs["search_type"] == "hybrid"
-            assert kwargs["hybrid_alpha"] == 0.5
-            assert kwargs["hybrid_mode"] == "weighted"
+            assert kwargs["search_mode"] == "hybrid"
+            assert kwargs["rrf_k"] == 60
             assert kwargs["use_reranker"] is True
-            assert "hybrid_search_mode" not in kwargs
 
             return {
                 "results": [
@@ -313,6 +309,8 @@ class TestSearchRerankingIntegration:
                 "metadata": {
                     "total_results": 1,
                     "processing_time": 0.18,
+                    "search_mode_used": "hybrid",
+                    "warnings": [],
                     "collection_details": [
                         {
                             "collection_id": mock_collections[0].id,
@@ -335,17 +333,16 @@ class TestSearchRerankingIntegration:
                 "collection_uuids": [mock_collections[0].id],
                 "query": "test query",
                 "k": 10,
-                "search_type": "hybrid",
+                "search_mode": "hybrid",
+                "rrf_k": 60,
                 "use_reranker": True,
-                "hybrid_alpha": 0.5,
-                "hybrid_mode": "weighted",
             },
         )
 
         assert response.status_code == 200
         data = response.json()
 
-        assert data["search_type"] == "hybrid"
+        assert data["search_mode_used"] == "hybrid"
         assert data["reranking_used"] is True
         assert len(data["results"]) == 1
 

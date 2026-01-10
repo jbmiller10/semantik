@@ -1,34 +1,17 @@
 """Search API contracts for unified search functionality."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+# New search mode type for sparse/hybrid search
+SearchMode = Literal["dense", "sparse", "hybrid"]
+"""Search mode for sparse indexing integration.
 
-def normalize_hybrid_mode(value: str | None) -> str:
-    """Normalize hybrid mode to canonical values."""
-
-    if value is None:
-        return "weighted"
-
-    value_normalized = value.strip().lower()
-    valid_modes = {"weighted", "filter"}
-    if value_normalized not in valid_modes:
-        raise ValueError(f"Invalid hybrid_mode: {value}. Must be one of {valid_modes}")
-    return value_normalized
-
-
-def normalize_keyword_mode(value: str | None) -> str:
-    """Normalize keyword mode to canonical values."""
-
-    if value is None:
-        return "any"
-
-    value_normalized = value.strip().lower()
-    valid_modes = {"any", "all"}
-    if value_normalized not in valid_modes:
-        raise ValueError(f"Invalid keyword_mode: {value}. Must be one of {valid_modes}")
-    return value_normalized
+- "dense": Dense vector search only (default)
+- "sparse": Sparse vector search only (BM25/SPLADE)
+- "hybrid": Combined dense + sparse with RRF fusion
+"""
 
 
 class SearchRequest(BaseModel):
@@ -37,7 +20,10 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000, description="Search query text")
     # Use 'k' as the canonical field, but accept 'top_k' as an alias for backward compatibility
     k: int = Field(default=10, ge=1, le=100, description="Number of results", alias="top_k")
-    search_type: str = Field("semantic", description="Type of search: semantic, question, code, hybrid, vector")
+    search_type: str = Field(
+        "semantic",
+        description="Type of search: semantic, question, code. (Deprecated: use search_mode for hybrid)",
+    )
     model_name: str | None = Field(None, description="Override embedding model")
     quantization: str | None = Field(None, description="Override quantization: float32, float16, int8")
     filters: dict[str, Any] | None = Field(None, description="Metadata filters for search")
@@ -48,14 +34,22 @@ class SearchRequest(BaseModel):
     rerank_model: str | None = Field(None, description="Override reranker model")
     rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
     score_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Minimum score threshold")
-    # Hybrid search specific parameters
-    hybrid_alpha: float = Field(0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
-    hybrid_mode: str = Field("weighted", description="Hybrid search mode: 'filter' or 'weighted'")
-    keyword_mode: str = Field("any", description="Keyword matching: 'any' or 'all'")
+
+    # Sparse indexing search mode (new in v2)
+    search_mode: SearchMode = Field(
+        "dense",
+        description="Search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE), 'hybrid' (RRF fusion)",
+    )
+    rrf_k: int = Field(
+        default=60,
+        ge=1,
+        le=1000,
+        description="RRF constant for hybrid search score fusion (higher = more emphasis on lower ranks)",
+    )
 
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
-        extra = "forbid"  # Reject extra fields
+        extra = "forbid"
 
     @field_validator("query")
     @classmethod
@@ -70,29 +64,10 @@ class SearchRequest(BaseModel):
         # Map 'vector' to 'semantic' for backward compatibility
         if v == "vector":
             return "semantic"
+        # Note: 'hybrid' in search_type is deprecated, use search_mode="hybrid" instead
         valid_types = {"semantic", "question", "code", "hybrid", "vector"}
         if v not in valid_types:
             raise ValueError(f"Invalid search_type: {v}. Must be one of {valid_types}")
-        return v
-
-    @field_validator("hybrid_mode")
-    @classmethod
-    def validate_hybrid_mode(cls, v: str) -> str:
-        """Validate hybrid mode."""
-        v = normalize_hybrid_mode(v)
-        valid_modes = {"filter", "weighted"}
-        if v not in valid_modes:
-            raise ValueError(f"Invalid hybrid_mode: {v}. Must be one of {valid_modes}")
-        return v
-
-    @field_validator("keyword_mode")
-    @classmethod
-    def validate_keyword_mode(cls, v: str) -> str:
-        """Validate keyword mode."""
-        v = normalize_keyword_mode(v)
-        valid_modes = {"any", "all"}
-        if v not in valid_modes:
-            raise ValueError(f"Invalid keyword_mode: {v}. Must be one of {valid_modes}")
         return v
 
 
@@ -130,6 +105,18 @@ class SearchResponse(BaseModel):
     collection: str | None = None
     api_version: str = Field(default="1.0", description="API version")
 
+    # Sparse indexing fields (new in v2)
+    search_mode_used: SearchMode | None = Field(
+        None,
+        description="Actual search mode used (may differ from requested if sparse unavailable)",
+    )
+    sparse_search_time_ms: float | None = Field(None, description="Time for sparse search (if used)")
+    rrf_fusion_time_ms: float | None = Field(None, description="Time for RRF fusion (if hybrid)")
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal warnings (e.g., sparse search requested but not available)",
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -146,10 +133,12 @@ class SearchResponse(BaseModel):
                 ],
                 "num_results": 1,
                 "search_type": "semantic",
+                "search_mode_used": "dense",
                 "model_used": "BAAI/bge-small-en-v1.5",
                 "embedding_time_ms": 23.5,
                 "search_time_ms": 45.2,
                 "collection": "work_docs",
+                "warnings": [],
             }
         }
 
@@ -184,50 +173,7 @@ class BatchSearchResponse(BaseModel):
     api_version: str = Field(default="1.0", description="API version")
 
 
-class HybridSearchResult(BaseModel):
-    """Hybrid search result with keyword matching information."""
-
-    path: str = Field(..., max_length=4096)
-    chunk_id: str = Field(..., max_length=200)
-    score: float
-    doc_id: str = Field(..., max_length=200)
-    matched_keywords: list[str] = Field(default_factory=list)
-    keyword_score: float | None = None
-    combined_score: float | None = None
-    metadata: dict[str, Any] | None = None
-    content: str | None = Field(None, max_length=10000)
-    chunk_index: int | None = None
-    total_chunks: int | None = None
-
-
-class HybridSearchResponse(BaseModel):
-    """Hybrid search response."""
-
-    query: str
-    results: list[HybridSearchResult]
-    num_results: int
-    keywords_extracted: list[str]
-    search_mode: str  # "filter" or "weighted"
-    api_version: str = Field(default="1.0", description="API version")
-
-
-class HybridSearchRequest(BaseModel):
-    """Hybrid search request model (simplified version for backward compatibility)."""
-
-    query: str = Field(..., min_length=1, max_length=1000)
-    k: int = Field(default=10, ge=1, le=100)
-    operation_uuid: str | None = Field(None, max_length=200)
-    mode: str = Field(default="filter", max_length=20, description="Hybrid search mode: 'filter' or 'weighted'")
-    keyword_mode: str = Field(default="any", max_length=20, description="Keyword matching: 'any' or 'all'")
-    score_threshold: float | None = None
-    collection: str | None = Field(None, max_length=200)
-    model_name: str | None = Field(None, max_length=500)
-    quantization: str | None = Field(None, max_length=20)
-
-    @field_validator("mode", mode="before")
-    @classmethod
-    def normalize_mode(cls, value: str) -> str:
-        return normalize_hybrid_mode(value)
+# Legacy hybrid search classes removed in v2 - use search_mode="hybrid" instead
 
 
 # Additional models for specialized endpoints

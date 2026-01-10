@@ -121,6 +121,8 @@ describe('SearchInterface', () => {
     hybridAlpha: 0.95,
     hybridMode: 'weighted' as const,
     keywordMode: 'any' as const,
+    searchMode: 'dense' as const,
+    rrfK: 60,
   }
 
   beforeEach(() => {
@@ -202,17 +204,18 @@ describe('SearchInterface', () => {
 
     render(<SearchInterface />)
 
-    const searchTypeSelect = screen.getByLabelText('Search Type')
-    await user.selectOptions(searchTypeSelect, 'hybrid')
+    // Search mode is now controlled via SearchModeSelector buttons
+    const hybridButton = screen.getByRole('button', { name: /hybrid/i })
+    await user.click(hybridButton)
 
     await waitFor(() => {
-      expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ searchType: 'hybrid' })
+      expect(mockValidateAndUpdateSearchParams).toHaveBeenCalledWith({ searchMode: 'hybrid' })
     })
   })
 
   it('shows hybrid search options when enabled', async () => {
     vi.mocked(useSearchStore).mockReturnValue({
-      searchParams: { ...defaultSearchParams, searchType: 'hybrid' },
+      searchParams: { ...defaultSearchParams, searchMode: 'hybrid' as const },
       updateSearchParams: mockUpdateSearchParams,
       validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
       setResults: mockSetResults,
@@ -229,9 +232,9 @@ describe('SearchInterface', () => {
 
     render(<SearchInterface />)
 
+    // New SearchModeSelector shows RRF config when in hybrid mode
     expect(screen.getByText('Hybrid Search Configuration')).toBeInTheDocument()
-    expect(screen.getByText(/Alpha \(Semantic Weight\):/)).toBeInTheDocument()
-    expect(screen.getByText('Fusion Mode')).toBeInTheDocument()
+    expect(screen.getByText(/RRF Weighting/)).toBeInTheDocument()
   })
 
   it('toggles reranking options', async () => {

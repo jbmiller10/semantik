@@ -3,12 +3,14 @@ import { Search, X, Loader2 } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
 import SearchOptions from './SearchOptions';
+import { SearchModeSelector } from './SearchModeSelector';
 import { searchV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import { sanitizeQuery } from '../../utils/searchValidation';
 
 import type { Collection } from '../../types/collection';
 import type { SearchResult as ApiSearchResult } from '../../services/api/v2/types';
+import type { SearchMode } from '../../types/sparse-index';
 
 interface SearchFormProps {
     collections: Collection[];
@@ -112,6 +114,10 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     search_type: searchParams.searchType,
                     use_reranker: searchParams.useReranker,
                     rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+                    // New sparse/hybrid search parameters
+                    search_mode: searchParams.searchMode,
+                    rrf_k: searchParams.searchMode === 'hybrid' ? searchParams.rrfK : undefined,
+                    // Legacy hybrid parameters (deprecated - kept for backward compatibility)
                     hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
                     hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
                     keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
@@ -155,6 +161,13 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         rerankingTimeMs: response.data.reranking_time_ms,
                         original_count: response.data.total_results, // Approximation
                         reranked_count: mappedResults.length
+                    });
+                }
+
+                // Show warnings from the backend (e.g., sparse fallback to dense)
+                if (response.data.warnings && response.data.warnings.length > 0) {
+                    response.data.warnings.forEach((warning: string) => {
+                        addToast({ type: 'warning', message: warning, duration: 5000 });
                     });
                 }
             }
@@ -269,10 +282,10 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         )}
                     </div>
 
-                    {/* Search Type Selector */}
+                    {/* Embedding Mode Selector (for instruction prefix) */}
                     <div>
                         <label htmlFor="search-type" className="block text-sm font-medium text-gray-700 mb-1">
-                            Search Type
+                            Embedding Mode
                         </label>
                         <select
                             id="search-type"
@@ -284,67 +297,26 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                             disabled={loading}
                         >
-                            <option value="semantic">Semantic Search</option>
-                            <option value="hybrid">Hybrid Search</option>
-                            {/* Backend supports these, exposing them now */}
+                            <option value="semantic">General</option>
                             <option value="question">Question Answering</option>
                             <option value="code">Code Search</option>
                         </select>
                         <p className="mt-1 text-xs text-gray-500">
-                            {searchParams.searchType === 'semantic' && 'Finds meaning-based matches'}
-                            {searchParams.searchType === 'hybrid' && 'Combines keyword and semantic search'}
-                            {searchParams.searchType === 'question' && 'Optimized for natural language questions'}
-                            {searchParams.searchType === 'code' && 'Optimized for code snippets'}
+                            Controls embedding instruction/prefix
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Hybrid Search Configuration */}
-            {searchParams.searchType === 'hybrid' && (
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-4">
-                    <h4 className="font-medium text-blue-900">Hybrid Search Configuration</h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-blue-800 mb-1">
-                                Alpha (Semantic Weight): {searchParams.hybridAlpha}
-                            </label>
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                value={searchParams.hybridAlpha}
-                                onChange={(e) => {
-                                    setFieldTouched('hybridAlpha', true);
-                                    validateAndUpdateSearchParams({ hybridAlpha: parseFloat(e.target.value) });
-                                }}
-                                className="w-full"
-                            />
-                            <div className="flex justify-between text-xs text-blue-600">
-                                <span>Keyword (0.0)</span>
-                                <span>Semantic (1.0)</span>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label htmlFor="fusion-mode" className="block text-sm font-medium text-blue-800 mb-1">
-                                Fusion Mode
-                            </label>
-                            <select
-                                id="fusion-mode"
-                                value={searchParams.hybridMode}
-                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'weighted' | 'filter' })}
-                                className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm"
-                            >
-                                <option value="weighted">Weighted Sum</option>
-                                <option value="filter">Keyword Filter</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
+            <SearchModeSelector
+                searchMode={searchParams.searchMode}
+                rrfK={searchParams.rrfK}
+                onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
+                onRrfKChange={(k: number) => validateAndUpdateSearchParams({ rrfK: k })}
+                disabled={loading}
+                sparseAvailable={true}
+            />
 
             {/* Advanced Options */}
             <SearchOptions />

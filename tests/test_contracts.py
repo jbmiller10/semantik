@@ -17,8 +17,6 @@ from shared.contracts.errors import (
 )
 from shared.contracts.search import (
     BatchSearchRequest,
-    HybridSearchRequest,
-    HybridSearchResult,
     PreloadModelRequest,
     PreloadModelResponse,
     SearchRequest,
@@ -66,6 +64,14 @@ class TestSearchContracts:
         with pytest.raises(ValidationError) as exc_info:
             SearchRequest(query="test", search_type="invalid")
         assert "Invalid search_type" in str(exc_info.value)
+
+    def test_search_request_rrf_k_validation(self) -> None:
+        """Test rrf_k validation range for sparse/hybrid search."""
+        req = SearchRequest(query="test", search_mode="hybrid", rrf_k=1000)
+        assert req.rrf_k == 1000
+
+        with pytest.raises(ValidationError):
+            SearchRequest(query="test", search_mode="hybrid", rrf_k=1001)
 
     def test_search_result_optional_fields(self) -> None:
         """Test SearchResult with optional fields."""
@@ -133,27 +139,6 @@ class TestSearchContractsExtended:
             SearchResult(chunk_id="chunk1", score=0.95, path="/test.txt")  # type: ignore[call-arg]
         assert "doc_id" in str(exc_info.value)
 
-    def test_hybrid_search_result_required_doc_id(self) -> None:
-        """Test that doc_id is required in HybridSearchResult."""
-
-        # Should fail without doc_id
-        with pytest.raises(ValidationError) as exc_info:
-            HybridSearchResult(path="/test.txt", chunk_id="chunk1", score=0.95)  # type: ignore[call-arg]
-        assert "doc_id" in str(exc_info.value)
-
-        # Should succeed with doc_id
-        result = HybridSearchResult(
-            path="/test.txt",
-            chunk_id="chunk1",
-            score=0.95,
-            doc_id="doc123",
-            matched_keywords=["test", "keyword"],
-            keyword_score=0.8,
-            combined_score=0.875,
-        )
-        assert result.doc_id == "doc123"
-        assert result.matched_keywords == ["test", "keyword"]
-
     def test_batch_search_request(self) -> None:
         """Test BatchSearchRequest validation."""
 
@@ -171,15 +156,6 @@ class TestSearchContractsExtended:
         with pytest.raises(ValidationError) as exc_info:
             BatchSearchRequest(queries=["q"] * 101)
         assert "at most 100 items" in str(exc_info.value)
-
-    def test_hybrid_search_request(self) -> None:
-        """Test HybridSearchRequest validation."""
-
-        req = HybridSearchRequest(query="test query", k=15, mode="weighted", keyword_mode="all", score_threshold=0.7)
-        assert req.query == "test query"
-        assert req.k == 15
-        assert req.mode == "weighted"
-        assert req.keyword_mode == "all"
 
     def test_preload_model_request_response(self) -> None:
         """Test PreloadModelRequest and Response."""

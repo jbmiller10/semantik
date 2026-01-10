@@ -3,19 +3,21 @@
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
-from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
+
+# Type alias for search mode
+SearchMode = Literal["dense", "sparse", "hybrid"]
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +140,7 @@ class SearchService:
         k: int,
         search_params: dict[str, Any],
         timeout: httpx.Timeout | None = None,
-    ) -> tuple[Collection, list[dict[str, Any]] | None, str | None]:
+    ) -> tuple[Collection, dict[str, Any] | None, str | None]:
         """Search a single collection and return results.
 
         Args:
@@ -149,7 +151,7 @@ class SearchService:
             timeout: HTTP timeout settings
 
         Returns:
-            Tuple of (collection, results, error_message)
+            Tuple of (collection, search_response, error_message)
         """
         # Skip collections that aren't ready
         if collection.status != CollectionStatus.READY:
@@ -164,11 +166,10 @@ class SearchService:
         if "hybrid_search_mode" in base_params:
             raise ValueError("legacy field 'hybrid_search_mode' is no longer supported")
 
-        if "hybrid_mode" in base_params and base_params["hybrid_mode"] is not None:
-            base_params["hybrid_mode"] = normalize_hybrid_mode(base_params["hybrid_mode"])
-
-        if "keyword_mode" in base_params:
-            base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
+        # Remove any legacy hybrid mode parameters
+        base_params.pop("hybrid_mode", None)
+        base_params.pop("keyword_mode", None)
+        base_params.pop("hybrid_alpha", None)
 
         collection_search_params = {
             **base_params,
@@ -192,8 +193,12 @@ class SearchService:
                 )
                 response.raise_for_status()
 
-            result = response.json()
-            return (collection, result.get("results", []), None)
+            result: dict[str, Any] = response.json()
+            # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+            result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+            if not isinstance(result.get("warnings"), list):
+                result["warnings"] = []
+            return (collection, result, None)
 
         except httpx.ReadTimeout:
             # Retry with longer timeout
@@ -222,8 +227,12 @@ class SearchService:
                     )
                     response.raise_for_status()
 
-                result = response.json()
-                return (collection, result.get("results", []), None)
+                result: dict[str, Any] = response.json()
+                # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+                result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+                if not isinstance(result.get("warnings"), list):
+                    result["warnings"] = []
+                return (collection, result, None)
 
             except httpx.HTTPStatusError as e:
                 return self._handle_http_error(e, collection, retry=True)
@@ -286,14 +295,13 @@ class SearchService:
         query: str,
         k: int = 10,
         search_type: str = "semantic",
+        search_mode: SearchMode = "dense",
+        rrf_k: int = 60,
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
-        hybrid_alpha: float = 0.7,
-        hybrid_mode: str = "weighted",
-        keyword_mode: str = "any",
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -302,27 +310,26 @@ class SearchService:
             collection_uuids: List of collection UUIDs to search
             query: Search query
             k: Number of results to return
-            search_type: Type of search (semantic, hybrid, etc.)
+            search_type: Type of search (semantic, question, code)
+            search_mode: Search mode (dense, sparse, hybrid)
+            rrf_k: RRF constant k for hybrid mode ranking
             score_threshold: Minimum score threshold for results
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use reranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
-            hybrid_alpha: Weight for hybrid search
-            hybrid_mode: Mode for hybrid search
-            keyword_mode: Keyword matching mode when using hybrid search
 
         Returns:
             Dictionary with search results and metadata
         """
         start_time = time.time()
+        warnings: list[str] = []
+        search_mode_used: SearchMode = search_mode
+        search_modes_used: set[SearchMode] = set()
+        warning_set: set[str] = set()
 
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
-
-        # Validate requested hybrid/keyword modes
-        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
-        keyword_mode = normalize_keyword_mode(keyword_mode)
 
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
@@ -334,21 +341,13 @@ class SearchService:
         # Build common search parameters
         search_params = {
             "search_type": search_type,
+            "search_mode": search_mode,
+            "rrf_k": rrf_k,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
         }
-
-        # Add hybrid search parameters if applicable
-        if search_type == "hybrid":
-            search_params.update(
-                {
-                    "hybrid_alpha": hybrid_alpha,
-                    "hybrid_mode": hybrid_mode,
-                    "keyword_mode": keyword_mode,
-                }
-            )
 
         # Create timeout for searches
         timeout = self.default_timeout
@@ -365,7 +364,7 @@ class SearchService:
         collection_results = []
         errors = []
 
-        for collection, results, error in search_results:
+        for collection, response, error in search_results:
             if error:
                 errors.append(error)
                 collection_results.append(
@@ -377,6 +376,22 @@ class SearchService:
                     }
                 )
             else:
+                response = response or {}
+                collection_warnings = response.get("warnings", [])
+                if isinstance(collection_warnings, list):
+                    for warning in collection_warnings:
+                        if isinstance(warning, str) and warning and warning not in warning_set:
+                            warning_set.add(warning)
+                            warnings.append(warning)
+
+                collection_search_mode_used = response.get("search_mode_used", search_mode)
+                if collection_search_mode_used in ("dense", "sparse", "hybrid"):
+                    search_modes_used.add(collection_search_mode_used)
+
+                results = response.get("results", [])
+                if not isinstance(results, list):
+                    results = []
+
                 if results:
                     # Add collection info to each result
                     for result in results:
@@ -393,8 +408,23 @@ class SearchService:
                         "collection_id": collection.id,
                         "collection_name": collection.name,
                         "result_count": len(results) if results else 0,
+                        "search_mode_used": collection_search_mode_used,
+                        "warnings": collection_warnings if isinstance(collection_warnings, list) else [],
                     }
                 )
+
+        # If sparse/hybrid search was requested, vecpipe may fall back to dense per collection.
+        # Report the most conservative mode when collection modes differ.
+        if search_modes_used:
+            if len(search_modes_used) == 1:
+                search_mode_used = next(iter(search_modes_used))
+            else:
+                if "dense" in search_modes_used:
+                    search_mode_used = "dense"
+                elif "hybrid" in search_modes_used:
+                    search_mode_used = "hybrid"
+                else:
+                    search_mode_used = "sparse"
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
         all_results.sort(key=self._result_sort_key, reverse=True)
@@ -412,6 +442,8 @@ class SearchService:
                 "collection_details": collection_results,
                 "processing_time": processing_time,
                 "errors": errors if errors else None,
+                "search_mode_used": search_mode_used,
+                "warnings": warnings,
             },
         }
 
@@ -422,14 +454,13 @@ class SearchService:
         query: str,
         k: int = 10,
         search_type: str = "semantic",
+        search_mode: SearchMode = "dense",
+        rrf_k: int = 60,
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
-        hybrid_alpha: float = 0.7,
-        hybrid_mode: str = "weighted",
-        keyword_mode: str = "any",
         include_content: bool = True,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
@@ -439,27 +470,25 @@ class SearchService:
             collection_uuid: UUID of the collection to search
             query: Search query
             k: Number of results to return
-            search_type: Type of search
+            search_type: Type of search (semantic, question, code)
+            search_mode: Search mode (dense, sparse, hybrid)
+            rrf_k: RRF constant k for hybrid mode ranking
             score_threshold: Minimum score threshold
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use re-ranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
-            hybrid_alpha: Weight for hybrid search
-            hybrid_mode: Mode for hybrid search
-            keyword_mode: Keyword matching mode when using hybrid search
             include_content: Whether to include document content
 
         Returns:
             Dictionary with search results
         """
+        warnings: list[str] = []
+        search_mode_used: SearchMode = search_mode
+
         # Validate collection access
         collections = await self.validate_collection_access([collection_uuid], user_id)
         collection = collections[0]
-
-        # Build search parameters
-        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
-        keyword_mode = normalize_keyword_mode(keyword_mode)
 
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
@@ -475,22 +504,14 @@ class SearchService:
             "model_name": collection.embedding_model,
             "quantization": collection.quantization,
             "search_type": search_type,
+            "search_mode": search_mode,
+            "rrf_k": rrf_k,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
             "include_content": include_content,
         }
-
-        # Add hybrid search parameters if applicable
-        if search_type == "hybrid":
-            search_params.update(
-                {
-                    "hybrid_alpha": hybrid_alpha,
-                    "hybrid_mode": hybrid_mode,
-                    "keyword_mode": keyword_mode,
-                }
-            )
 
         try:
             # Use a longer timeout for single collection searches
@@ -508,6 +529,9 @@ class SearchService:
                 response.raise_for_status()
 
             result: dict[str, Any] = response.json()
+            # Add search_mode metadata to result
+            result["search_mode_used"] = result.get("search_mode_used", search_mode_used)
+            result["warnings"] = result.get("warnings", warnings)
             return result
 
         except httpx.HTTPStatusError as e:

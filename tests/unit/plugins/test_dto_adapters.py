@@ -696,3 +696,271 @@ class TestEmbeddingProviderDefinitionAdapter:
 
         with pytest.raises(ValidationError, match="missing required keys"):
             dict_to_embedding_provider_definition({"api_id": "test"})
+
+
+class TestSparseVectorAdapter:
+    """Test SparseVector round-trip conversion."""
+
+    def test_round_trip_preserves_data(self):
+        """Verify dataclass -> dict -> dataclass preserves all fields."""
+        from shared.plugins.dto_adapters import (
+            dict_to_sparse_vector,
+            sparse_vector_to_dict,
+        )
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        original = SparseVector(
+            indices=(1, 5, 42),
+            values=(2.3, 1.8, 3.1),
+            chunk_id="chunk-123",
+            metadata={"key": "value"},
+        )
+
+        dict_form = sparse_vector_to_dict(original)
+        restored = dict_to_sparse_vector(dict_form)
+
+        assert tuple(restored.indices) == original.indices
+        assert tuple(restored.values) == original.values
+        assert restored.chunk_id == original.chunk_id
+        assert restored.metadata == original.metadata
+
+    def test_round_trip_without_metadata(self):
+        """Verify round-trip works without optional metadata."""
+        from shared.plugins.dto_adapters import (
+            dict_to_sparse_vector,
+            sparse_vector_to_dict,
+        )
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        original = SparseVector(
+            indices=(1, 2),
+            values=(0.5, 0.8),
+            chunk_id="chunk-456",
+        )
+
+        dict_form = sparse_vector_to_dict(original)
+        restored = dict_to_sparse_vector(dict_form)
+
+        assert tuple(restored.indices) == original.indices
+        assert tuple(restored.values) == original.values
+        assert restored.chunk_id == original.chunk_id
+
+    def test_validation_rejects_missing_chunk_id(self):
+        """Verify validation catches missing chunk_id."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_vector,
+        )
+
+        with pytest.raises(ValidationError, match="missing required keys"):
+            dict_to_sparse_vector({"indices": [1, 2], "values": [0.5, 0.8]})
+
+    def test_validation_rejects_mismatched_lengths(self):
+        """Verify validation catches indices/values length mismatch."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_vector,
+        )
+
+        with pytest.raises(ValidationError, match="same length"):
+            dict_to_sparse_vector(
+                {
+                    "indices": [1, 2, 3],
+                    "values": [0.5, 0.8],  # Different length
+                    "chunk_id": "chunk-123",
+                }
+            )
+
+    def test_coerce_from_dict(self):
+        """Verify coerce_to_sparse_vector accepts dict."""
+        from shared.plugins.dto_adapters import coerce_to_sparse_vector
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        d = {"indices": [1], "values": [1.0], "chunk_id": "c1"}
+        result = coerce_to_sparse_vector(d)
+        assert isinstance(result, SparseVector)
+        assert result.chunk_id == "c1"
+
+    def test_coerce_from_dataclass(self):
+        """Verify coerce_to_sparse_vector accepts dataclass."""
+        from shared.plugins.dto_adapters import coerce_to_sparse_vector
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        original = SparseVector(indices=(1,), values=(1.0,), chunk_id="c1")
+        result = coerce_to_sparse_vector(original)
+        assert result is original
+
+
+class TestSparseQueryVectorAdapter:
+    """Test SparseQueryVector round-trip conversion."""
+
+    def test_round_trip_preserves_data(self):
+        """Verify dataclass -> dict -> dataclass preserves all fields."""
+        from shared.plugins.dto_adapters import (
+            dict_to_sparse_query_vector,
+            sparse_query_vector_to_dict,
+        )
+        from shared.plugins.types.sparse_indexer import SparseQueryVector
+
+        original = SparseQueryVector(
+            indices=(1, 42),
+            values=(1.0, 2.5),
+        )
+
+        dict_form = sparse_query_vector_to_dict(original)
+        restored = dict_to_sparse_query_vector(dict_form)
+
+        assert tuple(restored.indices) == original.indices
+        assert tuple(restored.values) == original.values
+
+    def test_validation_rejects_missing_values(self):
+        """Verify validation catches missing values."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_query_vector,
+        )
+
+        with pytest.raises(ValidationError, match="missing required keys"):
+            dict_to_sparse_query_vector({"indices": [1, 2]})
+
+    def test_validation_rejects_mismatched_lengths(self):
+        """Verify validation catches indices/values length mismatch."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_query_vector,
+        )
+
+        with pytest.raises(ValidationError, match="same length"):
+            dict_to_sparse_query_vector(
+                {
+                    "indices": [1, 2, 3],
+                    "values": [0.5],  # Different length
+                }
+            )
+
+    def test_coerce_from_dict(self):
+        """Verify coerce_to_sparse_query_vector accepts dict."""
+        from shared.plugins.dto_adapters import coerce_to_sparse_query_vector
+        from shared.plugins.types.sparse_indexer import SparseQueryVector
+
+        d = {"indices": [1], "values": [1.0]}
+        result = coerce_to_sparse_query_vector(d)
+        assert isinstance(result, SparseQueryVector)
+
+    def test_coerce_from_dataclass(self):
+        """Verify coerce_to_sparse_query_vector accepts dataclass."""
+        from shared.plugins.dto_adapters import coerce_to_sparse_query_vector
+        from shared.plugins.types.sparse_indexer import SparseQueryVector
+
+        original = SparseQueryVector(indices=(1,), values=(1.0,))
+        result = coerce_to_sparse_query_vector(original)
+        assert result is original
+
+
+class TestSparseIndexerCapabilitiesAdapter:
+    """Test SparseIndexerCapabilities round-trip conversion."""
+
+    def test_round_trip_bm25_preserves_data(self):
+        """Verify dataclass -> dict -> dataclass preserves all fields for BM25."""
+        from shared.plugins.dto_adapters import (
+            dict_to_sparse_indexer_capabilities,
+            sparse_indexer_capabilities_to_dict,
+        )
+        from shared.plugins.types.sparse_indexer import SparseIndexerCapabilities
+
+        original = SparseIndexerCapabilities(
+            sparse_type="bm25",
+            max_tokens=8192,
+            vocabulary_handling="direct",
+            supports_batching=True,
+            max_batch_size=100,
+            requires_corpus_stats=True,
+            max_terms_per_vector=500,
+            vocabulary_size=50000,
+            supports_filters=True,
+            idf_storage="qdrant_point",
+            supported_languages=("en", "de", "fr"),
+        )
+
+        dict_form = sparse_indexer_capabilities_to_dict(original)
+        restored = dict_to_sparse_indexer_capabilities(dict_form)
+
+        assert restored.sparse_type == original.sparse_type
+        assert restored.max_tokens == original.max_tokens
+        assert restored.vocabulary_handling == original.vocabulary_handling
+        assert restored.supports_batching == original.supports_batching
+        assert restored.max_batch_size == original.max_batch_size
+        assert restored.requires_corpus_stats == original.requires_corpus_stats
+        assert restored.max_terms_per_vector == original.max_terms_per_vector
+        assert restored.vocabulary_size == original.vocabulary_size
+        assert restored.supports_filters == original.supports_filters
+        assert restored.idf_storage == original.idf_storage
+        assert restored.supported_languages == original.supported_languages
+
+    def test_round_trip_splade_preserves_data(self):
+        """Verify round-trip works for SPLADE type."""
+        from shared.plugins.dto_adapters import (
+            dict_to_sparse_indexer_capabilities,
+            sparse_indexer_capabilities_to_dict,
+        )
+        from shared.plugins.types.sparse_indexer import SparseIndexerCapabilities
+
+        original = SparseIndexerCapabilities(
+            sparse_type="splade",
+            max_tokens=512,
+            requires_corpus_stats=False,  # SPLADE is stateless
+        )
+
+        dict_form = sparse_indexer_capabilities_to_dict(original)
+        restored = dict_to_sparse_indexer_capabilities(dict_form)
+
+        assert restored.sparse_type == "splade"
+        assert restored.max_tokens == 512
+        assert restored.requires_corpus_stats is False
+
+    def test_validation_rejects_invalid_sparse_type(self):
+        """Verify validation catches invalid sparse_type."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_indexer_capabilities,
+        )
+
+        with pytest.raises(ValidationError, match="Invalid sparse_type"):
+            dict_to_sparse_indexer_capabilities(
+                {
+                    "sparse_type": "invalid",
+                    "max_tokens": 1000,
+                }
+            )
+
+    def test_validation_rejects_missing_required_keys(self):
+        """Verify validation catches missing required fields."""
+        from shared.plugins.dto_adapters import (
+            ValidationError,
+            dict_to_sparse_indexer_capabilities,
+        )
+
+        with pytest.raises(ValidationError, match="missing required keys"):
+            dict_to_sparse_indexer_capabilities({"sparse_type": "bm25"})
+
+    def test_defaults_applied_correctly(self):
+        """Verify default values are applied for optional fields."""
+        from shared.plugins.dto_adapters import dict_to_sparse_indexer_capabilities
+
+        result = dict_to_sparse_indexer_capabilities(
+            {
+                "sparse_type": "bm25",
+                "max_tokens": 1000,
+            }
+        )
+
+        # Check defaults
+        assert result.vocabulary_handling == "direct"
+        assert result.supports_batching is True
+        assert result.max_batch_size == 64
+        assert result.requires_corpus_stats is False
+        assert result.supports_filters is False
+        assert result.idf_storage == "file"
+        assert result.max_terms_per_vector is None
+        assert result.vocabulary_size is None
+        assert result.supported_languages is None

@@ -24,7 +24,7 @@ class PluginProtocol(Protocol):
     """Base protocol all plugins must satisfy."""
 
     PLUGIN_TYPE: ClassVar[str]
-    """Plugin type: 'connector', 'embedding', 'chunking', 'reranker', 'extractor', or 'agent'."""
+    """Plugin type: 'connector', 'embedding', 'chunking', 'reranker', 'extractor', 'agent', or 'sparse_indexer'."""
 
     PLUGIN_ID: ClassVar[str]
     """Unique plugin identifier within its type (lowercase, hyphens recommended)."""
@@ -721,6 +721,206 @@ Valid values for `supported_use_cases()`:
 
 ---
 
+## Sparse Indexer Protocol
+
+```python
+@runtime_checkable
+class SparseIndexerProtocol(Protocol):
+    """Protocol for sparse indexing plugins (BM25, SPLADE, etc.).
+
+    Sparse indexers generate sparse vector representations for documents.
+    The plugin is responsible ONLY for vector generation - persistence to
+    Qdrant is handled by vecpipe infrastructure.
+
+    Two main types:
+    - BM25: Classic term-frequency based retrieval (indices=term_ids, values=tf-idf)
+    - SPLADE: Learned sparse representations (indices=token_ids, values=learned_weights)
+
+    Return Type Convention:
+    - External plugins (dict-based): Return list[dict] from encode_documents()
+    - Built-in plugins (ABC-based): Return list[SparseVector] from encode_documents()
+
+    The DTO adapter layer handles bidirectional conversion.
+    """
+
+    PLUGIN_ID: ClassVar[str]
+    PLUGIN_TYPE: ClassVar[str]  # Must be "sparse_indexer"
+    PLUGIN_VERSION: ClassVar[str]
+    SPARSE_TYPE: ClassVar[str]
+    """Sparse representation type: 'bm25' or 'splade'. See SPARSE_TYPES."""
+
+    async def encode_documents(
+        self, documents: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Generate sparse vectors for documents.
+
+        Args:
+            documents: List of documents with keys:
+                - content (str): Document/chunk text
+                - chunk_id (str): Unique chunk identifier (aligns with dense vectors)
+                - metadata (dict, optional): Additional metadata
+
+        Returns:
+            List of SparseVectorDict dictionaries.
+        """
+        ...
+
+    async def encode_query(self, query: str) -> dict[str, Any]:
+        """Generate sparse vector for a search query.
+
+        Args:
+            query: Search query text.
+
+        Returns:
+            SparseQueryVectorDict with indices and values.
+        """
+        ...
+
+    async def remove_documents(self, chunk_ids: list[str]) -> None:
+        """Clean up any plugin-internal state for removed chunks.
+
+        Called when chunks are deleted from the collection.
+        For stateless plugins (like SPLADE), this may be a no-op.
+        For BM25, this updates IDF statistics.
+
+        Args:
+            chunk_ids: List of chunk IDs being removed.
+        """
+        ...
+
+    @classmethod
+    def get_capabilities(cls) -> dict[str, Any]:
+        """Declare sparse indexer capabilities.
+
+        Returns:
+            SparseIndexerCapabilitiesDict.
+        """
+        ...
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        """Return plugin metadata."""
+        ...
+```
+
+### SparseVectorDict
+
+```python
+class SparseVectorDict(TypedDict):
+    """Sparse vector representation for indexing.
+
+    For BM25: indices are term IDs, values are TF-IDF scores.
+    For SPLADE: indices are token IDs, values are learned weights.
+
+    Uses chunk_id (not document_id) to align 1:1 with dense vectors for RRF fusion.
+    """
+    indices: list[int]                    # Sparse vector indices (term/token IDs)
+    values: list[float]                   # Corresponding weights/scores
+    chunk_id: str                         # Chunk identifier (aligns with dense vectors)
+    metadata: NotRequired[dict[str, Any]] # Additional indexing metadata
+```
+
+### SparseQueryVectorDict
+
+```python
+class SparseQueryVectorDict(TypedDict):
+    """Sparse vector representation for query."""
+    indices: list[int]   # Sparse vector indices (term/token IDs)
+    values: list[float]  # Corresponding weights/scores
+```
+
+### SparseSearchResultDict
+
+```python
+class SparseSearchResultDict(TypedDict):
+    """Search result from sparse indexing."""
+    chunk_id: str                                  # Chunk identifier
+    score: float                                   # Relevance score (higher = more relevant)
+    matched_terms: NotRequired[list[str]]          # Terms that matched (for BM25)
+    sparse_vector: NotRequired[SparseVectorDict]   # Original sparse vector
+    payload: NotRequired[dict[str, Any]]           # Chunk payload from Qdrant
+```
+
+### SparseIndexerCapabilitiesDict
+
+```python
+class SparseIndexerCapabilitiesDict(TypedDict, total=False):
+    """Sparse indexer capability declaration."""
+    sparse_type: str           # 'bm25' or 'splade'. See SPARSE_TYPES.
+    max_tokens: int            # Maximum tokens per document
+    max_terms_per_vector: int | None  # Maximum non-zero terms (None = no limit)
+    vocabulary_size: int | None       # Vocabulary size (None = open vocabulary)
+    vocabulary_handling: str          # 'direct' or 'hashed'
+    supports_batching: bool           # Whether batch encoding is supported
+    max_batch_size: int               # Maximum documents per batch
+    supports_filters: bool            # Whether metadata filters are supported
+    requires_corpus_stats: bool       # Whether indexer needs corpus statistics
+    idf_storage: str                  # IDF storage backend: 'file' or 'qdrant_point'
+    supported_languages: list[str] | None  # ISO 639-1 codes (None = all)
+```
+
+### SPARSE_TYPES
+
+Valid values for `sparse_type`:
+
+| Value | Description |
+|-------|-------------|
+| `bm25` | Classic BM25/TF-IDF based sparse vectors |
+| `splade` | Neural learned sparse representations |
+
+### External Plugin Example
+
+```python
+# No semantik imports required
+class MyBM25Indexer:
+    PLUGIN_ID = "my-bm25"
+    PLUGIN_TYPE = "sparse_indexer"
+    PLUGIN_VERSION = "1.0.0"
+    SPARSE_TYPE = "bm25"
+
+    async def encode_documents(self, documents):
+        results = []
+        for doc in documents:
+            # Generate sparse vector
+            indices, values = self._compute_bm25(doc["content"])
+            results.append({
+                "indices": indices,
+                "values": values,
+                "chunk_id": doc["chunk_id"],
+            })
+        return results
+
+    async def encode_query(self, query):
+        indices, values = self._compute_query_vector(query)
+        return {"indices": indices, "values": values}
+
+    async def remove_documents(self, chunk_ids):
+        # Update IDF stats when chunks are removed
+        pass
+
+    @classmethod
+    def get_capabilities(cls):
+        return {
+            "sparse_type": "bm25",
+            "max_tokens": 8192,
+            "requires_corpus_stats": True,
+            "supports_batching": True,
+            "max_batch_size": 64,
+        }
+
+    @classmethod
+    def get_manifest(cls):
+        return {
+            "id": cls.PLUGIN_ID,
+            "type": cls.PLUGIN_TYPE,
+            "version": cls.PLUGIN_VERSION,
+            "display_name": "My BM25 Indexer",
+            "description": "Custom BM25 implementation",
+        }
+```
+
+---
+
 ## Protocol Type Mapping
 
 The `PROTOCOL_BY_TYPE` mapping connects plugin types to protocols:
@@ -733,6 +933,7 @@ PROTOCOL_BY_TYPE: dict[str, type] = {
     "reranker": RerankerProtocol,
     "extractor": ExtractorProtocol,
     "agent": AgentProtocol,
+    "sparse_indexer": SparseIndexerProtocol,
 }
 ```
 
@@ -768,6 +969,9 @@ Protocol definitions: `packages/shared/plugins/protocols.py`
 TypedDict definitions: `packages/shared/plugins/typed_dicts.py`
 Adapters: `packages/shared/plugins/dto_adapters.py`
 Test mixins: `packages/shared/plugins/testing/contracts.py`
+Sparse indexer ABC: `packages/shared/plugins/types/sparse_indexer.py`
+BM25 built-in: `packages/shared/plugins/builtins/bm25_sparse_indexer.py`
+SPLADE built-in: `packages/shared/plugins/builtins/splade_indexer.py`
 
 ---
 
@@ -776,3 +980,4 @@ Test mixins: `packages/shared/plugins/testing/contracts.py`
 - [Creating External Plugins](external-plugins.md) - Developer guide with examples
 - [Plugin Development Guide](PLUGIN_DEVELOPMENT.md) - ABC-based plugin development
 - [Plugin Testing](PLUGIN_TESTING.md) - Testing infrastructure
+- [Sparse Indexing Guide](SPARSE_INDEXING.md) - User guide for sparse search

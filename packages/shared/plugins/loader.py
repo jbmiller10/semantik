@@ -16,6 +16,7 @@ from .adapters import (
     manifest_from_embedding_plugin,
     manifest_from_extractor_plugin,
     manifest_from_reranker_plugin,
+    manifest_from_sparse_indexer_plugin,
 )
 from .manifest import PluginDependency
 from .metrics import record_dependency_warning, record_plugin_load, timed_operation
@@ -27,6 +28,7 @@ from .protocols import (
     EmbeddingProtocol,
     ExtractorProtocol,
     RerankerProtocol,
+    SparseIndexerProtocol,
 )
 from .registry import PluginRecord, PluginSource, plugin_registry
 from .security import audit_log
@@ -49,9 +51,10 @@ _ENV_FLAG_BY_TYPE = {
     "reranker": "SEMANTIK_ENABLE_RERANKER_PLUGINS",
     "extractor": "SEMANTIK_ENABLE_EXTRACTOR_PLUGINS",
     "agent": "SEMANTIK_ENABLE_AGENT_PLUGINS",
+    "sparse_indexer": "SEMANTIK_ENABLE_SPARSE_INDEXER_PLUGINS",
 }
 
-_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor", "agent"}
+_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor", "agent", "sparse_indexer"}
 
 _PLUGIN_LOAD_LOCK = Lock()
 
@@ -123,6 +126,14 @@ def _satisfies_protocol(plugin_cls: type, protocol: type) -> bool:
         required_methods = {"extract", "supported_extractions", "get_manifest"}
     elif protocol is AgentProtocol:
         required_methods = {"execute", "get_capabilities", "supported_use_cases", "get_manifest"}
+    elif protocol is SparseIndexerProtocol:
+        required_methods = {
+            "encode_documents",
+            "encode_query",
+            "remove_documents",
+            "get_capabilities",
+            "get_manifest",
+        }
     else:
         required_methods = {"get_manifest"}
 
@@ -178,6 +189,8 @@ def _load_builtin_plugins(plugin_types: set[str]) -> None:
         _register_builtin_extractor_plugins()
     if "agent" in plugin_types:
         _register_builtin_agent_plugins()
+    if "sparse_indexer" in plugin_types:
+        _register_builtin_sparse_indexer_plugins()
 
 
 def _register_builtin_embedding_plugins() -> None:
@@ -296,6 +309,40 @@ def _register_builtin_agent_plugins() -> None:
 
     Placeholder - will be populated in Phase 3 when ClaudeAgentPlugin is implemented.
     """
+
+
+def _register_builtin_sparse_indexer_plugins() -> None:
+    """Register built-in sparse indexer plugins."""
+    from shared.plugins.builtins.bm25_sparse_indexer import BM25SparseIndexerPlugin
+
+    for plugin_cls in (BM25SparseIndexerPlugin,):
+        plugin_id = getattr(plugin_cls, "PLUGIN_ID", "") or ""
+        if not plugin_id:
+            logger.warning("Skipping sparse_indexer without PLUGIN_ID: %s", plugin_cls)
+            continue
+        manifest = manifest_from_sparse_indexer_plugin(plugin_cls, plugin_id)
+        _register_plugin_record(
+            plugin_type="sparse_indexer",
+            plugin_id=plugin_id,
+            plugin_cls=plugin_cls,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+
+    try:
+        from shared.plugins.builtins.splade_indexer import SPLADESparseIndexerPlugin
+
+        plugin_id = SPLADESparseIndexerPlugin.PLUGIN_ID
+        manifest = manifest_from_sparse_indexer_plugin(SPLADESparseIndexerPlugin, plugin_id)
+        _register_plugin_record(
+            plugin_type="sparse_indexer",
+            plugin_id=plugin_id,
+            plugin_cls=SPLADESparseIndexerPlugin,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+    except ImportError:
+        logger.debug("SPLADE sparse indexer plugin not available (torch/transformers not installed)")
 
 
 def _load_external_plugins(
@@ -422,6 +469,8 @@ def _register_plugin_class(
         _register_extractor_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     elif plugin_type == "agent":
         _register_agent_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
+    elif plugin_type == "sparse_indexer":
+        _register_sparse_indexer_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     else:
         # Handle plugins with get_manifest but unknown type
         if hasattr(plugin_cls, "get_manifest") and callable(plugin_cls.get_manifest):
@@ -732,6 +781,55 @@ def _register_agent_plugin(
         return
 
     # Agent activation uses plugin registry; no extra registration required.
+
+
+def _register_sparse_indexer_plugin(
+    plugin_cls: type,
+    source: PluginSource,
+    entry_point: str | None,
+    disabled_plugin_ids: set[str] | None,
+) -> None:
+    """Register a sparse indexer plugin.
+
+    Validates SPARSE_TYPE before registration to ensure only plugins with
+    valid sparse types ('bm25' or 'splade') are accepted.
+    """
+    from shared.plugins.typed_dicts import SPARSE_TYPES
+
+    plugin_id = getattr(plugin_cls, "PLUGIN_ID", None) or ""
+    if not plugin_id:
+        logger.warning("Skipping sparse_indexer without PLUGIN_ID: %s", plugin_cls)
+        return
+
+    # Validate SPARSE_TYPE - unique to sparse indexers
+    sparse_type = getattr(plugin_cls, "SPARSE_TYPE", None)
+    if sparse_type not in SPARSE_TYPES:
+        logger.warning(
+            "Skipping sparse_indexer '%s': invalid SPARSE_TYPE '%s' (must be one of %s)",
+            plugin_id,
+            sparse_type,
+            sorted(SPARSE_TYPES),
+        )
+        return
+
+    manifest = manifest_from_sparse_indexer_plugin(plugin_cls, plugin_id)
+    record_registered = _register_plugin_record(
+        plugin_type="sparse_indexer",
+        plugin_id=plugin_id,
+        plugin_cls=plugin_cls,
+        manifest=manifest,
+        source=source,
+        entry_point=entry_point,
+    )
+
+    if not record_registered:
+        return
+
+    if source == PluginSource.EXTERNAL and disabled_plugin_ids and plugin_id in disabled_plugin_ids:
+        logger.info("Sparse indexer plugin '%s' disabled; skipping activation", plugin_id)
+        return
+
+    # Sparse indexer activation uses plugin registry; no extra registration required.
 
 
 def _parse_dependency(dep: str | dict[str, Any] | PluginDependency) -> PluginDependency:

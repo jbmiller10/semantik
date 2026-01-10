@@ -17,6 +17,11 @@ export interface CollectionSummary {
 export type MCPSearchType = 'semantic' | 'hybrid' | 'keyword' | 'question' | 'code';
 
 /**
+ * Search modes for sparse/hybrid search
+ */
+export type MCPSearchMode = 'dense' | 'sparse' | 'hybrid';
+
+/**
  * Full MCP profile information from the API
  */
 export interface MCPProfile {
@@ -29,6 +34,8 @@ export interface MCPProfile {
   use_reranker: boolean;
   score_threshold: number | null;
   hybrid_alpha: number | null;
+  search_mode: MCPSearchMode;
+  rrf_k: number | null;
   collections: CollectionSummary[];
   created_at: string;
   updated_at: string;
@@ -47,6 +54,8 @@ export interface MCPProfileCreate {
   use_reranker?: boolean;
   score_threshold?: number | null;
   hybrid_alpha?: number | null;
+  search_mode?: MCPSearchMode;
+  rrf_k?: number | null;
 }
 
 /**
@@ -62,6 +71,8 @@ export interface MCPProfileUpdate {
   use_reranker?: boolean;
   score_threshold?: number | null;
   hybrid_alpha?: number | null;
+  search_mode?: MCPSearchMode;
+  rrf_k?: number | null;
 }
 
 /**
@@ -95,6 +106,8 @@ export interface MCPProfileFormData {
   use_reranker: boolean;
   score_threshold: number | null;
   hybrid_alpha: number | null;
+  search_mode: MCPSearchMode;
+  rrf_k: number | null;
 }
 
 /**
@@ -120,6 +133,24 @@ export const SEARCH_TYPE_DESCRIPTIONS: Record<MCPSearchType, string> = {
 };
 
 /**
+ * Search mode display labels for the UI
+ */
+export const SEARCH_MODE_LABELS: Record<MCPSearchMode, string> = {
+  dense: 'Dense (Vector)',
+  sparse: 'Sparse (Keyword)',
+  hybrid: 'Hybrid (Combined)',
+};
+
+/**
+ * Search mode descriptions for help text
+ */
+export const SEARCH_MODE_DESCRIPTIONS: Record<MCPSearchMode, string> = {
+  dense: 'Vector-based semantic search only',
+  sparse: 'BM25/SPLADE keyword search only',
+  hybrid: 'Combines dense and sparse with RRF fusion',
+};
+
+/**
  * Default form values for creating a new profile
  */
 export const DEFAULT_PROFILE_FORM_DATA: MCPProfileFormData = {
@@ -132,4 +163,6 @@ export const DEFAULT_PROFILE_FORM_DATA: MCPProfileFormData = {
   use_reranker: true,
   score_threshold: null,
   hybrid_alpha: null,
+  search_mode: 'dense',
+  rrf_k: null,
 };

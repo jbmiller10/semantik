@@ -10,14 +10,22 @@ Extractor Plugins:
 
 Reranker Plugins:
     - Qwen3RerankerPlugin: Search result reranking
+
+Sparse Indexer Plugins:
+    - BM25SparseIndexerPlugin: BM25 sparse indexing for hybrid search
+    - SPLADESparseIndexerPlugin: SPLADE learned sparse indexing
 """
 
+from shared.plugins.builtins.bm25_sparse_indexer import BM25SparseIndexerPlugin
 from shared.plugins.builtins.claude_agent import ClaudeAgentPlugin
 from shared.plugins.builtins.keyword_extractor import KeywordExtractorPlugin
 from shared.plugins.builtins.qwen3_reranker import Qwen3RerankerPlugin
+from shared.plugins.builtins.splade_indexer import SPLADESparseIndexerPlugin
 
 __all__ = [
+    "BM25SparseIndexerPlugin",
     "ClaudeAgentPlugin",
     "KeywordExtractorPlugin",
     "Qwen3RerankerPlugin",
+    "SPLADESparseIndexerPlugin",
 ]

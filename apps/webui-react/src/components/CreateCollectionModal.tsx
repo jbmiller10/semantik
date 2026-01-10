@@ -58,6 +58,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  // Sparse indexing state
+  const [sparseEnabled, setSparseEnabled] = useState(false);
+  const [sparsePlugin, setSparsePlugin] = useState<'bm25-local' | 'splade-local'>('bm25-local');
+  const [bm25Config, setBm25Config] = useState({ k1: 1.5, b: 0.75 });
   const [pendingIndexOperationId, setPendingIndexOperationId] = useState<string | null>(null);
   const [collectionIdForSource, setCollectionIdForSource] = useState<string | null>(null);
   const [connectorDataForDelayedAdd, setConnectorDataForDelayedAdd] = useState<{
@@ -312,12 +316,23 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     setIsSubmitting(true);
 
     try {
-      // Step 1: Create the collection with chunking configuration
-      const response = await createCollectionMutation.mutateAsync({
+      // Step 1: Create the collection with chunking and sparse configuration
+      const createRequest: CreateCollectionRequest = {
         ...formData,
         chunking_strategy: strategyConfig.strategy,
         chunking_config: strategyConfig.parameters,
-      });
+      };
+
+      // Include sparse indexing config if enabled
+      if (sparseEnabled) {
+        createRequest.sparse_index_config = {
+          enabled: true,
+          plugin_id: sparsePlugin,
+          model_config_data: sparsePlugin === 'bm25-local' ? bm25Config : undefined,
+        };
+      }
+
+      const response = await createCollectionMutation.mutateAsync(createRequest);
 
       // The response should include the initial INDEX operation ID
       const indexOperationId = response.initial_operation_id;
@@ -737,6 +752,110 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                     <label htmlFor="is_public" className="ml-2 block text-sm text-gray-900">
                       Make this collection public
                     </label>
+                  </div>
+
+                  {/* Sparse Indexing Configuration */}
+                  <div className="space-y-3">
+                    <div className="flex items-center">
+                      <input
+                        id="sparse_enabled"
+                        type="checkbox"
+                        checked={sparseEnabled}
+                        onChange={(e) => setSparseEnabled(e.target.checked)}
+                        disabled={isSubmitting}
+                        className={`h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded ${
+                          isSubmitting ? 'cursor-not-allowed' : ''
+                        }`}
+                      />
+                      <label htmlFor="sparse_enabled" className="ml-2 block text-sm text-gray-900">
+                        Enable Sparse Indexing (BM25/SPLADE for hybrid search)
+                      </label>
+                    </div>
+
+                    {sparseEnabled && (
+                      <div className="ml-6 space-y-3 p-3 bg-purple-50 border border-purple-100 rounded-lg">
+                        {/* Plugin Selection */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Sparse Indexer
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSparsePlugin('bm25-local')}
+                              disabled={isSubmitting}
+                              className={`p-3 text-sm rounded-lg border-2 transition-all text-left ${
+                                sparsePlugin === 'bm25-local'
+                                  ? 'border-purple-500 bg-purple-100 text-purple-900'
+                                  : 'border-gray-200 text-gray-700 hover:border-purple-200'
+                              } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              <div className="font-medium">BM25</div>
+                              <div className="text-xs text-gray-500 mt-1">Statistical, CPU-based</div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSparsePlugin('splade-local')}
+                              disabled={isSubmitting}
+                              className={`p-3 text-sm rounded-lg border-2 transition-all text-left ${
+                                sparsePlugin === 'splade-local'
+                                  ? 'border-purple-500 bg-purple-100 text-purple-900'
+                                  : 'border-gray-200 text-gray-700 hover:border-purple-200'
+                              } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              <div className="font-medium">SPLADE</div>
+                              <div className="text-xs text-gray-500 mt-1">Neural, requires GPU</div>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* BM25 Parameters */}
+                        {sparsePlugin === 'bm25-local' && (
+                          <div className="space-y-3 pt-2 border-t border-purple-200">
+                            <div className="text-xs font-medium text-gray-600">BM25 Parameters</div>
+                            <div>
+                              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                                <span>k1 (term frequency saturation)</span>
+                                <span className="font-mono">{bm25Config.k1.toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="3.0"
+                                step="0.1"
+                                value={bm25Config.k1}
+                                onChange={(e) => setBm25Config({ ...bm25Config, k1: parseFloat(e.target.value) })}
+                                disabled={isSubmitting}
+                                className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                                <span>b (document length normalization)</span>
+                                <span className="font-mono">{bm25Config.b.toFixed(2)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={bm25Config.b}
+                                onChange={(e) => setBm25Config({ ...bm25Config, b: parseFloat(e.target.value) })}
+                                disabled={isSubmitting}
+                                className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SPLADE Note */}
+                        {sparsePlugin === 'splade-local' && (
+                          <div className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                            SPLADE requires GPU and may take longer to index documents.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
