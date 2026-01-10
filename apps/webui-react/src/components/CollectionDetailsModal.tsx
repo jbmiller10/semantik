@@ -574,24 +574,28 @@ function CollectionDetailsModal() {
                   Documents ({documentsData.total.toLocaleString()})
                 </h3>
                 {/* Retry All Failed button */}
-                {failedCounts && failedCounts.total > 0 && (
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-500">
-                      <span className="text-red-600 font-medium">{failedCounts.total}</span> failed
-                      {failedCounts.transient > 0 && (
-                        <span className="text-yellow-600 ml-1">({failedCounts.transient} retryable)</span>
-                      )}
-                    </span>
-                    <button
-                      onClick={() => retryAllFailedMutation.mutate()}
-                      disabled={retryAllFailedMutation.isPending || failedCounts.transient === 0}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <RefreshCw className={`h-3 w-3 mr-1 ${retryAllFailedMutation.isPending ? 'animate-spin' : ''}`} />
-                      Retry All Failed
-                    </button>
-                  </div>
-                )}
+                {failedCounts && failedCounts.total > 0 && (() => {
+                  // Both transient and unknown errors are retryable
+                  const retryableCount = (failedCounts.transient || 0) + (failedCounts.unknown || 0);
+                  return (
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-gray-500">
+                        <span className="text-red-600 font-medium">{failedCounts.total}</span> failed
+                        {retryableCount > 0 && (
+                          <span className="text-yellow-600 ml-1">({retryableCount} retryable)</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => retryAllFailedMutation.mutate()}
+                        disabled={retryAllFailedMutation.isPending || retryableCount === 0}
+                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${retryAllFailedMutation.isPending ? 'animate-spin' : ''}`} />
+                        Retry All Failed
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
                 <table className="min-w-full divide-y divide-gray-300">
