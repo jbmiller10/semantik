@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import sys
-from types import ModuleType
 from unittest.mock import Mock, patch
 
 import pytest
@@ -95,7 +93,9 @@ async def test_fetch_payloads_returns_empty_on_http_error(monkeypatch) -> None:
     client.next_response = FakeResponse(500, {"status": {"error": "boom"}}, text="boom")
 
     monkeypatch.setattr("vecpipe.search.service._get_qdrant_client", lambda: client)
-    monkeypatch.setattr("vecpipe.search.service._get_settings", lambda: Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None))
+    monkeypatch.setattr(
+        "vecpipe.search.service._get_settings", lambda: Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None)
+    )
 
     payloads = await _fetch_payloads_for_chunk_ids("dense", ["c1"])
     assert payloads == {}
@@ -117,8 +117,8 @@ def test_get_patched_callable_prefers_local_override() -> None:
 
 @pytest.mark.asyncio()
 async def test_get_search_qdrant_wraps_sync_callable_from_entrypoint(monkeypatch) -> None:
-    from vecpipe.search import service as svc
     import vecpipe.search_api as search_api
+    from vecpipe.search import service as svc
 
     def sync_search(*_args, **_kwargs):  # type: ignore[no-untyped-def]
         return [{"id": "1", "score": 0.5, "payload": {}}]

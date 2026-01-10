@@ -63,7 +63,7 @@ def upgrade() -> None:
         "ix_documents_collection_failed_retryable",
         "documents",
         ["collection_id", "status", "error_category", "retry_count"],
-        postgresql_where=sa.text("status = 'failed'"),
+        postgresql_where=sa.text("status = 'FAILED'"),
     )
 
 

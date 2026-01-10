@@ -982,11 +982,13 @@ async def _maybe_generate_sparse_vectors(
                 # Original chunk_id from chunking (format: {uuid}_{index}) for search matching
                 original_chunk_id = chunk.get("chunk_id", "")
                 point_to_original[point_id] = original_chunk_id
-                documents.append({
-                    "content": chunk.get("text") or chunk.get("content", ""),
-                    "chunk_id": point_id,
-                    "metadata": chunk.get("metadata", {}),
-                })
+                documents.append(
+                    {
+                        "content": chunk.get("text") or chunk.get("content", ""),
+                        "chunk_id": point_id,
+                        "metadata": chunk.get("metadata", {}),
+                    }
+                )
 
             # Encode documents using appropriate method
             if use_local_plugin and indexer is not None:
