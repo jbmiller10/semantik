@@ -395,7 +395,7 @@ async def retry_document(
     "/collections/{collection_uuid}/documents/retry-failed",
     response_model=None,
     responses={
-        200: {"description": "Bulk retry result"},
+        200: {"description": "Bulk retry operation dispatched"},
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         404: {"model": ErrorResponse, "description": "Collection not found"},
@@ -410,29 +410,66 @@ async def retry_failed_documents(
 ) -> dict[str, Any]:
     """Retry all failed documents in a collection.
 
-    Resets all retryable failed documents (transient or unknown errors) to PENDING.
+    Resets all retryable failed documents (transient or unknown errors) to PENDING,
+    creates a RETRY_DOCUMENTS operation, and dispatches a Celery task to process them.
     Documents with permanent errors or that have exceeded max retries are not reset.
     """
-    from webui.api.schemas import RetryDocumentsResponse
+    import uuid as uuid_module
+
+    from shared.database.models import OperationType
+    from shared.database.repositories.operation_repository import OperationRepository
+    from webui.celery_app import celery_app
 
     try:
         document_repo = create_document_repository(db)
+        operation_repo = OperationRepository(db)
 
-        # Reset all retryable failed documents
+        # Reset all retryable failed documents to PENDING
         reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid)
-        await db.commit()
 
-        logger.info(
-            "User %s bulk retried %d failed documents in collection %s",
-            current_user.get("id"),
-            reset_count,
-            collection_uuid,
+        if reset_count == 0:
+            # No documents to retry
+            return {
+                "reset_count": 0,
+                "operation_id": None,
+                "message": "No retryable documents found",
+            }
+
+        # Create RETRY_DOCUMENTS operation
+        user_id = current_user.get("id") or current_user.get("sub")
+        operation = await operation_repo.create(
+            collection_id=collection_uuid,
+            user_id=user_id,
+            operation_type=OperationType.RETRY_DOCUMENTS,
+            config={
+                "reset_count": reset_count,
+                "triggered_by": "manual",
+            },
         )
 
-        return RetryDocumentsResponse(
-            reset_count=reset_count,
-            message=f"Reset {reset_count} failed document(s) for retry",
-        ).model_dump()
+        # Commit BEFORE dispatching Celery task (critical to avoid race condition)
+        await db.commit()
+
+        # Dispatch Celery task
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation.uuid],
+            task_id=str(uuid_module.uuid4()),
+        )
+
+        logger.info(
+            "User %s triggered retry of %d failed documents in collection %s (operation=%s)",
+            user_id,
+            reset_count,
+            collection_uuid,
+            operation.uuid,
+        )
+
+        return {
+            "reset_count": reset_count,
+            "operation_id": operation.uuid,
+            "message": f"Dispatched retry operation for {reset_count} document(s)",
+        }
     except HTTPException:
         raise
     except Exception as e:

@@ -127,6 +127,7 @@ class OperationType(str, enum.Enum):
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
+    RETRY_DOCUMENTS = "retry_documents"
 
     @classmethod
     def _missing_(cls, value: Any) -> "OperationType | None":

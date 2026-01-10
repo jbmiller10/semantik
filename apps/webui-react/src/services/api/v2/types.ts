@@ -89,6 +89,7 @@ export interface FailedDocumentCountResponse {
 // Retry documents response
 export interface RetryDocumentsResponse {
   reset_count: number;
+  operation_id: string | null;
   message: string;
 }
 

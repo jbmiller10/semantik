@@ -106,10 +106,16 @@ function CollectionDetailsModal() {
   const retryAllFailedMutation = useMutation({
     mutationFn: () => documentsV2Api.retryFailed(showCollectionDetailsModal!),
     onSuccess: (response) => {
-      const count = response.data.reset_count;
-      addToast({ message: `${count} document(s) queued for retry`, type: 'success' });
+      const { reset_count, operation_id } = response.data;
+      if (reset_count === 0) {
+        addToast({ message: 'No retryable documents found', type: 'info' });
+      } else {
+        addToast({ message: `${reset_count} document(s) queued for retry${operation_id ? ' - check Active Operations tab' : ''}`, type: 'success' });
+      }
       refetchDocuments();
       queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
+      // Also invalidate operations so the new operation appears
+      queryClient.invalidateQueries({ queryKey: ['collection-operations'] });
     },
     onError: (error: Error) => {
       addToast({ message: `Failed to retry documents: ${error.message}`, type: 'error' });

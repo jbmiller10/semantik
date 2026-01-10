@@ -290,6 +290,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                                 projection_repo,
                                 updater,
                             )
+                        elif operation["type"] == OperationType.RETRY_DOCUMENTS:
+                            result = await tasks_ns._process_retry_documents_operation(
+                                operation, collection, collection_repo, document_repo, updater
+                            )
                         else:  # pragma: no cover - defensive branch
                             raise ValueError(f"Unknown operation type: {operation['type']}")
 
@@ -2103,6 +2107,130 @@ async def _process_append_operation_impl(
                 )
 
         raise
+
+
+async def _process_retry_documents_operation(
+    operation: dict,  # noqa: ARG001
+    collection: dict,
+    collection_repo: Any,
+    document_repo: Any,
+    updater: CeleryTaskWithOperationUpdates,
+) -> dict[str, Any]:
+    """Process RETRY_DOCUMENTS operation - Retry pending documents in a collection.
+
+    Processes all documents in PENDING status (reset from FAILED for retry).
+    """
+    from shared.database.models import DocumentStatus
+
+    tasks_ns = _tasks_namespace()
+    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+
+    collection_id = collection["id"]
+    qdrant_collection_name = collection["vector_store_name"]
+    embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+    quantization = collection.get("quantization", "float16")
+    instruction = collection.get("config", {}).get("instruction")
+    batch_size = getattr(settings, "EMBEDDING_BATCH_SIZE", EMBEDDING_BATCH_SIZE)
+
+    logger.info(
+        "Starting RETRY_DOCUMENTS operation for collection %s",
+        collection_id,
+    )
+
+    # Fetch all PENDING documents in the collection (these are the ones reset for retry)
+    pending_documents, _ = await document_repo.list_documents(
+        collection_id=collection_id,
+        status=DocumentStatus.PENDING,
+        offset=0,
+        limit=10000,  # Process up to 10k documents per retry operation
+    )
+
+    if not pending_documents:
+        logger.info("No pending documents to retry in collection %s", collection_id)
+        return {
+            "success": True,
+            "documents_processed": 0,
+            "documents_failed": 0,
+            "vectors_created": 0,
+        }
+
+    logger.info(
+        "Found %d pending documents to retry in collection %s",
+        len(pending_documents),
+        collection_id,
+    )
+
+    await updater.send_update(
+        "processing_progress",
+        {
+            "processed": 0,
+            "failed": 0,
+            "total": len(pending_documents),
+            "message": f"Starting retry of {len(pending_documents)} document(s)",
+        },
+    )
+
+    # Use the parallel ingestion pipeline (same as APPEND)
+    chunking_service = await resolve_celery_chunking_orchestrator(
+        document_repo.session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
+
+    executor_pool = tasks_ns.executor
+
+    # Get parallel ingestion settings
+    num_workers = getattr(settings, "PARALLEL_INGESTION_WORKERS", 0)
+    max_workers = getattr(settings, "PARALLEL_INGESTION_MAX_WORKERS", 8)
+
+    # Empty dict - no pre-parsed content for retry
+    new_doc_contents: dict[str, str] = {}
+
+    # Always use parallel ingestion pipeline (handles single documents fine)
+    logger.info(
+        "Using parallel ingestion for retry: %d documents",
+        len(pending_documents),
+    )
+
+    parallel_stats = await process_documents_parallel(
+        documents=pending_documents,
+        extract_fn=extract_fn,
+        chunking_service=chunking_service,
+        collection=collection,
+        executor_pool=executor_pool,
+        new_doc_contents=new_doc_contents,
+        document_repo=document_repo,
+        collection_repo=collection_repo,
+        qdrant_collection_name=qdrant_collection_name,
+        embedding_model=embedding_model,
+        quantization=quantization,
+        instruction=instruction,
+        batch_size=batch_size,
+        updater=updater,
+        num_extraction_workers=num_workers if num_workers else None,
+        max_extraction_workers=max_workers,
+    )
+
+    processed_count = parallel_stats["processed"]
+    failed_count = parallel_stats["failed"]
+    total_vectors_created = parallel_stats["vectors"]
+
+    logger.info(
+        "RETRY_DOCUMENTS completed: %d processed, %d failed, %d vectors in collection %s",
+        processed_count,
+        failed_count,
+        total_vectors_created,
+        collection_id,
+    )
+
+    success = failed_count == 0 or processed_count > 0
+
+    return {
+        "success": success,
+        "documents_processed": processed_count,
+        "documents_failed": failed_count,
+        "vectors_created": total_vectors_created,
+    }
 
 
 async def _process_remove_source_operation(
