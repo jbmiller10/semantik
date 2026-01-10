@@ -17,11 +17,12 @@ from typing import TYPE_CHECKING, Any
 from qdrant_client import AsyncQdrantClient
 
 from shared.config import settings
+from shared.database import pg_connection_manager
 from shared.database.collection_metadata import (
     get_sparse_index_config,
     store_sparse_index_config,
 )
-from shared.database.database import AsyncSessionLocal
+from shared.database.database import ensure_async_sessionmaker
 from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
@@ -114,8 +115,11 @@ async def _reindex_collection_async(
     async_qdrant: AsyncQdrantClient | None = None
 
     try:
+        # Get session factory (properly initialized in worker context)
+        session_factory = pg_connection_manager.sessionmaker or await ensure_async_sessionmaker()
+
         # Get collection info
-        async with AsyncSessionLocal() as session:
+        async with session_factory() as session:
             collection_repo = CollectionRepository(session)
             collection = await collection_repo.get_by_uuid(collection_uuid)
             if collection is None:
@@ -153,7 +157,7 @@ async def _reindex_collection_async(
 
         while offset < total_chunks:
             # Fetch batch of chunks
-            async with AsyncSessionLocal() as session:
+            async with session_factory() as session:
                 chunk_repo = ChunkRepository(session)
                 chunks = await chunk_repo.get_chunks_by_collection(
                     collection_id=collection_uuid,
