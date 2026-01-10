@@ -129,7 +129,7 @@ def _create_celery_app() -> Celery:
         "webui",
         broker=broker_url,
         backend=backend_url,
-        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher"],
+        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher", "webui.sparse_tasks"],
     )
 
     config = _build_base_config()
