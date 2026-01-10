@@ -584,6 +584,9 @@ async def embedding_worker(
                             success=True,
                         )
                     )
+                # Clear pending batches on success
+                pending_batches = []
+                pending_texts = []
                 return  # Success - exit retry loop
 
             except (httpx.RequestError, httpx.HTTPStatusError) as exc:
