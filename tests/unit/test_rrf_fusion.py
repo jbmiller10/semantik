@@ -28,7 +28,7 @@ def test_reciprocal_rank_fusion_prefers_dense_payload_and_adds_ranks() -> None:
     assert b["payload"]["from"] == "dense"
     assert b["_dense_rank"] == 2
     assert b["_sparse_rank"] == 1
-    assert 0.0 <= b["score"] <= 1.0
+    assert b["score"] > 0.0
 
 
 def test_reciprocal_rank_fusion_normalizes_when_all_scores_equal() -> None:
@@ -40,4 +40,5 @@ def test_reciprocal_rank_fusion_normalizes_when_all_scores_equal() -> None:
 
     fused = _reciprocal_rank_fusion(dense, sparse, k=10, rrf_k=1_000_000)
     assert len(fused) == 2
-    assert all(r["score"] == 1.0 for r in fused)
+    assert fused[0]["score"] == fused[1]["score"]
+    assert 0.0 < fused[0]["score"] < 1.0

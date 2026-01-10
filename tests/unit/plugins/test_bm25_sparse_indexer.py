@@ -793,3 +793,73 @@ class TestBM25Stopwords:
         assert "is" in ENGLISH_STOPWORDS
         assert "and" in ENGLISH_STOPWORDS
         assert "or" in ENGLISH_STOPWORDS
+
+
+class TestBM25IDFFileLock:
+    """Tests for the IDF file lock context manager."""
+
+    def test_idf_file_lock_no_path_is_noop(self) -> None:
+        plugin = BM25SparseIndexerPlugin()
+        plugin._idf_path = None
+
+        with plugin._idf_file_lock():
+            assert True
+
+    def test_idf_file_lock_acquires_and_releases(self, tmp_path: "Path", monkeypatch) -> None:
+        import fcntl
+
+        plugin = BM25SparseIndexerPlugin()
+        plugin._idf_path = tmp_path / "sparse_indexes" / "collection" / "idf_stats.json"
+
+        calls: list[int] = []
+
+        def fake_flock(_fd: int, flags: int) -> None:
+            calls.append(flags)
+
+        monkeypatch.setattr(fcntl, "flock", fake_flock)
+
+        with plugin._idf_file_lock(timeout=0.1):
+            assert plugin._idf_path.with_suffix(".lock").exists()
+
+        assert any(flags & fcntl.LOCK_EX for flags in calls)
+        assert any(flags & fcntl.LOCK_UN for flags in calls)
+
+    def test_idf_file_lock_times_out(self, tmp_path: "Path", monkeypatch) -> None:
+        import fcntl
+        import time as py_time
+
+        plugin = BM25SparseIndexerPlugin()
+        plugin._idf_path = tmp_path / "sparse_indexes" / "collection" / "idf_stats.json"
+
+        def fake_flock(_fd: int, _flags: int) -> None:
+            raise OSError("busy")
+
+        monkeypatch.setattr(fcntl, "flock", fake_flock)
+        monkeypatch.setattr(py_time, "sleep", lambda *_args, **_kwargs: None)
+
+        # Make time jump forward immediately so we exceed the timeout.
+        times = iter([0.0, 999.0])
+        monkeypatch.setattr(py_time, "time", lambda: next(times))
+
+        with pytest.raises(TimeoutError):
+            with plugin._idf_file_lock(timeout=0.01):
+                pass
+
+    @pytest.mark.asyncio()
+    async def test_save_idf_stats_timeout_is_swallowed(self, tmp_path: "Path", monkeypatch) -> None:
+        from contextlib import contextmanager
+
+        plugin = BM25SparseIndexerPlugin()
+        plugin._idf_path = tmp_path / "sparse_indexes" / "collection" / "idf_stats.json"
+        await plugin.encode_documents([{"content": "hello world", "chunk_id": "chunk-1"}])
+        assert plugin._dirty is True
+
+        @contextmanager
+        def _raise_timeout(*_args, **_kwargs):
+            raise TimeoutError("lock timeout")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(plugin, "_idf_file_lock", _raise_timeout)
+
+        await plugin._save_idf_stats()
+        assert plugin._dirty is True

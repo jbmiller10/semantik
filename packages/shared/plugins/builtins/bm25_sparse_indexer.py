@@ -717,7 +717,6 @@ class BM25SparseIndexerPlugin(SparseIndexerPlugin):
                     break
                 except OSError:
                     if time.time() - start > timeout:
-                        lock_file.close()
                         raise TimeoutError(
                             f"Could not acquire IDF lock for {self._idf_path}. "
                             "Another process may be updating IDF stats."
@@ -725,8 +724,16 @@ class BM25SparseIndexerPlugin(SparseIndexerPlugin):
                     time.sleep(0.1)
             yield
         finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            lock_file.close()
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                # Best-effort cleanup: if the fd is already closed or unlock fails, we still
+                # want to close the handle without masking the original exception.
+                pass
+            try:
+                lock_file.close()
+            except Exception:
+                pass
             logger.debug("Released IDF file lock for %s", self._idf_path)
 
     async def _load_idf_stats(self) -> None:

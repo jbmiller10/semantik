@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -2688,3 +2689,176 @@ class TestAppendTransactionHandling:
         assert "errors" in result
         assert len(result["errors"]) == 1
         assert "test-doc-1" in result["errors"][0]["document"]
+
+
+# ---------------------------------------------------------------------------
+# Sparse indexing helpers
+# ---------------------------------------------------------------------------
+
+
+class TestSparseIndexingHelpers:
+    @pytest.mark.asyncio()
+    async def test_setup_sparse_collection_for_index_stores_metadata(self) -> None:
+        plugin_record = Mock()
+        plugin_record.plugin_class = Mock(SPARSE_TYPE="bm25")
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="dense_sparse_bm25") as gen_name,
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()) as ensure_sparse,
+            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=True)) as store,
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            result = await ingestion_module._setup_sparse_collection_for_index(
+                vector_store_name="dense",
+                sparse_config={"plugin_id": "bm25-local", "model_config_data": {"k1": 1.9}},
+            )
+
+        assert result == {"sparse_collection_name": "dense_sparse_bm25", "plugin_id": "bm25-local"}
+        gen_name.assert_called_once_with("dense", "bm25")
+        ensure_sparse.assert_awaited_once()
+        store.assert_awaited_once()
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_setup_sparse_collection_for_index_raises_when_store_fails(self) -> None:
+        plugin_record = Mock()
+        plugin_record.plugin_class = Mock(SPARSE_TYPE="bm25")
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="dense_sparse_bm25"),
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()),
+            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=False)),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            with pytest.raises(ValueError, match="Failed to store sparse index config"):
+                await ingestion_module._setup_sparse_collection_for_index(
+                    vector_store_name="dense",
+                    sparse_config={"plugin_id": "bm25-local", "model_config_data": {}},
+                )
+
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_skips_when_missing_config(self) -> None:
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=None)),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(chunks=[], points=[], qdrant_collection_name="dense")
+
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_local_bm25_upserts_and_updates_count(self) -> None:
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        class DummyIndexer:
+            async def initialize(self, _cfg=None):  # type: ignore[no-untyped-def]
+                return None
+
+            async def cleanup(self) -> None:
+                return None
+
+            async def encode_documents(self, documents):  # type: ignore[no-untyped-def]
+                return [
+                    SparseVector(indices=(1,), values=(0.1,), chunk_id=doc["chunk_id"], metadata=doc.get("metadata", {}))
+                    for doc in documents
+                ]
+
+        plugin_record = Mock()
+        plugin_record.plugin_class = DummyIndexer
+
+        sparse_config = {
+            "enabled": True,
+            "plugin_id": "bm25-local",
+            "model_config": {},
+            "sparse_collection_name": "dense_sparse_bm25",
+            "document_count": 5,
+        }
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        upsert = AsyncMock()
+        store = AsyncMock(return_value=True)
+
+        chunks = [
+            {"chunk_id": "orig-1_0", "text": "hello", "metadata": {"doc": 1}},
+            {"chunk_id": "orig-2_0", "text": "world", "metadata": {"doc": 2}},
+        ]
+        points = [SimpleNamespace(id="p1"), SimpleNamespace(id="p2")]
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)),
+            patch("shared.database.collection_metadata.store_sparse_index_config", store),
+            patch("vecpipe.sparse.upsert_sparse_vectors", upsert),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(chunks=chunks, points=points, qdrant_collection_name="dense")
+
+        upsert.assert_awaited_once()
+        _args = upsert.await_args.args
+        assert _args[0] == "dense_sparse_bm25"
+        qdrant_vectors = _args[1]
+        assert {v["chunk_id"] for v in qdrant_vectors} == {"p1", "p2"}
+        assert {v["metadata"]["original_chunk_id"] for v in qdrant_vectors} == {"orig-1_0", "orig-2_0"}
+
+        store.assert_awaited_once()
+        stored_cfg = store.await_args.args[2]
+        assert stored_cfg["document_count"] == 7
+        assert stored_cfg["last_indexed_at"] is not None
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_vecpipe_path_calls_sparse_client(self) -> None:
+        sparse_config = {
+            "enabled": True,
+            "plugin_id": "splade-local",
+            "model_config": {"batch_size": 32},
+            "sparse_collection_name": "dense_sparse_splade",
+            "document_count": 0,
+        }
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        vecpipe_client = AsyncMock()
+        vecpipe_client.encode_documents = AsyncMock(
+            return_value=[{"chunk_id": "p1", "indices": [1], "values": [0.9]}]
+        )
+
+        upsert = AsyncMock()
+        store = AsyncMock(return_value=True)
+
+        with (
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)),
+            patch("shared.database.collection_metadata.store_sparse_index_config", store),
+            patch("webui.clients.sparse_client.SparseEncodingClient", return_value=vecpipe_client),
+            patch("vecpipe.sparse.upsert_sparse_vectors", upsert),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(
+                chunks=[{"chunk_id": "orig", "text": "hello", "metadata": {}}],
+                points=[SimpleNamespace(id="p1")],
+                qdrant_collection_name="dense",
+            )
+
+        vecpipe_client.encode_documents.assert_awaited_once()
+        upsert.assert_awaited_once()
+        store.assert_awaited_once()
+        assert mock_qdrant.close.await_count == 1
