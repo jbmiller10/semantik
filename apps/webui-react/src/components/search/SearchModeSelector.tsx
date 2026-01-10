@@ -14,6 +14,52 @@ import { Zap, Search, Combine, AlertCircle, HelpCircle } from 'lucide-react';
 import type { SearchMode } from '../../types/sparse-index';
 import { RRF_DEFAULTS } from '../../types/sparse-index';
 
+const RRF_SLIDER = {
+  min: 0,
+  max: 100,
+  step: 1,
+  // Log-scale "feel": lower values provide finer control near default k.
+  // Calibrated so ~50% maps near k≈60 when max=1000.
+  gamma: 0.75,
+} as const;
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function rrfKFromSlider(sliderValue: number): number {
+  const minK = RRF_DEFAULTS.min;
+  const maxK = RRF_DEFAULTS.max;
+
+  if (minK <= 0 || maxK <= minK) return RRF_DEFAULTS.k;
+
+  const slider = clampNumber(sliderValue, RRF_SLIDER.min, RRF_SLIDER.max);
+  const t = slider / RRF_SLIDER.max;
+
+  const logMin = Math.log(minK);
+  const logMax = Math.log(maxK);
+  const scaled = logMin + Math.pow(t, RRF_SLIDER.gamma) * (logMax - logMin);
+
+  return Math.round(Math.exp(scaled));
+}
+
+function sliderFromRrfK(k: number): number {
+  const minK = RRF_DEFAULTS.min;
+  const maxK = RRF_DEFAULTS.max;
+
+  if (minK <= 0 || maxK <= minK) return Math.round(RRF_SLIDER.max / 2);
+  if (!Number.isFinite(k)) return Math.round(RRF_SLIDER.max / 2);
+
+  const clampedK = clampNumber(k, minK, maxK);
+  const logMin = Math.log(minK);
+  const logMax = Math.log(maxK);
+
+  const tPowGamma = clampNumber((Math.log(clampedK) - logMin) / (logMax - logMin), 0, 1);
+  const t = Math.pow(tPowGamma, 1 / RRF_SLIDER.gamma);
+
+  return Math.round(t * RRF_SLIDER.max);
+}
+
 interface SearchModeSelectorProps {
   /** Currently selected search mode */
   searchMode: SearchMode;
@@ -69,6 +115,13 @@ export function SearchModeSelector({
   disabled = false,
   sparseAvailable = true,
 }: SearchModeSelectorProps) {
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [rrfKInput, setRrfKInput] = React.useState(() => String(rrfK));
+
+  React.useEffect(() => {
+    setRrfKInput(String(rrfK));
+  }, [rrfK]);
+
   return (
     <div className="space-y-4">
       {/* Search Mode Selector */}
@@ -159,32 +212,83 @@ export function SearchModeSelector({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-sm text-purple-800">
-                RRF Constant (k)
+                RRF Weighting
               </label>
               <span className="text-sm font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                {rrfK}
+                k={rrfK}
               </span>
             </div>
             <input
               type="range"
-              min={RRF_DEFAULTS.min}
-              max={200}
-              step={5}
-              value={rrfK}
-              onChange={(e) => onRrfKChange(parseInt(e.target.value, 10))}
+              min={RRF_SLIDER.min}
+              max={RRF_SLIDER.max}
+              step={RRF_SLIDER.step}
+              value={sliderFromRrfK(rrfK)}
+              onChange={(e) => onRrfKChange(rrfKFromSlider(parseInt(e.target.value, 10)))}
               disabled={disabled}
               className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
             />
             <div className="flex justify-between text-xs text-purple-600 mt-1">
-              <span>Top-heavy ({RRF_DEFAULTS.min})</span>
-              <span>Balanced ({RRF_DEFAULTS.k})</span>
-              <span>Uniform (200)</span>
+              <span>Top-heavy (k={RRF_DEFAULTS.min})</span>
+              <span>Balanced (k={RRF_DEFAULTS.k})</span>
+              <span>Uniform (k={RRF_DEFAULTS.max})</span>
             </div>
           </div>
 
           <p className="mt-3 text-xs text-purple-600">
-            Default value: {RRF_DEFAULTS.k}. Lower values weight top results more heavily.
+            Default value: {RRF_DEFAULTS.k}. Slider is logarithmic; use Advanced for an exact k.
           </p>
+
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-xs text-purple-700 hover:text-purple-900"
+              disabled={disabled}
+            >
+              <span
+                className={`transform transition-transform ${
+                  showAdvanced ? 'rotate-90' : ''
+                }`}
+              >
+                ▶
+              </span>
+              Advanced k
+              <span className="text-xs text-purple-500">(optional)</span>
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-3 p-3 bg-white/60 rounded-lg border border-purple-100">
+                <label className="block text-xs font-medium text-purple-800 mb-1" htmlFor="rrf-k-input">
+                  Exact RRF constant (k)
+                </label>
+                <input
+                  id="rrf-k-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={RRF_DEFAULTS.min}
+                  max={RRF_DEFAULTS.max}
+                  step={1}
+                  value={rrfKInput}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setRrfKInput(next);
+                    const parsed = Number.parseInt(next, 10);
+                    if (Number.isFinite(parsed)) onRrfKChange(parsed);
+                  }}
+                  onBlur={() => {
+                    const parsed = Number.parseInt(rrfKInput, 10);
+                    if (!Number.isFinite(parsed)) setRrfKInput(String(rrfK));
+                  }}
+                  disabled={disabled}
+                  className="w-full px-3 py-2 border border-purple-200 rounded-md focus:ring-purple-500 focus:border-purple-500 bg-white"
+                />
+                <p className="mt-1 text-xs text-purple-600">
+                  Valid range: {RRF_DEFAULTS.min}–{RRF_DEFAULTS.max}.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
