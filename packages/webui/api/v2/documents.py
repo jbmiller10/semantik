@@ -101,6 +101,9 @@ async def get_document(
             status=document.status.value,
             error_message=document.error_message,
             chunk_count=document.chunk_count,
+            retry_count=document.retry_count or 0,
+            last_retry_at=document.last_retry_at,
+            error_category=document.error_category,
             metadata=document.meta,
             created_at=document.created_at,
             updated_at=document.updated_at,
@@ -292,3 +295,177 @@ async def get_document_content(
             status_code=500,
             detail="Failed to retrieve document content",
         ) from e
+
+
+# ========== Retry Endpoints ==========
+
+
+@router.post(
+    "/collections/{collection_uuid}/documents/{document_uuid}/retry",
+    response_model=DocumentResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Document cannot be retried"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Document not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def retry_document(
+    collection_uuid: str,
+    document_uuid: str,
+    collection: Collection = Depends(get_collection_for_user),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentResponse:
+    """Retry a single failed document.
+
+    Resets the document status to PENDING so it can be reprocessed.
+    Only documents in FAILED status can be retried.
+    """
+    try:
+        document_repo = create_document_repository(db)
+        document = await document_repo.get_by_id(document_uuid)
+        if not document:
+            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+
+        if document.collection_id != collection_uuid:
+            logger.warning(
+                "Attempted cross-collection retry: user %s tried to retry document %s from collection %s via %s",
+                current_user.get("id"),
+                document_uuid,
+                document.collection_id,
+                collection_uuid,
+            )
+            raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
+
+        # Reset the document for retry
+        try:
+            document = await document_repo.reset_for_retry(document_uuid)
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            if "not in FAILED status" in str(e):
+                raise HTTPException(status_code=400, detail="Only failed documents can be retried") from e
+            raise
+
+        logger.info(
+            "User %s retried document %s in collection %s (retry_count=%d)",
+            current_user.get("id"),
+            document_uuid,
+            collection_uuid,
+            document.retry_count,
+        )
+
+        return DocumentResponse(
+            id=document.id,
+            collection_id=document.collection_id,
+            file_name=document.file_name,
+            file_path=document.file_path,
+            file_size=document.file_size,
+            mime_type=document.mime_type,
+            content_hash=document.content_hash,
+            status=document.status.value,
+            error_message=document.error_message,
+            chunk_count=document.chunk_count,
+            retry_count=document.retry_count or 0,
+            last_retry_at=document.last_retry_at,
+            error_category=document.error_category,
+            metadata=document.meta,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to retry document: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retry document") from e
+
+
+@router.post(
+    "/collections/{collection_uuid}/documents/retry-failed",
+    response_model=None,
+    responses={
+        200: {"description": "Bulk retry result"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def retry_failed_documents(
+    collection_uuid: str,
+    collection: Collection = Depends(get_collection_for_user),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Retry all failed documents in a collection.
+
+    Resets all retryable failed documents (transient or unknown errors) to PENDING.
+    Documents with permanent errors or that have exceeded max retries are not reset.
+    """
+    from webui.api.schemas import RetryDocumentsResponse
+
+    try:
+        document_repo = create_document_repository(db)
+
+        # Reset all retryable failed documents
+        reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid)
+        await db.commit()
+
+        logger.info(
+            "User %s bulk retried %d failed documents in collection %s",
+            current_user.get("id"),
+            reset_count,
+            collection_uuid,
+        )
+
+        return RetryDocumentsResponse(
+            reset_count=reset_count,
+            message=f"Reset {reset_count} failed document(s) for retry",
+        ).model_dump()
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("Failed to bulk retry documents: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retry failed documents") from e
+
+
+@router.get(
+    "/collections/{collection_uuid}/documents/failed/count",
+    response_model=None,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_failed_document_count(
+    collection_uuid: str,
+    retryable_only: bool = False,
+    collection: Collection = Depends(get_collection_for_user),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int]:
+    """Get count of failed documents by error category.
+
+    Returns counts broken down by error category (transient, permanent, unknown)
+    and a total count. Optionally filter to only retryable documents.
+    """
+    from webui.api.schemas import FailedDocumentCountResponse
+
+    try:
+        document_repo = create_document_repository(db)
+        counts = await document_repo.get_failed_document_count(
+            collection_uuid,
+            retryable_only=retryable_only,
+        )
+
+        return FailedDocumentCountResponse(**counts).model_dump()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get failed document count: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get failed document count") from e

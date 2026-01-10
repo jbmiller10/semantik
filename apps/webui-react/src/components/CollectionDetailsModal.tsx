@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
+import { documentsV2Api } from '../services/api/v2/documents';
 import { collectionKeys } from '../hooks/useCollections';
 import { operationKeys } from '../hooks/useCollectionOperations';
 import AddDataToCollectionModal from './AddDataToCollectionModal';
@@ -11,10 +12,10 @@ import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
 import { SparseIndexPanel } from './collection/SparseIndexPanel';
-import type { DocumentResponse, SourceResponse } from '../services/api/v2/types';
+import type { DocumentResponse, SourceResponse, FailedDocumentCountResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
-import { Type, GitBranch, FileText, Brain, Network, Sparkles } from 'lucide-react';
+import { Type, GitBranch, FileText, Brain, Network, Sparkles, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
 
 function CollectionDetailsModal() {
   const navigate = useNavigate();
@@ -63,7 +64,7 @@ function CollectionDetailsModal() {
   });
 
   // Fetch documents (files) for the collection
-  const { data: documentsData } = useQuery({
+  const { data: documentsData, refetch: refetchDocuments } = useQuery({
     queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'documents', filesPage],
     queryFn: async () => {
       if (!showCollectionDetailsModal || activeTab !== 'files') return null;
@@ -74,6 +75,45 @@ function CollectionDetailsModal() {
       return response.data;
     },
     enabled: !!showCollectionDetailsModal && activeTab === 'files',
+  });
+
+  // Fetch failed document counts for the collection
+  const { data: failedCounts } = useQuery<FailedDocumentCountResponse | null>({
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'],
+    queryFn: async () => {
+      if (!showCollectionDetailsModal || activeTab !== 'files') return null;
+      const response = await documentsV2Api.getFailedCount(showCollectionDetailsModal);
+      return response.data;
+    },
+    enabled: !!showCollectionDetailsModal && activeTab === 'files',
+  });
+
+  // Mutation to retry a single document
+  const retryDocumentMutation = useMutation({
+    mutationFn: (documentUuid: string) =>
+      documentsV2Api.retry(showCollectionDetailsModal!, documentUuid),
+    onSuccess: () => {
+      addToast({ message: 'Document queued for retry', type: 'success' });
+      refetchDocuments();
+      queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
+    },
+    onError: (error: Error) => {
+      addToast({ message: `Failed to retry document: ${error.message}`, type: 'error' });
+    },
+  });
+
+  // Mutation to retry all failed documents
+  const retryAllFailedMutation = useMutation({
+    mutationFn: () => documentsV2Api.retryFailed(showCollectionDetailsModal!),
+    onSuccess: (response) => {
+      const count = response.data.reset_count;
+      addToast({ message: `${count} document(s) queued for retry`, type: 'success' });
+      refetchDocuments();
+      queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
+    },
+    onError: (error: Error) => {
+      addToast({ message: `Failed to retry documents: ${error.message}`, type: 'error' });
+    },
   });
 
   // Fetch sources for the collection (always fetch when modal is open)
@@ -529,45 +569,121 @@ function CollectionDetailsModal() {
 
           {collection && activeTab === 'files' && documentsData && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Documents ({documentsData.total.toLocaleString()})
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Documents ({documentsData.total.toLocaleString()})
+                </h3>
+                {/* Retry All Failed button */}
+                {failedCounts && failedCounts.total > 0 && (
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-500">
+                      <span className="text-red-600 font-medium">{failedCounts.total}</span> failed
+                      {failedCounts.transient > 0 && (
+                        <span className="text-yellow-600 ml-1">({failedCounts.transient} retryable)</span>
+                      )}
+                    </span>
+                    <button
+                      onClick={() => retryAllFailedMutation.mutate()}
+                      disabled={retryAllFailedMutation.isPending || failedCounts.transient === 0}
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${retryAllFailedMutation.isPending ? 'animate-spin' : ''}`} />
+                      Retry All Failed
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        File Path
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        File Name
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Source
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Chunks
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Created
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {documentsData.documents.map((doc: DocumentResponse) => (
-                      <tr key={doc.id}>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          <div className="truncate max-w-md" title={doc.file_path}>
-                            {doc.file_path}
+                      <tr key={doc.id} className={doc.status === 'failed' ? 'bg-red-50' : ''}>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          <div className="truncate max-w-xs" title={doc.file_path}>
+                            {doc.file_name}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <div className="truncate max-w-xs" title={doc.source_path}>
-                            {doc.source_path}
-                          </div>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {doc.status === 'completed' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Completed
+                            </span>
+                          )}
+                          {doc.status === 'failed' && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Failed
+                                {doc.error_category && (
+                                  <span className="ml-1 text-red-600">({doc.error_category})</span>
+                                )}
+                              </span>
+                              {doc.error_message && (
+                                <div className="text-xs text-red-600 mt-1 truncate max-w-xs" title={doc.error_message}>
+                                  {doc.error_message}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {doc.status === 'processing' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                              Processing
+                            </span>
+                          )}
+                          {doc.status === 'pending' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Pending
+                              {doc.retry_count > 0 && (
+                                <span className="ml-1">(retry #{doc.retry_count})</span>
+                              )}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                           {doc.chunk_count}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                           {formatDate(doc.created_at)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                          {doc.status === 'failed' && doc.error_category !== 'permanent' && (
+                            <button
+                              onClick={() => retryDocumentMutation.mutate(doc.id)}
+                              disabled={retryDocumentMutation.isPending}
+                              className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                              title="Retry this document"
+                            >
+                              <RefreshCw className={`h-3 w-3 mr-1 ${retryDocumentMutation.isPending ? 'animate-spin' : ''}`} />
+                              Retry
+                            </button>
+                          )}
+                          {doc.status === 'failed' && doc.error_category === 'permanent' && (
+                            <span className="text-xs text-gray-400" title="Permanent error - cannot be retried">
+                              Cannot retry
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

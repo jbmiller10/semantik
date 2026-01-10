@@ -410,6 +410,10 @@ class DocumentResponse(DocumentBase):
     status: DocumentStatusEnum
     error_message: str | None = None
     chunk_count: int
+    # Retry tracking fields
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    error_category: str | None = None  # 'transient', 'permanent', 'unknown'
     created_at: datetime
     updated_at: datetime
 
@@ -423,6 +427,22 @@ class DocumentListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class FailedDocumentCountResponse(BaseModel):
+    """Response for failed document counts by category."""
+
+    transient: int = 0
+    permanent: int = 0
+    unknown: int = 0
+    total: int = 0
+
+
+class RetryDocumentsResponse(BaseModel):
+    """Response for bulk retry operation."""
+
+    reset_count: int
+    message: str
 
 
 # API Key schemas

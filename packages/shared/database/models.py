@@ -296,6 +296,11 @@ class Document(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
     is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
 
+    # Retry tracking fields (for failed document retry functionality)
+    retry_count = Column(Integer, nullable=False, default=0)  # Number of retry attempts
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)  # When last retry was attempted
+    error_category = Column(String(50), nullable=True)  # 'transient', 'permanent', or 'unknown'
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
@@ -313,6 +318,15 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+        # Index for querying retryable failed documents
+        Index(
+            "ix_documents_collection_failed_retryable",
+            "collection_id",
+            "status",
+            "error_category",
+            "retry_count",
+            postgresql_where=text("status = 'failed'"),
         ),
     )
 
