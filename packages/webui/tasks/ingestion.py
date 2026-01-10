@@ -800,12 +800,185 @@ async def _process_index_operation(
 
         await updater.send_update("index_completed", {"qdrant_collection": vector_store_name, "vector_dim": vector_dim})
 
-        return {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
+        # Setup sparse collection if sparse indexing is configured
+        result = {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
+        sparse_config = operation.get("config", {}).get("sparse_index_config")
+        if sparse_config and sparse_config.get("enabled"):
+            try:
+                sparse_result = await _setup_sparse_collection_for_index(
+                    vector_store_name=vector_store_name,
+                    sparse_config=sparse_config,
+                )
+                await updater.send_update("sparse_index_configured", sparse_result)
+                result["sparse_index"] = sparse_result
+            except Exception as sparse_exc:
+                logger.warning(
+                    "Failed to setup sparse indexing for %s: %s (continuing with dense-only)",
+                    vector_store_name,
+                    sparse_exc,
+                    exc_info=True,
+                )
+                # Don't fail the entire operation - sparse is optional
+
+        return result
 
     except Exception as exc:
         logger.error("Failed to create Qdrant collection: %s", exc, exc_info=True)
         record_qdrant_operation("create_collection", "failed")
         raise
+
+
+async def _setup_sparse_collection_for_index(
+    vector_store_name: str,
+    sparse_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Setup sparse Qdrant collection and store config in metadata.
+
+    This is called during INDEX operation when sparse_index_config is provided.
+    Creates the sparse collection in Qdrant and stores the configuration in
+    collection metadata. Does NOT process documents (that happens in APPEND).
+    """
+    from qdrant_client import AsyncQdrantClient
+
+    from shared.database.collection_metadata import store_sparse_index_config
+    from shared.plugins import load_plugins, plugin_registry
+    from vecpipe.sparse import ensure_sparse_collection, generate_sparse_collection_name
+
+    plugin_id = sparse_config["plugin_id"]
+    model_config = sparse_config.get("model_config_data") or {}
+
+    # Load plugin to get sparse type
+    load_plugins(plugin_types={"sparse_indexer"})
+    plugin_record = plugin_registry.find_by_id(plugin_id)
+    if plugin_record is None:
+        raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
+
+    plugin_cls = plugin_record.plugin_class
+    sparse_type = getattr(plugin_cls, "SPARSE_TYPE", "bm25")
+
+    # Generate sparse collection name
+    sparse_collection_name = generate_sparse_collection_name(vector_store_name, sparse_type)
+
+    # Create async Qdrant client for sparse operations
+    async_qdrant = AsyncQdrantClient(
+        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        api_key=settings.QDRANT_API_KEY,
+    )
+
+    try:
+        # Create sparse Qdrant collection
+        await ensure_sparse_collection(sparse_collection_name, async_qdrant)
+
+        # Build and store sparse config in metadata
+        now = datetime.now(UTC).isoformat()
+        stored_config = {
+            "enabled": True,
+            "plugin_id": plugin_id,
+            "sparse_collection_name": sparse_collection_name,
+            "model_config": model_config,
+            "created_at": now,
+            "document_count": 0,
+            "last_indexed_at": None,
+        }
+
+        await store_sparse_index_config(async_qdrant, vector_store_name, stored_config)
+
+        logger.info(
+            "Configured sparse indexing for %s: collection=%s, plugin=%s",
+            vector_store_name,
+            sparse_collection_name,
+            plugin_id,
+        )
+
+        return {"sparse_collection_name": sparse_collection_name, "plugin_id": plugin_id}
+    finally:
+        await async_qdrant.close()
+
+
+async def _maybe_generate_sparse_vectors(
+    chunks: list[dict[str, Any]],
+    points: list[Any],
+    qdrant_collection_name: str,
+) -> None:
+    """Generate and upsert sparse vectors for chunks if sparse indexing is enabled.
+
+    This is called during APPEND operation after dense vectors are upserted.
+    Checks if sparse indexing is enabled for the collection and generates
+    sparse vectors using the configured plugin.
+    """
+    from qdrant_client import AsyncQdrantClient
+
+    from shared.database.collection_metadata import get_sparse_index_config
+    from shared.plugins import load_plugins, plugin_registry
+    from vecpipe.sparse import upsert_sparse_vectors
+
+    async_qdrant = AsyncQdrantClient(
+        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        api_key=settings.QDRANT_API_KEY,
+    )
+    try:
+        sparse_config = await get_sparse_index_config(async_qdrant, qdrant_collection_name)
+        if not sparse_config or not sparse_config.get("enabled"):
+            return
+
+        plugin_id = sparse_config["plugin_id"]
+        model_config = sparse_config.get("model_config", {})
+        sparse_collection_name = sparse_config["sparse_collection_name"]
+
+        # Load and instantiate plugin
+        load_plugins(plugin_types={"sparse_indexer"})
+        plugin_record = plugin_registry.find_by_id(plugin_id)
+        if not plugin_record:
+            logger.warning("Sparse plugin %s not found, skipping sparse vectors", plugin_id)
+            return
+
+        indexer = plugin_record.plugin_class()
+        if hasattr(indexer, "initialize"):
+            await indexer.initialize(model_config)
+
+        try:
+            # Prepare documents for encoding using chunk IDs from the points
+            documents = []
+            for i, chunk in enumerate(chunks):
+                # Use the point ID as the chunk_id for consistency with dense vectors
+                chunk_id = str(points[i].id) if i < len(points) else chunk.get("chunk_id", str(i))
+                documents.append({
+                    "content": chunk.get("text") or chunk.get("content", ""),
+                    "chunk_id": chunk_id,
+                    "metadata": chunk.get("metadata", {}),
+                })
+
+            # Encode documents
+            sparse_vectors = await indexer.encode_documents(documents)
+
+            # Convert to Qdrant format and upsert
+            qdrant_vectors = [
+                {
+                    "chunk_id": sv.chunk_id,
+                    "indices": list(sv.indices),
+                    "values": list(sv.values),
+                }
+                for sv in sparse_vectors
+            ]
+
+            await upsert_sparse_vectors(sparse_collection_name, qdrant_vectors, async_qdrant)
+            logger.debug(
+                "Generated %d sparse vectors for %s",
+                len(sparse_vectors),
+                qdrant_collection_name,
+            )
+        finally:
+            if hasattr(indexer, "cleanup"):
+                await indexer.cleanup()
+    except Exception as exc:
+        logger.warning(
+            "Failed to generate sparse vectors for %s: %s (continuing with dense only)",
+            qdrant_collection_name,
+            exc,
+            exc_info=True,
+        )
+    finally:
+        await async_qdrant.close()
 
 
 async def _process_append_operation_impl(
@@ -1506,6 +1679,13 @@ async def _process_append_operation_impl(
                                 raise Exception(
                                     f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
                                 )
+
+                    # Generate sparse vectors if sparse indexing is enabled
+                    await _maybe_generate_sparse_vectors(
+                        chunks=chunks,
+                        points=points,
+                        qdrant_collection_name=qdrant_collection_name,
+                    )
 
                     await document_repo.update_status(
                         doc.id,

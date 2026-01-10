@@ -76,6 +76,25 @@ class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Sparse indexing configuration
+class SparseIndexConfig(BaseModel):
+    """Configuration for sparse indexing during collection creation."""
+
+    enabled: bool = Field(default=False, description="Whether to enable sparse indexing")
+    plugin_id: str | None = Field(default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')")
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75} for BM25)",
+    )
+
+    @model_validator(mode="after")
+    def validate_plugin_required_when_enabled(self) -> "SparseIndexConfig":
+        """Validate that plugin_id is provided when enabled is True."""
+        if self.enabled and not self.plugin_id:
+            raise ValueError("plugin_id is required when sparse indexing is enabled")
+        return self
+
+
 # Collection schemas
 class CollectionBase(BaseModel):
     """Base collection schema."""
@@ -149,6 +168,12 @@ class CollectionCreate(CollectionBase):
         default=None,
         ge=15,
         description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    # Sparse indexing configuration
+    sparse_index_config: SparseIndexConfig | None = Field(
+        default=None,
+        description="Optional sparse indexing configuration (BM25/SPLADE) for hybrid search",
     )
 
     @model_validator(mode="after")

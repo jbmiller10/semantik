@@ -223,6 +223,17 @@ class CollectionService:
                     # Config without strategy is not allowed
                     raise ValueError("chunking_config requires chunking_strategy to be specified")
 
+            # Validate sparse indexing config if provided
+            sparse_index_config = config.get("sparse_index_config") if config else None
+            if sparse_index_config and sparse_index_config.get("enabled"):
+                from shared.plugins import load_plugins, plugin_registry
+
+                load_plugins(plugin_types={"sparse_indexer"})
+                plugin_id = sparse_index_config.get("plugin_id")
+                plugin_record = plugin_registry.find_by_id(plugin_id)
+                if plugin_record is None or plugin_record.plugin_type != "sparse_indexer":
+                    raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
+
             # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
@@ -248,14 +259,19 @@ class CollectionService:
             raise
 
         # Create operation record
+        operation_config: dict[str, Any] = {
+            "sources": [],  # Initial creation has no sources
+            "collection_config": config or {},
+        }
+        # Include sparse_index_config at top level for easier access in INDEX task
+        if sparse_index_config and sparse_index_config.get("enabled"):
+            operation_config["sparse_index_config"] = sparse_index_config
+
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
             operation_type=OperationType.INDEX,
-            config={
-                "sources": [],  # Initial creation has no sources
-                "collection_config": config or {},
-            },
+            config=operation_config,
         )
 
         # Commit the transaction BEFORE dispatching the task

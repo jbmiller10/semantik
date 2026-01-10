@@ -109,6 +109,10 @@ async def create_collection(
         if create_request.extraction_config is not None:
             cfg["extraction_config"] = create_request.extraction_config
 
+        # Sparse indexing configuration
+        if create_request.sparse_index_config is not None:
+            cfg["sparse_index_config"] = create_request.sparse_index_config.model_dump()
+
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
             name=create_request.name,
