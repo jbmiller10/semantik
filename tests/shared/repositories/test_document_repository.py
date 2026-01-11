@@ -674,3 +674,8 @@ class TestDocumentRepositoryRetryUtilities:
         assert counts["transient"] == 2
         assert counts["permanent"] == 1
         assert counts["total"] == 3
+
+        retryable_counts = await repo.get_failed_document_count(collection.id, retryable_only=True)
+        assert retryable_counts["transient"] == 1
+        assert retryable_counts["permanent"] == 0
+        assert retryable_counts["total"] == 1

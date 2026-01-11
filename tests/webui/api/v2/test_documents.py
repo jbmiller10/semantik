@@ -554,7 +554,19 @@ class TestRetryEndpoints:
         mock_repo.get_by_id.return_value = mock_document
         mock_repo.reset_for_retry.return_value = reset_doc
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo):
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-operation-uuid"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app") as mock_celery,
+        ):
             result = await retry_document(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -564,8 +576,70 @@ class TestRetryEndpoints:
             )
 
         mock_db.commit.assert_awaited_once()
+        mock_celery.send_task.assert_called_once()
+        args, kwargs = mock_celery.send_task.call_args
+        assert args[0] == "webui.tasks.process_collection_operation"
+        assert kwargs["args"] == [mock_operation.uuid]
         assert result.retry_count == 2
         assert result.status == DocumentStatus.PENDING.value
+
+    @pytest.mark.asyncio()
+    async def test_retry_document_dispatch_failure(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock, mock_document: MagicMock
+    ) -> None:
+        mock_document.status = DocumentStatus.FAILED
+
+        reset_doc = MagicMock(spec=Document)
+        reset_doc.id = mock_document.id
+        reset_doc.collection_id = mock_document.collection_id
+        reset_doc.file_name = mock_document.file_name
+        reset_doc.file_path = mock_document.file_path
+        reset_doc.file_size = 100
+        reset_doc.mime_type = "text/plain"
+        reset_doc.content_hash = "a" * 64
+        reset_doc.status = DocumentStatus.PENDING
+        reset_doc.error_message = None
+        reset_doc.chunk_count = 0
+        reset_doc.retry_count = 2
+        reset_doc.last_retry_at = None
+        reset_doc.error_category = None
+        reset_doc.meta = {}
+        reset_doc.created_at = datetime.now(UTC)
+        reset_doc.updated_at = datetime.now(UTC)
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_document
+        mock_repo.reset_for_retry.return_value = reset_doc
+
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-dispatch-fail-operation"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        mock_celery = MagicMock()
+        mock_celery.send_task.side_effect = Exception("Broker connection refused")
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app", mock_celery),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await retry_document(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == 503
+        assert "test-dispatch-fail-operation" in exc_info.value.detail
+        mock_operation_repo.update_status.assert_awaited_once()
 
     @pytest.mark.asyncio()
     async def test_retry_document_rejects_non_failed(

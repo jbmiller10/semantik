@@ -2110,7 +2110,7 @@ async def _process_append_operation_impl(
 
 
 async def _process_retry_documents_operation(
-    operation: dict,  # noqa: ARG001
+    operation: dict,
     collection: dict,
     collection_repo: Any,
     document_repo: Any,
@@ -2137,13 +2137,48 @@ async def _process_retry_documents_operation(
         collection_id,
     )
 
-    # Fetch all PENDING documents in the collection (these are the ones reset for retry)
-    pending_documents, _ = await document_repo.list_by_collection(
-        collection_id=collection_id,
-        status=DocumentStatus.PENDING,
-        offset=0,
-        limit=10000,  # Process up to 10k documents per retry operation
-    )
+    config = operation.get("config") if isinstance(operation, dict) else None
+    document_ids: list[str] = []
+    if isinstance(config, dict):
+        for key in ("document_ids", "documents", "document_uuids", "pending_document_ids", "document_id"):
+            value = config.get(key)
+            if not value:
+                continue
+            if isinstance(value, str):
+                document_ids.append(value)
+            elif isinstance(value, (list, tuple, set)):
+                for item in value:
+                    doc_id: str | None = None
+                    if isinstance(item, dict):
+                        doc_id = item.get("id") or item.get("document_id")
+                    elif item:
+                        doc_id = str(item)
+                    if doc_id:
+                        document_ids.append(doc_id)
+
+    pending_documents: list[Any] = []
+    if document_ids:
+        seen: set[str] = set()
+        for doc_id in document_ids:
+            if not doc_id or doc_id in seen:
+                continue
+            seen.add(doc_id)
+            doc = await document_repo.get_by_id(doc_id)
+            if not doc:
+                continue
+            if str(getattr(doc, "collection_id", "")) != str(collection_id):
+                continue
+            if getattr(doc, "status", None) != DocumentStatus.PENDING.value:
+                continue
+            pending_documents.append(doc)
+    else:
+        # Fetch all PENDING documents in the collection (these are the ones reset for retry)
+        pending_documents, _ = await document_repo.list_by_collection(
+            collection_id=collection_id,
+            status=DocumentStatus.PENDING,
+            offset=0,
+            limit=10000,  # Process up to 10k documents per retry operation
+        )
 
     if not pending_documents:
         logger.info("No pending documents to retry in collection %s", collection_id)

@@ -332,8 +332,15 @@ async def retry_document(
     Resets the document status to PENDING so it can be reprocessed.
     Only documents in FAILED status can be retried.
     """
+    import uuid as uuid_module
+
+    from shared.database.models import OperationStatus, OperationType
+    from shared.database.repositories.operation_repository import OperationRepository
+    from webui.celery_app import celery_app
+
     try:
         document_repo = create_document_repository(db)
+        operation_repo = OperationRepository(db)
         document = await document_repo.get_by_id(document_uuid)
         if not document:
             raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
@@ -351,7 +358,6 @@ async def retry_document(
         # Reset the document for retry
         try:
             document = await document_repo.reset_for_retry(document_uuid)
-            await db.commit()
         except ValidationError as e:
             await db.rollback()
             raise HTTPException(status_code=400, detail="Only failed documents can be retried") from e
@@ -359,12 +365,65 @@ async def retry_document(
             await db.rollback()
             raise
 
+        # Create retry operation and dispatch task
+        user_id = current_user.get("id") or current_user.get("sub")
+        try:
+            operation = await operation_repo.create(
+                collection_id=collection_uuid,
+                user_id=user_id,
+                operation_type=OperationType.RETRY_DOCUMENTS,
+                config={
+                    "document_ids": [document_uuid],
+                    "reset_count": 1,
+                    "pending_count": 0,
+                    "triggered_by": "manual",
+                },
+            )
+            await db.commit()
+            operation_uuid = operation.uuid
+        except Exception:
+            await db.rollback()
+            raise
+
+        try:
+            celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation_uuid],
+                task_id=str(uuid_module.uuid4()),
+            )
+        except Exception as dispatch_exc:
+            logger.error(
+                "Failed to dispatch Celery task for operation %s: %s",
+                operation_uuid,
+                dispatch_exc,
+                exc_info=True,
+            )
+            try:
+                await operation_repo.update_status(
+                    operation_uuid,
+                    OperationStatus.FAILED,
+                    error_message=f"Task dispatch failed: {dispatch_exc}",
+                )
+                await db.commit()
+            except Exception as update_exc:
+                logger.error(
+                    "Failed to update operation %s status after dispatch failure: %s",
+                    operation_uuid,
+                    update_exc,
+                    exc_info=True,
+                )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Operation created but task dispatch failed. Operation ID: {operation_uuid}",
+            ) from dispatch_exc
+
         logger.info(
-            "User %s retried document %s in collection %s (retry_count=%d)",
-            current_user.get("id"),
+            "User %s retried document %s in collection %s (retry_count=%d, operation=%s)",
+            user_id,
             document_uuid,
             collection_uuid,
             document.retry_count,
+            operation_uuid,
         )
 
         return DocumentResponse(

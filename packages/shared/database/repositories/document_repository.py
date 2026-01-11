@@ -1019,6 +1019,14 @@ class DocumentRepository:
 
             if retryable_only:
                 conditions.append(Document.retry_count < max_retry_count)
+                from sqlalchemy import or_
+
+                conditions.append(
+                    or_(
+                        Document.error_category != "permanent",
+                        Document.error_category.is_(None),
+                    )
+                )
 
             # Count by category using group by
             query = (
