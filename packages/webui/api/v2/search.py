@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
+
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.schemas import (
     CollectionSearchRequest,
