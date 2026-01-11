@@ -806,9 +806,7 @@ class DocumentRepository:
                 normalized_status = str(status_value).lower()
 
             if normalized_status != DocumentStatus.FAILED.value:
-                raise ValidationError(
-                    f"Document {document_id} is not in FAILED status (current: {document.status})"
-                )
+                raise ValidationError(f"Document {document_id} is not in FAILED status (current: {document.status})")
 
             document.status = DocumentStatus.PENDING.value
             document.retry_count = (document.retry_count or 0) + 1

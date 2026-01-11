@@ -505,9 +505,7 @@ def cleanup_stuck_operations(stuck_threshold_minutes: int = 15) -> dict[str, Any
     try:
         log.info("Starting cleanup of stuck operations (threshold: %s min)", stuck_threshold_minutes)
 
-        result = cast(dict[str, Any], resolve_awaitable_sync(
-            _cleanup_stuck_operations_async(stuck_threshold_minutes)
-        ))
+        result = cast(dict[str, Any], resolve_awaitable_sync(_cleanup_stuck_operations_async(stuck_threshold_minutes)))
         stats.update(result)
 
         log.info(
