@@ -81,7 +81,9 @@ class SparseIndexConfig(BaseModel):
     """Configuration for sparse indexing during collection creation."""
 
     enabled: bool = Field(default=False, description="Whether to enable sparse indexing")
-    plugin_id: str | None = Field(default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')")
+    plugin_id: str | None = Field(
+        default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')"
+    )
     model_config_data: dict[str, Any] | None = Field(
         default=None,
         description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75} for BM25)",
@@ -407,9 +409,13 @@ class DocumentResponse(DocumentBase):
     file_size: int
     mime_type: str | None = None
     content_hash: str
-    status: DocumentStatusEnum
+    status: str  # DocumentStatus value as string
     error_message: str | None = None
     chunk_count: int
+    # Retry tracking fields
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    error_category: str | None = None  # 'transient', 'permanent', 'unknown'
     created_at: datetime
     updated_at: datetime
 
@@ -423,6 +429,24 @@ class DocumentListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class FailedDocumentCountResponse(BaseModel):
+    """Response for failed document counts by category."""
+
+    transient: int = 0
+    permanent: int = 0
+    unknown: int = 0
+    total: int = 0
+
+
+class RetryDocumentsResponse(BaseModel):
+    """Response for bulk retry operation."""
+
+    reset_count: int
+    pending_count: int = 0
+    operation_id: str | None = None
+    message: str
 
 
 # API Key schemas

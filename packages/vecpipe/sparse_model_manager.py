@@ -25,17 +25,16 @@ from typing import TYPE_CHECKING, Any
 
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
-from shared.plugins.types.sparse_indexer import (
-    SparseIndexerPlugin,
-    SparseQueryVector,
-    SparseVector,
-)
+
+if TYPE_CHECKING:
+    from shared.plugins.types.sparse_indexer import (
+        SparseIndexerPlugin,
+        SparseQueryVector,
+        SparseVector,
+    )
 
 from .cpu_offloader import get_offloader
 from .memory_governor import GPUMemoryGovernor, ModelType
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
