@@ -3,9 +3,6 @@ import {
   isAxiosError,
   isError,
   getErrorMessage,
-  isStructuredError,
-  isInsufficientMemoryError,
-  getInsufficientMemoryErrorDetails,
 } from '../errorUtils';
 
 describe('errorUtils', () => {
@@ -121,106 +118,4 @@ describe('errorUtils', () => {
     });
   });
 
-  describe('isStructuredError', () => {
-    it('should return true for valid structured errors', () => {
-      expect(isStructuredError({ error: 'test_error' })).toBe(true);
-      expect(isStructuredError({ error: 'test_error', message: 'Test message' })).toBe(true);
-      expect(isStructuredError({ error: 'test_error', suggestion: 'Try this' })).toBe(true);
-    });
-
-    it('should return false for invalid structures', () => {
-      expect(isStructuredError(null)).toBe(false);
-      expect(isStructuredError(undefined)).toBe(false);
-      expect(isStructuredError('string')).toBe(false);
-      expect(isStructuredError({ message: 'missing error field' })).toBe(false);
-      expect(isStructuredError({ error: 123 })).toBe(false); // error must be string
-    });
-  });
-
-  describe('isInsufficientMemoryError', () => {
-    it('should return true for insufficient memory errors', () => {
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: { detail: { error: 'insufficient_memory' } },
-        status: 507,
-        statusText: 'Insufficient Storage',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      expect(isInsufficientMemoryError(error)).toBe(true);
-    });
-
-    it('should return false for other errors', () => {
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: { detail: { error: 'other_error' } },
-        status: 507,
-        statusText: 'Insufficient Storage',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      expect(isInsufficientMemoryError(error)).toBe(false);
-    });
-
-    it('should return false for non-507 status', () => {
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: { detail: { error: 'insufficient_memory' } },
-        status: 500,
-        statusText: 'Internal Server Error',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      expect(isInsufficientMemoryError(error)).toBe(false);
-    });
-
-    it('should return false for non-AxiosError', () => {
-      expect(isInsufficientMemoryError(new Error('Regular error'))).toBe(false);
-    });
-  });
-
-  describe('getInsufficientMemoryErrorDetails', () => {
-    it('should return details for insufficient memory errors', () => {
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: {
-          detail: {
-            error: 'insufficient_memory',
-            message: 'Not enough GPU memory',
-            suggestion: 'Use a smaller model',
-          },
-        },
-        status: 507,
-        statusText: 'Insufficient Storage',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      const details = getInsufficientMemoryErrorDetails(error);
-      expect(details).toEqual({
-        message: 'Not enough GPU memory',
-        suggestion: 'Use a smaller model',
-      });
-    });
-
-    it('should provide default values when fields are missing', () => {
-      const error = new AxiosError('Network error');
-      error.response = {
-        data: { detail: { error: 'insufficient_memory' } },
-        status: 507,
-        statusText: 'Insufficient Storage',
-        headers: {},
-        config: {} as InternalAxiosRequestConfig,
-      };
-      const details = getInsufficientMemoryErrorDetails(error);
-      expect(details).toEqual({
-        message: 'Insufficient GPU memory for reranking',
-        suggestion: 'Try using a smaller model or different quantization',
-      });
-    });
-
-    it('should return null for non-insufficient memory errors', () => {
-      const error = new Error('Regular error');
-      expect(getInsufficientMemoryErrorDetails(error)).toBeNull();
-    });
-  });
 });

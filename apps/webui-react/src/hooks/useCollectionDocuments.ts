@@ -1,6 +1,5 @@
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { collectionsV2Api } from '../services/api/v2/collections';
-import type { DocumentListResponse } from '../services/api/v2/types';
 
 // Query key factory for documents
 export const documentKeys = {
@@ -42,53 +41,3 @@ export function useCollectionDocuments(
   });
 }
 
-// Hook to prefetch the next page of documents
-export function usePrefetchDocuments() {
-  const queryClient = useQueryClient();
-  
-  return async (
-    collectionId: string, 
-    currentPage: number, 
-    limit: number = 50,
-    totalPages?: number
-  ) => {
-    // Don't prefetch if we're already on the last page
-    if (totalPages && currentPage >= totalPages) return;
-    
-    const nextPage = currentPage + 1;
-    
-    await queryClient.prefetchQuery({
-      queryKey: documentKeys.list(collectionId, nextPage, limit),
-      queryFn: async () => {
-        const response = await collectionsV2Api.listDocuments(collectionId, { 
-          page: nextPage,
-          limit 
-        });
-        return response.data;
-      },
-      staleTime: 30000,
-    });
-  };
-}
-
-// Utility hook to aggregate source directories from documents
-export function useSourceDirectories(documentsData?: DocumentListResponse) {
-  if (!documentsData) return [];
-
-  const sourceMap = documentsData.documents.reduce((acc: Map<string, { path: string; document_count: number }>, doc) => {
-    // Skip documents without source_path
-    const sourcePath = doc.source_path;
-    if (!sourcePath) return acc;
-
-    if (!acc.has(sourcePath)) {
-      acc.set(sourcePath, {
-        path: sourcePath,
-        document_count: 0
-      });
-    }
-    acc.get(sourcePath)!.document_count++;
-    return acc;
-  }, new Map<string, { path: string; document_count: number }>());
-
-  return Array.from(sourceMap.values());
-}

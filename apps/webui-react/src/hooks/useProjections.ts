@@ -146,19 +146,3 @@ export function useDeleteProjection(collectionId: string | null) {
   });
 }
 
-export function useUpdateProjectionInCache() {
-  const queryClient = useQueryClient();
-
-  return (collectionId: string, updated: ProjectionMetadata) => {
-    queryClient.setQueryData<ProjectionMetadata[]>(
-      projectionKeys.lists(collectionId),
-      (prev = []) => prev.map((projection) =>
-        projection.id === updated.id ? { ...projection, ...updated } : projection
-      )
-    );
-    queryClient.setQueryData(
-      projectionKeys.detail(collectionId, updated.id),
-      updated
-    );
-  };
-}

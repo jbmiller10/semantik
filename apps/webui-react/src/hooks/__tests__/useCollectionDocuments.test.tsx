@@ -4,8 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import {
   useCollectionDocuments,
-  usePrefetchDocuments,
-  useSourceDirectories,
   documentKeys,
 } from '../useCollectionDocuments';
 import { collectionsV2Api } from '../../services/api/v2/collections';
@@ -232,130 +230,6 @@ describe('useCollectionDocuments', () => {
       });
 
       expect(result.current.error).toBe(error);
-    });
-  });
-
-  describe('usePrefetchDocuments hook', () => {
-    it('should prefetch next page when not on last page', async () => {
-      const prefetchSpy = vi.spyOn(queryClient, 'prefetchQuery');
-
-      const { result } = renderHook(() => usePrefetchDocuments(), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
-        data: mockDocumentResponse,
-      } as MockAxiosResponse<DocumentListResponse>);
-
-      await act(async () => {
-        await result.current('col-1', 1, 50, 3); // Current page 1 of 3
-      });
-
-      expect(prefetchSpy).toHaveBeenCalled();
-      expect(collectionsV2Api.listDocuments).toHaveBeenCalledWith('col-1', {
-        page: 2,
-        limit: 50,
-      });
-    });
-
-    it('should not prefetch when on last page', async () => {
-      const prefetchSpy = vi.spyOn(queryClient, 'prefetchQuery');
-
-      const { result } = renderHook(() => usePrefetchDocuments(), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await act(async () => {
-        await result.current('col-1', 3, 50, 3); // Current page 3 of 3
-      });
-
-      expect(prefetchSpy).not.toHaveBeenCalled();
-      expect(collectionsV2Api.listDocuments).not.toHaveBeenCalled();
-    });
-
-    it('should use custom limit for prefetch', async () => {
-      const { result } = renderHook(() => usePrefetchDocuments(), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      vi.mocked(collectionsV2Api.listDocuments).mockResolvedValue({
-        data: mockDocumentResponse,
-      } as MockAxiosResponse<DocumentListResponse>);
-
-      await act(async () => {
-        await result.current('col-1', 1, 25); // Custom limit of 25
-      });
-
-      expect(collectionsV2Api.listDocuments).toHaveBeenCalledWith('col-1', {
-        page: 2,
-        limit: 25,
-      });
-    });
-  });
-
-  describe('useSourceDirectories utility', () => {
-    it('should aggregate documents by source directory', () => {
-      const { result } = renderHook(() => useSourceDirectories(mockDocumentResponse), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      expect(result.current).toHaveLength(2); // Two unique source paths
-      
-      const docsDir = result.current.find(dir => dir.path === '/data/docs');
-      expect(docsDir).toEqual({
-        path: '/data/docs',
-        document_count: 2,
-      });
-
-      const imagesDir = result.current.find(dir => dir.path === '/data/images');
-      expect(imagesDir).toEqual({
-        path: '/data/images',
-        document_count: 1,
-      });
-    });
-
-    it('should handle empty or undefined data', () => {
-      const { result: undefinedResult } = renderHook(() => useSourceDirectories(undefined), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      expect(undefinedResult.current).toEqual([]);
-
-      const { result: emptyResult } = renderHook(
-        () => useSourceDirectories({ ...mockDocumentResponse, documents: [] }),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      expect(emptyResult.current).toEqual([]);
-    });
-
-    it('should count documents correctly for each source', () => {
-      const documentsWithSameSource: DocumentResponse[] = [
-        { ...mockDocuments[0], id: 'doc-a', source_path: '/data/shared' },
-        { ...mockDocuments[1], id: 'doc-b', source_path: '/data/shared' },
-        { ...mockDocuments[2], id: 'doc-c', source_path: '/data/shared' },
-        { ...mockDocuments[0], id: 'doc-d', source_path: '/data/other' },
-      ];
-
-      const response: DocumentListResponse = {
-        documents: documentsWithSameSource,
-        total: 4,
-        page: 1,
-        per_page: 50,
-        total_pages: 1,
-      };
-
-      const { result } = renderHook(() => useSourceDirectories(response), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      expect(result.current).toHaveLength(2);
-
-      const sharedDir = result.current.find(dir => dir.path === '/data/shared');
-      expect(sharedDir?.document_count).toBe(3);
-
-      const otherDir = result.current.find(dir => dir.path === '/data/other');
-      expect(otherDir?.document_count).toBe(1);
     });
   });
 

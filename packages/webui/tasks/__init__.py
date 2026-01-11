@@ -32,7 +32,6 @@ from .ingestion import (
     _process_index_operation,
     _process_remove_source_operation,
     process_collection_operation,
-    test_task,
 )
 from .projection import _process_projection_operation, compute_projection
 from .reindex import (
@@ -87,7 +86,6 @@ __all__ = [
     "_process_projection_operation",
     "_handle_task_failure",
     "_handle_task_failure_async",
-    "test_task",
     "compute_projection",
     # Reindex helpers
     "_process_reindex_operation",

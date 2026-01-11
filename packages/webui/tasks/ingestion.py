@@ -84,12 +84,6 @@ def _tasks_namespace() -> ModuleType:
     return import_module("webui.tasks")
 
 
-@celery_app.task(bind=True)
-def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
-    """Test task to verify Celery is working."""
-    return {"status": "success", "message": "Celery is working!"}
-
-
 @celery_app.task(
     bind=True,
     name="webui.tasks.process_collection_operation",
@@ -2630,7 +2624,6 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
 
 __all__ = [
     "process_collection_operation",
-    "test_task",
     "_process_collection_operation_async",
     "_process_index_operation",
     "_process_append_operation",

@@ -8,11 +8,9 @@ import {
   useProjectionMetadata,
   useStartProjection,
   useDeleteProjection,
-  useUpdateProjectionInCache,
   projectionKeys,
 } from './useProjections';
 import { useUIStore } from '../stores/uiStore';
-import { useQueryClient } from '@tanstack/react-query';
 import { ProjectionStatus } from '../types/projection';
 import { AllTheProviders } from '../tests/utils/providers';
 import { createTestQueryClient } from '../tests/utils/queryClient';
@@ -284,32 +282,4 @@ describe('useProjections hooks', () => {
     });
   });
 
-  describe('useUpdateProjectionInCache', () => {
-    it('should update projection in cache', async () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => {
-        return {
-          queryClient: useQueryClient(),
-          updateProjectionInCache: useUpdateProjectionInCache(),
-        };
-      }, { wrapper });
-
-      const updated = { ...mockProjections[0], status: 'running' as ProjectionStatus };
-      result.current.queryClient.setQueryData(projectionKeys.lists('col1'), [mockProjections[0]]);
-
-      act(() => {
-        result.current.updateProjectionInCache('col1', updated);
-      });
-
-      const listData = result.current.queryClient.getQueryData<typeof mockProjections>(
-        projectionKeys.lists('col1')
-      );
-      expect(listData?.[0].status).toBe('running');
-
-      const detailData = result.current.queryClient.getQueryData(
-        projectionKeys.detail('col1', updated.id)
-      );
-      expect(detailData).toEqual(updated);
-    });
-  });
 });

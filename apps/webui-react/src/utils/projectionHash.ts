@@ -17,7 +17,7 @@ function normaliseConfig(config?: Record<string, unknown> | null): Record<string
   return normalised;
 }
 
-export function buildProjectionMetadataHashPayload(
+function buildProjectionMetadataHashPayload(
   context: ProjectionMetadataHashContext,
   request: StartProjectionRequest
 ): string {
