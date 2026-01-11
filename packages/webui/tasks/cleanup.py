@@ -545,15 +545,20 @@ async def _cleanup_stuck_operations_async(stuck_threshold_minutes: int) -> dict[
             return {"cleaned": 0, "skipped": 0, "operation_ids": []}
 
         # Filter: only cleanup if Celery task is NOT actively running
+        # NOTE: Celery returns PENDING for unknown task IDs, so we can't trust
+        # PENDING to mean "genuinely waiting". Only STARTED/RETRY/RECEIVED
+        # definitively indicate the task is active.
         orphaned_ids: list[int] = []
         skipped = 0
 
         for op in candidates:
             if op.task_id:
                 result = AsyncResult(op.task_id, app=celery_app)
-                # Skip if task is still active in Celery
-                if result.state in ("PENDING", "STARTED", "RETRY", "RECEIVED"):
-                    logger.debug(
+                # Only skip if task is definitively running (not just PENDING)
+                # PENDING is Celery's default for unknown task IDs, so it doesn't
+                # mean the task is actually queued - could be dispatch failure
+                if result.state in ("STARTED", "RETRY", "RECEIVED"):
+                    logger.info(
                         "Skipping operation %s - Celery task %s still %s",
                         op.id,
                         op.task_id,
@@ -561,7 +566,8 @@ async def _cleanup_stuck_operations_async(stuck_threshold_minutes: int) -> dict[
                     )
                     skipped += 1
                     continue
-            # No task_id or task is not active - mark as orphaned
+            # No task_id, task is finished, or task is in PENDING (which could mean
+            # it was never dispatched) - mark as orphaned
             orphaned_ids.append(op.id)
 
         if not orphaned_ids:
