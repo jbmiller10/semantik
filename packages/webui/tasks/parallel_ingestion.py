@@ -62,6 +62,70 @@ def _vecpipe_url(path: str) -> str:
     return f"http://vecpipe:8000/{path.lstrip('/')}"
 
 
+async def _retry_http_post(
+    url: str,
+    json_data: dict[str, Any],
+    *,
+    timeout: float = 60.0,
+    operation_name: str = "HTTP request",
+    context: str = "",
+) -> httpx.Response:
+    """Execute HTTP POST with retry for transient errors.
+
+    Args:
+        url: Target URL
+        json_data: Request body
+        timeout: Request timeout in seconds
+        operation_name: Name for logging (e.g., "Embedding", "Upsert")
+        context: Additional context for log messages (e.g., "batch 0-10")
+
+    Returns:
+        Successful response
+
+    Raises:
+        RuntimeError: If all retries exhausted or non-transient error
+    """
+    last_error: Exception | None = None
+    last_error_message: str = ""
+    attempt: int = 0
+
+    for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                headers = _build_internal_api_headers()
+                response = await client.post(url, json=json_data, headers=headers)
+                response.raise_for_status()
+                return response
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            last_error = exc
+            if isinstance(exc, httpx.HTTPStatusError):
+                last_error_message = f"{operation_name} failed: {exc.response.status_code} - {exc.response.text}"
+            else:
+                last_error_message = f"{operation_name} request failed: {exc}"
+
+            error_category = classify_error(exc)
+            if error_category == ErrorCategory.TRANSIENT and attempt < MAX_RETRY_ATTEMPTS:
+                delay = (
+                    RETRY_BACKOFF_SECONDS[attempt]
+                    if attempt < len(RETRY_BACKOFF_SECONDS)
+                    else RETRY_BACKOFF_SECONDS[-1]
+                )
+                logger.warning(
+                    "%s%s failed (attempt %d/%d), retrying in %.1fs: %s",
+                    operation_name,
+                    f" {context}" if context else "",
+                    attempt + 1,
+                    MAX_RETRY_ATTEMPTS + 1,
+                    delay,
+                    last_error_message,
+                )
+                await asyncio.sleep(delay)
+                continue
+            break
+
+    raise RuntimeError(f"{last_error_message} (after {attempt + 1} attempt(s))") from last_error
+
+
 def calculate_optimal_workers(
     max_workers: int | None = None,
     min_workers: int = MIN_EXTRACTION_WORKERS,
@@ -539,7 +603,6 @@ async def embedding_worker(
 
         logger.info("Embedding batch of %d texts from %d documents", len(pending_texts), len(pending_batches))
 
-        vecpipe_url = _vecpipe_url("/embed")
         embed_request = {
             "texts": pending_texts,
             "model_name": embedding_model,
@@ -549,89 +612,52 @@ async def embedding_worker(
             "mode": "document",
         }
 
-        last_error: Exception | None = None
-        last_error_message: str = ""
-        attempt: int = 0
+        try:
+            response = await _retry_http_post(
+                _vecpipe_url("/embed"),
+                embed_request,
+                timeout=300.0,
+                operation_name="Embedding batch",
+            )
 
-        # Retry loop with exponential backoff for transient errors
-        for attempt in range(MAX_RETRY_ATTEMPTS + 1):
-            try:
-                async with httpx.AsyncClient(timeout=300.0) as client:
-                    headers = _build_internal_api_headers()
-                    response = await client.post(vecpipe_url, json=embed_request, headers=headers)
-                    response.raise_for_status()
+            # Validate response
+            embed_response = response.json()
+            all_embeddings = embed_response.get("embeddings")
+            if not isinstance(all_embeddings, list):
+                raise ValueError(f"Invalid embedding response: embeddings={type(all_embeddings)}")
+            if len(all_embeddings) != len(pending_texts):
+                raise ValueError(
+                    f"Embedding response size mismatch: got {len(all_embeddings)} vectors, expected {len(pending_texts)}"
+                )
 
-                    embed_response = response.json()
-                    all_embeddings = embed_response.get("embeddings")
-                    if not isinstance(all_embeddings, list):
-                        raise ValueError(f"Invalid embedding response: embeddings={type(all_embeddings)}")
-                    if len(all_embeddings) != len(pending_texts):
-                        raise ValueError(
-                            f"Embedding response size mismatch: got {len(all_embeddings)} vectors, expected {len(pending_texts)}"
-                        )
+            # Success - distribute embeddings back to batches
+            offset = 0
+            for batch in pending_batches:
+                batch_embeddings = all_embeddings[offset : offset + len(batch.texts)]
+                offset += len(batch.texts)
 
-                # Success - distribute embeddings back to batches
-                offset = 0
-                for batch in pending_batches:
-                    batch_embeddings = all_embeddings[offset : offset + len(batch.texts)]
-                    offset += len(batch.texts)
-
-                    await result_queue.put(
-                        EmbeddingResult(
-                            doc_id=batch.doc_id,
-                            doc_identifier=batch.doc_identifier,
-                            chunks=batch.chunks,
-                            embeddings=batch_embeddings,
-                            success=True,
-                        )
+                await result_queue.put(
+                    EmbeddingResult(
+                        doc_id=batch.doc_id,
+                        doc_identifier=batch.doc_identifier,
+                        chunks=batch.chunks,
+                        embeddings=batch_embeddings,
+                        success=True,
                     )
-                # Clear pending batches on success
-                pending_batches = []
-                pending_texts = []
-                return  # Success - exit retry loop
+                )
+            pending_batches = []
+            pending_texts = []
 
-            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-                last_error = exc
-                if isinstance(exc, httpx.HTTPStatusError):
-                    last_error_message = f"Embedding failed: {exc.response.status_code} - {exc.response.text}"
-                else:
-                    last_error_message = f"Embedding request failed: {exc}"
-
-                # Check if error is transient and we have retries left
-                error_category = classify_error(exc)
-                if error_category == ErrorCategory.TRANSIENT and attempt < MAX_RETRY_ATTEMPTS:
-                    delay = (
-                        RETRY_BACKOFF_SECONDS[attempt]
-                        if attempt < len(RETRY_BACKOFF_SECONDS)
-                        else RETRY_BACKOFF_SECONDS[-1]
-                    )
-                    logger.warning(
-                        "Embedding batch failed (attempt %d/%d), retrying in %.1fs: %s",
-                        attempt + 1,
-                        MAX_RETRY_ATTEMPTS + 1,
-                        delay,
-                        last_error_message,
-                    )
-                    await asyncio.sleep(delay)
-                    continue  # Retry
-
-                # Non-transient error or retries exhausted - fall through to failure handling
-                break
-
-            except Exception as exc:
-                last_error = exc
-                last_error_message = str(exc)
-                # Don't retry unknown exceptions - they're likely permanent
-                break
-
-        # All retries exhausted or non-retryable error - mark all batches as failed
-        if last_error is not None:
-            error_category = classify_error(last_error)
+        except Exception as exc:
+            # RuntimeError from _retry_http_post or other exceptions
+            error_message = str(exc)
+            # Use the original exception for classification if available
+            original_error = exc.__cause__ if isinstance(exc.__cause__, Exception) else exc
+            error_category = classify_error(original_error)
             logger.error(
-                "Embedding batch failed after %d attempts (error_category=%s): %s",
-                attempt + 1,
+                "Embedding batch failed (error_category=%s): %s",
                 error_category.value,
-                last_error_message,
+                error_message,
                 exc_info=True,
             )
             for batch in pending_batches:
@@ -642,12 +668,11 @@ async def embedding_worker(
                         chunks=batch.chunks,
                         embeddings=[],
                         success=False,
-                        error=last_error_message,
+                        error=error_message,
                     )
                 )
-
-        pending_batches = []
-        pending_texts = []
+            pending_batches = []
+            pending_texts = []
 
     try:
         while True:
@@ -778,44 +803,13 @@ async def result_processor(
                     "wait": True,
                 }
 
-                # Retry loop with exponential backoff for transient errors
-                upsert_attempt: int = 0
-                for upsert_attempt in range(MAX_RETRY_ATTEMPTS + 1):
-                    try:
-                        async with httpx.AsyncClient(timeout=60.0) as client:
-                            headers = _build_internal_api_headers()
-                            response = await client.post(_vecpipe_url("/upsert"), json=upsert_request, headers=headers)
-                            response.raise_for_status()
-                        break  # Success
-                    except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-                        if isinstance(exc, httpx.HTTPStatusError):
-                            error_msg = f"Upsert failed: {exc.response.status_code} - {exc.response.text}"
-                        else:
-                            error_msg = f"Upsert request failed: {exc}"
-
-                        error_category = classify_error(exc)
-                        if error_category == ErrorCategory.TRANSIENT and upsert_attempt < MAX_RETRY_ATTEMPTS:
-                            delay = (
-                                RETRY_BACKOFF_SECONDS[upsert_attempt]
-                                if upsert_attempt < len(RETRY_BACKOFF_SECONDS)
-                                else RETRY_BACKOFF_SECONDS[-1]
-                            )
-                            logger.warning(
-                                "Upsert batch %d-%d failed (attempt %d/%d), retrying in %.1fs: %s",
-                                batch_start,
-                                batch_end,
-                                upsert_attempt + 1,
-                                MAX_RETRY_ATTEMPTS + 1,
-                                delay,
-                                error_msg,
-                            )
-                            await asyncio.sleep(delay)
-                            continue  # Retry
-
-                        # Non-transient or retries exhausted
-                        raise RuntimeError(
-                            f"{error_msg} (after {upsert_attempt + 1} attempt(s), error_category={error_category.value})"
-                        ) from exc
+                await _retry_http_post(
+                    _vecpipe_url("/upsert"),
+                    upsert_request,
+                    timeout=60.0,
+                    operation_name="Upsert",
+                    context=f"batch {batch_start}-{batch_end}",
+                )
 
             # Generate sparse vectors if sparse indexing is enabled
             # Import lazily to avoid circular imports

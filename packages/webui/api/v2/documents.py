@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.config import settings
 from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError, ValidationError
-from shared.database.models import Collection
+from shared.database.models import Collection, Document
 from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 from webui.api.schemas import DocumentResponse, ErrorResponse
 from webui.auth import get_current_user
@@ -56,6 +56,28 @@ def sanitize_filename_for_header(filename: str) -> str:
     safe = filename.replace('"', "'").replace("\r", "").replace("\n", "").replace("\x00", "")
     # URL-encode the filename per RFC 5987
     return urllib.parse.quote(safe, safe="")
+
+
+def _document_to_response(document: Document) -> DocumentResponse:
+    """Convert a Document model to DocumentResponse schema."""
+    return DocumentResponse(
+        id=document.id,
+        collection_id=document.collection_id,
+        file_name=document.file_name,
+        file_path=document.file_path,
+        file_size=document.file_size,
+        mime_type=document.mime_type,
+        content_hash=document.content_hash,
+        status=_get_status_value(document.status),
+        error_message=document.error_message,
+        chunk_count=document.chunk_count,
+        retry_count=document.retry_count or 0,
+        last_retry_at=document.last_retry_at,
+        error_category=document.error_category,
+        metadata=document.meta,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+    )
 
 
 router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
@@ -99,24 +121,7 @@ async def get_document(
             )
             raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
 
-        return DocumentResponse(
-            id=document.id,
-            collection_id=document.collection_id,
-            file_name=document.file_name,
-            file_path=document.file_path,
-            file_size=document.file_size,
-            mime_type=document.mime_type,
-            content_hash=document.content_hash,
-            status=_get_status_value(document.status),
-            error_message=document.error_message,
-            chunk_count=document.chunk_count,
-            retry_count=document.retry_count or 0,
-            last_retry_at=document.last_retry_at,
-            error_category=document.error_category,
-            metadata=document.meta,
-            created_at=document.created_at,
-            updated_at=document.updated_at,
-        )
+        return _document_to_response(document)
     except HTTPException:
         raise
     except Exception as e:
@@ -426,24 +431,7 @@ async def retry_document(
             operation_uuid,
         )
 
-        return DocumentResponse(
-            id=document.id,
-            collection_id=document.collection_id,
-            file_name=document.file_name,
-            file_path=document.file_path,
-            file_size=document.file_size,
-            mime_type=document.mime_type,
-            content_hash=document.content_hash,
-            status=_get_status_value(document.status),
-            error_message=document.error_message,
-            chunk_count=document.chunk_count,
-            retry_count=document.retry_count or 0,
-            last_retry_at=document.last_retry_at,
-            error_category=document.error_category,
-            metadata=document.meta,
-            created_at=document.created_at,
-            updated_at=document.updated_at,
-        )
+        return _document_to_response(document)
     except HTTPException:
         raise
     except Exception as e:
