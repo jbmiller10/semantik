@@ -280,7 +280,7 @@ async def _best_effort(label: str, awaitable: Any) -> None:
     except (SystemExit, KeyboardInterrupt, MemoryError):
         raise
     except Exception as exc:
-        logger.debug("Best-effort %s failed: %s", label, exc, exc_info=True)
+        logger.warning("Best-effort %s failed: %s", label, exc, exc_info=True)
 
 
 async def _update_document_status(
@@ -304,7 +304,10 @@ async def _update_document_status(
                 error_category=error_category,
             )
             await document_repo.session.commit()
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "Document status update failed for %s: %s", document_id, exc, exc_info=True
+            )
             # Keep the session usable for subsequent updates.
             await _best_effort(
                 f"document status rollback for {document_id}",

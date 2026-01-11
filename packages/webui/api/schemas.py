@@ -444,6 +444,8 @@ class RetryDocumentsResponse(BaseModel):
     """Response for bulk retry operation."""
 
     reset_count: int
+    pending_count: int = 0
+    operation_id: str | None = None
     message: str
 
 

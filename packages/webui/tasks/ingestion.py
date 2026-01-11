@@ -2138,7 +2138,7 @@ async def _process_retry_documents_operation(
     )
 
     # Fetch all PENDING documents in the collection (these are the ones reset for retry)
-    pending_documents, _ = await document_repo.list_documents(
+    pending_documents, _ = await document_repo.list_by_collection(
         collection_id=collection_id,
         status=DocumentStatus.PENDING,
         offset=0,
