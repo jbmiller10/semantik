@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from shared.plugins.base import SemanticPlugin
+from shared.plugins.manifest import PluginManifest
 
 
 class ExtractionType(Enum):
@@ -175,6 +177,36 @@ class ExtractorPlugin(SemanticPlugin, ABC):
 
         The plugin should only be asked to perform extractions it supports.
         """
+
+    @classmethod
+    def get_manifest(cls) -> PluginManifest:
+        """Return plugin manifest for discovery and UI.
+
+        Builds a PluginManifest from the plugin's class variables and capabilities.
+        Subclasses may override for custom manifest generation.
+
+        Returns:
+            PluginManifest with extractor metadata.
+        """
+        metadata = getattr(cls, "METADATA", {})
+
+        # Include supported extractions if available
+        extractions: list[str] = []
+        with contextlib.suppress(TypeError, NotImplementedError):
+            extractions = [e.value for e in cls.supported_extractions()]
+
+        capabilities = {"supported_extractions": extractions} if extractions else None
+
+        return PluginManifest(
+            id=cls.PLUGIN_ID,
+            type=cls.PLUGIN_TYPE,
+            version=cls.PLUGIN_VERSION,
+            display_name=metadata.get("display_name", cls.PLUGIN_ID),
+            description=metadata.get("description", ""),
+            author=metadata.get("author"),
+            homepage=metadata.get("homepage"),
+            capabilities=capabilities,
+        )
 
     @abstractmethod
     async def extract(

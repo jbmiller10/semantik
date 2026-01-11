@@ -10,9 +10,13 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 import torch
+
+if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
 from torch import nn
 
 logger = logging.getLogger(__name__)
@@ -251,7 +255,7 @@ class GradientCheckpointWrapper:
         This works with HuggingFace transformers models.
         """
         if hasattr(model, "gradient_checkpointing_enable"):
-            model.gradient_checkpointing_enable()
+            model.gradient_checkpointing_enable()  # type: ignore[operator]
             logger.info("Gradient checkpointing enabled for model")
         else:
             logger.warning("Model does not support gradient_checkpointing_enable")
@@ -260,7 +264,7 @@ class GradientCheckpointWrapper:
     def disable_checkpointing(model: nn.Module) -> None:
         """Disable gradient checkpointing."""
         if hasattr(model, "gradient_checkpointing_disable"):
-            model.gradient_checkpointing_disable()
+            model.gradient_checkpointing_disable()  # type: ignore[operator]
             logger.info("Gradient checkpointing disabled for model")
 
 
@@ -282,9 +286,9 @@ class MemoryEfficientInference:
         self.clear_cache_after = clear_cache_after
         self.use_amp = use_amp
         self.gc_collect = gc_collect
-        self._amp_context = None
+        self._amp_context: AbstractContextManager[Any] | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         if self.gc_collect:
             gc.collect()
 
@@ -299,7 +303,12 @@ class MemoryEfficientInference:
 
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         if self._amp_context:
             self._amp_context.__exit__(exc_type, exc_val, exc_tb)
 

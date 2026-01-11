@@ -61,19 +61,22 @@ async def multi_collection_search(
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode=search_request.search_mode,
+            rrf_k=search_request.rrf_k,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             rerank_model=search_request.rerank_model,
             reranker_id=search_request.reranker_id,
-            hybrid_alpha=search_request.hybrid_alpha,
-            hybrid_mode=search_request.hybrid_mode,
-            keyword_mode=search_request.keyword_mode,
         )
 
         # Convert service result to API response format
         final_results = []
         for res in result["results"]:
+            # Get chunk_index from payload or metadata
+            chunk_index = res.get("chunk_index") or res.get("metadata", {}).get("chunk_index")
+            total_chunks = res.get("total_chunks") or res.get("metadata", {}).get("total_chunks")
+
             final_results.append(
                 CollectionSearchResult(
                     document_id=res.get("doc_id", ""),
@@ -88,6 +91,8 @@ async def multi_collection_search(
                     collection_id=res.get("collection_id"),
                     collection_name=res.get("collection_name"),
                     embedding_model=res.get("embedding_model", ""),
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
                 )
             )
 
@@ -106,6 +111,8 @@ async def multi_collection_search(
                 if "error" not in cd
             ],
             search_type=search_request.search_type,
+            search_mode_used=metadata.get("search_mode_used", "dense"),
+            warnings=metadata.get("warnings", []),
             reranking_used=search_request.use_reranker,
             reranker_model=search_request.rerank_model,
             search_time_ms=metadata["processing_time"] * 1000,
@@ -167,15 +174,14 @@ async def single_collection_search(
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode=search_request.search_mode,
+            rrf_k=search_request.rrf_k,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             rerank_model=search_request.rerank_model,
             reranker_id=search_request.reranker_id,
             include_content=search_request.include_content,
-            hybrid_alpha=search_request.hybrid_alpha,
-            hybrid_mode=search_request.hybrid_mode,
-            keyword_mode=search_request.keyword_mode,
         )
 
         # Convert service result to API response format
@@ -204,6 +210,8 @@ async def single_collection_search(
             total_results=len(final_results),
             collections_searched=[],  # Single collection search doesn't provide this info
             search_type=search_request.search_type,
+            search_mode_used=result.get("search_mode_used", "dense"),
+            warnings=result.get("warnings", []),
             reranking_used=search_request.use_reranker,
             reranker_model=None,
             search_time_ms=result.get("processing_time_ms", 0),

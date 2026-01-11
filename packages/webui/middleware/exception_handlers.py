@@ -99,8 +99,11 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
     return response
 
 
-async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+async def handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
     """Handle HTTP exceptions and attach correlation reference."""
+    # exc is always HTTPException when registered with add_exception_handler(HTTPException, ...)
+    assert isinstance(exc, HTTPException)
+
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
         correlation_id = get_or_generate_correlation_id(request)

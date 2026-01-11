@@ -1,11 +1,17 @@
 """Factory functions for creating service instances with dependencies."""
 
-import logging
-from typing import cast
+from __future__ import annotations
 
-import httpx
+import logging
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from .mcp_profile_service import MCPProfileService
+
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -30,6 +36,9 @@ from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
 from .source_service import SourceService
+
+if TYPE_CHECKING:
+    from .agent_service import AgentService
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +365,49 @@ def create_source_service(db: AsyncSession) -> SourceService:
 async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
     """FastAPI dependency for SourceService injection."""
     return create_source_service(db)
+
+
+def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
+    """Create an MCPProfileService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured MCPProfileService instance
+    """
+    # Lazy import to avoid circular dependency
+    from .mcp_profile_service import MCPProfileService
+
+    return MCPProfileService(db_session=db)
+
+
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
+    """FastAPI dependency for MCPProfileService injection."""
+    return create_mcp_profile_service(db)
+
+
+def create_agent_service(db: AsyncSession) -> AgentService:
+    """Create an AgentService instance with all required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured AgentService instance
+    """
+    # Lazy import to avoid circular dependency
+    from shared.database.repositories.agent_session_repository import AgentSessionRepository
+
+    from .agent_service import AgentService
+
+    session_repo = AgentSessionRepository(db)
+    return AgentService(db, session_repo)
+
+
+async def get_agent_service(db: AsyncSession = Depends(get_db)) -> AgentService:
+    """FastAPI dependency for AgentService injection."""
+    return create_agent_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

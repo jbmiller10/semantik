@@ -50,13 +50,17 @@ class ChunkingStrategyFactory:
         """
         Create a chunking strategy instance.
 
+        Supports both ABC-based strategies (internal, using typed ChunkConfig/Chunk)
+        and Protocol-based strategies (external plugins, using dict types).
+
         Args:
             strategy_name: Name of the strategy (string or enum)
             config: Per-operation configuration (passed to chunk() method)
             correlation_id: Optional correlation ID for error tracking
 
         Returns:
-            Configured strategy instance
+            Configured strategy instance. For internal strategies, returns
+            ChunkingStrategy. For external plugins, returns ChunkingProtocol.
 
         Raises:
             ChunkingStrategyError: If strategy is unknown or initialization fails
@@ -135,9 +139,16 @@ class ChunkingStrategyFactory:
         """
         Register a custom strategy.
 
+        Accepts any class that satisfies ChunkingProtocol, including both
+        ABC-based strategies (ChunkingStrategy) and external Protocol-based
+        implementations.
+
+        Protocol validation is performed by the plugin loader before
+        registration. This factory is agnostic to implementation style.
+
         Args:
             name: Internal name for the strategy
-            strategy_class: Strategy class to register
+            strategy_class: Strategy class implementing ChunkingProtocol
             api_enum: Optional API enum to map to
         """
         # Register in shared registry

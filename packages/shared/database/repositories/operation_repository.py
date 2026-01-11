@@ -439,3 +439,84 @@ class OperationRepository:
         except Exception as e:
             logger.error("Failed to get active operations: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "operations", str(e)) from e
+
+    async def get_stuck_operations(
+        self,
+        stuck_threshold_minutes: int = 15,
+        limit: int = 100,
+    ) -> list[Operation]:
+        """Find operations stuck in PENDING/PROCESSING longer than threshold.
+
+        These are candidates for cleanup - actual cleanup should verify
+        Celery task status before marking as failed.
+
+        Causes of stuck operations:
+        - Celery dispatch failure after DB commit
+        - Worker crash during processing
+        - Task timeout without status update
+
+        Args:
+            stuck_threshold_minutes: Minutes after which an operation is considered stuck
+            limit: Maximum number of operations to return
+
+        Returns:
+            List of stuck operations, oldest first
+        """
+        from datetime import timedelta
+
+        try:
+            threshold = datetime.now(UTC) - timedelta(minutes=stuck_threshold_minutes)
+            stmt = (
+                select(Operation)
+                .where(
+                    Operation.status.in_([OperationStatus.PENDING, OperationStatus.PROCESSING]),
+                    Operation.created_at < threshold,
+                )
+                .order_by(Operation.created_at.asc())
+                .limit(limit)
+            )
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error("Failed to get stuck operations: %s", e, exc_info=True)
+            raise DatabaseOperationError("list", "operations", str(e)) from e
+
+    async def mark_operations_failed(
+        self,
+        operation_ids: list[int],
+        error_message: str,
+    ) -> int:
+        """Mark multiple operations as FAILED with error message.
+
+        Args:
+            operation_ids: List of operation IDs to mark as failed
+            error_message: Error message to set
+
+        Returns:
+            Number of operations updated
+        """
+        if not operation_ids:
+            return 0
+
+        try:
+            stmt = (
+                update(Operation)
+                .where(Operation.id.in_(operation_ids))
+                .values(
+                    status=OperationStatus.FAILED,
+                    error_message=error_message,
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            result = await self.session.execute(stmt)
+            await self.session.flush()
+
+            logger.info(
+                "Marked %d operations as failed: %s",
+                result.rowcount,
+                error_message,
+            )
+            return result.rowcount
+        except Exception as e:
+            logger.error("Failed to mark operations as failed: %s", e, exc_info=True)
+            raise DatabaseOperationError("update", "operations", str(e)) from e

@@ -32,17 +32,19 @@ async def test_character_chunker_respects_overlap() -> None:
 
 async def test_recursive_chunker_honors_sentence_boundaries() -> None:
     """Recursive chunker should keep sentences intact."""
-    chunker = _create_chunker("recursive", chunk_size=120, chunk_overlap=30)
+    # Use smaller chunk size to ensure text gets split into multiple chunks
+    chunker = _create_chunker("recursive", chunk_size=60, chunk_overlap=15)
     sentences = [
         "This is sentence one.",
         "Here comes sentence two!",
         "Is sentence three a question?",
         "Sentence four brings things home.",
     ]
-    text = " ".join(sentences)
+    text = " ".join(sentences)  # ~110 characters total
 
     chunks = await chunker.chunk_text_async(text, "recursive_sentences")
 
+    # With chunk_size=60 and text ~110 chars, we should get at least 2 chunks
     assert len(chunks) >= 2
 
     def _normalize(value: str) -> str:

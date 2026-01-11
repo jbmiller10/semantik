@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
+import { useOperationsSocket } from '../hooks/useOperationsSocket';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
@@ -12,6 +13,10 @@ function Layout() {
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { activeTab, setActiveTab } = useUIStore();
+
+  // Global WebSocket subscription for operation updates
+  // Ensures collection stats update in real-time across all views
+  useOperationsSocket();
 
   useEffect(() => {
     registerNavigationHandler(navigate);

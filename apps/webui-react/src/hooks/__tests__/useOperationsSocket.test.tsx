@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useOperationsSocket } from '../useOperationsSocket';
 import { useAuthStore } from '../../stores/authStore';
+import { collectionKeys } from '../useCollections';
+import type { Collection } from '../../types/collection';
 import type { useWebSocket as useWebSocketHook } from '../useWebSocket';
 
 // Mock useWebSocket so we can observe URL and reconnect calls
@@ -72,5 +74,67 @@ describe('useOperationsSocket', () => {
     // URL should remain the same, only protocols change
     expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations');
     expect(captured.opts?.protocols).toEqual(['access_token.token-2']);
+  });
+
+  it('updates collection stats in React Query cache from websocket messages', () => {
+    useAuthStore.setState({
+      token: 'token-1',
+      user: { id: 1, username: 'u', email: 'u@example.com', is_active: true, created_at: 'now' },
+      refreshToken: null,
+    });
+
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const collectionId = 'col-1';
+    const seedCollection: Collection = {
+      id: collectionId,
+      name: 'Test',
+      owner_id: 1,
+      vector_store_name: 'qdrant_col',
+      embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+      quantization: 'float16',
+      chunk_size: 1000,
+      chunk_overlap: 200,
+      is_public: false,
+      status: 'processing',
+      document_count: 0,
+      vector_count: 0,
+      created_at: 'now',
+      updated_at: 'now',
+      sync_mode: 'one_time',
+    };
+
+    queryClient.setQueryData(collectionKeys.detail(collectionId), seedCollection);
+    queryClient.setQueryData(collectionKeys.lists(), [seedCollection]);
+
+    renderHook(() => useOperationsSocket(), { wrapper });
+
+    act(() => {
+      captured.opts?.onMessage?.({
+        data: JSON.stringify({
+          message: {
+            type: 'collection_stats',
+            data: {
+              operation_id: 'op-1',
+              collection_id: collectionId,
+              stats: { document_count: 52, vector_count: 1234, total_size_bytes: 2048 },
+            },
+          },
+        }),
+      } as MessageEvent);
+    });
+
+    const updatedDetail = queryClient.getQueryData<Collection>(collectionKeys.detail(collectionId));
+    expect(updatedDetail?.document_count).toBe(52);
+    expect(updatedDetail?.vector_count).toBe(1234);
+    expect(updatedDetail?.total_size_bytes).toBe(2048);
+
+    const updatedList = queryClient.getQueryData<Collection[]>(collectionKeys.lists());
+    expect(updatedList?.[0].document_count).toBe(52);
+    expect(updatedList?.[0].vector_count).toBe(1234);
+    expect(updatedList?.[0].total_size_bytes).toBe(2048);
   });
 });

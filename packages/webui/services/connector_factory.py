@@ -12,7 +12,7 @@ Plugin Configuration:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource, plugin_registry
@@ -77,7 +77,7 @@ class ConnectorFactory:
             return None
         if record.source == PluginSource.EXTERNAL and plugin_registry.is_disabled(record.plugin_id):
             return None
-        return record.plugin_class
+        return cast(type, record.plugin_class)
 
     @classmethod
     def list_available_types(cls) -> list[str]:

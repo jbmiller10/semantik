@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any, ClassVar
 
 from shared.dtos.ingestion import IngestedDocument
+from shared.plugins.manifest import PluginManifest
 
 
 class BaseConnector(ABC):
@@ -66,6 +67,27 @@ class BaseConnector(ABC):
     def get_secret_fields(cls) -> list[dict[str, Any]]:
         """Return list of secret field definitions for UI consumption."""
         return []
+
+    @classmethod
+    def get_manifest(cls) -> PluginManifest:
+        """Return plugin manifest for discovery and UI.
+
+        Builds a PluginManifest from the connector's class variables.
+        Subclasses may override for custom manifest generation.
+
+        Returns:
+            PluginManifest with connector metadata.
+        """
+        metadata = cls.METADATA or {}
+        return PluginManifest(
+            id=cls.PLUGIN_ID,
+            type=cls.PLUGIN_TYPE,
+            version=cls.PLUGIN_VERSION,
+            display_name=metadata.get("display_name", cls.PLUGIN_ID),
+            description=metadata.get("description", ""),
+            author=metadata.get("author"),
+            homepage=metadata.get("homepage"),
+        )
 
     @abstractmethod
     async def authenticate(self) -> bool:

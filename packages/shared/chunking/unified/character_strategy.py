@@ -277,7 +277,8 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
             return [chunk]
 
         # Calculate chunk size in characters based on token limits
-        chars_per_token = 4  # Domain approximation
+        # Use standard ratio for splitting; we'll truncate to exact tokens later
+        chars_per_token = 4
         chunk_size_chars = config.max_tokens * chars_per_token
         overlap_chars = config.overlap_tokens * chars_per_token
 
@@ -325,34 +326,48 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
                 position = position + max(1, chunk_size_chars // 4) if end <= position else end
                 continue
 
-            # Create chunk metadata
+            # Check if chunk exceeds max_tokens and needs re-splitting
             token_count = self.count_tokens(chunk_text)
+            if token_count > config.max_tokens:
+                # Re-split at word boundaries to preserve all content
+                sub_texts = self.split_to_token_limit(chunk_text, config.max_tokens)
+            else:
+                sub_texts = [chunk_text]
 
-            metadata = ChunkMetadata(
-                chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
-                document_id="doc",
-                chunk_index=chunk_index,
-                start_offset=start,
-                end_offset=end,
-                token_count=token_count,
-                strategy_name=self.name,
-                semantic_density=0.5,  # Default for character-based chunking
-                confidence_score=0.9,  # High confidence for simple strategy
-                created_at=datetime.now(tz=UTC),
-            )
+            # Create Chunk entities for each sub-text
+            current_offset = start
+            for sub_text in sub_texts:
+                sub_token_count = self.count_tokens(sub_text)
+                sub_end_offset = current_offset + len(sub_text)
 
-            # Create chunk entity with adjusted min_tokens for small documents
-            effective_min_tokens = min(config.min_tokens, token_count, 1)
+                metadata = ChunkMetadata(
+                    chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                    document_id="doc",
+                    chunk_index=chunk_index,
+                    start_offset=current_offset,
+                    end_offset=sub_end_offset,
+                    token_count=sub_token_count,
+                    strategy_name=self.name,
+                    semantic_density=0.5,  # Default for character-based chunking
+                    confidence_score=0.9,  # High confidence for simple strategy
+                    created_at=datetime.now(tz=UTC),
+                )
 
-            chunk = Chunk(
-                content=chunk_text,
-                metadata=metadata,
-                min_tokens=effective_min_tokens,
-                max_tokens=config.max_tokens,
-            )
+                effective_min_tokens = min(config.min_tokens, sub_token_count, 1)
 
-            chunks.append(chunk)
-            chunk_index += 1
+                chunk = Chunk(
+                    content=sub_text,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+
+                chunks.append(chunk)
+                chunk_index += 1
+                current_offset = sub_end_offset
+
+            # Update end to reflect where we actually ended
+            end = current_offset
 
             # Update position for next chunk (with overlap)
             if end >= total_chars:

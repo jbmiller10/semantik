@@ -282,6 +282,61 @@ export const handlers = [
     return HttpResponse.json({ message: 'Collection deleted successfully' })
   }),
 
+  // Sparse index endpoints
+  http.get('/api/v2/collections/:uuid/sparse-index', () => {
+    return HttpResponse.json({
+      enabled: false,
+      plugin_id: null,
+      plugin_config: null,
+      indexed_documents: 0,
+      total_documents: 150,
+      last_indexed_at: null,
+    })
+  }),
+
+  http.post('/api/v2/collections/:uuid/sparse-index', async ({ request }) => {
+    const body = await request.json() as { plugin_id: string; config?: Record<string, unknown> }
+    return HttpResponse.json({
+      enabled: true,
+      plugin_id: body.plugin_id,
+      plugin_config: body.config || { k1: 1.2, b: 0.75 },
+      indexed_documents: 0,
+      total_documents: 150,
+      last_indexed_at: null,
+    })
+  }),
+
+  http.delete('/api/v2/collections/:uuid/sparse-index', () => {
+    return HttpResponse.json({
+      enabled: false,
+      plugin_id: null,
+      plugin_config: null,
+      indexed_documents: 0,
+      total_documents: 150,
+      last_indexed_at: null,
+    })
+  }),
+
+  http.post('/api/v2/collections/:uuid/sparse-index/reindex', () => {
+    return HttpResponse.json({
+      job_id: 'mock-reindex-job-' + Date.now(),
+      status: 'pending',
+      message: 'Sparse reindex job queued',
+    })
+  }),
+
+  http.get('/api/v2/collections/:uuid/sparse-index/reindex/:jobId', () => {
+    return HttpResponse.json({
+      job_id: 'mock-reindex-job',
+      status: 'completed',
+      progress: 100,
+      processed_documents: 150,
+      total_documents: 150,
+      started_at: new Date(Date.now() - 60000).toISOString(),
+      completed_at: new Date().toISOString(),
+    })
+  }),
+
   // Connectors catalog endpoint
   http.get('/api/v2/connectors', () => {
     return HttpResponse.json({

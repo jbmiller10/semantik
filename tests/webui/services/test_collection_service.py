@@ -2307,3 +2307,270 @@ class TestUpdateChunkingValidation:
                 user_id=mock_collection.owner_id,
                 updates={"chunking_config": {"max_chunk_size": 1000}},
             )
+
+
+class TestEnableSparseIndex:
+    @pytest.mark.asyncio()
+    async def test_enable_sparse_index_loads_sparse_indexer_plugins_before_validation(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """enable_sparse_index should load sparse indexer plugins before validating plugin_id."""
+
+        class DummySparseIndexer:
+            SPARSE_TYPE = "bm25"
+
+        plugin_record = MagicMock()
+        plugin_record.plugin_type = "sparse_indexer"
+        plugin_record.plugin_class = DummySparseIndexer
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant) as mock_qdrant_client,
+            patch(
+                "shared.config.settings",
+                new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
+            ),
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=None)),
+            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock()),
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="sparse_test_collection"),
+            patch("shared.plugins.load_plugins") as mock_load_plugins,
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record) as mock_find_by_id,
+        ):
+            result = await collection_service.enable_sparse_index(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+                plugin_id="bm25-local",
+            )
+
+        mock_qdrant_client.assert_called_once_with(url="http://localhost:6333", api_key="test-api-key")
+        mock_load_plugins.assert_called_once_with(plugin_types={"sparse_indexer"})
+        mock_find_by_id.assert_called_once_with("bm25-local")
+        assert result["enabled"] is True
+        assert result["plugin_id"] == "bm25-local"
+        assert result["sparse_collection_name"] == "sparse_test_collection"
+
+
+class TestGetSparseIndexConfig:
+    @pytest.mark.asyncio()
+    async def test_get_sparse_index_config_passes_api_key(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+        expected_config = {"enabled": True, "plugin_id": "bm25-local"}
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant) as mock_qdrant_client,
+            patch(
+                "shared.config.settings",
+                new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
+            ),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config",
+                new=AsyncMock(return_value=expected_config),
+            ),
+        ):
+            result = await collection_service.get_sparse_index_config(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+            )
+
+        mock_qdrant_client.assert_called_once_with(url="http://localhost:6333", api_key="test-api-key")
+        assert result == expected_config
+
+
+class TestDisableSparseIndex:
+    @pytest.mark.asyncio()
+    async def test_disable_sparse_index_deletes_collection_and_config(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+
+        sparse_cfg = {"enabled": True, "sparse_collection_name": "dense_sparse_bm25"}
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant) as mock_qdrant_client,
+            patch(
+                "shared.config.settings",
+                new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
+            ),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)
+            ),
+            patch("shared.database.collection_metadata.delete_sparse_index_config", new=AsyncMock()) as mock_delete_cfg,
+            patch("vecpipe.sparse.delete_sparse_collection", new=AsyncMock()) as mock_delete_collection,
+        ):
+            await collection_service.disable_sparse_index(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+            )
+
+        mock_qdrant_client.assert_called_once_with(url="http://localhost:6333", api_key="test-api-key")
+        mock_delete_collection.assert_awaited_once_with("dense_sparse_bm25", mock_async_qdrant)
+        mock_delete_cfg.assert_awaited_once_with(mock_async_qdrant, mock_collection.vector_store_name)
+        mock_async_qdrant.close.assert_awaited_once()
+
+
+class TestTriggerSparseReindex:
+    @pytest.mark.asyncio()
+    async def test_trigger_sparse_reindex_dispatches_celery_task(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+
+        sparse_cfg = {"enabled": True, "plugin_id": "bm25-local", "model_config": {"k1": 1.2}}
+
+        job = MagicMock()
+        job.id = "job-123"
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant),
+            patch(
+                "shared.config.settings",
+                new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
+            ),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_cfg)
+            ),
+            patch("webui.services.collection_service.celery_app.send_task", return_value=job) as mock_send_task,
+        ):
+            result = await collection_service.trigger_sparse_reindex(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+            )
+
+        mock_send_task.assert_called_once_with(
+            "sparse.reindex_collection",
+            args=[str(mock_collection.id), "bm25-local", {"k1": 1.2}],
+        )
+        assert result["job_id"] == "job-123"
+        assert result["status"] == "queued"
+        assert result["plugin_id"] == "bm25-local"
+
+    @pytest.mark.asyncio()
+    async def test_trigger_sparse_reindex_raises_when_not_enabled(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        from shared.database.exceptions import EntityNotFoundError
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_async_qdrant = AsyncMock()
+        mock_async_qdrant.close = AsyncMock()
+
+        with (
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_async_qdrant),
+            patch(
+                "shared.config.settings",
+                new=MagicMock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="test-api-key"),
+            ),
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=None)),
+        ):
+            with pytest.raises(EntityNotFoundError):
+                await collection_service.trigger_sparse_reindex(
+                    collection_id=str(mock_collection.id),
+                    user_id=mock_collection.owner_id,
+                )
+
+
+class TestGetSparseReindexProgress:
+    @pytest.mark.asyncio()
+    async def test_get_sparse_reindex_progress_progress_state(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        result_obj = MagicMock()
+        result_obj.state = "PROGRESS"
+        result_obj.info = {"progress": 12.5, "documents_processed": 3, "total_documents": 10}
+
+        with patch("celery.result.AsyncResult", return_value=result_obj):
+            progress = await collection_service.get_sparse_reindex_progress(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+                job_id="job-1",
+            )
+
+        assert progress["status"] == "PROGRESS"
+        assert progress["progress"] == 12.5
+        assert progress["documents_processed"] == 3
+        assert progress["total_documents"] == 10
+
+    @pytest.mark.asyncio()
+    async def test_get_sparse_reindex_progress_failure_state(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        result_obj = MagicMock()
+        result_obj.state = "FAILURE"
+        result_obj.result = RuntimeError("boom")
+
+        with patch("celery.result.AsyncResult", return_value=result_obj):
+            progress = await collection_service.get_sparse_reindex_progress(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+                job_id="job-1",
+            )
+
+        assert progress["status"] == "FAILURE"
+        assert "boom" in progress["error"]
+
+    @pytest.mark.asyncio()
+    async def test_get_sparse_reindex_progress_success_state(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        result_obj = MagicMock()
+        result_obj.state = "SUCCESS"
+        result_obj.result = {"documents_processed": 7, "total_documents": 7}
+
+        with patch("celery.result.AsyncResult", return_value=result_obj):
+            progress = await collection_service.get_sparse_reindex_progress(
+                collection_id=str(mock_collection.id),
+                user_id=mock_collection.owner_id,
+                job_id="job-1",
+            )
+
+        assert progress["status"] == "SUCCESS"
+        assert progress["progress"] == 100.0
+        assert progress["documents_processed"] == 7
+        assert progress["total_documents"] == 7

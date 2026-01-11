@@ -17,7 +17,9 @@ from fastapi.responses import JSONResponse
 
 from shared.chunking.infrastructure.exception_translator import exception_translator
 from shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
+from shared.database import get_db
 from shared.database.exceptions import AccessDeniedError
+from shared.database.repositories.chunk_repository import ChunkRepository
 
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE
@@ -30,6 +32,7 @@ from webui.api.v2.chunking_schemas import (
     ChunkingStrategy,
     ChunkingStrategyUpdate,
     ChunkListResponse,
+    ChunkResponse,
     CompareRequest,
     CompareResponse,
     CreateConfigurationRequest,
@@ -54,6 +57,8 @@ from webui.services.chunking.orchestrator import ChunkingOrchestrator
 from webui.services.factory import get_collection_service
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from webui.services.collection_service import CollectionService
 
 ChunkingServiceLike: TypeAlias = ChunkingOrchestrator
@@ -648,6 +653,62 @@ async def get_collection_chunks(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chunks",
         ) from e
+
+
+@router.get(
+    "/collections/{collection_uuid}/chunks/{chunk_id}",
+    response_model=ChunkResponse,
+    summary="Get a chunk by ID",
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.READ_RATE))],
+)
+@create_rate_limit_decorator(RateLimitConfig.READ_RATE)
+async def get_chunk_by_id(
+    request: Request,  # Required for rate limiting
+    collection_uuid: str,
+    chunk_id: str,
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
+    db: AsyncSession = Depends(get_db),
+) -> ChunkResponse:
+    """Get a chunk by its identifier.
+
+    Supports lookup by:
+    - database primary key (numeric `chunks.id`)
+    - stable metadata chunk id (`chunks.metadata['chunk_id']`) returned by search results
+    """
+    check_circuit_breaker(request)
+
+    chunk_repo = ChunkRepository(db)
+
+    chunk = None
+    if chunk_id.isdigit():
+        try:
+            chunk = await chunk_repo.get_chunk_by_id(int(chunk_id), collection_uuid)
+        except Exception:  # pragma: no cover - defensive fallback
+            chunk = None
+
+    if chunk is None:
+        try:
+            chunk = await chunk_repo.get_chunk_by_metadata_chunk_id(chunk_id, collection_uuid)
+        except Exception:  # pragma: no cover - defensive fallback
+            chunk = None
+
+    if chunk is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chunk {chunk_id} not found")
+
+    return ChunkResponse(
+        id=int(chunk.id),
+        collection_id=chunk.collection_id,
+        document_id=chunk.document_id,
+        chunk_index=chunk.chunk_index,
+        content=chunk.content,
+        token_count=chunk.token_count,
+        start_offset=chunk.start_offset,
+        end_offset=chunk.end_offset,
+        metadata=chunk.meta,
+        created_at=chunk.created_at,
+        updated_at=chunk.updated_at,
+    )
 
 
 @router.get(

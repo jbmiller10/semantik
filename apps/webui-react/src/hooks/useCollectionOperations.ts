@@ -368,71 +368,87 @@ export function useReindexCollection() {
 // Utility function to update operation in cache (useful for WebSocket updates)
 export function useUpdateOperationInCache() {
   const queryClient = useQueryClient();
-  
-  return (operationId: string, updates: Partial<Operation>) => {
-    // Find which collection this operation belongs to
+
+  return (operationId: string, updates: Partial<Operation>, knownCollectionId?: string) => {
+    // Helper to handle cache updates for a specific collection
+    const handleCollectionUpdate = (collectionId: string) => {
+      // Update the operations list cache if it exists
+      queryClient.setQueryData<Operation[]>(
+        operationKeys.list(collectionId),
+        old => {
+          if (!old) return old;
+          const hasOperation = old.some(op => op.id === operationId);
+          if (!hasOperation) return old;
+
+          return old.map(op =>
+            op.id === operationId ? { ...op, ...updates } : op
+          );
+        }
+      );
+
+      // If operation is completed/failed, update collection status
+      if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
+        // Update the detail view
+        queryClient.setQueryData<Collection>(
+          collectionKeys.detail(collectionId),
+          old => {
+            if (!old || old.activeOperation?.id !== operationId) return old;
+
+            return {
+              ...old,
+              activeOperation: undefined,
+              isProcessing: false,
+              status: updates.status === 'completed' ? 'ready' : 'error'
+            };
+          }
+        );
+
+        // Also update the collection in the lists view (dashboard)
+        queryClient.setQueryData<Collection[]>(
+          collectionKeys.lists(),
+          oldList => {
+            if (!oldList) return oldList;
+
+            return oldList.map(collection => {
+              if (collection.id === collectionId && collection.activeOperation?.id === operationId) {
+                return {
+                  ...collection,
+                  activeOperation: undefined,
+                  isProcessing: false,
+                  status: updates.status === 'completed' ? 'ready' : 'error'
+                };
+              }
+              return collection;
+            });
+          }
+        );
+
+        // If operation completed successfully, invalidate to get fresh data
+        if (updates.status === 'completed') {
+          // Invalidate queries to fetch updated document/vector counts
+          queryClient.invalidateQueries({ queryKey: collectionKeys.detail(collectionId) });
+          queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
+        }
+      }
+    };
+
+    // If collection ID is provided directly (from WebSocket message), use it
+    if (knownCollectionId) {
+      handleCollectionUpdate(knownCollectionId);
+      return;
+    }
+
+    // Otherwise, try to find the collection from cached operations
     const cache = queryClient.getQueryCache();
     const queries = cache.findAll({ queryKey: operationKeys.lists() });
-    
+
     queries.forEach(query => {
       const collectionId = query.queryKey[2] as string;
       if (collectionId) {
-        queryClient.setQueryData<Operation[]>(
-          operationKeys.list(collectionId),
-          old => {
-            if (!old) return old;
-            const hasOperation = old.some(op => op.id === operationId);
-            if (!hasOperation) return old;
-            
-            return old.map(op => 
-              op.id === operationId ? { ...op, ...updates } : op
-            );
-          }
-        );
-        
-        // If operation is completed/failed, update collection status
-        if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
-          // Update the detail view
-          queryClient.setQueryData<Collection>(
-            collectionKeys.detail(collectionId),
-            old => {
-              if (!old || old.activeOperation?.id !== operationId) return old;
-              
-              return {
-                ...old,
-                activeOperation: undefined,
-                isProcessing: false,
-                status: updates.status === 'completed' ? 'ready' : 'error'
-              };
-            }
-          );
-          
-          // Also update the collection in the lists view (dashboard)
-          queryClient.setQueryData<Collection[]>(
-            collectionKeys.lists(),
-            oldList => {
-              if (!oldList) return oldList;
-              
-              return oldList.map(collection => {
-                if (collection.id === collectionId && collection.activeOperation?.id === operationId) {
-                  return {
-                    ...collection,
-                    activeOperation: undefined,
-                    isProcessing: false,
-                    status: updates.status === 'completed' ? 'ready' : 'error'
-                  };
-                }
-                return collection;
-              });
-            }
-          );
-          
-          // If operation completed successfully, invalidate to get fresh data
-          if (updates.status === 'completed') {
-            // Invalidate queries to fetch updated document/vector counts
-            queryClient.invalidateQueries({ queryKey: collectionKeys.detail(collectionId) });
-            queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
-          }
+        const operationsList = queryClient.getQueryData<Operation[]>(operationKeys.list(collectionId));
+        const hasOperation = operationsList?.some(op => op.id === operationId);
+        if (hasOperation) {
+          handleCollectionUpdate(collectionId);
         }
       }
     });

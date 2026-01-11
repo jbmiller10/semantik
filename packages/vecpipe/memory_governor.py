@@ -46,6 +46,7 @@ class ModelType(Enum):
 
     EMBEDDING = auto()
     RERANKER = auto()
+    SPARSE = auto()  # SPLADE sparse indexer models
 
 
 class PressureLevel(Enum):

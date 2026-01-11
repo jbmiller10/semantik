@@ -6,12 +6,27 @@ multi-collection search and enhanced result metadata.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from webui.api.schemas import SearchResult as BaseSearchResult
+
+# Type alias for search mode
+SearchMode = Literal["dense", "sparse", "hybrid"]
+
+
+def _infer_search_mode_from_legacy_search_type(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+
+    if "search_mode" in data:
+        return data
+
+    if data.get("search_type") == "hybrid":
+        return {**data, "search_mode": "hybrid"}
+
+    return data
 
 
 class CollectionSearchRequest(BaseModel):
@@ -22,7 +37,13 @@ class CollectionSearchRequest(BaseModel):
     )
     query: str = Field(..., min_length=1, max_length=1000, description="Search query text")
     k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
-    search_type: str = Field(default="semantic", description="Type of search: semantic, question, code, hybrid")
+    search_type: str = Field(default="semantic", description="Type of search: semantic, question, code")
+    # New search_mode for sparse/hybrid search
+    search_mode: SearchMode = Field(
+        default="dense",
+        description="Search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE only), 'hybrid' (dense + sparse with RRF)",
+    )
+    rrf_k: int = Field(default=60, ge=1, le=1000, description="RRF constant k for hybrid mode ranking")
     use_reranker: bool = Field(default=True, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
     reranker_id: str | None = Field(
@@ -32,20 +53,17 @@ class CollectionSearchRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
-    # Hybrid search parameters
-    hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
-    hybrid_mode: str = Field(default="weighted", description="Hybrid search mode: 'filter' or 'weighted'")
-    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
+    # Legacy hybrid search parameters (deprecated, use search_mode instead)
+    hybrid_alpha: float | None = Field(
+        None, ge=0.0, le=1.0, description="[DEPRECATED] Use search_mode='hybrid' instead"
+    )
+    hybrid_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
+    keyword_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
 
-    @field_validator("keyword_mode", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def normalize_keyword_mode(cls, value: str) -> str:
-        return str(normalize_keyword_mode(value))
-
-    @field_validator("hybrid_mode", mode="before")
-    @classmethod
-    def normalize_hybrid_mode(cls, value: str) -> str:
-        return str(normalize_hybrid_mode(value))
+    def _legacy_infer_search_mode_from_search_type(cls, data: Any) -> Any:
+        return _infer_search_mode_from_legacy_search_type(data)
 
     @field_validator("collection_uuids")
     @classmethod
@@ -115,6 +133,12 @@ class CollectionSearchResponse(BaseModel):
     total_results: int
     collections_searched: list[dict[str, Any]]  # Collection info including id, name, model
     search_type: str
+    # New search_mode fields
+    search_mode_used: SearchMode = Field(
+        default="dense",
+        description="Actual search mode used (may differ from requested if sparse not available)",
+    )
+    warnings: list[str] = Field(default_factory=list, description="Warnings about search mode fallback or other issues")
     reranking_used: bool
     reranker_model: str | None = None
     # Timing metrics
@@ -177,7 +201,13 @@ class SingleCollectionSearchRequest(BaseModel):
     collection_id: str = Field(..., description="Collection UUID to search")
     query: str = Field(..., min_length=1, max_length=1000, description="Search query text")
     k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
-    search_type: str = Field(default="semantic", description="Type of search: semantic, question, code, hybrid")
+    search_type: str = Field(default="semantic", description="Type of search: semantic, question, code")
+    # New search_mode for sparse/hybrid search
+    search_mode: SearchMode = Field(
+        default="dense",
+        description="Search mode: 'dense' (vector only), 'sparse' (BM25/SPLADE only), 'hybrid' (dense + sparse with RRF)",
+    )
+    rrf_k: int = Field(default=60, ge=1, le=1000, description="RRF constant k for hybrid mode ranking")
     use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
     reranker_id: str | None = Field(
@@ -187,10 +217,17 @@ class SingleCollectionSearchRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
-    # Hybrid search parameters
-    hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
-    hybrid_mode: str = Field(default="weighted", description="Hybrid search mode: 'filter' or 'weighted'")
-    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
+    # Legacy hybrid search parameters (deprecated, use search_mode instead)
+    hybrid_alpha: float | None = Field(
+        None, ge=0.0, le=1.0, description="[DEPRECATED] Use search_mode='hybrid' instead"
+    )
+    hybrid_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
+    keyword_mode: str | None = Field(None, description="[DEPRECATED] Use search_mode='hybrid' instead")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_infer_search_mode_from_search_type(cls, data: Any) -> Any:
+        return _infer_search_mode_from_legacy_search_type(data)
 
     model_config = ConfigDict(
         extra="forbid",

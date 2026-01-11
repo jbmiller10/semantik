@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from shared.plugins.base import SemanticPlugin
+from shared.plugins.manifest import PluginManifest
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,33 @@ class RerankerPlugin(SemanticPlugin, ABC):
         This allows the system to make informed decisions about batching
         and to warn users when limits may be exceeded.
         """
+
+    @classmethod
+    def get_manifest(cls) -> PluginManifest:
+        """Return plugin manifest for discovery and UI.
+
+        Builds a PluginManifest from the plugin's class variables and capabilities.
+        Subclasses may override for custom manifest generation.
+
+        Returns:
+            PluginManifest with reranker metadata.
+        """
+        metadata = getattr(cls, "METADATA", {})
+        capabilities = None
+        # Include capabilities if available (not abstract on concrete class)
+        with contextlib.suppress(TypeError, NotImplementedError):
+            capabilities = asdict(cls.get_capabilities())
+
+        return PluginManifest(
+            id=cls.PLUGIN_ID,
+            type=cls.PLUGIN_TYPE,
+            version=cls.PLUGIN_VERSION,
+            display_name=metadata.get("display_name", cls.PLUGIN_ID),
+            description=metadata.get("description", ""),
+            author=metadata.get("author"),
+            homepage=metadata.get("homepage"),
+            capabilities=capabilities,
+        )
 
     async def rerank_batch(
         self,

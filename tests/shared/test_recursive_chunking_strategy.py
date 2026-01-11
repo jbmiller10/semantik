@@ -371,3 +371,188 @@ class TestRecursiveChunkingInitialization:
         result = strategy._init_llama_splitter(config)
 
         assert result is None
+
+
+class TestSplitToTokenLimit:
+    """Tests for split_to_token_limit and oversized word handling."""
+
+    def test_split_to_token_limit_normal_text(self) -> None:
+        """Test split_to_token_limit with normal text splits at word boundaries."""
+        strategy = RecursiveChunkingStrategy()
+
+        text = "The quick brown fox jumps over the lazy dog"
+        result = strategy.split_to_token_limit(text, max_tokens=5)
+
+        assert len(result) >= 1
+        for chunk in result:
+            assert strategy.count_tokens(chunk) <= 5
+
+    def test_split_to_token_limit_oversized_word(self) -> None:
+        """Test split_to_token_limit handles single word exceeding max_tokens."""
+        strategy = RecursiveChunkingStrategy()
+
+        # Create a very long "word" (no spaces) that exceeds token limit
+        # Using a long URL-like string
+        long_word = "https://example.com/" + "a" * 500
+        text = f"Before {long_word} after"
+
+        result = strategy.split_to_token_limit(text, max_tokens=20)
+
+        assert len(result) >= 1
+        for chunk in result:
+            token_count = strategy.count_tokens(chunk)
+            assert token_count <= 20, f"Chunk has {token_count} tokens, expected <= 20"
+
+    def test_split_to_token_limit_only_oversized_word(self) -> None:
+        """Test split_to_token_limit handles text that is only an oversized word."""
+        strategy = RecursiveChunkingStrategy()
+
+        # A single long string with no whitespace
+        long_word = "x" * 1000
+
+        result = strategy.split_to_token_limit(long_word, max_tokens=10)
+
+        assert len(result) >= 1
+        for chunk in result:
+            token_count = strategy.count_tokens(chunk)
+            assert token_count <= 10, f"Chunk has {token_count} tokens, expected <= 10"
+
+    def test_split_to_token_limit_multiple_oversized_words(self) -> None:
+        """Test split_to_token_limit handles multiple oversized words."""
+        strategy = RecursiveChunkingStrategy()
+
+        long_word1 = "abc" * 200
+        long_word2 = "xyz" * 200
+        text = f"{long_word1} normal words here {long_word2}"
+
+        result = strategy.split_to_token_limit(text, max_tokens=15)
+
+        assert len(result) >= 1
+        for chunk in result:
+            token_count = strategy.count_tokens(chunk)
+            assert token_count <= 15, f"Chunk has {token_count} tokens, expected <= 15"
+
+    def test_split_to_token_limit_empty_text(self) -> None:
+        """Test split_to_token_limit handles empty text."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy.split_to_token_limit("", max_tokens=10)
+
+        assert result == []
+
+    def test_split_to_token_limit_zero_max_tokens(self) -> None:
+        """Test split_to_token_limit handles zero max_tokens."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy.split_to_token_limit("some text", max_tokens=0)
+
+        assert result == []
+
+    def test_split_to_token_limit_text_within_limit(self) -> None:
+        """Test split_to_token_limit returns text as-is when within limit."""
+        strategy = RecursiveChunkingStrategy()
+
+        text = "Short text"
+        result = strategy.split_to_token_limit(text, max_tokens=100)
+
+        assert result == [text]
+
+
+class TestSplitWordByTokens:
+    """Tests for _split_word_by_tokens helper method."""
+
+    def test_split_word_by_tokens_short_word(self) -> None:
+        """Test _split_word_by_tokens returns short word as-is."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy._split_word_by_tokens("hello", max_tokens=100)
+
+        assert result == ["hello"]
+
+    def test_split_word_by_tokens_long_word(self) -> None:
+        """Test _split_word_by_tokens splits long word at token boundaries."""
+        strategy = RecursiveChunkingStrategy()
+
+        # Create a word that will definitely exceed the token limit
+        long_word = "supercalifragilisticexpialidocious" * 10
+
+        result = strategy._split_word_by_tokens(long_word, max_tokens=5)
+
+        assert len(result) >= 1
+        for chunk in result:
+            token_count = strategy.count_tokens(chunk)
+            assert token_count <= 5, f"Chunk has {token_count} tokens, expected <= 5"
+
+        # Verify all content is preserved
+        reconstructed = "".join(result)
+        assert reconstructed == long_word
+
+    def test_split_word_by_tokens_empty_word(self) -> None:
+        """Test _split_word_by_tokens handles empty word."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy._split_word_by_tokens("", max_tokens=10)
+
+        assert result == []
+
+    def test_split_word_by_tokens_zero_max_tokens(self) -> None:
+        """Test _split_word_by_tokens handles zero max_tokens."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy._split_word_by_tokens("word", max_tokens=0)
+
+        assert result == []
+
+    def test_split_word_by_tokens_base64_like_content(self) -> None:
+        """Test _split_word_by_tokens handles base64-like content."""
+        strategy = RecursiveChunkingStrategy()
+
+        # Simulate base64 encoded content (no whitespace)
+        import base64
+
+        original = b"This is some test content that will be encoded" * 20
+        base64_content = base64.b64encode(original).decode("ascii")
+
+        result = strategy._split_word_by_tokens(base64_content, max_tokens=10)
+
+        assert len(result) >= 1
+        for chunk in result:
+            token_count = strategy.count_tokens(chunk)
+            assert token_count <= 10
+
+
+class TestRecursiveChunkingOversizedContent:
+    """Integration tests for chunking content with oversized words."""
+
+    def test_chunking_document_with_long_url(self) -> None:
+        """Test chunking a document containing a very long URL."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=50, overlap_tokens=2)
+
+        # Simulate a document with a very long URL
+        long_url = "https://example.com/path/" + "param=value&" * 100
+        content = f"Check out this link: {long_url} for more information."
+
+        # This should not raise ChunkSizeViolationError
+        chunks = strategy.chunk(content, config)
+
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            token_count = strategy.count_tokens(chunk.content)
+            assert token_count <= config.max_tokens, f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"
+
+    def test_chunking_minified_code(self) -> None:
+        """Test chunking minified code without whitespace."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=30, overlap_tokens=2)
+
+        # Simulate minified JavaScript (no whitespace)
+        minified = "function(){" + "var x=1;y=2;z=x+y;console.log(z);" * 50 + "}"
+        content = f"Here is some code:\n{minified}\nEnd of code."
+
+        chunks = strategy.chunk(content, config)
+
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            token_count = strategy.count_tokens(chunk.content)
+            assert token_count <= config.max_tokens, f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"

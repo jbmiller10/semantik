@@ -156,20 +156,7 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 - **DTOs** (`packages/shared/dtos/`): Data transfer objects for cross-module communication
 - **Managers** (`packages/shared/managers/`): Qdrant vector database management
 
-### 4. CLI Package (`packages/cli/`)
-
-Command-line tools for plugin development and validation.
-
-**Commands:**
-- `semantik-plugin new <name>` - Generate new plugin scaffolding
-- `semantik-plugin validate <path>` - Validate plugin structure
-
-**Installation:**
-```bash
-pip install semantik[cli]
-```
-
-### 5. Database Architecture
+### 4. Database Architecture
 
 **Hybrid Database Design:**
 - **PostgreSQL**: Relational data (collections, operations, documents, users, auth tokens)

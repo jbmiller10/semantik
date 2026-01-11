@@ -95,6 +95,52 @@ Scale stateless services: `docker compose up -d --scale vecpipe=5 --scale worker
 
 Use nginx upstream for load balancing or switch to Docker Swarm/Kubernetes.
 
+## MCP Server
+
+The MCP server enables AI assistants (Claude Desktop, Cursor) to search Semantik collections.
+
+**Environment Variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SEMANTIK_WEBUI_URL` | WebUI base URL | `http://localhost:8080` |
+| `SEMANTIK_AUTH_TOKEN` | API key or JWT | (required) |
+| `SEMANTIK_MCP_LOG_LEVEL` | Log level | `INFO` |
+
+**Running the Server:**
+
+```bash
+# Serve a single profile
+semantik-mcp serve --profile coding
+
+# Serve all enabled profiles
+semantik-mcp serve
+
+# With verbose logging
+semantik-mcp serve --profile coding --verbose
+```
+
+**Claude Desktop Configuration:**
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "semantik-coding": {
+      "command": "semantik-mcp",
+      "args": ["serve", "--profile", "coding"],
+      "env": {
+        "SEMANTIK_WEBUI_URL": "http://localhost:8080",
+        "SEMANTIK_AUTH_TOKEN": "<your-api-key>"
+      }
+    }
+  }
+}
+```
+
+See `docs/MCP.md` for the complete integration guide.
+
 ## Troubleshooting
 
 **Won't start:** `docker compose logs <service>`, check ports with `lsof`

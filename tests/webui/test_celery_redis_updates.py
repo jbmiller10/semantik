@@ -81,7 +81,7 @@ class TestCeleryTaskWithOperationUpdates:
             message_data = call_args[0][1]
             message = json.loads(message_data["message"])
             assert message["type"] == "progress"
-            assert message["data"] == update_data
+            assert message["data"] == {**update_data, "operation_id": "test-operation-123"}
             assert "timestamp" in message
 
             # Verify timestamp is ISO format
@@ -182,7 +182,7 @@ class TestCeleryTaskWithOperationUpdates:
                 call_args = mock_redis.xadd.call_args_list[i]
                 message = json.loads(call_args[0][1]["message"])
                 assert message["type"] == update_type
-                assert message["data"] == data
+                assert message["data"] == {**data, "operation_id": "test-operation-123"}
 
     @pytest.mark.asyncio()
     async def test_concurrent_updates(self, task_updater, mock_redis, mock_redis_from_url) -> None:
@@ -239,4 +239,4 @@ class TestCeleryTaskWithOperationUpdates:
             # Verify message can be deserialized
             call_args = mock_redis.xadd.call_args
             message = json.loads(call_args[0][1]["message"])
-            assert message["data"] == large_data
+            assert message["data"] == {**large_data, "operation_id": "test-operation-123"}

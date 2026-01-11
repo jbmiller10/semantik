@@ -1,24 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
+import { documentsV2Api } from '../services/api/v2/documents';
 import { collectionKeys } from '../hooks/useCollections';
+import { operationKeys } from '../hooks/useCollectionOperations';
 import AddDataToCollectionModal from './AddDataToCollectionModal';
 import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
-import type { DocumentResponse } from '../services/api/v2/types';
+import { SparseIndexPanel } from './collection/SparseIndexPanel';
+import type { DocumentResponse, SourceResponse, FailedDocumentCountResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
-import { Type, GitBranch, FileText, Brain, Network, Sparkles } from 'lucide-react';
-
-// Type for aggregated source directories from documents
-interface SourceInfo {
-  path: string;
-  document_count: number;
-}
+import { Type, GitBranch, FileText, Brain, Network, Sparkles, RefreshCw, CheckCircle, Clock, XCircle } from 'lucide-react';
 
 function CollectionDetailsModal() {
   const navigate = useNavigate();
@@ -36,19 +33,28 @@ function CollectionDetailsModal() {
   const [showReindexModal, setShowReindexModal] = useState(false);
 
   // Fetch collection details using v2 API
+  // Includes refetchInterval as fallback for real-time updates when WebSocket fails
   const { data: collection, isLoading, error } = useQuery({
-    queryKey: ['collection-v2', showCollectionDetailsModal],
+    queryKey: collectionKeys.detail(showCollectionDetailsModal!),
     queryFn: async () => {
       if (!showCollectionDetailsModal) return null;
       const response = await collectionsV2Api.get(showCollectionDetailsModal);
       return response.data;
     },
     enabled: !!showCollectionDetailsModal,
+    refetchInterval: (query) => {
+      // Poll every 5s while collection is processing, otherwise every 30s
+      const data = query.state.data;
+      if (data?.status === 'processing' || data?.activeOperation) {
+        return 5000;
+      }
+      return 30000;
+    },
   });
 
   // Fetch operations (jobs) for the collection
   const { data: operationsData } = useQuery({
-    queryKey: ['collection-operations', showCollectionDetailsModal],
+    queryKey: operationKeys.list(showCollectionDetailsModal!),
     queryFn: async () => {
       if (!showCollectionDetailsModal) return null;
       const response = await collectionsV2Api.listOperations(showCollectionDetailsModal, { limit: 50 });
@@ -58,30 +64,74 @@ function CollectionDetailsModal() {
   });
 
   // Fetch documents (files) for the collection
-  const { data: documentsData } = useQuery({
-    queryKey: ['collection-documents', showCollectionDetailsModal, filesPage],
+  const { data: documentsData, refetch: refetchDocuments } = useQuery({
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'documents', filesPage],
     queryFn: async () => {
       if (!showCollectionDetailsModal || activeTab !== 'files') return null;
-      const response = await collectionsV2Api.listDocuments(showCollectionDetailsModal, { 
+      const response = await collectionsV2Api.listDocuments(showCollectionDetailsModal, {
         page: filesPage,
-        limit: 50 
+        limit: 50
       });
       return response.data;
     },
     enabled: !!showCollectionDetailsModal && activeTab === 'files',
   });
 
-  // Aggregate source directories from documents
-  const sourceDirs: SourceInfo[] = documentsData ? (() => {
-    const sourceMap = documentsData.documents.reduce((acc: Map<string, SourceInfo>, doc: DocumentResponse) => {
-      if (!acc.has(doc.source_path)) {
-        acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
+  // Fetch failed document counts for the collection
+  const { data: failedCounts } = useQuery<FailedDocumentCountResponse | null>({
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'],
+    queryFn: async () => {
+      if (!showCollectionDetailsModal || activeTab !== 'files') return null;
+      const response = await documentsV2Api.getFailedCount(showCollectionDetailsModal);
+      return response.data;
+    },
+    enabled: !!showCollectionDetailsModal && activeTab === 'files',
+  });
+
+  // Mutation to retry a single document
+  const retryDocumentMutation = useMutation({
+    mutationFn: (documentUuid: string) =>
+      documentsV2Api.retry(showCollectionDetailsModal!, documentUuid),
+    onSuccess: () => {
+      addToast({ message: 'Document queued for retry', type: 'success' });
+      refetchDocuments();
+      queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
+    },
+    onError: (error: Error) => {
+      addToast({ message: `Failed to retry document: ${error.message}`, type: 'error' });
+    },
+  });
+
+  // Mutation to retry all failed documents
+  const retryAllFailedMutation = useMutation({
+    mutationFn: () => documentsV2Api.retryFailed(showCollectionDetailsModal!),
+    onSuccess: (response) => {
+      const { reset_count, operation_id } = response.data;
+      if (reset_count === 0) {
+        addToast({ message: 'No retryable documents found', type: 'info' });
+      } else {
+        addToast({ message: `${reset_count} document(s) queued for retry${operation_id ? ' - check Active Operations tab' : ''}`, type: 'success' });
       }
-      acc.get(doc.source_path)!.document_count++;
-      return acc;
-    }, new Map<string, SourceInfo>());
-    return Array.from(sourceMap.values());
-  })() : [];
+      refetchDocuments();
+      queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
+      // Also invalidate operations so the new operation appears
+      queryClient.invalidateQueries({ queryKey: ['collection-operations'] });
+    },
+    onError: (error: Error) => {
+      addToast({ message: `Failed to retry documents: ${error.message}`, type: 'error' });
+    },
+  });
+
+  // Fetch sources for the collection (always fetch when modal is open)
+  const { data: sourcesData } = useQuery({
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'sources'],
+    queryFn: async () => {
+      if (!showCollectionDetailsModal) return null;
+      const response = await collectionsV2Api.listSources(showCollectionDetailsModal);
+      return response.data;
+    },
+    enabled: !!showCollectionDetailsModal,
+  });
 
   const handleClose = () => {
     setShowCollectionDetailsModal(null);
@@ -158,9 +208,9 @@ function CollectionDetailsModal() {
 
   const handleAddDataSuccess = () => {
     setShowAddDataModal(false);
-    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-documents', showCollectionDetailsModal] });
+    queryClient.invalidateQueries({ queryKey: collectionKeys.detail(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: operationKeys.list(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'documents'] });
     addToast({
       type: 'success',
       message: 'Source added successfully. Check the Operations tab to monitor progress.',
@@ -170,7 +220,7 @@ function CollectionDetailsModal() {
   const handleRenameSuccess = () => {
     setShowRenameModal(false);
     // Note: with v2 API, we use UUIDs not names, so we keep the same ID
-    queryClient.invalidateQueries({ queryKey: ['collection-v2'] });
+    queryClient.invalidateQueries({ queryKey: collectionKeys.all });
     addToast({ type: 'success', message: 'Collection renamed successfully' });
   };
 
@@ -185,11 +235,11 @@ function CollectionDetailsModal() {
   const handleReindexSuccess = () => {
     setShowReindexModal(false);
     setConfigChanges({});
-    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
-    addToast({ 
-      type: 'success', 
-      message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.' 
+    queryClient.invalidateQueries({ queryKey: collectionKeys.detail(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: operationKeys.list(showCollectionDetailsModal!) });
+    addToast({
+      type: 'success',
+      message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.'
     });
   };
 
@@ -444,15 +494,15 @@ function CollectionDetailsModal() {
               {/* Source Directories */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Source Directories</h3>
-                {sourceDirs.length > 0 ? (
+                {sourcesData && sourcesData.items.length > 0 ? (
                   <ul className="space-y-2">
-                    {sourceDirs.map((source: SourceInfo) => (
-                      <li key={source.path} className="flex items-center justify-between text-sm text-gray-900">
+                    {sourcesData.items.map((source: SourceResponse) => (
+                      <li key={source.id} className="flex items-center justify-between text-sm text-gray-900">
                         <div className="flex items-center">
                           <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                           </svg>
-                          {source.path}
+                          {source.source_path}
                         </div>
                         <span className="text-gray-500">{source.document_count} documents</span>
                       </li>
@@ -525,45 +575,125 @@ function CollectionDetailsModal() {
 
           {collection && activeTab === 'files' && documentsData && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Documents ({documentsData.total.toLocaleString()})
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Documents ({documentsData.total.toLocaleString()})
+                </h3>
+                {/* Retry All Failed button */}
+                {failedCounts && failedCounts.total > 0 && (() => {
+                  // Both transient and unknown errors are retryable
+                  const retryableCount = (failedCounts.transient || 0) + (failedCounts.unknown || 0);
+                  return (
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-gray-500">
+                        <span className="text-red-600 font-medium">{failedCounts.total}</span> failed
+                        {retryableCount > 0 && (
+                          <span className="text-yellow-600 ml-1">({retryableCount} retryable)</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => retryAllFailedMutation.mutate()}
+                        disabled={retryAllFailedMutation.isPending || retryableCount === 0}
+                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${retryAllFailedMutation.isPending ? 'animate-spin' : ''}`} />
+                        Retry All Failed
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        File Path
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        File Name
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Source
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Chunks
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Created
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {documentsData.documents.map((doc: DocumentResponse) => (
-                      <tr key={doc.id}>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          <div className="truncate max-w-md" title={doc.file_path}>
-                            {doc.file_path}
+                      <tr key={doc.id} className={doc.status === 'failed' ? 'bg-red-50' : ''}>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          <div className="truncate max-w-xs" title={doc.file_path}>
+                            {doc.file_name}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <div className="truncate max-w-xs" title={doc.source_path}>
-                            {doc.source_path}
-                          </div>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {doc.status === 'completed' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Completed
+                            </span>
+                          )}
+                          {doc.status === 'failed' && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Failed
+                                {doc.error_category && (
+                                  <span className="ml-1 text-red-600">({doc.error_category})</span>
+                                )}
+                              </span>
+                              {doc.error_message && (
+                                <div className="text-xs text-red-600 mt-1 truncate max-w-xs" title={doc.error_message}>
+                                  {doc.error_message}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {doc.status === 'processing' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                              Processing
+                            </span>
+                          )}
+                          {doc.status === 'pending' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Pending
+                              {doc.retry_count > 0 && (
+                                <span className="ml-1">(retry #{doc.retry_count})</span>
+                              )}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                           {doc.chunk_count}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                           {formatDate(doc.created_at)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                          {doc.status === 'failed' && doc.error_category !== 'permanent' && (
+                            <button
+                              onClick={() => retryDocumentMutation.mutate(doc.id)}
+                              disabled={retryDocumentMutation.isPending}
+                              className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                              title="Retry this document"
+                            >
+                              <RefreshCw className={`h-3 w-3 mr-1 ${retryDocumentMutation.isPending ? 'animate-spin' : ''}`} />
+                              Retry
+                            </button>
+                          )}
+                          {doc.status === 'failed' && doc.error_category === 'permanent' && (
+                            <span className="text-xs text-gray-400" title="Permanent error - cannot be retried">
+                              Cannot retry
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -752,6 +882,15 @@ function CollectionDetailsModal() {
                 <p className="mt-2 text-sm text-gray-500">
                   Click to change chunking strategy or other configuration options
                 </p>
+              </div>
+
+              {/* Sparse Indexing Section */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Sparse Indexing</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Enable BM25 or SPLADE sparse indexing for hybrid search capabilities.
+                </p>
+                <SparseIndexPanel collection={collection} />
               </div>
             </div>
           )}

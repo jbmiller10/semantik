@@ -7,7 +7,7 @@ model lifecycle, and memory pressure.
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -142,7 +142,7 @@ async def get_memory_stats() -> dict[str, Any]:
 
     # Check if using governed manager
     if hasattr(model_mgr, "_governor"):
-        return model_mgr._governor.get_memory_stats()
+        return cast(dict[str, Any], model_mgr._governor.get_memory_stats())
 
     # Fallback for non-governed manager
     import torch
@@ -185,7 +185,7 @@ async def get_loaded_models() -> list[dict[str, Any]]:
 
     # Check if using governed manager
     if hasattr(model_mgr, "_governor"):
-        return model_mgr._governor.get_loaded_models()
+        return cast(list[dict[str, Any]], model_mgr._governor.get_loaded_models())
 
     # Fallback for non-governed manager
     models = []
@@ -246,7 +246,7 @@ async def get_eviction_history() -> list[dict[str, Any]]:
     if not hasattr(model_mgr, "_governor"):
         return []
 
-    return model_mgr._governor.get_eviction_history()
+    return cast(list[dict[str, Any]], model_mgr._governor.get_eviction_history())
 
 
 @router.get("/fragmentation", response_model=FragmentationInfo)
@@ -256,7 +256,7 @@ async def get_fragmentation() -> dict[str, Any]:
 
     High fragmentation can cause OOM even with free memory.
     """
-    return get_cuda_memory_fragmentation()
+    return cast(dict[str, Any], get_cuda_memory_fragmentation())
 
 
 @router.post("/defragment")

@@ -1,13 +1,12 @@
 """Router-level tests for vecpipe search API."""
 
-from typing import Any
 from unittest.mock import patch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import vecpipe.search.router as router_module
-from shared.contracts.search import HybridSearchResponse, HybridSearchResult, SearchResponse, SearchResult
+from shared.contracts.search import SearchResponse, SearchResult
 from vecpipe.search.router import router
 
 
@@ -65,24 +64,4 @@ def test_search_error_mapping() -> None:
         assert resp.json()["detail"] == "db"
 
 
-def test_hybrid_search_route() -> None:
-    client = make_client()
-    hybrid_response = HybridSearchResponse(
-        query="hybrid",
-        results=[
-            HybridSearchResult(
-                path="/a", chunk_id="c1", score=0.7, doc_id="d1", matched_keywords=["keyword"], keyword_score=0.5
-            )
-        ],
-        num_results=1,
-        keywords_extracted=["keyword"],
-        search_mode="weighted",
-    )
-
-    with patch("vecpipe.search.router.service.perform_hybrid_search", return_value=hybrid_response) as mock_hybrid:
-        resp = client.get("/hybrid_search", params={"q": "hybrid", "k": 1})
-        assert resp.status_code == 200
-        body: dict[str, Any] = resp.json()
-        assert body["results"][0]["doc_id"] == "d1"
-        assert body["search_mode"] == "weighted"
-        mock_hybrid.assert_called_once()
+# NOTE: Legacy hybrid_search endpoint test removed - use search_mode="hybrid" instead

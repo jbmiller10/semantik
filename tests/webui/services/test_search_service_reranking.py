@@ -230,10 +230,10 @@ class TestSearchServiceReranking:
             assert "reranked_score" not in result["results"][0]
 
     @pytest.mark.asyncio()
-    async def test_search_reranking_with_hybrid_search(
+    async def test_search_reranking_with_hybrid_mode(
         self, search_service: SearchService, mock_collection_repo: AsyncMock, mock_collections: list[MagicMock]
     ) -> None:
-        """Test that reranking works with hybrid search mode."""
+        """Test that reranking works with search_mode=hybrid."""
         # Setup
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collections[0]
 
@@ -266,19 +266,18 @@ class TestSearchServiceReranking:
                 collection_uuid=mock_collections[0].id,
                 query="test query",
                 k=10,
-                search_type="hybrid",
+                search_type="semantic",
+                search_mode="hybrid",
+                rrf_k=60,
                 use_reranker=True,
-                hybrid_alpha=0.5,
-                hybrid_mode="weighted",
             )
 
             # Verify the request includes hybrid search params
             request_data = mock_client.post.call_args[1]["json"]
-            assert request_data["search_type"] == "hybrid"
+            assert request_data["search_type"] == "semantic"
+            assert request_data["search_mode"] == "hybrid"
+            assert request_data["rrf_k"] == 60
             assert request_data["use_reranker"] is True
-            assert request_data["hybrid_alpha"] == 0.5
-            assert request_data["hybrid_mode"] == "weighted"
-            assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
     async def test_search_reranking_error_handling(

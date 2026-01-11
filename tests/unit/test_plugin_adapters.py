@@ -125,6 +125,33 @@ class TestManifestFromEmbeddingPlugin:
         assert manifest.display_name == "Metadata Name"
         assert manifest.description == "Metadata description"
 
+    def test_manifest_accepts_dict_definition(self):
+        """Test creating manifest when definition is a plain dict (protocol-style)."""
+
+        class MockPlugin:
+            PLUGIN_VERSION = "1.0.0"
+            METADATA = {}
+
+        definition = {
+            "api_id": "dict-embed",
+            "internal_id": "dict_embed",
+            "display_name": "Dict Embedding",
+            "description": "Dict definition",
+            "provider_type": "remote",
+            "supported_models": ["m1", "m2"],
+            "default_config": {"dimension": 64},
+            "performance_characteristics": {"latency": "low"},
+        }
+
+        manifest = manifest_from_embedding_plugin(MockPlugin, definition)
+
+        assert manifest.id == "dict-embed"
+        assert manifest.display_name == "Dict Embedding"
+        assert manifest.capabilities["internal_id"] == "dict_embed"
+        assert manifest.capabilities["supports_quantization"] is True
+        assert manifest.capabilities["supported_models"] == ["m1", "m2"]
+        assert manifest.capabilities["default_config"]["dimension"] == 64
+
 
 class TestManifestFromChunkingPlugin:
     """Tests for manifest_from_chunking_plugin."""

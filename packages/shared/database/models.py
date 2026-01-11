@@ -127,6 +127,7 @@ class OperationType(str, enum.Enum):
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
+    RETRY_DOCUMENTS = "retry_documents"
 
     @classmethod
     def _missing_(cls, value: Any) -> "OperationType | None":
@@ -177,6 +178,7 @@ class User(Base):
     permissions = relationship("CollectionPermission", back_populates="user", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="user")
     audit_logs = relationship("CollectionAuditLog", back_populates="user")
+    mcp_profiles = relationship("MCPProfile", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Collection(Base):
@@ -253,6 +255,7 @@ class Collection(Base):
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
+    mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
 
 
 class Document(Base):
@@ -294,6 +297,11 @@ class Document(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
     is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
 
+    # Retry tracking fields (for failed document retry functionality)
+    retry_count = Column(Integer, nullable=False, default=0)  # Number of retry attempts
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)  # When last retry was attempted
+    error_category = Column(String(50), nullable=True)  # 'transient', 'permanent', or 'unknown'
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
@@ -311,6 +319,16 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+        # Index for querying retryable failed documents
+        # Note: DocumentStatus enum uses member NAMES (FAILED) not VALUES (failed) in PostgreSQL
+        Index(
+            "ix_documents_collection_failed_retryable",
+            "collection_id",
+            "status",
+            "error_category",
+            "retry_count",
+            postgresql_where=text("status = 'FAILED'"),
         ),
     )
 
@@ -885,3 +903,88 @@ class Chunk(Base):
             },
         },
     )
+
+
+class MCPProfile(Base):
+    """MCP search profile configuration.
+
+    Defines a named search profile that exposes collections to MCP clients
+    like Claude Desktop. Each profile has scoped collection access and
+    configurable search defaults.
+
+    Profile names must be unique per user and follow the pattern [a-z][a-z0-9_-]*
+    to ensure valid tool naming in MCP clients.
+    """
+
+    __tablename__ = "mcp_profiles"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    name = Column(String(64), nullable=False)  # Tool name: lowercase, no spaces
+    description = Column(Text, nullable=False)  # Shown to LLM as tool description
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    # Search defaults
+    search_type = Column(String(32), nullable=False, default="semantic")  # semantic, hybrid, keyword, question, code
+    result_count = Column(Integer, nullable=False, default=10)
+    use_reranker = Column(Boolean, nullable=False, default=True)
+    score_threshold = Column(Float, nullable=True)
+    hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
+    search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
+    rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
+
+    # Metadata
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="mcp_profiles")
+    collections = relationship("Collection", secondary="mcp_profile_collections", back_populates="mcp_profiles")
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),
+        CheckConstraint(
+            "search_type IN ('semantic', 'hybrid', 'keyword', 'question', 'code')",
+            name="ck_mcp_profiles_search_type",
+        ),
+        CheckConstraint("result_count >= 1 AND result_count <= 100", name="ck_mcp_profiles_result_count"),
+        CheckConstraint(
+            "score_threshold IS NULL OR (score_threshold >= 0 AND score_threshold <= 1)",
+            name="ck_mcp_profiles_score_threshold",
+        ),
+        CheckConstraint(
+            "hybrid_alpha IS NULL OR (hybrid_alpha >= 0 AND hybrid_alpha <= 1)",
+            name="ck_mcp_profiles_hybrid_alpha",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_mcp_profiles_search_mode",
+        ),
+        CheckConstraint(
+            "rrf_k IS NULL OR (rrf_k >= 1 AND rrf_k <= 1000)",
+            name="ck_mcp_profiles_rrf_k",
+        ),
+    )
+
+
+class MCPProfileCollection(Base):
+    """Junction table for MCP profile to collection mapping.
+
+    Maps collections to MCP profiles with an ordering field that determines
+    search priority. Lower order values are searched first and may affect
+    result ranking when searching across multiple collections.
+    """
+
+    __tablename__ = "mcp_profile_collections"
+
+    profile_id = Column(
+        String,
+        ForeignKey("mcp_profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    order = Column(Integer, nullable=False, default=0)  # Lower values = higher priority

@@ -22,7 +22,8 @@ def get_semantik_version() -> str:
     """
     from shared.version import get_version
 
-    return get_version()
+    result: str = get_version()
+    return result
 
 
 def check_compatibility(

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
+import shared.embedding.providers  # noqa: F401  # Ensure built-in providers are registered for these tests.
 from shared.embedding.factory import (
     _PROVIDER_CLASSES,
     EmbeddingProviderFactory,
@@ -127,6 +128,123 @@ class TestProviderCreation:
         provider = EmbeddingProviderFactory.create_provider("dummy/my-model", dimension=256)
 
         assert provider.dimension == 256
+
+    def test_protocol_provider_receives_state_config_via_config(
+        self, empty_registry: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Protocol providers should not receive plugin_config kwarg from state.
+
+        The EmbeddingProtocol __init__ signature is (config: dict | None) and does
+        not accept plugin_config. The factory should merge plugin state into config.
+        """
+        import shared.embedding.factory as embedding_factory
+
+        class DummyProtocolProvider:
+            API_ID = "proto"
+            INTERNAL_NAME = "proto"
+            PLUGIN_ID = "proto"
+            PLUGIN_TYPE = "embedding"
+            PLUGIN_VERSION = "1.0.0"
+            PROVIDER_TYPE = "remote"
+            METADATA: dict[str, Any] = {}
+
+            def __init__(self, config: dict[str, Any] | None = None) -> None:
+                self.config = config
+
+            @classmethod
+            def supports_model(cls, model_name: str) -> bool:
+                return model_name == "proto-model"
+
+            async def embed_texts(self, texts: list[str], mode: str = "document") -> list[list[float]]:  # noqa: ARG002
+                return [[0.0] for _ in texts]
+
+            @classmethod
+            def get_definition(cls) -> dict[str, Any]:
+                return {}
+
+        EmbeddingProviderFactory.register_provider("proto", DummyProtocolProvider)
+        monkeypatch.setattr(
+            embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"}
+        )
+
+        provider = EmbeddingProviderFactory.create_provider("proto-model")
+        assert provider.config == {"api_key": "x"}
+
+    def test_protocol_provider_merges_explicit_config_over_state(
+        self, empty_registry: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit config should override values from plugin state."""
+        import shared.embedding.factory as embedding_factory
+
+        class DummyProtocolProvider:
+            API_ID = "proto"
+            INTERNAL_NAME = "proto"
+            PLUGIN_ID = "proto"
+            PLUGIN_TYPE = "embedding"
+            PLUGIN_VERSION = "1.0.0"
+            PROVIDER_TYPE = "remote"
+            METADATA: dict[str, Any] = {}
+
+            def __init__(self, config: dict[str, Any] | None = None) -> None:
+                self.config = config
+
+            @classmethod
+            def supports_model(cls, model_name: str) -> bool:
+                return model_name == "proto-model"
+
+            async def embed_texts(self, texts: list[str], mode: str = "document") -> list[list[float]]:  # noqa: ARG002
+                return [[0.0] for _ in texts]
+
+            @classmethod
+            def get_definition(cls) -> dict[str, Any]:
+                return {}
+
+        EmbeddingProviderFactory.register_provider("proto", DummyProtocolProvider)
+        monkeypatch.setattr(
+            embedding_factory,
+            "get_plugin_config",
+            lambda _plugin_id, resolve_secrets=True: {"timeout": 1, "api_key": "from_state"},
+        )
+
+        provider = EmbeddingProviderFactory.create_provider("proto-model", config={"timeout": 2})
+        assert provider.config == {"timeout": 2, "api_key": "from_state"}
+
+    def test_protocol_provider_by_name_receives_state_config_via_config(
+        self, empty_registry: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """create_provider_by_name should follow the same rules as auto-detection."""
+        import shared.embedding.factory as embedding_factory
+
+        class DummyProtocolProvider:
+            API_ID = "proto"
+            INTERNAL_NAME = "proto"
+            PLUGIN_ID = "proto"
+            PLUGIN_TYPE = "embedding"
+            PLUGIN_VERSION = "1.0.0"
+            PROVIDER_TYPE = "remote"
+            METADATA: dict[str, Any] = {}
+
+            def __init__(self, config: dict[str, Any] | None = None) -> None:
+                self.config = config
+
+            @classmethod
+            def supports_model(cls, model_name: str) -> bool:  # noqa: ARG003
+                return False
+
+            async def embed_texts(self, texts: list[str], mode: str = "document") -> list[list[float]]:  # noqa: ARG002
+                return [[0.0] for _ in texts]
+
+            @classmethod
+            def get_definition(cls) -> dict[str, Any]:
+                return {}
+
+        EmbeddingProviderFactory.register_provider("proto", DummyProtocolProvider)
+        monkeypatch.setattr(
+            embedding_factory, "get_plugin_config", lambda _plugin_id, resolve_secrets=True: {"api_key": "x"}
+        )
+
+        provider = EmbeddingProviderFactory.create_provider_by_name("proto")
+        assert provider.config == {"api_key": "x"}
 
 
 class TestModelSupport:
