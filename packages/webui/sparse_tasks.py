@@ -216,12 +216,14 @@ async def _reindex_collection_async(
                 # Use point.id as the sparse point ID (must be valid UUID or int)
                 point_id = str(point.id)
                 if content:
-                    documents.append({
-                        "content": content,
-                        "chunk_id": point_id,  # Use point.id for sparse point ID
-                        "original_chunk_id": original_chunk_id,  # Keep for payload
-                        "metadata": {k: v for k, v in payload.items() if k not in ("content", "chunk_id")},
-                    })
+                    documents.append(
+                        {
+                            "content": content,
+                            "chunk_id": point_id,  # Use point.id for sparse point ID
+                            "original_chunk_id": original_chunk_id,  # Keep for payload
+                            "metadata": {k: v for k, v in payload.items() if k not in ("content", "chunk_id")},
+                        }
+                    )
 
             if not documents:
                 if next_offset is None:

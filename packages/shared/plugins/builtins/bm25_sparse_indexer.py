@@ -24,6 +24,7 @@ Where:
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import logging
@@ -724,16 +725,12 @@ class BM25SparseIndexerPlugin(SparseIndexerPlugin):
                     time.sleep(0.1)
             yield
         finally:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            except Exception:
+            with contextlib.suppress(Exception):
                 # Best-effort cleanup: if the fd is already closed or unlock fails, we still
                 # want to close the handle without masking the original exception.
-                pass
-            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            with contextlib.suppress(Exception):
                 lock_file.close()
-            except Exception:
-                pass
             logger.debug("Released IDF file lock for %s", self._idf_path)
 
     async def _load_idf_stats(self) -> None:

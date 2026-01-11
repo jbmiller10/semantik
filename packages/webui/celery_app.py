@@ -84,6 +84,10 @@ def _build_base_config() -> dict[str, Any]:
                 "task": "webui.tasks.dispatch_due_syncs",
                 "schedule": 60.0,  # Every 60 seconds
             },
+            "cleanup-stuck-operations": {
+                "task": "webui.tasks.cleanup_stuck_operations",
+                "schedule": 900.0,  # Every 15 minutes
+            },
         },
     }
 

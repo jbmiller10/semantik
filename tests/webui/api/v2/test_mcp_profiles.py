@@ -42,6 +42,34 @@ async def test_create_profile_success(
 
 
 @pytest.mark.asyncio()
+async def test_create_profile_persists_search_mode_and_rrf_k(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Creating an MCP profile should persist search_mode/rrf_k settings."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "hybrid-coding",
+            "description": "Search coding documentation with hybrid mode",
+            "collection_ids": [collection.id],
+            "search_mode": "hybrid",
+            "rrf_k": 77,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["search_mode"] == "hybrid"
+    assert payload["rrf_k"] == 77
+
+
+@pytest.mark.asyncio()
 async def test_create_profile_duplicate_name_fails(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],

@@ -221,8 +221,12 @@ class HierarchicalChunker:
                 results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
+                # Also add hierarchy metadata for consistency
                 for result in results:
                     result.metadata["strategy"] = "character"
+                    result.metadata["hierarchy_level"] = 0
+                    result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return results
 
@@ -246,8 +250,12 @@ class HierarchicalChunker:
             results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
             # Update strategy in metadata to show it's character fallback
+            # Also add hierarchy metadata for consistency
             for result in results:
                 result.metadata["strategy"] = "character"
+                result.metadata["hierarchy_level"] = 0
+                result.metadata["is_leaf"] = True
+                result.metadata["chunk_sizes"] = self.chunk_sizes
 
             return results
 
@@ -276,9 +284,11 @@ class HierarchicalChunker:
                 chunks_by_level[level] = []
             chunks_by_level[level].append(result)
 
-        # First pass: identify leaf and parent chunks
+        # First pass: identify leaf and parent chunks and ensure hierarchy_level is set
         for result in results:
             hierarchy_level = result.metadata.get("hierarchy_level", 0)
+            # Ensure hierarchy_level is explicitly set in metadata
+            result.metadata["hierarchy_level"] = hierarchy_level
 
             # In a multi-level hierarchy:
             # - Level 0 = top-level parent chunks (largest)
@@ -449,8 +459,12 @@ class HierarchicalChunker:
                 results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
+                # Also add hierarchy metadata for consistency
                 for result in results:
                     result.metadata["strategy"] = "character"
+                    result.metadata["hierarchy_level"] = 0
+                    result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return iter(results)
 
@@ -505,8 +519,12 @@ class HierarchicalChunker:
                 results = cast(list[ChunkResult], results)
 
                 # Update strategy in metadata to show it's character fallback
+                # Also add hierarchy metadata for consistency
                 for result in results:
                     result.metadata["strategy"] = "character"
+                    result.metadata["hierarchy_level"] = 0
+                    result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return results
 
@@ -532,8 +550,12 @@ class HierarchicalChunker:
             results = cast(list[ChunkResult], results)
 
             # Update strategy in metadata to show it's character fallback
+            # Also add hierarchy metadata for consistency
             for result in results:
                 result.metadata["strategy"] = "character"
+                result.metadata["hierarchy_level"] = 0
+                result.metadata["is_leaf"] = True
+                result.metadata["chunk_sizes"] = self.chunk_sizes
 
             return results
 

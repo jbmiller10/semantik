@@ -2862,3 +2862,233 @@ class TestSparseIndexingHelpers:
         upsert.assert_awaited_once()
         store.assert_awaited_once()
         assert mock_qdrant.close.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# RETRY_DOCUMENTS Operation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestRetryDocumentsOperation:
+    """Tests for _process_retry_documents_operation."""
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_with_no_pending_returns_early(self) -> None:
+        """When no pending documents exist, operation returns success with 0 counts."""
+        from shared.database.models import DocumentStatus
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.list_by_collection = AsyncMock(return_value=([], 0))
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {"config": {}, "uuid": "op-123"}
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+        assert result["documents_failed"] == 0
+        assert result["vectors_created"] == 0
+        mock_document_repo.list_by_collection.assert_awaited_once_with(
+            collection_id="col-uuid-456",
+            status=DocumentStatus.PENDING,
+            offset=0,
+            limit=10000,
+        )
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_filters_by_document_ids(self) -> None:
+        """When document_ids provided, only those documents are processed."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document that's in PENDING status
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.PENDING.value
+        mock_doc.source_path = "/path/to/doc.txt"
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1", "doc-nonexistent"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        # Mock the parallel processing to avoid complex setup
+        with patch.object(
+            ingestion_module,
+            "process_documents_parallel",
+            new=AsyncMock(return_value={"processed": 1, "failed": 0, "vectors": 10}),
+        ) as mock_parallel:
+            result = await ingestion_module._process_retry_documents_operation(
+                operation=operation,
+                collection=collection,
+                collection_repo=mock_collection_repo,
+                document_repo=mock_document_repo,
+                updater=mock_updater,
+            )
+
+        # Verify document lookup was called for provided IDs
+        assert mock_document_repo.get_by_id.await_count == 2
+        mock_document_repo.get_by_id.assert_any_await("doc-1")
+        mock_document_repo.get_by_id.assert_any_await("doc-nonexistent")
+
+        # Verify success result
+        assert result["success"] is True
+        assert result["documents_processed"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_excludes_non_pending(self) -> None:
+        """Documents not in PENDING status are excluded from retry."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document that's COMPLETED (not PENDING)
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.COMPLETED.value  # Not PENDING
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        # Should return early with 0 documents since the only doc is not PENDING
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_excludes_wrong_collection(self) -> None:
+        """Documents from different collections are excluded."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document from a different collection
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "different-collection-id"  # Different!
+        mock_doc.status = DocumentStatus.PENDING.value
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        # Should return early since document belongs to different collection
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_sends_progress_updates(self) -> None:
+        """Verify progress updates are sent during processing."""
+        from shared.database.models import DocumentStatus
+
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.PENDING.value
+        mock_doc.source_path = "/path/to/doc.txt"
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        with patch.object(
+            ingestion_module,
+            "process_documents_parallel",
+            new=AsyncMock(return_value={"processed": 1, "failed": 0, "vectors": 10}),
+        ):
+            await ingestion_module._process_retry_documents_operation(
+                operation=operation,
+                collection=collection,
+                collection_repo=mock_collection_repo,
+                document_repo=mock_document_repo,
+                updater=mock_updater,
+            )
+
+        # Verify processing_progress update was sent
+        progress_updates = [u for u in mock_updater.updates if u[0] == "processing_progress"]
+        assert len(progress_updates) >= 1
+        assert progress_updates[0][1]["total"] == 1

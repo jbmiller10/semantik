@@ -48,6 +48,10 @@ def _mock_document(*, collection_id: str) -> MagicMock:
     doc.meta = {"k": "v"}
     doc.created_at = datetime.now(UTC)
     doc.updated_at = datetime.now(UTC)
+    # Retry tracking fields
+    doc.retry_count = 0
+    doc.last_retry_at = None
+    doc.error_category = None
     return doc
 
 

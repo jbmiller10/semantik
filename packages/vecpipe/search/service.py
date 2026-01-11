@@ -225,6 +225,7 @@ async def _perform_sparse_search(
             if sparse_type is None:
                 # Try to get from registry
                 from shared.plugins import load_plugins, plugin_registry
+
                 load_plugins(plugin_types={"sparse_indexer"})
                 record = plugin_registry.get("sparse_indexer", plugin_id)
                 sparse_type = getattr(record.plugin_class, "SPARSE_TYPE", "unknown") if record else "unknown"
@@ -388,9 +389,7 @@ async def _fetch_payloads_for_chunk_ids(
                 ]
             }
         else:
-            scroll_filter = {
-                "must": [chunk_id_condition]
-            }
+            scroll_filter = {"must": [chunk_id_condition]}
 
         fetch_request = {
             "filter": scroll_filter,

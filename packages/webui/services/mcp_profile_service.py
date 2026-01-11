@@ -60,6 +60,8 @@ class MCPProfileService:
             use_reranker=data.use_reranker,
             score_threshold=data.score_threshold,
             hybrid_alpha=data.hybrid_alpha,
+            search_mode=data.search_mode,
+            rrf_k=data.rrf_k,
         )
         self.db_session.add(profile)
 

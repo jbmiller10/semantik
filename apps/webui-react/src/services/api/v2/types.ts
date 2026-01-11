@@ -42,16 +42,33 @@ export type {
   SparseReindexProgress,
 };
 
+// Document status type
+export type DocumentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'deleted';
+
+// Error category type for retry decisions
+export type ErrorCategory = 'transient' | 'permanent' | 'unknown';
+
 // Additional v2 API specific types
 export interface DocumentResponse {
   id: string;
   collection_id: string;
-  source_path: string;
+  file_name: string;
   file_path: string;
+  file_size: number;
+  mime_type: string | null;
+  content_hash: string;
+  status: DocumentStatus;
+  error_message: string | null;
   chunk_count: number;
+  // Retry tracking fields
+  retry_count: number;
+  last_retry_at: string | null;
+  error_category: ErrorCategory | null;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Legacy field - not always present in backend response
+  source_path?: string;
 }
 
 export interface DocumentListResponse {
@@ -59,6 +76,21 @@ export interface DocumentListResponse {
   total: number;
   page: number;
   per_page: number;
+}
+
+// Failed document count response
+export interface FailedDocumentCountResponse {
+  transient: number;
+  permanent: number;
+  unknown: number;
+  total: number;
+}
+
+// Retry documents response
+export interface RetryDocumentsResponse {
+  reset_count: number;
+  operation_id: string | null;
+  message: string;
 }
 
 export interface SearchRequest {
