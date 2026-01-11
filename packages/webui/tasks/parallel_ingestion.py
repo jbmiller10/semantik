@@ -305,9 +305,7 @@ async def _update_document_status(
             )
             await document_repo.session.commit()
         except Exception as exc:
-            logger.error(
-                "Document status update failed for %s: %s", document_id, exc, exc_info=True
-            )
+            logger.error("Document status update failed for %s: %s", document_id, exc, exc_info=True)
             # Keep the session usable for subsequent updates.
             await _best_effort(
                 f"document status rollback for {document_id}",
