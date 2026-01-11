@@ -8,9 +8,7 @@ collections with result aggregation and re-ranking.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from fastapi import APIRouter, Depends, Request
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.schemas import (
     CollectionSearchRequest,
@@ -54,94 +52,85 @@ async def multi_collection_search(
     This endpoint allows searching across up to 10 collections simultaneously.
     Results are aggregated and re-ranked to provide globally relevant results.
     """
-    try:
-        result = await service.multi_collection_search(
-            user_id=int(current_user["id"]),
-            collection_uuids=search_request.collection_uuids,
-            query=search_request.query,
-            k=search_request.k,
-            search_type=search_request.search_type,
-            search_mode=search_request.search_mode,
-            rrf_k=search_request.rrf_k,
-            score_threshold=search_request.score_threshold,
-            metadata_filter=search_request.metadata_filter,
-            use_reranker=search_request.use_reranker,
-            rerank_model=search_request.rerank_model,
-            reranker_id=search_request.reranker_id,
+    result = await service.multi_collection_search(
+        user_id=int(current_user["id"]),
+        collection_uuids=search_request.collection_uuids,
+        query=search_request.query,
+        k=search_request.k,
+        search_type=search_request.search_type,
+        search_mode=search_request.search_mode,
+        rrf_k=search_request.rrf_k,
+        score_threshold=search_request.score_threshold,
+        metadata_filter=search_request.metadata_filter,
+        use_reranker=search_request.use_reranker,
+        rerank_model=search_request.rerank_model,
+        reranker_id=search_request.reranker_id,
+    )
+
+    # Convert service result to API response format
+    final_results = []
+    for res in result["results"]:
+        # Get chunk_index from payload or metadata
+        chunk_index = res.get("chunk_index") or res.get("metadata", {}).get("chunk_index")
+        total_chunks = res.get("total_chunks") or res.get("metadata", {}).get("total_chunks")
+
+        final_results.append(
+            CollectionSearchResult(
+                document_id=res.get("doc_id", ""),
+                chunk_id=res.get("chunk_id", ""),
+                score=res.get("reranked_score", res.get("score", 0.0)),
+                original_score=res.get("score", 0.0),
+                reranked_score=res.get("reranked_score"),
+                text=res.get("content", ""),
+                metadata=res.get("metadata", {}),
+                file_name=res.get("path", "").split("/")[-1] if res.get("path") else "Unknown",
+                file_path=res.get("path", ""),
+                collection_id=res.get("collection_id"),
+                collection_name=res.get("collection_name"),
+                embedding_model=res.get("embedding_model", ""),
+                chunk_index=chunk_index,
+                total_chunks=total_chunks,
+            )
         )
 
-        # Convert service result to API response format
-        final_results = []
-        for res in result["results"]:
-            # Get chunk_index from payload or metadata
-            chunk_index = res.get("chunk_index") or res.get("metadata", {}).get("chunk_index")
-            total_chunks = res.get("total_chunks") or res.get("metadata", {}).get("total_chunks")
-
-            final_results.append(
-                CollectionSearchResult(
-                    document_id=res.get("doc_id", ""),
-                    chunk_id=res.get("chunk_id", ""),
-                    score=res.get("reranked_score", res.get("score", 0.0)),
-                    original_score=res.get("score", 0.0),
-                    reranked_score=res.get("reranked_score"),
-                    text=res.get("content", ""),
-                    metadata=res.get("metadata", {}),
-                    file_name=res.get("path", "").split("/")[-1] if res.get("path") else "Unknown",
-                    file_path=res.get("path", ""),
-                    collection_id=res.get("collection_id"),
-                    collection_name=res.get("collection_name"),
-                    embedding_model=res.get("embedding_model", ""),
-                    chunk_index=chunk_index,
-                    total_chunks=total_chunks,
-                )
-            )
-
-        metadata = result["metadata"]
-        return CollectionSearchResponse(
-            query=search_request.query,
-            results=final_results,
-            total_results=metadata["total_results"],
-            collections_searched=[
+    metadata = result["metadata"]
+    return CollectionSearchResponse(
+        query=search_request.query,
+        results=final_results,
+        total_results=metadata["total_results"],
+        collections_searched=[
+            {
+                "id": str(cd["collection_id"]),
+                "name": cd["collection_name"],
+                "result_count": cd["result_count"],
+            }
+            for cd in metadata["collection_details"]
+            if "error" not in cd
+        ],
+        search_type=search_request.search_type,
+        search_mode_used=metadata.get("search_mode_used", "dense"),
+        warnings=metadata.get("warnings", []),
+        reranking_used=search_request.use_reranker,
+        reranker_model=search_request.rerank_model,
+        search_time_ms=metadata["processing_time"] * 1000,
+        reranking_time_ms=None,  # Not available in new format
+        total_time_ms=metadata["processing_time"] * 1000,
+        partial_failure=bool(metadata.get("errors")),
+        failed_collections=(
+            [
                 {
-                    "id": str(cd["collection_id"]),
-                    "name": cd["collection_name"],
-                    "result_count": cd["result_count"],
+                    "collection_id": str(cd["collection_id"]),
+                    "collection_name": cd["collection_name"],
+                    "error": cd["error"],
+                    "error_message": cd["error"],
                 }
                 for cd in metadata["collection_details"]
-                if "error" not in cd
-            ],
-            search_type=search_request.search_type,
-            search_mode_used=metadata.get("search_mode_used", "dense"),
-            warnings=metadata.get("warnings", []),
-            reranking_used=search_request.use_reranker,
-            reranker_model=search_request.rerank_model,
-            search_time_ms=metadata["processing_time"] * 1000,
-            reranking_time_ms=None,  # Not available in new format
-            total_time_ms=metadata["processing_time"] * 1000,
-            partial_failure=bool(metadata.get("errors")),
-            failed_collections=(
-                [
-                    {
-                        "collection_id": str(cd["collection_id"]),
-                        "collection_name": cd["collection_name"],
-                        "error": cd["error"],
-                        "error_message": cd["error"],
-                    }
-                    for cd in metadata["collection_details"]
-                    if "error" in cd
-                ]
-                if metadata.get("errors")
-                else None
-            ),
-        )
-
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Search failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Search failed") from e
+                if "error" in cd
+            ]
+            if metadata.get("errors")
+            else None
+        ),
+    )
 
 
 @router.post(
@@ -167,64 +156,55 @@ async def single_collection_search(
     This endpoint provides a simpler interface for searching within a single
     collection without the overhead of multi-collection aggregation.
     """
-    try:
-        result = await service.single_collection_search(
-            user_id=int(current_user["id"]),
-            collection_uuid=search_request.collection_id,
-            query=search_request.query,
-            k=search_request.k,
-            search_type=search_request.search_type,
-            search_mode=search_request.search_mode,
-            rrf_k=search_request.rrf_k,
-            score_threshold=search_request.score_threshold,
-            metadata_filter=search_request.metadata_filter,
-            use_reranker=search_request.use_reranker,
-            rerank_model=search_request.rerank_model,
-            reranker_id=search_request.reranker_id,
-            include_content=search_request.include_content,
-        )
+    result = await service.single_collection_search(
+        user_id=int(current_user["id"]),
+        collection_uuid=search_request.collection_id,
+        query=search_request.query,
+        k=search_request.k,
+        search_type=search_request.search_type,
+        search_mode=search_request.search_mode,
+        rrf_k=search_request.rrf_k,
+        score_threshold=search_request.score_threshold,
+        metadata_filter=search_request.metadata_filter,
+        use_reranker=search_request.use_reranker,
+        rerank_model=search_request.rerank_model,
+        reranker_id=search_request.reranker_id,
+        include_content=search_request.include_content,
+    )
 
-        # Convert service result to API response format
-        final_results = []
-        for res in result.get("results", []):
-            final_results.append(
-                CollectionSearchResult(
-                    document_id=res.get("doc_id", ""),
-                    chunk_id=res.get("chunk_id", ""),
-                    score=res.get("score", 0.0),
-                    original_score=res.get("score", 0.0),
-                    reranked_score=res.get("reranked_score"),
-                    text=res.get("content", ""),
-                    metadata=res.get("metadata", {}),
-                    file_name=res.get("path", "").split("/")[-1] if res.get("path") else "Unknown",
-                    file_path=res.get("path", ""),
-                    collection_id=search_request.collection_id,
-                    collection_name="",  # Not available in single search response
-                    embedding_model="",  # Not available in single search response
-                )
+    # Convert service result to API response format
+    final_results = []
+    for res in result.get("results", []):
+        final_results.append(
+            CollectionSearchResult(
+                document_id=res.get("doc_id", ""),
+                chunk_id=res.get("chunk_id", ""),
+                score=res.get("score", 0.0),
+                original_score=res.get("score", 0.0),
+                reranked_score=res.get("reranked_score"),
+                text=res.get("content", ""),
+                metadata=res.get("metadata", {}),
+                file_name=res.get("path", "").split("/")[-1] if res.get("path") else "Unknown",
+                file_path=res.get("path", ""),
+                collection_id=search_request.collection_id,
+                collection_name="",  # Not available in single search response
+                embedding_model="",  # Not available in single search response
             )
-
-        return CollectionSearchResponse(
-            query=search_request.query,
-            results=final_results,
-            total_results=len(final_results),
-            collections_searched=[],  # Single collection search doesn't provide this info
-            search_type=search_request.search_type,
-            search_mode_used=result.get("search_mode_used", "dense"),
-            warnings=result.get("warnings", []),
-            reranking_used=search_request.use_reranker,
-            reranker_model=None,
-            search_time_ms=result.get("processing_time_ms", 0),
-            reranking_time_ms=None,
-            total_time_ms=result.get("processing_time_ms", 0),
-            partial_failure=False,
-            failed_collections=None,
         )
 
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Search failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Search failed") from e
+    return CollectionSearchResponse(
+        query=search_request.query,
+        results=final_results,
+        total_results=len(final_results),
+        collections_searched=[],  # Single collection search doesn't provide this info
+        search_type=search_request.search_type,
+        search_mode_used=result.get("search_mode_used", "dense"),
+        warnings=result.get("warnings", []),
+        reranking_used=search_request.use_reranker,
+        reranker_model=None,
+        search_time_ms=result.get("processing_time_ms", 0),
+        reranking_time_ms=None,
+        total_time_ms=result.get("processing_time_ms", 0),
+        partial_failure=False,
+        failed_collections=None,
+    )

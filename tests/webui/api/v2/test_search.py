@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
 
@@ -233,7 +232,7 @@ class TestMultiCollectionSearch:
         self,
         mock_user: dict[str, Any],
     ) -> None:
-        """Missing collections return 404 (not 403)."""
+        """Missing collections raise EntityNotFoundError (global handler returns 404)."""
         scope = {
             "type": "http",
             "method": "POST",
@@ -250,10 +249,10 @@ class TestMultiCollectionSearch:
             query="missing",
         )
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(EntityNotFoundError) as exc_info:
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 404
+        assert missing_uuid in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_passes_search_mode(
@@ -843,13 +842,12 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(EntityNotFoundError) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 404
-        assert "Collection" in str(exc_info.value.detail)
-        assert search_request.collection_id in str(exc_info.value.detail)
+        assert "Collection" in str(exc_info.value)
+        assert search_request.collection_id in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_access_denied(self, mock_user: dict[str, Any]) -> None:
@@ -874,12 +872,11 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(AccessDeniedError) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 403
-        assert "does not have access" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_general_error(self, mock_user: dict[str, Any]) -> None:
@@ -902,12 +899,9 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Database connection failed"),
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
-
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Search failed"
 
 
 class TestMultiCollectionSearchEdgeCases:
@@ -1144,12 +1138,11 @@ class TestMultiCollectionSearchEdgeCases:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(AccessDeniedError) as exc_info,
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 403
-        assert "does not have access" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_general_error(
@@ -1172,12 +1165,9 @@ class TestMultiCollectionSearchEdgeCases:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Unexpected error"),
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
-
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Search failed"
 
 
 class TestHybridSearchParameters:

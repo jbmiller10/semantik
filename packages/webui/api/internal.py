@@ -125,63 +125,50 @@ async def complete_reindex(
 
     logger = logging.getLogger(__name__)
 
-    try:
-        # Begin atomic transaction
-        async with db.begin():
-            # Get the collection
-            collection = await collection_repo.get_by_uuid(request.collection_id)
-            if not collection:
-                raise HTTPException(status_code=404, detail=f"Collection {request.collection_id} not found")
+    # Begin atomic transaction
+    async with db.begin():
+        # Get the collection
+        collection = await collection_repo.get_by_uuid(request.collection_id)
+        if not collection:
+            raise HTTPException(status_code=404, detail=f"Collection {request.collection_id} not found")
 
-            # Validate that collection is in the correct state for completing reindex
-            if collection.status != CollectionStatus.PROCESSING:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Cannot complete reindex: collection is in {collection.status} state, "
-                    f"expected {CollectionStatus.PROCESSING}",
-                )
-
-            # Save old collection names for cleanup
-            old_collection_names = collection.qdrant_collections or []
-
-            # Prepare updates
-            updates = {
-                "qdrant_collections": [request.staging_collection_name],
-                "qdrant_staging": None,
-                "status": CollectionStatus.READY,
-                "status_message": None,
-                "vector_count": request.vector_count,
-            }
-
-            # Add new config if provided
-            if request.new_config:
-                updates["config"] = request.new_config
-                # Update individual config fields
-                updates["embedding_model"] = request.new_config.get("embedding_model", collection.embedding_model)
-                updates["chunk_size"] = request.new_config.get("chunk_size", collection.chunk_size)
-                updates["chunk_overlap"] = request.new_config.get("chunk_overlap", collection.chunk_overlap)
-
-            # Perform atomic update
-            await collection_repo.update(request.collection_id, updates)
-
-            logger.info(
-                f"Completed atomic switch for collection {request.collection_id}: "
-                f"{old_collection_names} -> [{request.staging_collection_name}]"
+        # Validate that collection is in the correct state for completing reindex
+        if collection.status != CollectionStatus.PROCESSING:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot complete reindex: collection is in {collection.status} state, "
+                f"expected {CollectionStatus.PROCESSING}",
             )
 
-        # Transaction committed successfully
-        return CompleteReindexResponse(
-            success=True, old_collection_names=old_collection_names, message="Reindex completed successfully"
+        # Save old collection names for cleanup
+        old_collection_names = collection.qdrant_collections or []
+
+        # Prepare updates
+        updates = {
+            "qdrant_collections": [request.staging_collection_name],
+            "qdrant_staging": None,
+            "status": CollectionStatus.READY,
+            "status_message": None,
+            "vector_count": request.vector_count,
+        }
+
+        # Add new config if provided
+        if request.new_config:
+            updates["config"] = request.new_config
+            # Update individual config fields
+            updates["embedding_model"] = request.new_config.get("embedding_model", collection.embedding_model)
+            updates["chunk_size"] = request.new_config.get("chunk_size", collection.chunk_size)
+            updates["chunk_overlap"] = request.new_config.get("chunk_overlap", collection.chunk_overlap)
+
+        # Perform atomic update
+        await collection_repo.update(request.collection_id, updates)
+
+        logger.info(
+            f"Completed atomic switch for collection {request.collection_id}: "
+            f"{old_collection_names} -> [{request.staging_collection_name}]"
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            "Failed to complete reindex for collection %s: %s",
-            request.collection_id,
-            e,
-            exc_info=True,
-        )
-        # Rollback happened automatically
-        raise HTTPException(status_code=500, detail=f"Failed to complete reindex: {str(e)}") from e
+    # Transaction committed successfully
+    return CompleteReindexResponse(
+        success=True, old_collection_names=old_collection_names, message="Reindex completed successfully"
+    )

@@ -18,7 +18,6 @@ from fastapi.responses import JSONResponse
 from shared.chunking.infrastructure.exception_translator import exception_translator
 from shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
 from shared.database import get_db
-from shared.database.exceptions import AccessDeniedError
 from shared.database.repositories.chunk_repository import ChunkRepository
 
 # All exceptions now handled through the infrastructure layer
@@ -122,16 +121,8 @@ async def list_strategies(
 
     Router is now a thin controller - all logic in service!
     """
-    try:
-        strategies = await service.get_available_strategies()
-        return [entry.to_api_model() for entry in strategies]
-
-    except Exception as e:
-        logger.error("Failed to list strategies: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list strategies",
-        ) from e
+    strategies = await service.get_available_strategies()
+    return [entry.to_api_model() for entry in strategies]
 
 
 @router.get(
@@ -150,28 +141,18 @@ async def get_strategy_details(
 
     Router is now a thin controller - all logic in service!
     """
-    try:
-        strategies = await service.get_available_strategies()
-        resolved = next((s for s in strategies if s.id == strategy_id), None)
-        if not resolved:
-            for candidate in strategies:
-                if candidate.id.lower() == strategy_id.lower():
-                    resolved = candidate
-                    break
+    strategies = await service.get_available_strategies()
+    resolved = next((s for s in strategies if s.id == strategy_id), None)
+    if not resolved:
+        for candidate in strategies:
+            if candidate.id.lower() == strategy_id.lower():
+                resolved = candidate
+                break
 
-        if not resolved:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Strategy '{strategy_id}' not found")
+    if not resolved:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Strategy '{strategy_id}' not found")
 
-        return resolved.to_api_model()
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to get strategy details: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get strategy details",
-        ) from e
+    return resolved.to_api_model()
 
 
 @router.post(
@@ -190,21 +171,13 @@ async def recommend_strategy(
 
     Router is now a thin controller - all logic in service!
     """
-    try:
-        recommendation_payload = await service.recommend_strategy(file_type=file_types[0] if file_types else None)
-        resolved = await _resolve_service_payload(recommendation_payload)
-        if isinstance(resolved, StrategyRecommendation):
-            return resolved
-        if isinstance(resolved, dict):
-            return StrategyRecommendation.model_validate(resolved)
-        raise TypeError(f"Unsupported recommendation payload type: {type(resolved)!r}")
-
-    except Exception as e:
-        logger.error("Failed to get strategy recommendation: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate strategy recommendation",
-        ) from e
+    recommendation_payload = await service.recommend_strategy(file_type=file_types[0] if file_types else None)
+    resolved = await _resolve_service_payload(recommendation_payload)
+    if isinstance(resolved, StrategyRecommendation):
+        return resolved
+    if isinstance(resolved, dict):
+        return StrategyRecommendation.model_validate(resolved)
+    raise TypeError(f"Unsupported recommendation payload type: {type(resolved)!r}")
 
 
 # Preview Operations
@@ -267,29 +240,8 @@ async def generate_preview(
         return response
 
     except ApplicationError as e:
-        # Translate to HTTP exception
+        # Translate to HTTP exception using specialized chunking translator
         raise exception_translator.translate_application_to_api(e) from e
-
-    except HTTPException:
-        # Allow explicit HTTP errors to bubble up (e.g., our validations)
-        raise
-    except Exception:
-        # Unexpected error - log and return generic error
-        logger.exception(
-            "Unexpected error in preview endpoint",
-            extra={"correlation_id": correlation_id},
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": {
-                    "message": "An unexpected error occurred",
-                    "code": "INTERNAL_ERROR",
-                    "correlation_id": correlation_id,
-                }
-            },
-        ) from None
 
 
 @router.post(
@@ -321,42 +273,32 @@ async def compare_strategies(
     payload = await request.json()
     compare_request = CompareRequest.model_validate(payload)
 
-    try:
-        # Convert strategy enums to strings for service
-        strategy_names = [s.value for s in compare_request.strategies]
+    # Convert strategy enums to strings for service
+    strategy_names = [s.value for s in compare_request.strategies]
 
-        # Convert configs if provided
-        configs_dict = None
-        if compare_request.configs:
-            configs_dict = {}
-            for strategy, config in compare_request.configs.items():
-                # strategy is already a string key from the dict, not an enum
-                configs_dict[strategy] = config.model_dump()
+    # Convert configs if provided
+    configs_dict = None
+    if compare_request.configs:
+        configs_dict = {}
+        for strategy, config in compare_request.configs.items():
+            # strategy is already a string key from the dict, not an enum
+            configs_dict[strategy] = config.model_dump()
 
-        compare_payload = await service.compare_strategies(
-            content=compare_request.content or "",
-            strategies=strategy_names,
-            base_config=None,
-            strategy_configs=configs_dict,
-            user_id=_current_user.get("id") if _current_user else None,
-            max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
-        )
+    compare_payload = await service.compare_strategies(
+        content=compare_request.content or "",
+        strategies=strategy_names,
+        base_config=None,
+        strategy_configs=configs_dict,
+        user_id=_current_user.get("id") if _current_user else None,
+        max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
+    )
 
-        resolved = await _resolve_service_payload(compare_payload)
-        if isinstance(resolved, CompareResponse):
-            return resolved
-        if isinstance(resolved, dict):
-            return CompareResponse.model_validate(resolved)
-        raise TypeError(f"Unsupported comparison payload type: {type(resolved)!r}")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Strategy comparison failed: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to compare strategies",
-        ) from e
+    resolved = await _resolve_service_payload(compare_payload)
+    if isinstance(resolved, CompareResponse):
+        return resolved
+    if isinstance(resolved, dict):
+        return CompareResponse.model_validate(resolved)
+    raise TypeError(f"Unsupported comparison payload type: {type(resolved)!r}")
 
 
 @router.get(
@@ -381,30 +323,20 @@ async def get_cached_preview(
     # Check circuit breaker first
     check_circuit_breaker(request)
 
-    try:
-        preview_payload: Any = await service.get_cached_preview_by_id(preview_id)
+    preview_payload: Any = await service.get_cached_preview_by_id(preview_id)
 
-        if not preview_payload:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Preview not found or expired",
-            )
-
-        resolved = await _resolve_service_payload(preview_payload)
-        if isinstance(resolved, PreviewResponse):
-            return resolved
-        if isinstance(resolved, dict):
-            return PreviewResponse.model_validate(resolved)
-        raise TypeError(f"Unsupported preview payload type: {type(resolved)!r}")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to retrieve preview: %s", e, exc_info=True)
+    if not preview_payload:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve preview",
-        ) from e
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preview not found or expired",
+        )
+
+    resolved = await _resolve_service_payload(preview_payload)
+    if isinstance(resolved, PreviewResponse):
+        return resolved
+    if isinstance(resolved, dict):
+        return PreviewResponse.model_validate(resolved)
+    raise TypeError(f"Unsupported preview payload type: {type(resolved)!r}")
 
 
 @router.delete(
@@ -464,69 +396,50 @@ async def start_chunking_operation(
     payload = await request.json()
     chunking_request = ChunkingOperationRequest.model_validate(payload)
 
+    config_payload = chunking_request.config.model_dump() if chunking_request.config else {}
     try:
-        config_payload = chunking_request.config.model_dump() if chunking_request.config else {}
-        try:
-            service.validator.validate_strategy(chunking_request.strategy.value)
-            if config_payload:
-                service.validator.validate_config(chunking_request.strategy.value, config_payload)
-        except ValidationError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        service.validator.validate_strategy(chunking_request.strategy.value)
+        if config_payload:
+            service.validator.validate_config(chunking_request.strategy.value, config_payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-        # Create operation record
-        operation = await collection_service.create_operation(
-            collection_id=collection_uuid,
-            operation_type="chunking",
-            config={
-                "strategy": chunking_request.strategy.value,
-                "config": chunking_request.config.model_dump() if chunking_request.config else {},
-                "document_ids": chunking_request.document_ids,
-                "priority": chunking_request.priority,
-            },
-            user_id=_current_user["id"],
-        )
+    # Create operation record
+    operation = await collection_service.create_operation(
+        collection_id=collection_uuid,
+        operation_type="chunking",
+        config={
+            "strategy": chunking_request.strategy.value,
+            "config": chunking_request.config.model_dump() if chunking_request.config else {},
+            "document_ids": chunking_request.document_ids,
+            "priority": chunking_request.priority,
+        },
+        user_id=_current_user["id"],
+    )
 
-        websocket_channel = f"chunking:{collection_uuid}:{operation['uuid']}"
+    websocket_channel = f"chunking:{collection_uuid}:{operation['uuid']}"
 
-        # Dispatch background processing via Celery
-        try:
-            from webui.tasks import celery_app
+    # Dispatch background processing via Celery
+    try:
+        from webui.tasks import celery_app
 
-            celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
-        except Exception as exc:  # pragma: no cover - defensive dispatch
-            logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Chunking task could not be queued; retry later.",
-            ) from exc
-
-        return ChunkingOperationResponse(
-            operation_id=operation["uuid"],
-            collection_id=collection_uuid,
-            status=ChunkingStatus.PENDING,
-            strategy=chunking_request.strategy,
-            estimated_time_seconds=None,
-            queued_position=1,  # Would be calculated from actual queue
-            websocket_channel=websocket_channel,
-        )
-
-    except HTTPException:
-        raise
-    except ApplicationError as e:
-        # Translate to HTTP exception
-        raise exception_translator.translate_application_to_api(e) from e
-    except ValidationError as e:
-        # Return 400 for validation errors
+        celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+    except Exception as exc:  # pragma: no cover - defensive dispatch
+        logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc, exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to start chunking operation: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start chunking operation",
-        ) from e
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Chunking task could not be queued; retry later.",
+        ) from exc
+
+    return ChunkingOperationResponse(
+        operation_id=operation["uuid"],
+        collection_id=collection_uuid,
+        status=ChunkingStatus.PENDING,
+        strategy=chunking_request.strategy,
+        estimated_time_seconds=None,
+        queued_position=1,  # Would be calculated from actual queue
+        websocket_channel=websocket_channel,
+    )
 
 
 @router.patch(
@@ -552,61 +465,53 @@ async def update_chunking_strategy(
     payload = await request.json()
     update_request = ChunkingStrategyUpdate.model_validate(payload)
 
-    try:
-        # Update collection configuration
-        await collection_service.update_collection(
+    # Update collection configuration
+    await collection_service.update_collection(
+        collection_id=collection_id,
+        updates={
+            "chunking_strategy": update_request.strategy.value,
+            "chunking_config": update_request.config.model_dump() if update_request.config else {},
+        },
+        user_id=_current_user["id"],
+    )
+
+    if update_request.reprocess_existing:
+        operation = await collection_service.create_operation(
             collection_id=collection_id,
-            updates={
-                "chunking_strategy": update_request.strategy.value,
-                "chunking_config": update_request.config.model_dump() if update_request.config else {},
+            operation_type="rechunking",
+            config={
+                "strategy": update_request.strategy.value,
+                "config": update_request.config.model_dump() if update_request.config else {},
             },
             user_id=_current_user["id"],
         )
 
-        if update_request.reprocess_existing:
-            operation = await collection_service.create_operation(
-                collection_id=collection_id,
-                operation_type="rechunking",
-                config={
-                    "strategy": update_request.strategy.value,
-                    "config": update_request.config.model_dump() if update_request.config else {},
-                },
-                user_id=_current_user["id"],
-            )
+        try:
+            from webui.tasks import celery_app
 
-            try:
-                from webui.tasks import celery_app
+            celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Rechunking task could not be queued; retry later.",
+            ) from exc
 
-                celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
-            except Exception as exc:  # pragma: no cover
-                logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc, exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Rechunking task could not be queued; retry later.",
-                ) from exc
-
-            return ChunkingOperationResponse(
-                operation_id=operation["uuid"],
-                collection_id=collection_id,
-                status=ChunkingStatus.PENDING,
-                strategy=update_request.strategy,
-                websocket_channel=websocket_channel,
-            )
-        # Just update strategy without reprocessing
         return ChunkingOperationResponse(
-            operation_id=operation_id,
+            operation_id=operation["uuid"],
             collection_id=collection_id,
-            status=ChunkingStatus.COMPLETED,
+            status=ChunkingStatus.PENDING,
             strategy=update_request.strategy,
             websocket_channel=websocket_channel,
         )
-
-    except Exception as e:
-        logger.error("Failed to update chunking strategy: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update chunking strategy",
-        ) from e
+    # Just update strategy without reprocessing
+    return ChunkingOperationResponse(
+        operation_id=operation_id,
+        collection_id=collection_id,
+        status=ChunkingStatus.COMPLETED,
+        strategy=update_request.strategy,
+        websocket_channel=websocket_channel,
+    )
 
 
 @router.get(
@@ -647,12 +552,6 @@ async def get_collection_chunks(
         return cast(ChunkListResponse, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to fetch chunks: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch chunks",
-        ) from e
 
 
 @router.get(
@@ -733,18 +632,8 @@ async def get_chunking_stats(
             user_id=_current_user.get("id", 0),
         )
         return cast(ChunkingStats, stats_dto.to_api_model())
-
     except ApplicationError as e:
-        # Translate to HTTP exception
         raise exception_translator.translate_application_to_api(e) from e
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to fetch chunking stats: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch chunking statistics",
-        ) from e
 
 
 # Analytics Endpoints
@@ -778,12 +667,6 @@ async def get_global_metrics(
         return cast(GlobalMetrics, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to fetch global metrics: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch global metrics",
-        ) from e
 
 
 @router.get(
@@ -801,22 +684,14 @@ async def get_metrics_by_strategy(
 
     Router is now a thin controller - all logic in service!
     """
-    try:
-        # Get DTOs from service (method always returns a list)
-        metrics_dtos = await service.get_metrics_by_strategy(
-            period_days=period_days,
-            user_id=_current_user.get("id") if _current_user else None,
-        )
+    # Get DTOs from service (method always returns a list)
+    metrics_dtos = await service.get_metrics_by_strategy(
+        period_days=period_days,
+        user_id=_current_user.get("id") if _current_user else None,
+    )
 
-        # Convert DTOs to API response models
-        return [cast(StrategyMetrics, dto.to_api_model()) for dto in metrics_dtos]
-
-    except Exception as e:
-        logger.error("Failed to fetch strategy metrics: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch strategy metrics",
-        ) from e
+    # Convert DTOs to API response models
+    return [cast(StrategyMetrics, dto.to_api_model()) for dto in metrics_dtos]
 
 
 @router.get(
@@ -842,12 +717,6 @@ async def get_quality_scores(
         return cast(QualityAnalysis, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to analyze quality: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to analyze chunk quality",
-        ) from e
 
 
 @router.post(
@@ -880,12 +749,6 @@ async def analyze_document(
         return cast(DocumentAnalysisResponse, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to analyze document: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to analyze document",
-        ) from e
 
 
 # Configuration Management
@@ -908,11 +771,11 @@ async def save_configuration(
     payload = await request.json()
     config_request = CreateConfigurationRequest.model_validate(payload)
 
-    try:
-        user_id = _current_user.get("id") if _current_user else None
-        if user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
+    user_id = _current_user.get("id") if _current_user else None
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
+    try:
         config_dto = await service.save_configuration(
             name=config_request.name,
             description=config_request.description,
@@ -926,12 +789,6 @@ async def save_configuration(
         return cast(SavedConfiguration, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to save configuration: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save configuration",
-        ) from e
 
 
 @router.get(
@@ -950,11 +807,11 @@ async def list_configurations(
     Can filter by strategy or default status.
 
     """
-    try:
-        user_id = _current_user.get("id") if _current_user else None
-        if user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
+    user_id = _current_user.get("id") if _current_user else None
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
+    try:
         configs_dto = await service.list_configurations(
             user_id=int(user_id),
             strategy=strategy.value if strategy else None,
@@ -967,12 +824,6 @@ async def list_configurations(
         return resolved
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
-    except Exception as e:
-        logger.error("Failed to list configurations: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list configurations",
-        ) from e
 
 
 # Progress tracking endpoint
@@ -989,37 +840,25 @@ async def get_operation_progress(
     """
     Get the current progress of a chunking operation.
     """
-    try:
-        user_id = _current_user.get("id") if _current_user else None
-        if user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
+    user_id = _current_user.get("id") if _current_user else None
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
-        progress = await service.get_chunking_progress(operation_id=operation_id, user_id=int(user_id))
-        if not progress:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
+    progress = await service.get_chunking_progress(operation_id=operation_id, user_id=int(user_id))
+    if not progress:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
 
-        status_value = progress.get("status")
-        status_enum = status_value if isinstance(status_value, ChunkingStatus) else ChunkingStatus(status_value)
+    status_value = progress.get("status")
+    status_enum = status_value if isinstance(status_value, ChunkingStatus) else ChunkingStatus(status_value)
 
-        return ChunkingProgress(
-            operation_id=operation_id,
-            status=status_enum,
-            progress_percentage=float(progress.get("progress_percentage", 0.0)),
-            documents_processed=int(progress.get("documents_processed", 0)),
-            total_documents=int(progress.get("total_documents", 0)),
-            chunks_created=int(progress.get("chunks_created", 0)),
-            current_document=progress.get("current_document"),
-            estimated_time_remaining=progress.get("estimated_time_remaining"),
-            errors=progress.get("errors", []) or [],
-        )
-
-    except HTTPException:
-        raise
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Failed to get operation progress: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get operation progress",
-        ) from e
+    return ChunkingProgress(
+        operation_id=operation_id,
+        status=status_enum,
+        progress_percentage=float(progress.get("progress_percentage", 0.0)),
+        documents_processed=int(progress.get("documents_processed", 0)),
+        total_documents=int(progress.get("total_documents", 0)),
+        chunks_created=int(progress.get("chunks_created", 0)),
+        current_document=progress.get("current_document"),
+        estimated_time_remaining=progress.get("estimated_time_remaining"),
+        errors=progress.get("errors", []) or [],
+    )
