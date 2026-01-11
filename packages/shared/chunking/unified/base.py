@@ -176,6 +176,9 @@ class UnifiedChunkingStrategy(ABC):
         This preserves all content by creating multiple chunks rather than truncating.
         Used when a chunk exceeds max_tokens and needs to be re-split.
 
+        If a single "word" (text without whitespace) exceeds max_tokens, it will be
+        split at the token level to guarantee all chunks fit within the limit.
+
         Args:
             text: Text to split
             max_tokens: Maximum tokens per chunk
@@ -195,17 +198,66 @@ class UnifiedChunkingStrategy(ABC):
         current_tokens = 0
 
         for word in words:
-            word_tokens = self.count_tokens(word + " ")
-            if current_tokens + word_tokens > max_tokens and current_words:
+            word_tokens = self.count_tokens(word)
+
+            # Handle oversized words by splitting at token level
+            if word_tokens > max_tokens:
+                # Flush current buffer first
+                if current_words:
+                    chunks.append(" ".join(current_words))
+                    current_words = []
+                    current_tokens = 0
+
+                # Split the oversized word at token boundaries
+                word_chunks = self._split_word_by_tokens(word, max_tokens)
+                chunks.extend(word_chunks)
+                continue
+
+            # Account for space between words
+            effective_tokens = word_tokens + (1 if current_words else 0)
+
+            if current_tokens + effective_tokens > max_tokens and current_words:
                 chunks.append(" ".join(current_words))
                 current_words = [word]
                 current_tokens = word_tokens
             else:
                 current_words.append(word)
-                current_tokens += word_tokens
+                current_tokens += effective_tokens
 
         if current_words:
             chunks.append(" ".join(current_words))
+
+        return chunks
+
+    def _split_word_by_tokens(self, word: str, max_tokens: int) -> list[str]:
+        """
+        Split a single word (text without whitespace) into chunks at token boundaries.
+
+        This handles cases like very long URLs, base64 data, or minified code
+        that cannot be split at word boundaries.
+
+        Args:
+            word: The word to split (should not contain whitespace)
+            max_tokens: Maximum tokens per chunk
+
+        Returns:
+            List of text chunks, each within max_tokens
+        """
+        if not word or max_tokens <= 0:
+            return []
+
+        tokenizer = _get_tokenizer()
+        tokens = tokenizer.encode(word)
+
+        if len(tokens) <= max_tokens:
+            return [word]
+
+        chunks = []
+        for i in range(0, len(tokens), max_tokens):
+            chunk_tokens = tokens[i : i + max_tokens]
+            chunk_text = tokenizer.decode(chunk_tokens)
+            if chunk_text:  # Only add non-empty chunks
+                chunks.append(chunk_text)
 
         return chunks
 
