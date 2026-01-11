@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 from threading import RLock
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from shared.connectors.base import BaseConnector
 from shared.plugins.loader import load_plugins
+
+if TYPE_CHECKING:
+    from shared.connectors.base import BaseConnector
 from shared.plugins.registry import PluginSource, plugin_registry
 
 # Cache lock for thread-safe operations

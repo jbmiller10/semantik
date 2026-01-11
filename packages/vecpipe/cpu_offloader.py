@@ -9,12 +9,14 @@ import gc
 import logging
 import threading
 import time
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 import torch
+
+if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
 from torch import nn
 
 logger = logging.getLogger(__name__)
