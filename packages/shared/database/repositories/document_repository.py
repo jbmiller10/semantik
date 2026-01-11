@@ -886,6 +886,54 @@ class DocumentRepository:
             logger.error("Failed to bulk reset documents for retry: %s", e, exc_info=True)
             raise DatabaseOperationError("bulk_reset_for_retry", "documents", str(e)) from e
 
+    async def count_stuck_pending_documents(
+        self,
+        collection_id: str,
+        stuck_threshold_minutes: int = 5,
+    ) -> int:
+        """Count documents stuck in PENDING status for longer than threshold.
+
+        These are documents that were registered but never processed, likely due to
+        an interrupted operation or worker crash.
+
+        Args:
+            collection_id: UUID of the collection
+            stuck_threshold_minutes: How long a document must be in PENDING to be
+                considered "stuck" (default: 5 minutes)
+
+        Returns:
+            Number of stuck pending documents
+        """
+        from datetime import timedelta
+
+        try:
+            threshold_time = datetime.now(UTC) - timedelta(minutes=stuck_threshold_minutes)
+
+            stmt = select(func.count(Document.id)).where(
+                and_(
+                    Document.collection_id == collection_id,
+                    Document.status == DocumentStatus.PENDING.value,
+                    Document.created_at < threshold_time,
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.scalar() or 0
+
+            if count > 0:
+                logger.info(
+                    "Found %d stuck pending documents in collection %s (threshold: %d min)",
+                    count,
+                    collection_id,
+                    stuck_threshold_minutes,
+                )
+
+            return count
+
+        except Exception as e:
+            logger.error("Failed to count stuck pending documents: %s", e, exc_info=True)
+            raise DatabaseOperationError("count_stuck_pending", "documents", str(e)) from e
+
     async def list_failed_documents(
         self,
         collection_id: str,

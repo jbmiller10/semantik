@@ -408,11 +408,12 @@ async def retry_failed_documents(
     current_user: dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Retry all failed documents in a collection.
+    """Retry all failed and stuck pending documents in a collection.
 
     Resets all retryable failed documents (transient or unknown errors) to PENDING,
-    creates a RETRY_DOCUMENTS operation, and dispatches a Celery task to process them.
-    Documents with permanent errors or that have exceeded max retries are not reset.
+    then creates a RETRY_DOCUMENTS operation to process all PENDING documents.
+    This also handles documents that got stuck in PENDING status due to interrupted
+    operations or worker crashes.
     """
     import uuid as uuid_module
 
@@ -424,18 +425,22 @@ async def retry_failed_documents(
         document_repo = create_document_repository(db)
         operation_repo = OperationRepository(db)
 
+        # Count stuck pending documents (more than 5 min old, never processed)
+        pending_count = await document_repo.count_stuck_pending_documents(collection_uuid)
+
         # Reset all retryable failed documents to PENDING
         reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid)
 
-        if reset_count == 0:
+        if reset_count == 0 and pending_count == 0:
             # No documents to retry
             return {
                 "reset_count": 0,
+                "pending_count": 0,
                 "operation_id": None,
                 "message": "No retryable documents found",
             }
 
-        # Create RETRY_DOCUMENTS operation
+        # Create RETRY_DOCUMENTS operation (processes all PENDING documents)
         user_id = current_user.get("id") or current_user.get("sub")
         operation = await operation_repo.create(
             collection_id=collection_uuid,
@@ -443,6 +448,7 @@ async def retry_failed_documents(
             operation_type=OperationType.RETRY_DOCUMENTS,
             config={
                 "reset_count": reset_count,
+                "pending_count": pending_count,
                 "triggered_by": "manual",
             },
         )
@@ -457,18 +463,23 @@ async def retry_failed_documents(
             task_id=str(uuid_module.uuid4()),
         )
 
+        total_count = reset_count + pending_count
         logger.info(
-            "User %s triggered retry of %d failed documents in collection %s (operation=%s)",
+            "User %s triggered retry of %d documents (%d failed reset, %d stuck pending) "
+            "in collection %s (operation=%s)",
             user_id,
+            total_count,
             reset_count,
+            pending_count,
             collection_uuid,
             operation.uuid,
         )
 
         return {
             "reset_count": reset_count,
+            "pending_count": pending_count,
             "operation_id": operation.uuid,
-            "message": f"Dispatched retry operation for {reset_count} document(s)",
+            "message": f"Dispatched retry operation for {total_count} document(s)",
         }
     except HTTPException:
         raise
