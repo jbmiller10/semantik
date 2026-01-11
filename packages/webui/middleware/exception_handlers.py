@@ -284,9 +284,7 @@ async def handle_invalid_state_error(request: Request, exc: Exception) -> JSONRe
     return response
 
 
-async def handle_encryption_not_configured_error(
-    request: Request, exc: Exception  # noqa: ARG001
-) -> JSONResponse:
+async def handle_encryption_not_configured_error(request: Request, exc: Exception) -> JSONResponse:  # noqa: ARG001
     """Translate EncryptionNotConfiguredError into a 400 response.
 
     This occurs when encryption features are used without proper configuration.
