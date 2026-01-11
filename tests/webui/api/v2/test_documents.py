@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
-from shared.database.exceptions import EntityNotFoundError
+from shared.database.exceptions import EntityNotFoundError, ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
 from webui.api.v2.documents import (
     get_document_content,
@@ -576,7 +576,7 @@ class TestRetryEndpoints:
         mock_db = AsyncMock(spec=AsyncSession)
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = mock_document
-        mock_repo.reset_for_retry.side_effect = RuntimeError("not in FAILED status")
+        mock_repo.reset_for_retry.side_effect = ValidationError("Document is not in FAILED status")
 
         with (
             patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo),
@@ -650,6 +650,164 @@ class TestRetryEndpoints:
         assert result["reset_count"] == 3
         assert result["pending_count"] == 2
         assert "5 document(s)" in result["message"]  # 3 reset + 2 pending
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_no_retryable_documents(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        """Test early return when no documents to retry."""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.bulk_reset_failed_for_retry.return_value = 0
+        mock_doc_repo.count_stuck_pending_documents.return_value = 0
+
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo):
+            result = await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        # No commit should happen since we return early
+        mock_db.commit.assert_not_awaited()
+        assert result["reset_count"] == 0
+        assert result["pending_count"] == 0
+        assert result["operation_id"] is None
+        assert "No retryable documents found" in result["message"]
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_only_pending(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        """Test when only stuck pending documents exist."""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.bulk_reset_failed_for_retry.return_value = 0
+        mock_doc_repo.count_stuck_pending_documents.return_value = 5
+
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-pending-operation"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app") as mock_celery,
+        ):
+            result = await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_celery.send_task.assert_called_once()
+        assert result["reset_count"] == 0
+        assert result["pending_count"] == 5
+        assert "5 document(s)" in result["message"]
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_only_failed(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        """Test when only failed documents exist (no stuck pending)."""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.bulk_reset_failed_for_retry.return_value = 10
+        mock_doc_repo.count_stuck_pending_documents.return_value = 0
+
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-failed-operation"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app") as mock_celery,
+        ):
+            result = await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_celery.send_task.assert_called_once()
+        assert result["reset_count"] == 10
+        assert result["pending_count"] == 0
+        assert "10 document(s)" in result["message"]
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_database_error_rollback(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        """Test database error triggers rollback and returns 500."""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.count_stuck_pending_documents.side_effect = Exception("Database connection failed")
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        mock_db.rollback.assert_awaited_once()
+        assert exc_info.value.status_code == 500
+        assert "Failed to retry failed documents" in exc_info.value.detail
+
+    @pytest.mark.asyncio()
+    async def test_retry_failed_documents_celery_dispatch_failure(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock
+    ) -> None:
+        """Test Celery dispatch failure returns 503 and updates operation status."""
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.bulk_reset_failed_for_retry.return_value = 3
+        mock_doc_repo.count_stuck_pending_documents.return_value = 2
+
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-dispatch-fail-operation"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        mock_celery = MagicMock()
+        mock_celery.send_task.side_effect = Exception("Broker connection refused")
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app", mock_celery),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await retry_failed_documents(
+                collection_uuid=mock_collection.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == 503
+        assert "test-dispatch-fail-operation" in exc_info.value.detail
+        # Verify operation status was updated to FAILED
+        mock_operation_repo.update_status.assert_awaited_once()
 
     @pytest.mark.asyncio()
     async def test_get_failed_document_count_success(
