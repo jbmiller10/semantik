@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
 from shared.database import get_db
-from shared.database.exceptions import EntityNotFoundError, ValidationError
+from shared.database.exceptions import ValidationError
 from shared.database.models import Collection, Document, DocumentStatus
 from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 from webui.api.schemas import DocumentResponse, ErrorResponse
@@ -106,28 +106,22 @@ async def get_document(
     This endpoint returns document metadata (not content). Access control is enforced
     via the get_collection_for_user dependency and a cross-collection check.
     """
-    try:
-        document_repo = create_document_repository(db)
-        document = await document_repo.get_by_id(document_uuid)
-        if not document:
-            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+    document_repo = create_document_repository(db)
+    document = await document_repo.get_by_id(document_uuid)
+    if not document:
+        raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
 
-        if document.collection_id != collection_uuid:
-            logger.warning(
-                "Attempted cross-collection metadata access: user %s tried to access document %s from collection %s via %s",
-                current_user.get("id"),
-                document_uuid,
-                document.collection_id,
-                collection_uuid,
-            )
-            raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
+    if document.collection_id != collection_uuid:
+        logger.warning(
+            "Attempted cross-collection metadata access: user %s tried to access document %s from collection %s via %s",
+            current_user.get("id"),
+            document_uuid,
+            document.collection_id,
+            collection_uuid,
+        )
+        raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
 
-        return _document_to_response(document)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to get document metadata: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get document metadata") from e
+    return _document_to_response(document)
 
 
 @router.get(
@@ -164,152 +158,136 @@ async def get_document_content(
     - Document must belong to the specified collection
     - File paths are sanitized to prevent path traversal attacks
     """
-    try:
-        # Get document repository
-        document_repo = create_document_repository(db)
+    # Get document repository
+    document_repo = create_document_repository(db)
 
-        # Fetch the document
-        document = await document_repo.get_by_id(document_uuid)
-        if not document:
-            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+    # Fetch the document
+    document = await document_repo.get_by_id(document_uuid)
+    if not document:
+        raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
 
-        # Verify document belongs to the specified collection
-        if document.collection_id != collection_uuid:
-            logger.warning(
-                f"Attempted cross-collection access: user {current_user['id']} tried to access "
-                f"document {document_uuid} from collection {document.collection_id} "
-                f"via collection {collection_uuid}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail="Document does not belong to the specified collection",
-            )
+    # Verify document belongs to the specified collection
+    if document.collection_id != collection_uuid:
+        logger.warning(
+            f"Attempted cross-collection access: user {current_user['id']} tried to access "
+            f"document {document_uuid} from collection {document.collection_id} "
+            f"via collection {collection_uuid}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Document does not belong to the specified collection",
+        )
 
-        # Check for database artifact first (for non-file sources like Git, IMAP)
-        artifact_repo = DocumentArtifactRepository(db, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
-        artifact_content = await artifact_repo.get_content(document_uuid)
+    # Check for database artifact first (for non-file sources like Git, IMAP)
+    artifact_repo = DocumentArtifactRepository(db, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
+    artifact_content = await artifact_repo.get_content(document_uuid)
 
-        if artifact_content is not None:
-            content, mime_type, charset = artifact_content
+    if artifact_content is not None:
+        content, mime_type, charset = artifact_content
 
-            # Log successful artifact access
-            logger.info(
-                f"User {current_user['id']} accessed artifact for document {document_uuid} "
-                f"from collection {collection_uuid}"
-            )
+        # Log successful artifact access
+        logger.info(
+            f"User {current_user['id']} accessed artifact for document {document_uuid} "
+            f"from collection {collection_uuid}"
+        )
 
-            # Build media type with charset if applicable
-            media_type_header = f"{mime_type}; charset={charset}" if charset else mime_type
+        # Build media type with charset if applicable
+        media_type_header = f"{mime_type}; charset={charset}" if charset else mime_type
 
-            # Return artifact content as Response
-            # Use RFC 5987 encoding for filename to prevent header injection
-            safe_filename = sanitize_filename_for_header(str(document.file_name))
-            if isinstance(content, str):
-                return Response(
-                    content=content.encode(charset or "utf-8"),
-                    media_type=media_type_header,
-                    headers={
-                        "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
-                        "Cache-Control": "private, max-age=3600",
-                    },
-                )
+        # Return artifact content as Response
+        # Use RFC 5987 encoding for filename to prevent header injection
+        safe_filename = sanitize_filename_for_header(str(document.file_name))
+        if isinstance(content, str):
             return Response(
-                content=content,
+                content=content.encode(charset or "utf-8"),
                 media_type=media_type_header,
                 headers={
                     "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
                     "Cache-Control": "private, max-age=3600",
                 },
             )
-
-        # Fallback to file-based serving for local directory sources
-        # CRITICAL SECURITY: Validate and sanitize the file path
-        # Ensure the path is absolute and resolved to prevent path traversal
-        try:
-            # Convert to Path object and resolve to absolute path
-            file_path = Path(document.file_path).resolve()
-        except Exception as e:
-            logger.error("Error resolving document path: %s", e, exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail="Error accessing document",
-            ) from e
-
-        # Ensure the resolved path stays within the configured document root when one is set
-        allowed_roots = settings.document_allowed_roots
-        if settings.should_enforce_document_roots and allowed_roots:
-            for root in allowed_roots:
-                try:
-                    file_path.relative_to(root)
-                    break
-                except ValueError:
-                    continue
-            else:
-                logger.warning(
-                    "Path traversal attempt blocked: user %s attempted to access %s outside allowed roots %s",
-                    current_user.get("id", "unknown"),
-                    file_path,
-                    ", ".join(str(root) for root in allowed_roots),
-                )
-                raise HTTPException(status_code=403, detail="Access to the requested document is forbidden")
-
-        # Additional security check: ensure file exists and is a regular file
-        if not file_path.exists():
-            logger.error(f"Document file not found: {document.file_path}")
-            raise HTTPException(
-                status_code=404,
-                detail="Document file not found on disk",
-            )
-
-        if not file_path.is_file():
-            logger.error(f"Document path is not a file: {document.file_path}")
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid document path",
-            )
-
-        # SECURITY: In a production environment, you would check that the file
-        # is within an allowed directory. For now, we'll serve any file that
-        # the document references, but this should be restricted based on
-        # your deployment configuration.
-        # Example check (uncomment and configure as needed):
-        # ALLOWED_DOCUMENT_ROOT = Path("/var/semantik/documents").resolve()
-        # if not str(file_path).startswith(str(ALLOWED_DOCUMENT_ROOT)):
-        #     logger.error(f"Path traversal attempt detected: {file_path}")
-        #     raise HTTPException(status_code=403, detail="Access denied")
-
-        # Prepare response headers
-        media_type = document.mime_type or "application/octet-stream"
-
-        # Log successful document access for audit
-        logger.info(f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}")
-
-        # Return the file with sanitized filename header
-        safe_filename = sanitize_filename_for_header(str(document.file_name))
-        return FileResponse(
-            path=str(file_path),
-            media_type=str(media_type),
-            filename=str(document.file_name),
+        return Response(
+            content=content,
+            media_type=media_type_header,
             headers={
                 "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
-                "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
+                "Cache-Control": "private, max-age=3600",
             },
         )
 
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Document {document_uuid} not found",
-        ) from e
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
+    # Fallback to file-based serving for local directory sources
+    # CRITICAL SECURITY: Validate and sanitize the file path
+    # Ensure the path is absolute and resolved to prevent path traversal
+    try:
+        # Convert to Path object and resolve to absolute path
+        file_path = Path(document.file_path).resolve()
     except Exception as e:
-        logger.error("Failed to serve document content: %s", e, exc_info=True)
+        logger.error("Error resolving document path: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Failed to retrieve document content",
+            detail="Error accessing document",
         ) from e
+
+    # Ensure the resolved path stays within the configured document root when one is set
+    allowed_roots = settings.document_allowed_roots
+    if settings.should_enforce_document_roots and allowed_roots:
+        for root in allowed_roots:
+            try:
+                file_path.relative_to(root)
+                break
+            except ValueError:
+                continue
+        else:
+            logger.warning(
+                "Path traversal attempt blocked: user %s attempted to access %s outside allowed roots %s",
+                current_user.get("id", "unknown"),
+                file_path,
+                ", ".join(str(root) for root in allowed_roots),
+            )
+            raise HTTPException(status_code=403, detail="Access to the requested document is forbidden")
+
+    # Additional security check: ensure file exists and is a regular file
+    if not file_path.exists():
+        logger.error(f"Document file not found: {document.file_path}")
+        raise HTTPException(
+            status_code=404,
+            detail="Document file not found on disk",
+        )
+
+    if not file_path.is_file():
+        logger.error(f"Document path is not a file: {document.file_path}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid document path",
+        )
+
+    # SECURITY: In a production environment, you would check that the file
+    # is within an allowed directory. For now, we'll serve any file that
+    # the document references, but this should be restricted based on
+    # your deployment configuration.
+    # Example check (uncomment and configure as needed):
+    # ALLOWED_DOCUMENT_ROOT = Path("/var/semantik/documents").resolve()
+    # if not str(file_path).startswith(str(ALLOWED_DOCUMENT_ROOT)):
+    #     logger.error(f"Path traversal attempt detected: {file_path}")
+    #     raise HTTPException(status_code=403, detail="Access denied")
+
+    # Prepare response headers
+    media_type = document.mime_type or "application/octet-stream"
+
+    # Log successful document access for audit
+    logger.info(f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}")
+
+    # Return the file with sanitized filename header
+    safe_filename = sanitize_filename_for_header(str(document.file_name))
+    return FileResponse(
+        path=str(file_path),
+        media_type=str(media_type),
+        filename=str(document.file_name),
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
+            "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
+        },
+    )
 
 
 # ========== Retry Endpoints ==========
@@ -344,127 +322,121 @@ async def retry_document(
     from shared.database.repositories.operation_repository import OperationRepository
     from webui.celery_app import celery_app
 
+    document_repo = create_document_repository(db)
+    operation_repo = OperationRepository(db)
+    document = await document_repo.get_by_id(document_uuid)
+    if not document:
+        raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+
+    if document.collection_id != collection_uuid:
+        logger.warning(
+            "Attempted cross-collection retry: user %s tried to retry document %s from collection %s via %s",
+            current_user.get("id"),
+            document_uuid,
+            document.collection_id,
+            collection_uuid,
+        )
+        raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
+
+    previous_state = {
+        "retry_count": document.retry_count,
+        "last_retry_at": document.last_retry_at,
+        "error_message": document.error_message,
+        "error_category": document.error_category,
+        "chunk_count": document.chunk_count,
+    }
+
+    # Reset the document for retry
     try:
-        document_repo = create_document_repository(db)
-        operation_repo = OperationRepository(db)
-        document = await document_repo.get_by_id(document_uuid)
-        if not document:
-            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+        document = await document_repo.reset_for_retry(document_uuid)
+    except ValidationError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Only failed documents can be retried") from e
+    except Exception:
+        await db.rollback()
+        raise
 
-        if document.collection_id != collection_uuid:
-            logger.warning(
-                "Attempted cross-collection retry: user %s tried to retry document %s from collection %s via %s",
-                current_user.get("id"),
-                document_uuid,
-                document.collection_id,
-                collection_uuid,
-            )
-            raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
+    # Create retry operation and dispatch task
+    user_id = current_user.get("id") or current_user.get("sub")
+    try:
+        operation = await operation_repo.create(
+            collection_id=collection_uuid,
+            user_id=user_id,
+            operation_type=OperationType.RETRY_DOCUMENTS,
+            config={
+                "document_ids": [document_uuid],
+                "reset_count": 1,
+                "pending_count": 0,
+                "triggered_by": "manual",
+            },
+        )
+        await db.commit()
+        operation_uuid = operation.uuid
+    except Exception:
+        await db.rollback()
+        raise
 
-        previous_state = {
-            "retry_count": document.retry_count,
-            "last_retry_at": document.last_retry_at,
-            "error_message": document.error_message,
-            "error_category": document.error_category,
-            "chunk_count": document.chunk_count,
-        }
-
-        # Reset the document for retry
+    try:
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation_uuid],
+            task_id=str(uuid_module.uuid4()),
+        )
+    except Exception as dispatch_exc:
+        logger.error(
+            "Failed to dispatch Celery task for operation %s: %s",
+            operation_uuid,
+            dispatch_exc,
+            exc_info=True,
+        )
         try:
-            document = await document_repo.reset_for_retry(document_uuid)
-        except ValidationError as e:
-            await db.rollback()
-            raise HTTPException(status_code=400, detail="Only failed documents can be retried") from e
-        except Exception:
-            await db.rollback()
-            raise
-
-        # Create retry operation and dispatch task
-        user_id = current_user.get("id") or current_user.get("sub")
-        try:
-            operation = await operation_repo.create(
-                collection_id=collection_uuid,
-                user_id=user_id,
-                operation_type=OperationType.RETRY_DOCUMENTS,
-                config={
-                    "document_ids": [document_uuid],
-                    "reset_count": 1,
-                    "pending_count": 0,
-                    "triggered_by": "manual",
-                },
+            await operation_repo.update_status(
+                operation_uuid,
+                OperationStatus.FAILED,
+                error_message=f"Task dispatch failed: {dispatch_exc}",
             )
             await db.commit()
-            operation_uuid = operation.uuid
-        except Exception:
-            await db.rollback()
-            raise
-
-        try:
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation_uuid],
-                task_id=str(uuid_module.uuid4()),
-            )
-        except Exception as dispatch_exc:
+        except Exception as update_exc:
             logger.error(
-                "Failed to dispatch Celery task for operation %s: %s",
+                "Failed to update operation %s status after dispatch failure: %s",
                 operation_uuid,
-                dispatch_exc,
+                update_exc,
                 exc_info=True,
             )
-            try:
-                await operation_repo.update_status(
-                    operation_uuid,
-                    OperationStatus.FAILED,
-                    error_message=f"Task dispatch failed: {dispatch_exc}",
-                )
+        try:
+            restored = await document_repo.get_by_id(document_uuid)
+            if restored:
+                restored.status = DocumentStatus.FAILED.value
+                restored.retry_count = previous_state["retry_count"]
+                restored.last_retry_at = previous_state["last_retry_at"]
+                restored.error_message = previous_state["error_message"]
+                restored.error_category = previous_state["error_category"]
+                restored.chunk_count = previous_state["chunk_count"]
+                restored.updated_at = datetime.now(UTC)
                 await db.commit()
-            except Exception as update_exc:
-                logger.error(
-                    "Failed to update operation %s status after dispatch failure: %s",
-                    operation_uuid,
-                    update_exc,
-                    exc_info=True,
-                )
-            try:
-                restored = await document_repo.get_by_id(document_uuid)
-                if restored:
-                    restored.status = DocumentStatus.FAILED.value
-                    restored.retry_count = previous_state["retry_count"]
-                    restored.last_retry_at = previous_state["last_retry_at"]
-                    restored.error_message = previous_state["error_message"]
-                    restored.error_category = previous_state["error_category"]
-                    restored.chunk_count = previous_state["chunk_count"]
-                    restored.updated_at = datetime.now(UTC)
-                    await db.commit()
-            except Exception as restore_exc:
-                await db.rollback()
-                logger.error(
-                    "Failed to restore document %s after retry dispatch failure: %s",
-                    document_uuid,
-                    restore_exc,
-                    exc_info=True,
-                )
-            raise HTTPException(
-                status_code=503,
-                detail=f"Operation created but task dispatch failed. Operation ID: {operation_uuid}",
-            ) from dispatch_exc
+        except Exception as restore_exc:
+            await db.rollback()
+            logger.error(
+                "Failed to restore document %s after retry dispatch failure: %s",
+                document_uuid,
+                restore_exc,
+                exc_info=True,
+            )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Operation created but task dispatch failed. Operation ID: {operation_uuid}",
+        ) from dispatch_exc
 
-        logger.info(
-            "User %s retried document %s in collection %s (retry_count=%d, operation=%s)",
-            user_id,
-            document_uuid,
-            collection_uuid,
-            document.retry_count,
-            operation_uuid,
-        )
+    logger.info(
+        "User %s retried document %s in collection %s (retry_count=%d, operation=%s)",
+        user_id,
+        document_uuid,
+        collection_uuid,
+        document.retry_count,
+        operation_uuid,
+    )
 
-        return _document_to_response(document)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to retry document: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retry document") from e
+    return _document_to_response(document)
 
 
 @router.post(
@@ -497,116 +469,109 @@ async def retry_failed_documents(
     from shared.database.repositories.operation_repository import OperationRepository
     from webui.celery_app import celery_app
 
-    try:
-        document_repo = create_document_repository(db)
-        operation_repo = OperationRepository(db)
+    document_repo = create_document_repository(db)
+    operation_repo = OperationRepository(db)
 
-        # Count stuck pending documents (more than 5 min old, never processed)
-        pending_count = await document_repo.count_stuck_pending_documents(collection_uuid)
+    # Count stuck pending documents (more than 5 min old, never processed)
+    pending_count = await document_repo.count_stuck_pending_documents(collection_uuid)
 
-        # Reset all retryable failed documents to PENDING
-        retry_at = datetime.now(UTC)
-        reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid, retry_at=retry_at)
+    # Reset all retryable failed documents to PENDING
+    retry_at = datetime.now(UTC)
+    reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid, retry_at=retry_at)
 
-        if reset_count == 0 and pending_count == 0:
-            # No documents to retry
-            return {
-                "reset_count": 0,
-                "pending_count": 0,
-                "operation_id": None,
-                "message": "No retryable documents found",
-            }
-
-        # Create RETRY_DOCUMENTS operation (processes all PENDING documents)
-        user_id = current_user.get("id") or current_user.get("sub")
-        operation = await operation_repo.create(
-            collection_id=collection_uuid,
-            user_id=user_id,
-            operation_type=OperationType.RETRY_DOCUMENTS,
-            config={
-                "reset_count": reset_count,
-                "pending_count": pending_count,
-                "triggered_by": "manual",
-            },
-        )
-
-        # Commit BEFORE dispatching Celery task (critical to avoid race condition)
-        await db.commit()
-        operation_uuid = operation.uuid  # Capture before potential failure
-
-        # Dispatch Celery task with error handling
-        try:
-            celery_app.send_task(
-                "webui.tasks.process_collection_operation",
-                args=[operation_uuid],
-                task_id=str(uuid_module.uuid4()),
-            )
-        except Exception as dispatch_exc:
-            # Task dispatch failed after commit - update operation to FAILED
-            logger.error(
-                "Failed to dispatch Celery task for operation %s: %s",
-                operation_uuid,
-                dispatch_exc,
-                exc_info=True,
-            )
-            try:
-                await operation_repo.update_status(
-                    operation_uuid,
-                    OperationStatus.FAILED,
-                    error_message=f"Task dispatch failed: {dispatch_exc}",
-                )
-                await db.commit()
-            except Exception as update_exc:
-                logger.error(
-                    "Failed to update operation %s status after dispatch failure: %s",
-                    operation_uuid,
-                    update_exc,
-                    exc_info=True,
-                )
-            try:
-                await document_repo.bulk_mark_retry_dispatch_failed(
-                    collection_uuid,
-                    retry_at=retry_at,
-                    error_message="Retry dispatch failed; retry was not queued.",
-                    error_category="transient",
-                )
-                await db.commit()
-            except Exception as restore_exc:
-                await db.rollback()
-                logger.error(
-                    "Failed to restore documents after retry dispatch failure: %s",
-                    restore_exc,
-                    exc_info=True,
-                )
-            raise HTTPException(
-                status_code=503,
-                detail=f"Operation created but task dispatch failed. Operation ID: {operation_uuid}",
-            ) from dispatch_exc
-
-        total_count = reset_count + pending_count
-        logger.info(
-            "User %s triggered retry of %d documents (%d failed reset, %d stuck pending) "
-            "in collection %s (operation=%s)",
-            user_id,
-            total_count,
-            reset_count,
-            pending_count,
-            collection_uuid,
-            operation_uuid,
-        )
-
+    if reset_count == 0 and pending_count == 0:
+        # No documents to retry
         return {
+            "reset_count": 0,
+            "pending_count": 0,
+            "operation_id": None,
+            "message": "No retryable documents found",
+        }
+
+    # Create RETRY_DOCUMENTS operation (processes all PENDING documents)
+    user_id = current_user.get("id") or current_user.get("sub")
+    operation = await operation_repo.create(
+        collection_id=collection_uuid,
+        user_id=user_id,
+        operation_type=OperationType.RETRY_DOCUMENTS,
+        config={
             "reset_count": reset_count,
             "pending_count": pending_count,
-            "operation_id": operation_uuid,
-            "message": f"Dispatched retry operation for {total_count} document(s)",
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error("Failed to bulk retry documents: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retry failed documents") from e
+            "triggered_by": "manual",
+        },
+    )
+
+    # Commit BEFORE dispatching Celery task (critical to avoid race condition)
+    await db.commit()
+    operation_uuid = operation.uuid  # Capture before potential failure
+
+    # Dispatch Celery task with error handling
+    try:
+        celery_app.send_task(
+            "webui.tasks.process_collection_operation",
+            args=[operation_uuid],
+            task_id=str(uuid_module.uuid4()),
+        )
+    except Exception as dispatch_exc:
+        # Task dispatch failed after commit - update operation to FAILED
+        logger.error(
+            "Failed to dispatch Celery task for operation %s: %s",
+            operation_uuid,
+            dispatch_exc,
+            exc_info=True,
+        )
+        try:
+            await operation_repo.update_status(
+                operation_uuid,
+                OperationStatus.FAILED,
+                error_message=f"Task dispatch failed: {dispatch_exc}",
+            )
+            await db.commit()
+        except Exception as update_exc:
+            logger.error(
+                "Failed to update operation %s status after dispatch failure: %s",
+                operation_uuid,
+                update_exc,
+                exc_info=True,
+            )
+        try:
+            await document_repo.bulk_mark_retry_dispatch_failed(
+                collection_uuid,
+                retry_at=retry_at,
+                error_message="Retry dispatch failed; retry was not queued.",
+                error_category="transient",
+            )
+            await db.commit()
+        except Exception as restore_exc:
+            await db.rollback()
+            logger.error(
+                "Failed to restore documents after retry dispatch failure: %s",
+                restore_exc,
+                exc_info=True,
+            )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Operation created but task dispatch failed. Operation ID: {operation_uuid}",
+        ) from dispatch_exc
+
+    total_count = reset_count + pending_count
+    logger.info(
+        "User %s triggered retry of %d documents (%d failed reset, %d stuck pending) "
+        "in collection %s (operation=%s)",
+        user_id,
+        total_count,
+        reset_count,
+        pending_count,
+        collection_uuid,
+        operation_uuid,
+    )
+
+    return {
+        "reset_count": reset_count,
+        "pending_count": pending_count,
+        "operation_id": operation_uuid,
+        "message": f"Dispatched retry operation for {total_count} document(s)",
+    }
 
 
 @router.get(
@@ -633,17 +598,11 @@ async def get_failed_document_count(
     """
     from webui.api.schemas import FailedDocumentCountResponse
 
-    try:
-        document_repo = create_document_repository(db)
-        counts = await document_repo.get_failed_document_count(
-            collection_uuid,
-            retryable_only=retryable_only,
-        )
+    document_repo = create_document_repository(db)
+    counts = await document_repo.get_failed_document_count(
+        collection_uuid,
+        retryable_only=retryable_only,
+    )
 
-        result: dict[str, int] = FailedDocumentCountResponse(**counts).model_dump()
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to get failed document count: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get failed document count") from e
+    result: dict[str, int] = FailedDocumentCountResponse(**counts).model_dump()
+    return result

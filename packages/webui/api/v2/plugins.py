@@ -457,15 +457,7 @@ async def install_plugin_endpoint(
             body.plugin_id,
         )
 
-    try:
-        validate_pip_install_target(install_cmd)
-    except ValueError as exc:
-        raise _plugin_error(
-            400,
-            PluginErrorCode.PLUGIN_VERSION_INVALID,
-            str(exc),
-            body.plugin_id,
-        ) from exc
+    validate_pip_install_target(install_cmd)
 
     # Audit log
     audit_log(
@@ -590,10 +582,7 @@ async def uninstall_plugin_endpoint(
                 detail=f"Plugin {plugin_id} not found in registry or installed packages",
             )
 
-    try:
-        validate_package_name(package_name)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    validate_package_name(package_name)
 
     audit_log(
         plugin_id,
