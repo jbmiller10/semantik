@@ -640,6 +640,7 @@ class TestRetryEndpoints:
         assert exc_info.value.status_code == 503
         assert "test-dispatch-fail-operation" in exc_info.value.detail
         mock_operation_repo.update_status.assert_awaited_once()
+        assert mock_repo.get_by_id.await_count == 2
 
     @pytest.mark.asyncio()
     async def test_retry_document_rejects_non_failed(
@@ -882,6 +883,7 @@ class TestRetryEndpoints:
         assert "test-dispatch-fail-operation" in exc_info.value.detail
         # Verify operation status was updated to FAILED
         mock_operation_repo.update_status.assert_awaited_once()
+        mock_doc_repo.bulk_mark_retry_dispatch_failed.assert_awaited_once()
 
     @pytest.mark.asyncio()
     async def test_get_failed_document_count_success(

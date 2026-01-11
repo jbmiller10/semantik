@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, delete, desc, func, select, update
+from sqlalchemy import and_, case, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -832,6 +832,7 @@ class DocumentRepository:
         collection_id: str,
         max_retry_count: int = 3,
         error_categories: list[str] | None = None,
+        retry_at: datetime | None = None,
     ) -> int:
         """Reset all retryable failed documents in a collection for retry.
 
@@ -844,6 +845,7 @@ class DocumentRepository:
             collection_id: UUID of the collection
             max_retry_count: Maximum retry attempts (documents with more won't be reset)
             error_categories: List of error categories to include (default: transient, unknown, None)
+            retry_at: Timestamp to record for last_retry_at (defaults to now)
 
         Returns:
             Number of documents reset
@@ -852,6 +854,8 @@ class DocumentRepository:
             # Default to retryable categories
             if error_categories is None:
                 error_categories = ["transient", "unknown"]
+
+            retry_time = retry_at or datetime.now(UTC)
 
             # Build conditions for retryable documents
             conditions = [
@@ -876,7 +880,7 @@ class DocumentRepository:
                 .values(
                     status=DocumentStatus.PENDING.value,
                     retry_count=Document.retry_count + 1,
-                    last_retry_at=datetime.now(UTC),
+                    last_retry_at=retry_time,
                     error_message=None,
                     error_category=None,
                     chunk_count=0,
@@ -893,6 +897,60 @@ class DocumentRepository:
         except Exception as e:
             logger.error("Failed to bulk reset documents for retry: %s", e, exc_info=True)
             raise DatabaseOperationError("bulk_reset_for_retry", "documents", str(e)) from e
+
+    async def bulk_mark_retry_dispatch_failed(
+        self,
+        collection_id: str,
+        retry_at: datetime,
+        error_message: str,
+        error_category: str | None = "transient",
+    ) -> int:
+        """Revert retry reset when task dispatch fails.
+
+        Args:
+            collection_id: UUID of the collection
+            retry_at: Timestamp used for the retry reset
+            error_message: Message to store on reverted documents
+            error_category: Category to store (default: transient)
+
+        Returns:
+            Number of documents reverted to FAILED
+        """
+        try:
+            stmt = (
+                update(Document)
+                .where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.status == DocumentStatus.PENDING.value,
+                        Document.last_retry_at == retry_at,
+                    )
+                )
+                .values(
+                    status=DocumentStatus.FAILED.value,
+                    retry_count=case(
+                        (Document.retry_count > 0, Document.retry_count - 1),
+                        else_=0,
+                    ),
+                    error_message=error_message,
+                    error_category=error_category,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.rowcount or 0
+            if count:
+                logger.warning(
+                    "Reverted %d documents to FAILED after retry dispatch failure in collection %s",
+                    count,
+                    collection_id,
+                )
+            return count
+
+        except Exception as e:
+            logger.error("Failed to revert documents after retry dispatch failure: %s", e, exc_info=True)
+            raise DatabaseOperationError("bulk_revert_retry_dispatch", "documents", str(e)) from e
 
     async def count_stuck_pending_documents(
         self,

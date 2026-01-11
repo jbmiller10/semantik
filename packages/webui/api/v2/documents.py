@@ -13,6 +13,7 @@ The endpoint checks for artifacts first, then falls back to file serving.
 
 import logging
 import urllib.parse
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.config import settings
 from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError, ValidationError
-from shared.database.models import Collection, Document
+from shared.database.models import Collection, Document, DocumentStatus
 from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 from webui.api.schemas import DocumentResponse, ErrorResponse
 from webui.auth import get_current_user
@@ -360,6 +361,14 @@ async def retry_document(
             )
             raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
 
+        previous_state = {
+            "retry_count": document.retry_count,
+            "last_retry_at": document.last_retry_at,
+            "error_message": document.error_message,
+            "error_category": document.error_category,
+            "chunk_count": document.chunk_count,
+        }
+
         # Reset the document for retry
         try:
             document = await document_repo.reset_for_retry(document_uuid)
@@ -415,6 +424,25 @@ async def retry_document(
                     "Failed to update operation %s status after dispatch failure: %s",
                     operation_uuid,
                     update_exc,
+                    exc_info=True,
+                )
+            try:
+                restored = await document_repo.get_by_id(document_uuid)
+                if restored:
+                    restored.status = DocumentStatus.FAILED.value
+                    restored.retry_count = previous_state["retry_count"]
+                    restored.last_retry_at = previous_state["last_retry_at"]
+                    restored.error_message = previous_state["error_message"]
+                    restored.error_category = previous_state["error_category"]
+                    restored.chunk_count = previous_state["chunk_count"]
+                    restored.updated_at = datetime.now(UTC)
+                    await db.commit()
+            except Exception as restore_exc:
+                await db.rollback()
+                logger.error(
+                    "Failed to restore document %s after retry dispatch failure: %s",
+                    document_uuid,
+                    restore_exc,
                     exc_info=True,
                 )
             raise HTTPException(
@@ -477,7 +505,8 @@ async def retry_failed_documents(
         pending_count = await document_repo.count_stuck_pending_documents(collection_uuid)
 
         # Reset all retryable failed documents to PENDING
-        reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid)
+        retry_at = datetime.now(UTC)
+        reset_count = await document_repo.bulk_reset_failed_for_retry(collection_uuid, retry_at=retry_at)
 
         if reset_count == 0 and pending_count == 0:
             # No documents to retry
@@ -532,6 +561,21 @@ async def retry_failed_documents(
                     "Failed to update operation %s status after dispatch failure: %s",
                     operation_uuid,
                     update_exc,
+                    exc_info=True,
+                )
+            try:
+                await document_repo.bulk_mark_retry_dispatch_failed(
+                    collection_uuid,
+                    retry_at=retry_at,
+                    error_message="Retry dispatch failed; retry was not queued.",
+                    error_category="transient",
+                )
+                await db.commit()
+            except Exception as restore_exc:
+                await db.rollback()
+                logger.error(
+                    "Failed to restore documents after retry dispatch failure: %s",
+                    restore_exc,
                     exc_info=True,
                 )
             raise HTTPException(
