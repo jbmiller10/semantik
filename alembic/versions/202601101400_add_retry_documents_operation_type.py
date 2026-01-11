@@ -31,4 +31,3 @@ def downgrade() -> None:
     """
     # PostgreSQL doesn't support removing enum values
     # The value will simply be unused after downgrade
-    pass
