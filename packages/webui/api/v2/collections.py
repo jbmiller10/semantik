@@ -3,20 +3,23 @@ Collection API v2 endpoints.
 
 This module provides RESTful API endpoints for collection management using
 the new collection-centric architecture.
+
+Exception handling is centralized via global exception handlers registered
+in webui.middleware.exception_handlers. Service-layer exceptions are automatically
+converted to appropriate HTTP responses:
+- EntityNotFoundError -> 404
+- EntityAlreadyExistsError -> 409
+- ValidationError -> 400
+- InvalidStateError -> 409
+- AccessDeniedError -> 403
+- Unhandled exceptions -> 500 (with sanitized error messages)
 """
 
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    InvalidStateError,
-    ValidationError,
-)
 from shared.database.models import Collection
 from webui.api.schemas import (
     AddSourceRequest,
@@ -26,6 +29,7 @@ from webui.api.schemas import (
     CollectionSyncRunResponse,
     CollectionUpdate,
     DocumentListResponse,
+    DocumentResponse,
     EnableSparseIndexRequest,
     ErrorResponse,
     OperationResponse,
@@ -39,19 +43,6 @@ from webui.dependencies import get_collection_for_user
 from webui.rate_limiter import limiter
 from webui.services.collection_service import CollectionService
 from webui.services.factory import get_collection_service
-
-SharedAccessDeniedError: type[BaseException] | None = None
-try:  # pragma: no cover - shared module may not be installed in all environments
-    from shared.database.exceptions import AccessDeniedError as _SharedAccessDeniedError
-except Exception:  # pragma: no cover
-    _SharedAccessDeniedError = None
-else:
-    SharedAccessDeniedError = _SharedAccessDeniedError
-
-if SharedAccessDeniedError is not None and SharedAccessDeniedError is not AccessDeniedError:
-    _ACCESS_DENIED_ERRORS: tuple[type[BaseException], ...] = (AccessDeniedError, SharedAccessDeniedError)
-else:
-    _ACCESS_DENIED_ERRORS = (AccessDeniedError,)
 
 logger = logging.getLogger(__name__)
 
@@ -80,97 +71,82 @@ async def create_collection(
     will be created in a PENDING state and an initial indexing operation will
     be automatically triggered.
     """
-    try:
-        # Build config, omitting fields that are None so the service can apply
-        # sensible defaults instead of passing explicit nulls downstream.
-        cfg: dict[str, Any] = {
-            "embedding_model": create_request.embedding_model,
-            "quantization": create_request.quantization,
-            "is_public": create_request.is_public,
-            "sync_mode": create_request.sync_mode.value,
-        }
-        if create_request.sync_mode == "continuous":
-            cfg["sync_interval_minutes"] = create_request.sync_interval_minutes
-        if create_request.chunk_size is not None:
-            cfg["chunk_size"] = create_request.chunk_size
-        if create_request.chunk_overlap is not None:
-            cfg["chunk_overlap"] = create_request.chunk_overlap
+    # Build config, omitting fields that are None so the service can apply
+    # sensible defaults instead of passing explicit nulls downstream.
+    cfg: dict[str, Any] = {
+        "embedding_model": create_request.embedding_model,
+        "quantization": create_request.quantization,
+        "is_public": create_request.is_public,
+        "sync_mode": create_request.sync_mode.value,
+    }
+    if create_request.sync_mode == "continuous":
+        cfg["sync_interval_minutes"] = create_request.sync_interval_minutes
+    if create_request.chunk_size is not None:
+        cfg["chunk_size"] = create_request.chunk_size
+    if create_request.chunk_overlap is not None:
+        cfg["chunk_overlap"] = create_request.chunk_overlap
 
-        # Always include chunking_strategy and chunking_config for consistency with tests
-        cfg["chunking_strategy"] = create_request.chunking_strategy
-        cfg["chunking_config"] = create_request.chunking_config
+    # Always include chunking_strategy and chunking_config for consistency with tests
+    cfg["chunking_strategy"] = create_request.chunking_strategy
+    cfg["chunking_config"] = create_request.chunking_config
 
-        if create_request.metadata is not None:
-            cfg["metadata"] = create_request.metadata
+    if create_request.metadata is not None:
+        cfg["metadata"] = create_request.metadata
 
+    # Reranker and extraction config (Phase 2 plugin extensibility)
+    if create_request.default_reranker_id is not None:
+        cfg["default_reranker_id"] = create_request.default_reranker_id
+    if create_request.extraction_config is not None:
+        cfg["extraction_config"] = create_request.extraction_config
+
+    # Sparse indexing configuration
+    if create_request.sparse_index_config is not None:
+        cfg["sparse_index_config"] = create_request.sparse_index_config.model_dump()
+
+    collection, operation = await service.create_collection(
+        user_id=int(current_user["id"]),
+        name=create_request.name,
+        description=create_request.description,
+        config=cfg,
+    )
+
+    # Convert to response model and add operation uuid
+    return CollectionResponse(
+        id=collection["id"],
+        name=collection["name"],
+        description=collection["description"],
+        owner_id=collection["owner_id"],
+        vector_store_name=collection["vector_store_name"],
+        embedding_model=collection["embedding_model"],
+        quantization=collection["quantization"],
+        chunk_size=collection.get("chunk_size"),
+        chunk_overlap=collection.get("chunk_overlap"),
+        chunking_strategy=collection.get("chunking_strategy"),
+        chunking_config=collection.get("chunking_config"),
+        is_public=collection["is_public"],
+        metadata=collection["metadata"],
         # Reranker and extraction config (Phase 2 plugin extensibility)
-        if create_request.default_reranker_id is not None:
-            cfg["default_reranker_id"] = create_request.default_reranker_id
-        if create_request.extraction_config is not None:
-            cfg["extraction_config"] = create_request.extraction_config
-
-        # Sparse indexing configuration
-        if create_request.sparse_index_config is not None:
-            cfg["sparse_index_config"] = create_request.sparse_index_config.model_dump()
-
-        collection, operation = await service.create_collection(
-            user_id=int(current_user["id"]),
-            name=create_request.name,
-            description=create_request.description,
-            config=cfg,
-        )
-
-        # Convert to response model and add operation uuid
-        return CollectionResponse(
-            id=collection["id"],
-            name=collection["name"],
-            description=collection["description"],
-            owner_id=collection["owner_id"],
-            vector_store_name=collection["vector_store_name"],
-            embedding_model=collection["embedding_model"],
-            quantization=collection["quantization"],
-            chunk_size=collection.get("chunk_size"),
-            chunk_overlap=collection.get("chunk_overlap"),
-            chunking_strategy=collection.get("chunking_strategy"),
-            chunking_config=collection.get("chunking_config"),
-            is_public=collection["is_public"],
-            metadata=collection["metadata"],
-            # Reranker and extraction config (Phase 2 plugin extensibility)
-            default_reranker_id=collection.get("default_reranker_id"),
-            extraction_config=collection.get("extraction_config"),
-            created_at=collection["created_at"],
-            updated_at=collection["updated_at"],
-            document_count=collection["document_count"],
-            vector_count=collection.get("vector_count", 0),
-            total_size_bytes=collection.get("total_size_bytes", 0),
-            status=collection["status"],
-            status_message=collection.get("status_message"),
-            # Sync policy fields
-            sync_mode=collection.get("sync_mode", "one_time") or "one_time",
-            sync_interval_minutes=collection.get("sync_interval_minutes"),
-            sync_paused_at=collection.get("sync_paused_at"),
-            sync_next_run_at=collection.get("sync_next_run_at"),
-            # Sync run tracking
-            sync_last_run_started_at=collection.get("sync_last_run_started_at"),
-            sync_last_run_completed_at=collection.get("sync_last_run_completed_at"),
-            sync_last_run_status=collection.get("sync_last_run_status"),
-            sync_last_error=collection.get("sync_last_error"),
-            initial_operation_id=operation["uuid"],  # Include the initial operation ID
-        )
-
-    except EntityAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Collection with name '{create_request.name}' already exists",
-        ) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Failed to create collection: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to create collection",
-        ) from e
+        default_reranker_id=collection.get("default_reranker_id"),
+        extraction_config=collection.get("extraction_config"),
+        created_at=collection["created_at"],
+        updated_at=collection["updated_at"],
+        document_count=collection["document_count"],
+        vector_count=collection.get("vector_count", 0),
+        total_size_bytes=collection.get("total_size_bytes", 0),
+        status=collection["status"],
+        status_message=collection.get("status_message"),
+        # Sync policy fields
+        sync_mode=collection.get("sync_mode", "one_time") or "one_time",
+        sync_interval_minutes=collection.get("sync_interval_minutes"),
+        sync_paused_at=collection.get("sync_paused_at"),
+        sync_next_run_at=collection.get("sync_next_run_at"),
+        # Sync run tracking
+        sync_last_run_started_at=collection.get("sync_last_run_started_at"),
+        sync_last_run_completed_at=collection.get("sync_last_run_completed_at"),
+        sync_last_run_status=collection.get("sync_last_run_status"),
+        sync_last_error=collection.get("sync_last_error"),
+        initial_operation_id=operation["uuid"],  # Include the initial operation ID
+    )
 
 
 @router.get(
@@ -192,32 +168,24 @@ async def list_collections(
     Returns a paginated list of collections that the user owns or has access to.
     Public collections are included by default.
     """
-    try:
-        offset = (page - 1) * per_page
+    offset = (page - 1) * per_page
 
-        collections, total = await service.list_for_user(
-            user_id=int(current_user["id"]),
-            offset=offset,
-            limit=per_page,
-            include_public=include_public,
-        )
+    collections, total = await service.list_for_user(
+        user_id=int(current_user["id"]),
+        offset=offset,
+        limit=per_page,
+        include_public=include_public,
+    )
 
-        # Convert ORM objects to response models
-        collection_responses = [CollectionResponse.from_collection(col) for col in collections]
+    # Convert ORM objects to response models
+    collection_responses = [CollectionResponse.from_collection(col) for col in collections]
 
-        return CollectionListResponse(
-            collections=collection_responses,
-            total=total,
-            page=page,
-            per_page=per_page,
-        )
-
-    except Exception as e:
-        logger.error("Failed to list collections: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to list collections",
-        ) from e
+    return CollectionListResponse(
+        collections=collection_responses,
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
 
 
 @router.get(
@@ -259,59 +227,34 @@ async def update_collection(
     perform updates. Note that embedding model and chunk settings cannot be
     changed after creation - use reindexing for those changes.
     """
-    try:
-        # Build updates dict from non-None values
-        updates: dict[str, Any] = {}
-        if request.name is not None:
-            updates["name"] = request.name
-        if request.description is not None:
-            updates["description"] = request.description
-        if request.is_public is not None:
-            updates["is_public"] = request.is_public
-        if request.metadata is not None:
-            updates["meta"] = request.metadata
-        if request.sync_mode is not None:
-            updates["sync_mode"] = request.sync_mode.value
-        if request.sync_interval_minutes is not None:
-            updates["sync_interval_minutes"] = request.sync_interval_minutes
-        # Reranker and extraction config (Phase 2 plugin extensibility)
-        if request.default_reranker_id is not None:
-            updates["default_reranker_id"] = request.default_reranker_id
-        if request.extraction_config is not None:
-            updates["extraction_config"] = request.extraction_config
+    # Build updates dict from non-None values
+    updates: dict[str, Any] = {}
+    if request.name is not None:
+        updates["name"] = request.name
+    if request.description is not None:
+        updates["description"] = request.description
+    if request.is_public is not None:
+        updates["is_public"] = request.is_public
+    if request.metadata is not None:
+        updates["meta"] = request.metadata
+    if request.sync_mode is not None:
+        updates["sync_mode"] = request.sync_mode.value
+    if request.sync_interval_minutes is not None:
+        updates["sync_interval_minutes"] = request.sync_interval_minutes
+    # Reranker and extraction config (Phase 2 plugin extensibility)
+    if request.default_reranker_id is not None:
+        updates["default_reranker_id"] = request.default_reranker_id
+    if request.extraction_config is not None:
+        updates["extraction_config"] = request.extraction_config
 
-        # Perform update through service
-        updated_collection = await service.update(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            updates=updates,
-        )
+    # Perform update through service
+    updated_collection = await service.update(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        updates=updates,
+    )
 
-        return CollectionResponse.from_collection(updated_collection)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="Only the collection owner can update it",
-        ) from e
-    except EntityAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Collection name '{request.name}' already exists",
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Failed to update collection: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to update collection",
-        ) from e
+    return CollectionResponse.from_collection(updated_collection)
 
 
 @router.delete(
@@ -339,34 +282,11 @@ async def delete_collection(
     """
     logger.info(f"User {current_user['id']} attempting to delete collection {collection_uuid}")
 
-    try:
-        await service.delete_collection(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
-        logger.info(f"Successfully deleted collection {collection_uuid}")
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="Only the collection owner can delete it",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to delete collection: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete collection",
-        ) from e
+    await service.delete_collection(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
+    logger.info(f"Successfully deleted collection {collection_uuid}")
 
 
 # Collection operation endpoints
@@ -396,60 +316,27 @@ async def add_source(
     Adds a new source (file or directory) to the collection and triggers
     indexing of its contents. Returns an operation that can be tracked.
     """
-    try:
-        operation = await service.add_source(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            source_type=add_source_request.source_type,
-            source_config=add_source_request.source_config,
-            legacy_source_path=add_source_request.source_path,
-            additional_config=add_source_request.config or {},
-        )
+    operation = await service.add_source(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        source_type=add_source_request.source_type,
+        source_config=add_source_request.source_config,
+        legacy_source_path=add_source_request.source_path,
+        additional_config=add_source_request.config or {},
+    )
 
-        # Convert to response model
-        return OperationResponse(
-            id=operation["uuid"],
-            collection_id=operation["collection_id"],
-            type=operation["type"],
-            status=operation["status"],
-            config=operation["config"],
-            created_at=operation["created_at"],
-            started_at=operation.get("started_at"),
-            completed_at=operation.get("completed_at"),
-            error_message=operation.get("error_message"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to add source: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to add source",
-        ) from e
+    # Convert to response model
+    return OperationResponse(
+        id=operation["uuid"],
+        collection_id=operation["collection_id"],
+        type=operation["type"],
+        status=operation["status"],
+        config=operation["config"],
+        created_at=operation["created_at"],
+        started_at=operation.get("started_at"),
+        completed_at=operation.get("completed_at"),
+        error_message=operation.get("error_message"),
+    )
 
 
 @router.delete(
@@ -476,47 +363,24 @@ async def remove_source(
     Removes all documents and vectors associated with the specified source path.
     Returns an operation that can be tracked.
     """
-    try:
-        operation = await service.remove_source(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            source_path=source_path,
-        )
+    operation = await service.remove_source(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        source_path=source_path,
+    )
 
-        # Convert to response model
-        return OperationResponse(
-            id=operation["uuid"],
-            collection_id=operation["collection_id"],
-            type=operation["type"],
-            status=operation["status"],
-            config=operation["config"],
-            created_at=operation["created_at"],
-            started_at=operation.get("started_at"),
-            completed_at=operation.get("completed_at"),
-            error_message=operation.get("error_message"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to remove source: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to remove source",
-        ) from e
+    # Convert to response model
+    return OperationResponse(
+        id=operation["uuid"],
+        collection_id=operation["collection_id"],
+        type=operation["type"],
+        status=operation["status"],
+        config=operation["config"],
+        created_at=operation["created_at"],
+        started_at=operation.get("started_at"),
+        completed_at=operation.get("completed_at"),
+        error_message=operation.get("error_message"),
+    )
 
 
 @router.post(
@@ -544,47 +408,24 @@ async def reindex_collection(
     deployment for zero downtime. Optionally update configuration like
     embedding model or chunk size.
     """
-    try:
-        operation = await service.reindex_collection(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            config_updates=config_updates,
-        )
+    operation = await service.reindex_collection(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        config_updates=config_updates,
+    )
 
-        # Convert to response model
-        return OperationResponse(
-            id=operation["uuid"],
-            collection_id=operation["collection_id"],
-            type=operation["type"],
-            status=operation["status"],
-            config=operation["config"],
-            created_at=operation["created_at"],
-            started_at=operation.get("started_at"),
-            completed_at=operation.get("completed_at"),
-            error_message=operation.get("error_message"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to reindex this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to reindex collection: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to reindex collection",
-        ) from e
+    # Convert to response model
+    return OperationResponse(
+        id=operation["uuid"],
+        collection_id=operation["collection_id"],
+        type=operation["type"],
+        status=operation["status"],
+        config=operation["config"],
+        created_at=operation["created_at"],
+        started_at=operation.get("started_at"),
+        completed_at=operation.get("completed_at"),
+        error_message=operation.get("error_message"),
+    )
 
 
 @router.get(
@@ -609,57 +450,33 @@ async def list_collection_operations(
     Returns a paginated list of operations performed on the collection,
     ordered by creation date (newest first).
     """
-    try:
-        offset = (page - 1) * per_page
+    offset = (page - 1) * per_page
 
-        # Delegate all filtering logic to service
-        operations, total = await service.list_operations_filtered(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            status=status,
-            operation_type=operation_type,
-            offset=offset,
-            limit=per_page,
+    # Delegate all filtering logic to service
+    operations, total = await service.list_operations_filtered(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        status=status,
+        operation_type=operation_type,
+        offset=offset,
+        limit=per_page,
+    )
+
+    # Convert ORM objects to response models
+    return [
+        OperationResponse(
+            id=op.uuid,
+            collection_id=op.collection_id,
+            type=op.type.value,
+            status=op.status.value,
+            config=op.config,
+            created_at=op.created_at,
+            started_at=op.started_at,
+            completed_at=op.completed_at,
+            error_message=op.error_message,
         )
-
-        # Convert ORM objects to response models
-        return [
-            OperationResponse(
-                id=op.uuid,
-                collection_id=op.collection_id,
-                type=op.type.value,
-                status=op.status.value,
-                config=op.config,
-                created_at=op.created_at,
-                started_at=op.started_at,
-                completed_at=op.completed_at,
-                error_message=op.error_message,
-            )
-            for op in operations
-        ]
-
-    except ValueError as e:
-        # Service method raises ValueError for invalid filters
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to list operations: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to list operations",
-        ) from e
+        for op in operations
+    ]
 
 
 @router.get(
@@ -682,69 +499,43 @@ async def list_collection_documents(
 
     Returns a paginated list of documents in the collection.
     """
-    try:
-        offset = (page - 1) * per_page
+    offset = (page - 1) * per_page
 
-        # Delegate all filtering logic to service
-        documents, total = await service.list_documents_filtered(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            status=status,
-            offset=offset,
-            limit=per_page,
+    # Delegate all filtering logic to service
+    documents, total = await service.list_documents_filtered(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        status=status,
+        offset=offset,
+        limit=per_page,
+    )
+
+    # Convert ORM objects to response models
+    document_responses = [
+        DocumentResponse(
+            id=doc.id,
+            collection_id=doc.collection_id,
+            file_name=doc.file_name,
+            file_path=doc.file_path,
+            file_size=doc.file_size,
+            mime_type=doc.mime_type,
+            content_hash=doc.content_hash,
+            status=doc.status.value,
+            error_message=doc.error_message,
+            chunk_count=doc.chunk_count,
+            metadata=doc.meta,
+            created_at=doc.created_at,
+            updated_at=doc.updated_at,
         )
+        for doc in documents
+    ]
 
-        # Convert ORM objects to response models
-        from webui.api.schemas import DocumentResponse
-
-        document_responses = [
-            DocumentResponse(
-                id=doc.id,
-                collection_id=doc.collection_id,
-                file_name=doc.file_name,
-                file_path=doc.file_path,
-                file_size=doc.file_size,
-                mime_type=doc.mime_type,
-                content_hash=doc.content_hash,
-                status=doc.status.value,
-                error_message=doc.error_message,
-                chunk_count=doc.chunk_count,
-                metadata=doc.meta,
-                created_at=doc.created_at,
-                updated_at=doc.updated_at,
-            )
-            for doc in documents
-        ]
-
-        return DocumentListResponse(
-            documents=document_responses,
-            total=total,
-            page=page,
-            per_page=per_page,
-        )
-
-    except ValueError as e:
-        # Service method raises ValueError for invalid filters
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to list documents: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to list documents",
-        ) from e
+    return DocumentListResponse(
+        documents=document_responses,
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
 
 
 # =============================================================================
@@ -776,48 +567,25 @@ async def run_collection_sync(
     to track completion aggregation. Returns 409 if collection has active
     operations or is not in a valid state (READY/DEGRADED).
     """
-    try:
-        sync_run = await service.run_collection_sync(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            triggered_by="manual",
-        )
+    sync_run = await service.run_collection_sync(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        triggered_by="manual",
+    )
 
-        return CollectionSyncRunResponse(
-            id=sync_run.id,
-            collection_id=sync_run.collection_id,
-            triggered_by=sync_run.triggered_by,
-            started_at=sync_run.started_at,
-            completed_at=sync_run.completed_at,
-            status=sync_run.status,
-            expected_sources=sync_run.expected_sources,
-            completed_sources=sync_run.completed_sources,
-            failed_sources=sync_run.failed_sources,
-            partial_sources=sync_run.partial_sources,
-            error_summary=sync_run.error_summary,
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to sync this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to run collection sync: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to run collection sync",
-        ) from e
+    return CollectionSyncRunResponse(
+        id=sync_run.id,
+        collection_id=sync_run.collection_id,
+        triggered_by=sync_run.triggered_by,
+        started_at=sync_run.started_at,
+        completed_at=sync_run.completed_at,
+        status=sync_run.status,
+        expected_sources=sync_run.expected_sources,
+        completed_sources=sync_run.completed_sources,
+        failed_sources=sync_run.failed_sources,
+        partial_sources=sync_run.partial_sources,
+        error_summary=sync_run.error_summary,
+    )
 
 
 @router.post(
@@ -839,35 +607,12 @@ async def pause_collection_sync(
     Sets sync_paused_at timestamp to pause scheduled sync runs.
     Collection must be in continuous sync mode.
     """
-    try:
-        collection = await service.pause_collection_sync(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
+    collection = await service.pause_collection_sync(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        return CollectionResponse.from_collection(collection)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to pause collection sync: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to pause collection sync",
-        ) from e
+    return CollectionResponse.from_collection(collection)
 
 
 @router.post(
@@ -889,35 +634,12 @@ async def resume_collection_sync(
     Clears sync_paused_at and recalculates sync_next_run_at.
     Collection must be paused and in continuous sync mode.
     """
-    try:
-        collection = await service.resume_collection_sync(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
+    collection = await service.resume_collection_sync(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        return CollectionResponse.from_collection(collection)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to resume collection sync: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to resume collection sync",
-        ) from e
+    return CollectionResponse.from_collection(collection)
 
 
 @router.get(
@@ -939,52 +661,34 @@ async def list_collection_sync_runs(
 
     Returns a paginated list of sync runs ordered by start time (newest first).
     """
-    try:
-        sync_runs, total = await service.list_collection_sync_runs(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            offset=offset,
-            limit=limit,
-        )
+    sync_runs, total = await service.list_collection_sync_runs(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        offset=offset,
+        limit=limit,
+    )
 
-        return SyncRunListResponse(
-            items=[
-                CollectionSyncRunResponse(
-                    id=run.id,
-                    collection_id=run.collection_id,
-                    triggered_by=run.triggered_by,
-                    started_at=run.started_at,
-                    completed_at=run.completed_at,
-                    status=run.status,
-                    expected_sources=run.expected_sources,
-                    completed_sources=run.completed_sources,
-                    failed_sources=run.failed_sources,
-                    partial_sources=run.partial_sources,
-                    error_summary=run.error_summary,
-                )
-                for run in sync_runs
-            ],
-            total=total,
-            offset=offset,
-            limit=limit,
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to list sync runs: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to list sync runs",
-        ) from e
+    return SyncRunListResponse(
+        items=[
+            CollectionSyncRunResponse(
+                id=run.id,
+                collection_id=run.collection_id,
+                triggered_by=run.triggered_by,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                status=run.status,
+                expected_sources=run.expected_sources,
+                completed_sources=run.completed_sources,
+                failed_sources=run.failed_sources,
+                partial_sources=run.partial_sources,
+                error_summary=run.error_summary,
+            )
+            for run in sync_runs
+        ],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 # =============================================================================
@@ -1009,41 +713,23 @@ async def get_sparse_index_status(
 
     Returns the current sparse indexing configuration and statistics.
     """
-    try:
-        sparse_config = await service.get_sparse_index_config(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
+    sparse_config = await service.get_sparse_index_config(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        if sparse_config is None:
-            return SparseIndexStatusResponse(enabled=False)
+    if sparse_config is None:
+        return SparseIndexStatusResponse(enabled=False)
 
-        return SparseIndexStatusResponse(
-            enabled=sparse_config.get("enabled", False),
-            plugin_id=sparse_config.get("plugin_id"),
-            sparse_collection_name=sparse_config.get("sparse_collection_name"),
-            model_config_data=sparse_config.get("model_config"),
-            document_count=sparse_config.get("document_count"),
-            created_at=sparse_config.get("created_at"),
-            last_indexed_at=sparse_config.get("last_indexed_at"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to get sparse index status: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get sparse index status",
-        ) from e
+    return SparseIndexStatusResponse(
+        enabled=sparse_config.get("enabled", False),
+        plugin_id=sparse_config.get("plugin_id"),
+        sparse_collection_name=sparse_config.get("sparse_collection_name"),
+        model_config_data=sparse_config.get("model_config"),
+        document_count=sparse_config.get("document_count"),
+        created_at=sparse_config.get("created_at"),
+        last_indexed_at=sparse_config.get("last_indexed_at"),
+    )
 
 
 @router.post(
@@ -1071,56 +757,23 @@ async def enable_sparse_index(
     Creates a sparse Qdrant collection and optionally triggers reindexing
     of existing documents.
     """
-    try:
-        sparse_config = await service.enable_sparse_index(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            plugin_id=enable_request.plugin_id,
-            model_config=enable_request.model_config_data,
-            reindex_existing=enable_request.reindex_existing,
-        )
+    sparse_config = await service.enable_sparse_index(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        plugin_id=enable_request.plugin_id,
+        model_config=enable_request.model_config_data,
+        reindex_existing=enable_request.reindex_existing,
+    )
 
-        return SparseIndexStatusResponse(
-            enabled=True,
-            plugin_id=sparse_config.get("plugin_id"),
-            sparse_collection_name=sparse_config.get("sparse_collection_name"),
-            model_config_data=sparse_config.get("model_config"),
-            document_count=sparse_config.get("document_count", 0),
-            created_at=sparse_config.get("created_at"),
-            last_indexed_at=sparse_config.get("last_indexed_at"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to enable sparse index: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to enable sparse indexing",
-        ) from e
+    return SparseIndexStatusResponse(
+        enabled=True,
+        plugin_id=sparse_config.get("plugin_id"),
+        sparse_collection_name=sparse_config.get("sparse_collection_name"),
+        model_config_data=sparse_config.get("model_config"),
+        document_count=sparse_config.get("document_count", 0),
+        created_at=sparse_config.get("created_at"),
+        last_indexed_at=sparse_config.get("last_indexed_at"),
+    )
 
 
 @router.delete(
@@ -1143,28 +796,10 @@ async def disable_sparse_index(
 
     Deletes the sparse Qdrant collection and removes configuration.
     """
-    try:
-        await service.disable_sparse_index(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{collection_uuid}' not found",
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to disable sparse index: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to disable sparse indexing",
-        ) from e
+    await service.disable_sparse_index(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
 
 
 @router.post(
@@ -1172,7 +807,7 @@ async def disable_sparse_index(
     response_model=SparseReindexResponse,
     status_code=202,
     responses={
-        404: {"model": ErrorResponse, "description": "Collection not found or sparse indexing not enabled"},
+        404: {"model": ErrorResponse, "description": "Collection or sparse indexing not enabled"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
@@ -1188,40 +823,17 @@ async def trigger_sparse_reindex(
 
     Returns a job ID that can be used to track progress.
     """
-    try:
-        job_info = await service.trigger_sparse_reindex(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-        )
+    job_info = await service.trigger_sparse_reindex(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        return SparseReindexResponse(
-            job_id=job_info["job_id"],
-            status=job_info["status"],
-            collection_uuid=collection_uuid,
-            plugin_id=job_info["plugin_id"],
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=str(e),
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to modify this collection",
-        ) from e
-    except InvalidStateError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to trigger sparse reindex: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to trigger sparse reindex",
-        ) from e
+    return SparseReindexResponse(
+        job_id=job_info["job_id"],
+        status=job_info["status"],
+        collection_uuid=collection_uuid,
+        plugin_id=job_info["plugin_id"],
+    )
 
 
 @router.get(
@@ -1242,35 +854,17 @@ async def get_sparse_reindex_progress(
 
     Polls the Celery task state to report progress.
     """
-    try:
-        progress = await service.get_sparse_reindex_progress(
-            collection_id=collection_uuid,
-            user_id=int(current_user["id"]),
-            job_id=job_id,
-        )
+    progress = await service.get_sparse_reindex_progress(
+        collection_id=collection_uuid,
+        user_id=int(current_user["id"]),
+        job_id=job_id,
+    )
 
-        return SparseReindexProgressResponse(
-            job_id=job_id,
-            status=progress["status"],
-            progress=progress.get("progress"),
-            documents_processed=progress.get("documents_processed"),
-            total_documents=progress.get("total_documents"),
-            error=progress.get("error"),
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=str(e),
-        ) from e
-    except _ACCESS_DENIED_ERRORS as e:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this collection",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to get sparse reindex progress: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get reindex progress",
-        ) from e
+    return SparseReindexProgressResponse(
+        job_id=job_id,
+        status=progress["status"],
+        progress=progress.get("progress"),
+        documents_processed=progress.get("documents_processed"),
+        total_documents=progress.get("total_documents"),
+        error=progress.get("error"),
+    )
