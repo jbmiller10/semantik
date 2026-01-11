@@ -81,7 +81,8 @@ class TestCollectionDeletionEndpoint:
 
             # Assert
             assert response.status_code == status.HTTP_403_FORBIDDEN
-            assert "owner can delete" in response.json()["detail"]
+            # Global exception handler uses the exception's message directly
+            assert "does not have access to" in response.json()["detail"]
         finally:
             del app.dependency_overrides[get_collection_service]
 
@@ -133,7 +134,14 @@ class TestCollectionDeletionEndpoint:
             del app.dependency_overrides[get_collection_service]
 
     async def test_delete_collection_internal_error(self, test_client) -> None:
-        """Test handling of unexpected errors."""
+        """Test handling of unexpected errors.
+
+        Note: The global exception handler catches generic Exception and returns a 500.
+        We use raise_server_exceptions=False to test the actual response instead of
+        the exception propagating.
+        """
+        from starlette.testclient import TestClient
+
         # Arrange
         collection_uuid = "test-collection-uuid"
 
@@ -143,12 +151,16 @@ class TestCollectionDeletionEndpoint:
         app.dependency_overrides[get_collection_service] = lambda: mock_service
 
         try:
-            # Act
-            response = test_client.delete(f"/api/v2/collections/{collection_uuid}")
+            # Create a new test client that doesn't raise server exceptions
+            # This allows us to test the exception handler response
+            with TestClient(app, raise_server_exceptions=False) as client:
+                # Act
+                response = client.delete(f"/api/v2/collections/{collection_uuid}")
 
-            # Assert
-            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-            assert "Failed to delete collection" in response.json()["detail"]
+                # Assert
+                assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+                # Global exception handler returns sanitized message
+                assert "unexpected error" in response.json()["detail"].lower()
         finally:
             del app.dependency_overrides[get_collection_service]
 

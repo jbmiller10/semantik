@@ -60,7 +60,11 @@ _INVALID_STATE_MESSAGE = "The operation cannot be performed in the current state
 
 
 async def handle_access_denied_error(request: Request, exc: Exception) -> JSONResponse:
-    """Translate AccessDeniedError into a sanitized 403 response."""
+    """Translate AccessDeniedError into a 403 response.
+
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
+    """
 
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
@@ -77,9 +81,12 @@ async def handle_access_denied_error(request: Request, exc: Exception) -> JSONRe
         },
     )
 
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else _ACCESS_DENIED_MESSAGE
+
     response = JSONResponse(
         status_code=HTTP_403_FORBIDDEN,
-        content={"detail": _ACCESS_DENIED_MESSAGE},
+        content={"detail": detail},
     )
     response.headers["X-Correlation-ID"] = correlation_id
     return response
@@ -128,23 +135,32 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
     return response
 
 
-async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+async def handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
     """Handle HTTP exceptions and attach correlation reference."""
+    # Type assertion for HTTPException attributes
+    http_exc = exc if isinstance(exc, HTTPException) else None
+    if http_exc is None:
+        # Fallback - shouldn't happen but handle gracefully
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
+
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
         correlation_id = get_or_generate_correlation_id(request)
 
-    content = {"detail": exc.detail, "reference": f"ERR-{correlation_id}"}
-    response = JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
+    content = {"detail": http_exc.detail, "reference": f"ERR-{correlation_id}"}
+    response = JSONResponse(status_code=http_exc.status_code, content=content, headers=http_exc.headers)
     response.headers["X-Correlation-ID"] = correlation_id
     return response
 
 
-async def handle_entity_not_found_error(request: Request, exc: EntityNotFoundError) -> JSONResponse:
-    """Translate EntityNotFoundError into a sanitized 404 response.
+async def handle_entity_not_found_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate EntityNotFoundError into a 404 response.
 
-    Includes entity type for context but not the entity ID to prevent
-    information disclosure about valid/invalid resource identifiers.
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
     """
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
@@ -154,15 +170,15 @@ async def handle_entity_not_found_error(request: Request, exc: EntityNotFoundErr
         "Entity not found",
         extra={
             "correlation_id": correlation_id,
-            "entity_type": exc.entity_type,
-            "entity_id": exc.entity_id,
+            "entity_type": getattr(exc, "entity_type", None),
+            "entity_id": getattr(exc, "entity_id", None),
             "path": request.url.path,
             "method": request.method,
         },
     )
 
-    # Include entity type for helpful error messages, but not IDs
-    detail = f"{exc.entity_type} not found" if exc.entity_type else _NOT_FOUND_MESSAGE
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else _NOT_FOUND_MESSAGE
 
     response = JSONResponse(
         status_code=HTTP_404_NOT_FOUND,
@@ -172,8 +188,12 @@ async def handle_entity_not_found_error(request: Request, exc: EntityNotFoundErr
     return response
 
 
-async def handle_entity_already_exists_error(request: Request, exc: EntityAlreadyExistsError) -> JSONResponse:
-    """Translate EntityAlreadyExistsError into a sanitized 409 response."""
+async def handle_entity_already_exists_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate EntityAlreadyExistsError into a 409 response.
+
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
+    """
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
         correlation_id = get_or_generate_correlation_id(request)
@@ -182,19 +202,15 @@ async def handle_entity_already_exists_error(request: Request, exc: EntityAlread
         "Entity already exists",
         extra={
             "correlation_id": correlation_id,
-            "entity_type": exc.entity_type,
-            "identifier": exc.identifier,
+            "entity_type": getattr(exc, "entity_type", None),
+            "identifier": getattr(exc, "identifier", None),
             "path": request.url.path,
             "method": request.method,
         },
     )
 
-    # Include entity type but not the identifier
-    detail = (
-        f"A {exc.entity_type.lower()} with this identifier already exists"
-        if exc.entity_type
-        else _ALREADY_EXISTS_MESSAGE
-    )
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else _ALREADY_EXISTS_MESSAGE
 
     response = JSONResponse(
         status_code=HTTP_409_CONFLICT,
@@ -204,11 +220,11 @@ async def handle_entity_already_exists_error(request: Request, exc: EntityAlread
     return response
 
 
-async def handle_validation_error(request: Request, exc: ValidationError) -> JSONResponse:
-    """Translate ValidationError into a sanitized 400 response.
+async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate ValidationError into a 400 response.
 
-    May include field name for helpful error messages, but keeps
-    error messages generic to avoid information disclosure.
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
     """
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
@@ -218,15 +234,15 @@ async def handle_validation_error(request: Request, exc: ValidationError) -> JSO
         "Validation error",
         extra={
             "correlation_id": correlation_id,
-            "field": exc.field,
-            "message": exc.message,
+            "field": getattr(exc, "field", None),
+            "validation_message": getattr(exc, "message", None),  # Avoid conflict with LogRecord.message
             "path": request.url.path,
             "method": request.method,
         },
     )
 
-    # Include field name if available, but use generic message
-    detail = f"Invalid value for field '{exc.field}'" if exc.field else _VALIDATION_ERROR_MESSAGE
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else _VALIDATION_ERROR_MESSAGE
 
     response = JSONResponse(
         status_code=HTTP_400_BAD_REQUEST,
@@ -236,10 +252,11 @@ async def handle_validation_error(request: Request, exc: ValidationError) -> JSO
     return response
 
 
-async def handle_invalid_state_error(request: Request, exc: InvalidStateError) -> JSONResponse:
-    """Translate InvalidStateError into a sanitized 409 response.
+async def handle_invalid_state_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate InvalidStateError into a 409 response.
 
-    May include state information for helpful error messages.
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
     """
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
@@ -249,20 +266,15 @@ async def handle_invalid_state_error(request: Request, exc: InvalidStateError) -
         "Invalid state error",
         extra={
             "correlation_id": correlation_id,
-            "current_state": exc.current_state,
-            "allowed_states": exc.allowed_states,
+            "current_state": getattr(exc, "current_state", None),
+            "allowed_states": getattr(exc, "allowed_states", None),
             "path": request.url.path,
             "method": request.method,
         },
     )
 
-    # Include state info if available for helpful errors
-    if exc.current_state and exc.allowed_states:
-        detail = (
-            f"Operation not allowed in state '{exc.current_state}'. " f"Allowed states: {', '.join(exc.allowed_states)}"
-        )
-    else:
-        detail = _INVALID_STATE_MESSAGE
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else _INVALID_STATE_MESSAGE
 
     response = JSONResponse(
         status_code=HTTP_409_CONFLICT,
@@ -273,7 +285,7 @@ async def handle_invalid_state_error(request: Request, exc: InvalidStateError) -
 
 
 async def handle_encryption_not_configured_error(
-    request: Request, exc: EncryptionNotConfiguredError  # noqa: ARG001
+    request: Request, exc: Exception  # noqa: ARG001
 ) -> JSONResponse:
     """Translate EncryptionNotConfiguredError into a 400 response.
 
@@ -303,10 +315,11 @@ async def handle_encryption_not_configured_error(
     return response
 
 
-async def handle_database_operation_error(request: Request, exc: DatabaseOperationError) -> JSONResponse:
+async def handle_database_operation_error(request: Request, exc: Exception) -> JSONResponse:
     """Translate DatabaseOperationError into a 500 response.
 
-    This occurs when a database operation fails (e.g., constraint violations).
+    Uses the exception's message since service-layer exceptions already
+    contain user-appropriate messages.
     """
     correlation_id = getattr(request.state, "correlation_id", None)
     if not correlation_id:
@@ -316,19 +329,49 @@ async def handle_database_operation_error(request: Request, exc: DatabaseOperati
         "Database operation error",
         extra={
             "correlation_id": correlation_id,
-            "operation": exc.operation,
-            "entity_type": exc.entity_type,
-            "details": exc.details,
+            "operation": getattr(exc, "operation", None),
+            "entity_type": getattr(exc, "entity_type", None),
+            "details": getattr(exc, "details", None),
             "path": request.url.path,
             "method": request.method,
         },
     )
 
-    # Use the exception's built-in message format: "Failed to {operation} {entity_type}"
-    detail = f"Failed to {exc.operation} {exc.entity_type}"
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else "A database operation failed"
 
     response = JSONResponse(
         status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": detail, "reference": f"ERR-{correlation_id}"},
+    )
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
+async def handle_value_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate ValueError into a 400 response.
+
+    ValueError is commonly used for validation in Python code, so we treat it
+    as a bad request and return the exception's message.
+    """
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not correlation_id:
+        correlation_id = get_or_generate_correlation_id(request)
+
+    logger.warning(
+        "Value error (validation)",
+        extra={
+            "correlation_id": correlation_id,
+            "path": request.url.path,
+            "method": request.method,
+        },
+    )
+
+    # Use original exception message - service layer provides appropriate messages
+    detail = str(exc) if str(exc) else "Invalid value provided"
+
+    response = JSONResponse(
+        status_code=HTTP_400_BAD_REQUEST,
         content={"detail": detail, "reference": f"ERR-{correlation_id}"},
     )
     response.headers["X-Correlation-ID"] = correlation_id
@@ -348,6 +391,9 @@ def register_global_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidStateError, handle_invalid_state_error)
     app.add_exception_handler(EncryptionNotConfiguredError, handle_encryption_not_configured_error)
     app.add_exception_handler(DatabaseOperationError, handle_database_operation_error)
+
+    # Python built-in validation errors
+    app.add_exception_handler(ValueError, handle_value_error)
 
     # Access control exceptions
     app.add_exception_handler(PackagesAccessDeniedError, handle_access_denied_error)
