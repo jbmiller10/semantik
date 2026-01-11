@@ -221,8 +221,12 @@ class HierarchicalChunker:
                 results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
+                # Also add hierarchy metadata for consistency
                 for result in results:
                     result.metadata["strategy"] = "character"
+                    result.metadata["hierarchy_level"] = 0
+                    result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return results
 
@@ -246,8 +250,12 @@ class HierarchicalChunker:
             results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
             # Update strategy in metadata to show it's character fallback
+            # Also add hierarchy metadata for consistency
             for result in results:
                 result.metadata["strategy"] = "character"
+                result.metadata["hierarchy_level"] = 0
+                result.metadata["is_leaf"] = True
+                result.metadata["chunk_sizes"] = self.chunk_sizes
 
             return results
 
@@ -451,8 +459,12 @@ class HierarchicalChunker:
                 results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
+                # Also add hierarchy metadata for consistency
                 for result in results:
                     result.metadata["strategy"] = "character"
+                    result.metadata["hierarchy_level"] = 0
+                    result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return iter(results)
 
@@ -512,6 +524,7 @@ class HierarchicalChunker:
                     result.metadata["strategy"] = "character"
                     result.metadata["hierarchy_level"] = 0
                     result.metadata["is_leaf"] = True
+                    result.metadata["chunk_sizes"] = self.chunk_sizes
 
                 return results
 
@@ -542,6 +555,7 @@ class HierarchicalChunker:
                 result.metadata["strategy"] = "character"
                 result.metadata["hierarchy_level"] = 0
                 result.metadata["is_leaf"] = True
+                result.metadata["chunk_sizes"] = self.chunk_sizes
 
             return results
 

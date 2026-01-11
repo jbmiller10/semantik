@@ -620,10 +620,24 @@ class TestRetryEndpoints:
     @pytest.mark.asyncio()
     async def test_retry_failed_documents_success(self, mock_user: dict[str, Any], mock_collection: MagicMock) -> None:
         mock_db = AsyncMock(spec=AsyncSession)
-        mock_repo = AsyncMock()
-        mock_repo.bulk_reset_failed_for_retry.return_value = 3
+        mock_doc_repo = AsyncMock()
+        mock_doc_repo.bulk_reset_failed_for_retry.return_value = 3
+        mock_doc_repo.count_stuck_pending_documents.return_value = 2
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_repo):
+        # Mock operation repository
+        mock_operation = MagicMock()
+        mock_operation.uuid = "test-operation-uuid"
+        mock_operation_repo = AsyncMock()
+        mock_operation_repo.create.return_value = mock_operation
+
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_operation_repo,
+            ),
+            patch("webui.celery_app.celery_app") as mock_celery,
+        ):
             result = await retry_failed_documents(
                 collection_uuid=mock_collection.id,
                 collection=mock_collection,
@@ -632,8 +646,10 @@ class TestRetryEndpoints:
             )
 
         mock_db.commit.assert_awaited_once()
+        mock_celery.send_task.assert_called_once()
         assert result["reset_count"] == 3
-        assert "Reset 3 failed document(s) for retry" in result["message"]
+        assert result["pending_count"] == 2
+        assert "5 document(s)" in result["message"]  # 3 reset + 2 pending
 
     @pytest.mark.asyncio()
     async def test_get_failed_document_count_success(
