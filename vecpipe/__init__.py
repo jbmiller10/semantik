@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Sequence
 from importlib.abc import Loader, MetaPathFinder
-from importlib.machinery import ModuleSpec
 from importlib.util import find_spec, spec_from_loader
 from pathlib import Path
-from types import ModuleType
-from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from importlib.machinery import ModuleSpec
+    from types import ModuleType
 
 _PACKAGES_DIR = Path(__file__).resolve().parent.parent / "packages"
 if _PACKAGES_DIR.is_dir():
