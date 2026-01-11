@@ -13,11 +13,13 @@ from webui.api.v2 import documents as documents_module
 from webui.api.v2.documents import router
 from webui.auth import get_current_user
 from webui.dependencies import get_collection_for_user
+from webui.middleware.exception_handlers import register_global_exception_handlers
 
 
 @pytest.fixture()
 def app() -> FastAPI:
     app = FastAPI()
+    register_global_exception_handlers(app)  # Register global exception handlers
     app.include_router(router)
 
     app.dependency_overrides[get_current_user] = lambda: {"id": "1"}
@@ -30,7 +32,7 @@ def app() -> FastAPI:
 
 @pytest.fixture()
 def client(app: FastAPI) -> TestClient:
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=False)
 
 
 def _mock_document(*, collection_id: str) -> MagicMock:
