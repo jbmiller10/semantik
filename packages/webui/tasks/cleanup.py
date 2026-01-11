@@ -468,10 +468,130 @@ async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) ->
         logger.error("Failed to create batch audit logs for collection deletions: %s", exc)
 
 
+@celery_app.task(
+    name="webui.tasks.cleanup_stuck_operations",
+    max_retries=3,
+    default_retry_delay=60,
+)
+def cleanup_stuck_operations(stuck_threshold_minutes: int = 15) -> dict[str, Any]:
+    """Clean up operations stuck in PENDING/PROCESSING state.
+
+    Operations older than the threshold in non-terminal status are checked against
+    Celery to verify the task isn't actually running. Only truly orphaned
+    operations (no active Celery task) are marked as failed.
+
+    This handles:
+    - Celery dispatch failure after DB commit
+    - Worker crash during processing
+    - Task timeout without status update
+
+    Args:
+        stuck_threshold_minutes: Minutes after which an operation is considered stuck
+
+    Returns:
+        Dict with cleaned/skipped counts and operation IDs
+    """
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+
+    stats: dict[str, Any] = {
+        "cleaned": 0,
+        "skipped": 0,
+        "operation_ids": [],
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        log.info("Starting cleanup of stuck operations (threshold: %s min)", stuck_threshold_minutes)
+
+        result = cast(dict[str, Any], resolve_awaitable_sync(
+            _cleanup_stuck_operations_async(stuck_threshold_minutes)
+        ))
+        stats.update(result)
+
+        log.info(
+            "Stuck operations cleanup completed: cleaned=%s, skipped=%s",
+            stats["cleaned"],
+            stats["skipped"],
+        )
+
+        return stats
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        log.error("Stuck operations cleanup failed: %s", exc, exc_info=True)
+        stats["errors"].append(str(exc))
+        return stats
+
+
+async def _cleanup_stuck_operations_async(stuck_threshold_minutes: int) -> dict[str, Any]:
+    """Async implementation of stuck operation cleanup."""
+    from celery.result import AsyncResult
+
+    from shared.database.repositories.operation_repository import OperationRepository
+
+    session_factory = await _resolve_session_factory()
+    async with session_factory() as session:
+        repo = OperationRepository(session)
+
+        # Find candidate stuck operations
+        candidates = await repo.get_stuck_operations(
+            stuck_threshold_minutes=stuck_threshold_minutes,
+            limit=100,
+        )
+
+        if not candidates:
+            logger.debug("No stuck operation candidates found")
+            return {"cleaned": 0, "skipped": 0, "operation_ids": []}
+
+        # Filter: only cleanup if Celery task is NOT actively running
+        orphaned_ids: list[int] = []
+        skipped = 0
+
+        for op in candidates:
+            if op.task_id:
+                result = AsyncResult(op.task_id, app=celery_app)
+                # Skip if task is still active in Celery
+                if result.state in ("PENDING", "STARTED", "RETRY", "RECEIVED"):
+                    logger.debug(
+                        "Skipping operation %s - Celery task %s still %s",
+                        op.id,
+                        op.task_id,
+                        result.state,
+                    )
+                    skipped += 1
+                    continue
+            # No task_id or task is not active - mark as orphaned
+            orphaned_ids.append(op.id)
+
+        if not orphaned_ids:
+            logger.debug("No orphaned operations found (%d still active)", skipped)
+            return {"cleaned": 0, "skipped": skipped, "operation_ids": []}
+
+        # Mark orphaned operations as failed
+        count = await repo.mark_operations_failed(
+            orphaned_ids,
+            error_message="Operation orphaned - task dispatch failed or worker crashed",
+        )
+        await session.commit()
+
+        logger.info(
+            "Cleaned up %d orphaned operations (skipped %d still active)",
+            count,
+            skipped,
+        )
+        return {
+            "cleaned": count,
+            "skipped": skipped,
+            "operation_ids": [str(id) for id in orphaned_ids],
+        }
+
+
 __all__ = [
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
+    "cleanup_stuck_operations",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
 ]

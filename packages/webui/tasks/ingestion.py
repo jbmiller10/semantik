@@ -816,11 +816,21 @@ async def _process_index_operation(
                 await updater.send_update("sparse_index_configured", sparse_result)
                 result["sparse_index"] = sparse_result
             except Exception as sparse_exc:
-                logger.warning(
+                logger.error(
                     "Failed to setup sparse indexing for %s: %s (continuing with dense-only)",
                     vector_store_name,
                     sparse_exc,
                     exc_info=True,
+                )
+                # Notify user that sparse indexing failed
+                await updater.send_update(
+                    "sparse_index_failed",
+                    {
+                        "collection": vector_store_name,
+                        "error": str(sparse_exc),
+                        "fallback": "dense_only",
+                        "message": "Sparse indexing setup failed. Hybrid search unavailable.",
+                    },
                 )
                 # Don't fail the entire operation - sparse is optional
 
@@ -964,7 +974,12 @@ async def _maybe_generate_sparse_vectors(
             load_plugins(plugin_types={"sparse_indexer"})
             plugin_record = plugin_registry.find_by_id(plugin_id)
             if not plugin_record:
-                logger.warning("Sparse plugin %s not found, skipping sparse vectors", plugin_id)
+                logger.error(
+                    "Sparse plugin %s not found, skipping sparse vectors. "
+                    "Hybrid search degraded for collection %s.",
+                    plugin_id,
+                    qdrant_collection_name,
+                )
                 return
 
             indexer = plugin_record.plugin_class()
@@ -1029,7 +1044,11 @@ async def _maybe_generate_sparse_vectors(
                     for sv in sparse_vectors
                 ]
             else:
-                logger.warning("No encoding method available for sparse indexing, skipping")
+                logger.error(
+                    "No encoding method available for sparse indexing on %s, skipping. "
+                    "Hybrid search degraded.",
+                    qdrant_collection_name,
+                )
                 return
 
             await upsert_sparse_vectors(sparse_collection_name, qdrant_vectors, async_qdrant)
@@ -1051,8 +1070,9 @@ async def _maybe_generate_sparse_vectors(
             if indexer is not None and hasattr(indexer, "cleanup"):
                 await indexer.cleanup()
     except Exception as exc:
-        logger.warning(
-            "Failed to generate sparse vectors for %s: %s (continuing with dense only)",
+        logger.error(
+            "Failed to generate sparse vectors for %s: %s (continuing with dense only). "
+            "Hybrid search degraded for this batch.",
             qdrant_collection_name,
             exc,
             exc_info=True,

@@ -59,11 +59,32 @@ def upgrade() -> None:
 
     # Create partial index for efficiently querying retryable failed documents
     # This helps identify documents that can be retried (transient/unknown errors)
+    status_literal = "FAILED"
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        result = bind.execute(
+            sa.text(
+                """
+                SELECT enumlabel
+                FROM pg_enum
+                JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+                WHERE pg_type.typname = 'document_status'
+                """
+            )
+        )
+        labels = {row[0] for row in result}
+        if "failed" in labels:
+            status_literal = "failed"
+        elif "FAILED" in labels:
+            status_literal = "FAILED"
+        else:
+            raise RuntimeError("document_status enum missing FAILED/failed label")
+
     op.create_index(
         "ix_documents_collection_failed_retryable",
         "documents",
         ["collection_id", "status", "error_category", "retry_count"],
-        postgresql_where=sa.text("status = 'FAILED'"),
+        postgresql_where=sa.text(f"status = '{status_literal}'"),
     )
 
 
