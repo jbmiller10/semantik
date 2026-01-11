@@ -324,38 +324,44 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if end_offset <= start_offset:
                 continue
 
-            # Count tokens and truncate if needed
+            # Check if chunk exceeds max_tokens and needs re-splitting
             token_count = self.count_tokens(chunk_text)
             if token_count > config.max_tokens:
-                chunk_text = self.truncate_to_tokens(chunk_text, config.max_tokens)
-                token_count = config.max_tokens
-                # Adjust end_offset to reflect truncation
-                end_offset = start_offset + len(chunk_text)
+                # Re-split at word boundaries to preserve all content
+                sub_texts = self.split_to_token_limit(chunk_text, config.max_tokens)
+            else:
+                sub_texts = [chunk_text]
 
-            metadata = ChunkMetadata(
-                chunk_id=f"{config.strategy_name}_{idx:04d}",
-                document_id="doc",
-                chunk_index=idx,
-                start_offset=start_offset,
-                end_offset=end_offset,
-                token_count=token_count,
-                strategy_name=self.name,
-                semantic_density=0.6,  # Higher for recursive strategy
-                confidence_score=0.9,
-                created_at=datetime.now(tz=UTC),
-            )
+            # Create Chunk entities for each sub-text
+            current_offset = start_offset
+            for sub_text in sub_texts:
+                sub_token_count = self.count_tokens(sub_text)
+                sub_end_offset = current_offset + len(sub_text)
 
-            # Create chunk entity
-            effective_min_tokens = max(1, min(config.min_tokens, token_count))
+                metadata = ChunkMetadata(
+                    chunk_id=f"{config.strategy_name}_{len(chunks):04d}",
+                    document_id="doc",
+                    chunk_index=len(chunks),
+                    start_offset=current_offset,
+                    end_offset=sub_end_offset,
+                    token_count=sub_token_count,
+                    strategy_name=self.name,
+                    semantic_density=0.6,  # Higher for recursive strategy
+                    confidence_score=0.9,
+                    created_at=datetime.now(tz=UTC),
+                )
 
-            chunk = Chunk(
-                content=chunk_text,
-                metadata=metadata,
-                min_tokens=effective_min_tokens,
-                max_tokens=config.max_tokens,
-            )
+                effective_min_tokens = max(1, min(config.min_tokens, sub_token_count))
 
-            chunks.append(chunk)
+                chunk = Chunk(
+                    content=sub_text,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+
+                chunks.append(chunk)
+                current_offset = sub_end_offset
 
             # Report progress
             if progress_callback:

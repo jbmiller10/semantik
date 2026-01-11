@@ -169,6 +169,46 @@ class UnifiedChunkingStrategy(ABC):
             return text
         return tokenizer.decode(tokens[:max_tokens])
 
+    def split_to_token_limit(self, text: str, max_tokens: int) -> list[str]:
+        """
+        Split text into chunks that fit within max_tokens, breaking at word boundaries.
+
+        This preserves all content by creating multiple chunks rather than truncating.
+        Used when a chunk exceeds max_tokens and needs to be re-split.
+
+        Args:
+            text: Text to split
+            max_tokens: Maximum tokens per chunk
+
+        Returns:
+            List of text chunks, each within max_tokens
+        """
+        if not text or max_tokens <= 0:
+            return []
+
+        if self.count_tokens(text) <= max_tokens:
+            return [text]
+
+        chunks = []
+        words = text.split()
+        current_words: list[str] = []
+        current_tokens = 0
+
+        for word in words:
+            word_tokens = self.count_tokens(word + " ")
+            if current_tokens + word_tokens > max_tokens and current_words:
+                chunks.append(" ".join(current_words))
+                current_words = [word]
+                current_tokens = word_tokens
+            else:
+                current_words.append(word)
+                current_tokens += word_tokens
+
+        if current_words:
+            chunks.append(" ".join(current_words))
+
+        return chunks
+
     def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """
         Calculate overlap size in tokens.
