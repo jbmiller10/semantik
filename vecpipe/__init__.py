@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import importlib
 import sys
-from collections.abc import Sequence
 from importlib.abc import Loader, MetaPathFinder
 from importlib.util import find_spec, spec_from_loader
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from importlib.machinery import ModuleSpec
     from types import ModuleType
 
