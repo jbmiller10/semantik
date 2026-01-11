@@ -1,6 +1,8 @@
 import axios, { AxiosError } from 'axios';
 import type { AxiosProgressEvent, CancelTokenSource } from 'axios';
 import apiClient from './client';
+// Re-export for callers migrating to the new error handling pattern
+export { ApiErrorHandler, ErrorCategories, type ErrorCategory, ApiError } from '../../../utils/api-error-handler';
 import type {
   ChunkingStrategyType,
   ChunkingConfiguration,
@@ -478,26 +480,31 @@ export const chunkingApi = {
 };
 
 /**
- * Helper function to handle chunking API errors
+ * Helper function to handle chunking API errors.
+ * Provides chunking-specific error messages while delegating to ApiErrorHandler.
+ * @deprecated Use ApiErrorHandler.handle() for typed errors with category
  */
 export function handleChunkingError(error: unknown): string {
+  // Handle axios cancellation first
   if (axios.isCancel(error)) {
     return 'Request was cancelled';
   }
-  
+
+  // Handle axios errors with response
   if (error instanceof Error && 'response' in error) {
     const axiosError = error as AxiosError<{ detail?: string; message?: string }>;
-    
-    if (axiosError.response?.data?.detail) {
-      return axiosError.response.data.detail;
+    const status = axiosError.response?.status;
+
+    // First try to get the detail message from the response
+    const detailMessage =
+      axiosError.response?.data?.detail || axiosError.response?.data?.message;
+
+    if (detailMessage) {
+      return detailMessage;
     }
-    
-    if (axiosError.response?.data?.message) {
-      return axiosError.response.data.message;
-    }
-    
-    // Handle specific status codes
-    switch (axiosError.response?.status) {
+
+    // Provide chunking-specific fallback messages for certain status codes
+    switch (status) {
       case 400:
         return 'Invalid chunking configuration';
       case 404:
@@ -509,14 +516,16 @@ export function handleChunkingError(error: unknown): string {
       case 500:
         return 'Server error while processing chunking request';
       default:
-        return `Server error: ${axiosError.response?.status || 'Unknown'}`;
+        return `Server error: ${status || 'Unknown'}`;
     }
   }
-  
+
+  // Handle regular Error objects
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  
+
+  // Fallback for unknown errors
   return 'An unexpected error occurred while processing chunking request';
 }
 
