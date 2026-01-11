@@ -2166,7 +2166,7 @@ async def _process_retry_documents_operation(
                 continue
             if isinstance(value, str):
                 document_ids.append(value)
-            elif isinstance(value, (list, tuple, set)):
+            elif isinstance(value, list | tuple | set):
                 for item in value:
                     doc_id: str | None = None
                     if isinstance(item, dict):
