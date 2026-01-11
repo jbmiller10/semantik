@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 import type { AxiosProgressEvent, CancelTokenSource } from 'axios';
 import apiClient from './client';
 // Re-export for callers migrating to the new error handling pattern
-export { ApiErrorHandler, ErrorCategories, type ErrorCategory, ApiError } from '../../../utils/api-error-handler';
+export { ApiErrorHandler, ErrorCategories, type ApiErrorCategory, ApiError } from '../../../utils/api-error-handler';
 import type {
   ChunkingStrategyType,
   ChunkingConfiguration,

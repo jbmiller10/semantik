@@ -44,9 +44,9 @@ class _CacheMiss:
     or certain testing frameworks.
     """
 
-    _instance: "_CacheMiss | None" = None
+    _instance: _CacheMiss | None = None
 
-    def __new__(cls) -> "_CacheMiss":
+    def __new__(cls) -> _CacheMiss:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -54,7 +54,7 @@ class _CacheMiss:
     def __repr__(self) -> str:
         return "<CacheMiss>"
 
-    def __reduce__(self) -> tuple[type["_CacheMiss"], tuple[()]]:
+    def __reduce__(self) -> tuple[type[_CacheMiss], tuple[()]]:
         """Support pickling by returning the class constructor.
 
         This ensures unpickling returns the same singleton instance,

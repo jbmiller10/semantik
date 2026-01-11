@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -109,7 +108,7 @@ class TestLogRetry:
 class TestWithDbRetryDecorator:
     """Tests for with_db_retry decorator behavior."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_async_success_no_retry(self) -> None:
         """Async function succeeding on first try should not retry."""
         call_count = 0
@@ -124,7 +123,7 @@ class TestWithDbRetryDecorator:
         assert result == "success"
         assert call_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_async_retries_on_retryable_error(self) -> None:
         """Async function should retry on retryable errors."""
         call_count = 0
@@ -141,7 +140,7 @@ class TestWithDbRetryDecorator:
         assert result == "success"
         assert call_count == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_async_raises_after_max_retries(self) -> None:
         """Async function should raise after exhausting retries."""
 
@@ -152,7 +151,7 @@ class TestWithDbRetryDecorator:
         with pytest.raises(OperationalError):
             await async_func()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_async_raises_immediately_for_non_retryable(self) -> None:
         """Async function should not retry non-retryable errors."""
         call_count = 0
@@ -239,7 +238,7 @@ class TestWithDbRetryDecorator:
         assert my_sync_func.__name__ == "my_sync_func"
         assert my_sync_func.__doc__ == "My sync docstring."
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_exponential_backoff_applied(self) -> None:
         """Should apply exponential backoff between retries."""
         delays: list[float] = []

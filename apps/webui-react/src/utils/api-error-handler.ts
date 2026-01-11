@@ -5,7 +5,7 @@ import { getErrorMessage, isAxiosError } from '../utils/errorUtils';
  * Error categories for consistent API error classification.
  * Maps HTTP status codes and error types to semantic categories.
  */
-export type ErrorCategory =
+export type ApiErrorCategory =
   | 'auth'
   | 'validation'
   | 'not_found'
@@ -42,13 +42,13 @@ export const ErrorCategories = {
  * Provides structured error information for consistent handling across the app.
  */
 export class ApiError extends Error {
-  readonly category: ErrorCategory;
+  readonly category: ApiErrorCategory;
   readonly statusCode: number | undefined;
   readonly details: Record<string, unknown> | undefined;
 
   constructor(
     message: string,
-    category: ErrorCategory,
+    category: ApiErrorCategory,
     statusCode?: number,
     details?: Record<string, unknown>
   ) {
@@ -144,7 +144,7 @@ export class ApiErrorHandler {
   private static categorizeByStatus(
     status: number | undefined,
     error: AxiosError
-  ): ErrorCategory {
+  ): ApiErrorCategory {
     if (!status) {
       // No response received - network error
       if (!error.response) {
