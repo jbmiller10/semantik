@@ -797,8 +797,18 @@ class DocumentRepository:
             if not document:
                 raise EntityNotFoundError("document", document_id)
 
-            if document.status != DocumentStatus.FAILED.value:
-                raise ValidationError(f"Document {document_id} is not in FAILED status (current: {document.status})")
+            status_value = document.status
+            if isinstance(status_value, DocumentStatus):
+                normalized_status = status_value.value
+            elif isinstance(status_value, str):
+                normalized_status = status_value.lower()
+            else:
+                normalized_status = str(status_value).lower()
+
+            if normalized_status != DocumentStatus.FAILED.value:
+                raise ValidationError(
+                    f"Document {document_id} is not in FAILED status (current: {document.status})"
+                )
 
             document.status = DocumentStatus.PENDING.value
             document.retry_count = (document.retry_count or 0) + 1
