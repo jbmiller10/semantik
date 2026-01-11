@@ -2236,8 +2236,35 @@ async def _process_retry_documents_operation(
     num_workers = getattr(settings, "PARALLEL_INGESTION_WORKERS", 0)
     max_workers = getattr(settings, "PARALLEL_INGESTION_MAX_WORKERS", 8)
 
-    # Empty dict - no pre-parsed content for retry
+    # Load content from artifacts for non-file sources (git, imap, web, etc.)
+    # These sources store content in document_artifacts since there's no local file
+    from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
+
+    artifact_repo = DocumentArtifactRepository(document_repo.session)
     new_doc_contents: dict[str, str] = {}
+
+    for doc in pending_documents:
+        # Check if this is a non-file source (file_path contains URI scheme like git://)
+        file_path = getattr(doc, "file_path", None)
+        if file_path and isinstance(file_path, str) and "://" in file_path:
+            try:
+                content_data = await artifact_repo.get_content(doc.id)
+                if content_data:
+                    content, _, _ = content_data
+                    if isinstance(content, str):
+                        new_doc_contents[doc.id] = content
+                        logger.debug("Loaded artifact content for document %s", doc.id)
+                    elif isinstance(content, bytes):
+                        new_doc_contents[doc.id] = content.decode("utf-8", errors="replace")
+                        logger.debug("Loaded artifact content (bytes) for document %s", doc.id)
+                else:
+                    logger.warning(
+                        "No artifact found for non-file document %s (file_path=%s), retry will fail",
+                        doc.id,
+                        file_path,
+                    )
+            except Exception as e:
+                logger.warning("Failed to load artifact for document %s: %s", doc.id, e)
 
     # Always use parallel ingestion pipeline (handles single documents fine)
     logger.info(

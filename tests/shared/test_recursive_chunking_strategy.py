@@ -539,9 +539,7 @@ class TestRecursiveChunkingOversizedContent:
         assert len(chunks) >= 1
         for chunk in chunks:
             token_count = strategy.count_tokens(chunk.content)
-            assert token_count <= config.max_tokens, (
-                f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"
-            )
+            assert token_count <= config.max_tokens, f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"
 
     def test_chunking_minified_code(self) -> None:
         """Test chunking minified code without whitespace."""
@@ -557,6 +555,4 @@ class TestRecursiveChunkingOversizedContent:
         assert len(chunks) >= 1
         for chunk in chunks:
             token_count = strategy.count_tokens(chunk.content)
-            assert token_count <= config.max_tokens, (
-                f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"
-            )
+            assert token_count <= config.max_tokens, f"Chunk has {token_count} tokens, expected <= {config.max_tokens}"
