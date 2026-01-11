@@ -975,7 +975,7 @@ async def _maybe_generate_sparse_vectors(
             plugin_record = plugin_registry.find_by_id(plugin_id)
             if not plugin_record:
                 logger.error(
-                    "Sparse plugin %s not found, skipping sparse vectors. " "Hybrid search degraded for collection %s.",
+                    "Sparse plugin %s not found, skipping sparse vectors. Hybrid search degraded for collection %s.",
                     plugin_id,
                     qdrant_collection_name,
                 )
@@ -1044,7 +1044,7 @@ async def _maybe_generate_sparse_vectors(
                 ]
             else:
                 logger.error(
-                    "No encoding method available for sparse indexing on %s, skipping. " "Hybrid search degraded.",
+                    "No encoding method available for sparse indexing on %s, skipping. Hybrid search degraded.",
                     qdrant_collection_name,
                 )
                 return
