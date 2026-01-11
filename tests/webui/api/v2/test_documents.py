@@ -131,14 +131,14 @@ class TestGetDocumentContent:
     async def test_get_document_content_document_not_found(
         self, mock_user: dict[str, Any], mock_collection: MagicMock, document_root: Path
     ) -> None:
-        """Test 404 when document doesn't exist."""
+        """Test EntityNotFoundError propagates to global handler (which returns 404)."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document", "nonexistent-doc-id")
 
         with (
             patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(EntityNotFoundError) as exc_info,
         ):
             await get_document_content(
                 collection_uuid=mock_collection.id,
@@ -148,8 +148,8 @@ class TestGetDocumentContent:
                 db=mock_db,
             )
 
-        assert exc_info.value.status_code == 404
-        assert "Document nonexistent-doc-id not found" in str(exc_info.value.detail)
+        # Global exception handler converts EntityNotFoundError to 404
+        assert "nonexistent-doc-id" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_get_document_content_cross_collection_access(
@@ -822,17 +822,22 @@ class TestRetryEndpoints:
         assert "10 document(s)" in result["message"]
 
     @pytest.mark.asyncio()
-    async def test_retry_failed_documents_database_error_rollback(
+    async def test_retry_failed_documents_database_error_propagates(
         self, mock_user: dict[str, Any], mock_collection: MagicMock
     ) -> None:
-        """Test database error triggers rollback and returns 500."""
+        """Test database error propagates to global handler (which returns 500).
+
+        With centralized error handling, database exceptions propagate to the
+        global exception handler which returns 500. Session rollback is handled
+        by SQLAlchemy's async session cleanup.
+        """
         mock_db = AsyncMock(spec=AsyncSession)
         mock_doc_repo = AsyncMock()
         mock_doc_repo.count_stuck_pending_documents.side_effect = Exception("Database connection failed")
 
         with (
             patch("webui.api.v2.documents.create_document_repository", return_value=mock_doc_repo),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Database connection failed"),
         ):
             await retry_failed_documents(
                 collection_uuid=mock_collection.id,
@@ -840,10 +845,6 @@ class TestRetryEndpoints:
                 current_user=mock_user,
                 db=mock_db,
             )
-
-        mock_db.rollback.assert_awaited_once()
-        assert exc_info.value.status_code == 500
-        assert "Failed to retry failed documents" in exc_info.value.detail
 
     @pytest.mark.asyncio()
     async def test_retry_failed_documents_celery_dispatch_failure(

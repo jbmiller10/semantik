@@ -4,20 +4,17 @@ Collection Sources API v2 endpoints.
 This module provides RESTful API endpoints for managing collection sources.
 Note: Sync policy (mode, interval, pause/resume) is managed at collection level.
 Sources only track per-source telemetry (last_run_* fields).
+
+Error Handling:
+    All service-layer exceptions (EntityNotFoundError, AccessDeniedError, etc.)
+    are handled by global exception handlers registered in middleware/exception_handlers.py.
+    Routers should NOT catch and re-raise these as HTTPExceptions.
 """
 
-import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    EntityNotFoundError,
-    InvalidStateError,
-    ValidationError,
-)
-from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.schemas import (
     ErrorResponse,
     SourceListResponse,
@@ -27,8 +24,6 @@ from webui.api.schemas import (
 from webui.auth import get_current_user
 from webui.services.factory import get_source_service
 from webui.services.source_service import SourceService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/collections", tags=["sources-v2"])
 
@@ -89,29 +84,20 @@ async def list_sources(
     Returns all sources configured for the collection with their sync status.
     Includes secret indicators (has_password, has_token, etc.) for each source.
     """
-    try:
-        sources_with_secrets, total = await service.list_sources(
-            user_id=int(current_user["id"]),
-            collection_id=collection_id,
-            offset=offset,
-            limit=limit,
-            include_secret_types=True,
-        )
+    sources_with_secrets, total = await service.list_sources(
+        user_id=int(current_user["id"]),
+        collection_id=collection_id,
+        offset=offset,
+        limit=limit,
+        include_secret_types=True,
+    )
 
-        return SourceListResponse(
-            items=[_source_to_response(s, st) for s, st in sources_with_secrets],
-            total=total,
-            offset=offset,
-            limit=limit,
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except Exception as e:
-        logger.error("Failed to list sources: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to list sources") from e
+    return SourceListResponse(
+        items=[_source_to_response(s, st) for s, st in sources_with_secrets],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 # Note: create_source endpoint removed - sources are created via
@@ -137,22 +123,13 @@ async def get_source(
 
     Returns source details including secret indicators (has_password, etc.).
     """
-    try:
-        source, secret_types = await service.get_source(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-            include_secret_types=True,
-        )
+    source, secret_types = await service.get_source(
+        user_id=int(current_user["id"]),
+        source_id=source_id,
+        include_secret_types=True,
+    )
 
-        return _source_to_response(source, secret_types)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except Exception as e:
-        logger.error("Failed to get source: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get source") from e
+    return _source_to_response(source, secret_types)
 
 
 @router.patch(
@@ -179,29 +156,14 @@ async def update_source(
     Secrets can be updated by providing new values. Set a secret key to an
     empty string to delete that secret.
     """
-    try:
-        source, secret_types = await service.update_source(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-            source_config=update_request.source_config,
-            secrets=update_request.secrets,
-        )
+    source, secret_types = await service.update_source(
+        user_id=int(current_user["id"]),
+        source_id=source_id,
+        source_config=update_request.source_config,
+        secrets=update_request.secrets,
+    )
 
-        return _source_to_response(source, secret_types)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except EncryptionNotConfiguredError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Failed to update source: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update source") from e
+    return _source_to_response(source, secret_types)
 
 
 @router.delete(
@@ -226,21 +188,11 @@ async def delete_source(
 
     Returns the operation details for tracking.
     """
-    try:
-        result = await service.delete_source(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-        )
-        return cast(dict[str, Any], result)
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except InvalidStateError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Failed to delete source: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to delete source") from e
+    result = await service.delete_source(
+        user_id=int(current_user["id"]),
+        source_id=source_id,
+    )
+    return cast(dict[str, Any], result)
 
 
 # Note: run_source, pause_source, resume_source endpoints removed.

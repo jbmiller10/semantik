@@ -21,9 +21,11 @@ from shared.database.exceptions import (
 )
 from shared.database.models import CollectionStatus, OperationStatus, OperationType
 from webui.api.v2.collections import router
+from webui.middleware.exception_handlers import register_global_exception_handlers
 
-# Create test app
+# Create test app with global exception handlers
 app = FastAPI()
+register_global_exception_handlers(app)
 app.include_router(router)
 
 

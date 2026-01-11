@@ -16,9 +16,11 @@ from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, I
 from shared.database.models import CollectionSource
 from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.v2.sources import router
+from webui.middleware.exception_handlers import register_global_exception_handlers
 
-# Create test app
+# Create test app with global exception handlers
 app = FastAPI()
+register_global_exception_handlers(app)
 app.include_router(router)
 
 
