@@ -5,8 +5,11 @@ from __future__ import annotations
 import importlib
 import sys
 from importlib.abc import Loader, MetaPathFinder
+from importlib.machinery import ModuleSpec
 from importlib.util import find_spec, spec_from_loader
 from pathlib import Path
+from types import ModuleType
+from typing import Sequence
 
 _PACKAGES_DIR = Path(__file__).resolve().parent.parent / "packages"
 if _PACKAGES_DIR.is_dir():
@@ -24,16 +27,21 @@ class _AliasLoader(Loader):
         self.fullname = fullname
         self.alias = alias
 
-    def create_module(self, _spec):  # type: ignore[override]
+    def create_module(self, _spec: ModuleSpec) -> ModuleType | None:
         return None
 
-    def exec_module(self, _module) -> None:  # type: ignore[override]
+    def exec_module(self, _module: ModuleType) -> None:
         target = importlib.import_module(self.alias)
         sys.modules[self.fullname] = target
 
 
 class _VecpipeAliasFinder(MetaPathFinder):
-    def find_spec(self, fullname: str, _path, _target=None):  # type: ignore[override]
+    def find_spec(
+        self,
+        fullname: str,
+        _path: Sequence[str] | None,
+        _target: ModuleType | None = None,
+    ) -> ModuleSpec | None:
         if not fullname.startswith("vecpipe."):
             return None
 

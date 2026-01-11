@@ -122,7 +122,8 @@ class SparseEncodingClient:
             data.get("encoding_time_ms", 0),
         )
 
-        return data["vectors"]
+        vectors: list[dict[str, Any]] = data["vectors"]
+        return vectors
 
     async def encode_query(
         self,
@@ -171,7 +172,8 @@ class SparseEncodingClient:
             len(data.get("indices", [])),
         )
 
-        return data
+        result: dict[str, Any] = data
+        return result
 
     async def list_plugins(self) -> list[dict[str, Any]]:
         """List available sparse indexer plugins from VecPipe.
@@ -197,4 +199,5 @@ class SparseEncodingClient:
             response.raise_for_status()
             data = response.json()
 
-        return data.get("plugins", [])
+        plugins: list[dict[str, Any]] = data.get("plugins", [])
+        return plugins

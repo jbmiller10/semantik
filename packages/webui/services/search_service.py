@@ -56,7 +56,7 @@ def _resolve_reranker_id_to_model(reranker_id: str | None) -> str | None:
     capabilities = record.manifest.capabilities
     models = capabilities.get("models", [])
     if models:
-        return models[0]  # Return the first (primary) model
+        return str(models[0])  # Return the first (primary) model
 
     logger.warning("Reranker plugin %s has no models defined", reranker_id)
     return None
@@ -227,12 +227,12 @@ class SearchService:
                     )
                     response.raise_for_status()
 
-                result: dict[str, Any] = response.json()
+                retry_result: dict[str, Any] = response.json()
                 # Preserve sparse/hybrid fallback metadata returned by vecpipe.
-                result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
-                if not isinstance(result.get("warnings"), list):
-                    result["warnings"] = []
-                return (collection, result, None)
+                retry_result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+                if not isinstance(retry_result.get("warnings"), list):
+                    retry_result["warnings"] = []
+                return (collection, retry_result, None)
 
             except httpx.HTTPStatusError as e:
                 return self._handle_http_error(e, collection, retry=True)

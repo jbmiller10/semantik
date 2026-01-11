@@ -25,6 +25,14 @@ if TYPE_CHECKING:
     from shared.connectors.base import BaseConnector
     from shared.embedding.plugin_base import BaseEmbeddingPlugin
     from shared.plugins.base import SemanticPlugin
+    from shared.plugins.protocols import (
+        AgentProtocol,
+        ChunkingProtocol,
+        ConnectorProtocol,
+        EmbeddingProtocol,
+        ExtractorProtocol,
+        RerankerProtocol,
+    )
 
 
 # =============================================================================
@@ -337,7 +345,7 @@ class ExtractorPluginContractTest(PluginContractTest):
 
         await plugin_instance.initialize()
         try:
-            result = await plugin_instance.extract("Test text for extraction.")  # type: ignore[attr-defined]
+            result = await plugin_instance.extract("Test text for extraction.")
             assert isinstance(result, ExtractionResult)
         finally:
             await plugin_instance.cleanup()
@@ -363,7 +371,7 @@ class ConnectorProtocolTestMixin:
             plugin_class = MyExternalConnector
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[ConnectorProtocol]]
 
     def test_satisfies_connector_protocol(self) -> None:
         """Verify class satisfies ConnectorProtocol structurally."""
@@ -407,7 +415,7 @@ class EmbeddingProtocolTestMixin:
             plugin_class = MyExternalEmbedding
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[EmbeddingProtocol]]
 
     def test_satisfies_embedding_protocol(self) -> None:
         """Verify class satisfies EmbeddingProtocol structurally."""
@@ -449,7 +457,7 @@ class ChunkingProtocolTestMixin:
             plugin_class = MyExternalChunker
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[ChunkingProtocol]]
 
     def test_satisfies_chunking_protocol(self) -> None:
         """Verify class satisfies ChunkingProtocol structurally."""
@@ -491,7 +499,7 @@ class RerankerProtocolTestMixin:
             plugin_class = MyExternalReranker
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[RerankerProtocol]]
 
     def test_satisfies_reranker_protocol(self) -> None:
         """Verify class satisfies RerankerProtocol structurally."""
@@ -533,7 +541,7 @@ class ExtractorProtocolTestMixin:
             plugin_class = MyExternalExtractor
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[ExtractorProtocol]]
 
     def test_satisfies_extractor_protocol(self) -> None:
         """Verify class satisfies ExtractorProtocol structurally."""
@@ -575,7 +583,7 @@ class AgentProtocolTestMixin:
             plugin_class = MyExternalAgent
     """
 
-    plugin_class: ClassVar[type]
+    plugin_class: ClassVar[type[AgentProtocol]]
 
     def test_satisfies_agent_protocol(self) -> None:
         """Verify class satisfies AgentProtocol structurally."""

@@ -165,7 +165,7 @@ async def _get_sparse_config_for_collection(collection_name: str) -> dict[str, A
         try:
             sparse_config = await get_sparse_index_config(async_client, collection_name)
             if sparse_config and sparse_config.get("enabled"):
-                return sparse_config
+                return cast(dict[str, Any], sparse_config)
             return None
         finally:
             await async_client.close()

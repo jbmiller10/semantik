@@ -1526,7 +1526,8 @@ class CollectionService:
             api_key=settings.QDRANT_API_KEY,
         )
         try:
-            return await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+            result = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+            return cast(dict[str, Any] | None, result)
         finally:
             await async_qdrant.close()
 
