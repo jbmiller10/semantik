@@ -30,6 +30,43 @@ _collection_metadata_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 _collection_metadata_lock = threading.Lock()
 
 
+class _CacheMiss:
+    """Sentinel class for cache miss detection.
+
+    Using a dedicated singleton class ensures:
+    1. Stable identity across module reloads
+    2. Cannot be confused with legitimate cached values (like empty dicts)
+    3. Clear semantics via __repr__
+    4. Thread-safe singleton via __new__
+
+    This pattern is preferred over using a dict sentinel because identity
+    comparison (`is`) with a dict can fail under module reloading, pickling,
+    or certain testing frameworks.
+    """
+
+    _instance: _CacheMiss | None = None
+
+    def __new__(cls) -> _CacheMiss:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<CacheMiss>"
+
+    def __reduce__(self) -> tuple[type[_CacheMiss], tuple[()]]:
+        """Support pickling by returning the class constructor.
+
+        This ensures unpickling returns the same singleton instance,
+        which is important for Celery workers that may pickle/unpickle.
+        """
+        return (self.__class__, ())
+
+
+# Module-level singleton instance for cache miss detection
+_METADATA_CACHE_MISS: _CacheMiss = _CacheMiss()
+
+
 def _is_expired(timestamp: float) -> bool:
     """Check if a cache entry has expired."""
     return (time.monotonic() - timestamp) > CACHE_TTL_SECONDS
@@ -73,12 +110,15 @@ def set_collection_info(name: str, dim: int, info: dict[str, Any] | None) -> Non
     logger.debug("Cached collection info for: %s (dim=%d)", name, dim)
 
 
-def get_collection_metadata(name: str) -> dict[str, Any] | None:
-    """Return cached metadata or None if expired/missing.
+def get_collection_metadata(name: str) -> dict[str, Any] | None | _CacheMiss:
+    """Return cached metadata or sentinel if expired/missing.
 
-    Returns the metadata dict if found and not expired, otherwise None.
-    Note: A cached None value (collection has no metadata) is returned as-is,
-    distinguishable from cache miss via the _METADATA_CACHE_MISS sentinel.
+    Returns:
+        - The metadata dict if found and not expired
+        - None if collection explicitly has no metadata (cached None)
+        - _CacheMiss sentinel if cache miss or expired
+
+    Use is_cache_miss() to check for cache miss vs cached None value.
     """
     with _collection_metadata_lock:
         entry = _collection_metadata_cache.get(name)
@@ -97,13 +137,14 @@ def get_collection_metadata(name: str) -> dict[str, Any] | None:
     return metadata
 
 
-# Sentinel to distinguish "cache miss" from "cached None value"
-_METADATA_CACHE_MISS: dict[str, Any] = {"__cache_miss__": True}
+def is_cache_miss(value: Any) -> bool:
+    """Check if the value represents a cache miss.
 
-
-def is_cache_miss(value: dict[str, Any] | None) -> bool:
-    """Check if the value represents a cache miss."""
-    return value is _METADATA_CACHE_MISS
+    Uses isinstance check for robustness across module reloading scenarios.
+    This is preferred over identity check (`is`) which can fail if the
+    sentinel instance is recreated.
+    """
+    return isinstance(value, _CacheMiss)
 
 
 def set_collection_metadata(name: str, metadata: dict[str, Any] | None) -> None:
