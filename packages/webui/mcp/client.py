@@ -72,7 +72,7 @@ class SemantikAPIClient:
 
         for attempt in range(self._max_retries + 1):
             try:
-                response = await operation()
+                response: httpx.Response = await operation()
 
                 # Check if we should retry based on status code
                 if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._max_retries:

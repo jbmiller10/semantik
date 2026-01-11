@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sparse", tags=["sparse"])
 
 
-def _get_internal_api_key() -> str:
+def _get_internal_api_key() -> str | None:
     """Get the internal API key from settings."""
     from shared.config import settings
 
-    return settings.INTERNAL_API_KEY
+    return cast("str | None", settings.INTERNAL_API_KEY)
 
 
 def require_internal_api_key(

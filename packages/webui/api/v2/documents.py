@@ -640,7 +640,8 @@ async def get_failed_document_count(
             retryable_only=retryable_only,
         )
 
-        return FailedDocumentCountResponse(**counts).model_dump()
+        result: dict[str, int] = FailedDocumentCountResponse(**counts).model_dump()
+        return result
     except HTTPException:
         raise
     except Exception as e:

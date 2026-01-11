@@ -6,6 +6,7 @@ Document Embedding Web UI Package
 import contextlib
 import os as _os
 import sys as _sys
+from typing import Any
 
 # Ensure absolute imports like ``import webui.auth`` resolve even when this
 # module is first imported via the ``packages.webui`` name.
@@ -51,7 +52,7 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
 __all__ = ["app", "celery_app"]
 
 
-def __getattr__(name: str):  # pragma: no cover - exercised indirectly in imports
+def __getattr__(name: str) -> Any:  # pragma: no cover - exercised indirectly in imports
     if name == "celery_app":
         try:
             from .celery_app import celery_app as _celery_app

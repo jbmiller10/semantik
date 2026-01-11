@@ -230,4 +230,4 @@ def get_retry_delay(attempt: int, base_delay: float = 2.0, max_delay: float = 30
         8.0
     """
     delay = base_delay * (2**attempt)
-    return min(delay, max_delay)
+    return float(min(delay, max_delay))

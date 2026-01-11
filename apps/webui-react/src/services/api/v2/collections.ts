@@ -1,5 +1,6 @@
 import type { AxiosRequestConfig } from 'axios';
 import apiClient from './client';
+import { ApiErrorHandler } from '../../../utils/api-error-handler';
 import type {
   Collection,
   Operation,
@@ -121,18 +122,12 @@ export const searchV2Api = {
     apiClient.post<SearchResponse>('/api/v2/search', data, config),
 };
 
-// Helper function to handle API errors
+/**
+ * Helper function to handle API errors.
+ * @deprecated Use ApiErrorHandler.getMessage() or ApiErrorHandler.handle() for typed errors
+ */
 export function handleApiError(error: unknown): string {
-  if (error instanceof Error && 'response' in error) {
-    const axiosError = error as { response?: { data?: { detail?: string } } };
-    if (axiosError.response?.data?.detail) {
-      return axiosError.response.data.detail;
-    }
-  }
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return 'An unexpected error occurred';
+  return ApiErrorHandler.getMessage(error);
 }
 
 // Export a unified v2Api object for convenience

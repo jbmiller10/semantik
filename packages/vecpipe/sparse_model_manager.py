@@ -58,7 +58,7 @@ def _estimate_splade_memory(config: dict[str, Any] | None) -> int:
 
     base_mb = SPLADE_BASE_MEMORY_MB
     quantization = config.get("quantization", "float16")
-    batch_size = config.get("batch_size", 32)
+    batch_size: int = config.get("batch_size", 32)
 
     # Adjust for quantization
     if quantization == "float32":
@@ -385,7 +385,7 @@ class SparseModelManager:
             elapsed_ms,
         )
 
-        return vectors
+        return list(vectors)
 
     async def encode_query(
         self,

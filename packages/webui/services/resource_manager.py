@@ -64,7 +64,7 @@ class ResourceManager:
 
             max_collections = settings.MAX_COLLECTIONS_PER_USER
 
-            return len(active_collections) < max_collections
+            return bool(len(active_collections) < max_collections)
 
         except Exception as e:
             logger.error("Failed to check collection creation limit: %s", e, exc_info=True)

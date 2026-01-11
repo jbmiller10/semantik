@@ -605,13 +605,15 @@ def dict_to_chunk_metadata(d: dict[str, Any]) -> ChunkMetadata:
 
     document_id = d.get("document_id")
     if not isinstance(document_id, str):
-        inferred = _infer_document_id_from_chunk_id(chunk_id)
-        document_id = inferred or ""
+        inferred_doc_id = _infer_document_id_from_chunk_id(chunk_id)
+        document_id = inferred_doc_id or ""
 
-    chunk_index = d.get("chunk_index")
-    if not isinstance(chunk_index, int):
-        inferred = _infer_chunk_index_from_chunk_id(chunk_id)
-        chunk_index = inferred if inferred is not None else 0
+    chunk_index_raw = d.get("chunk_index")
+    if isinstance(chunk_index_raw, int):
+        chunk_index = chunk_index_raw
+    else:
+        inferred_chunk_idx = _infer_chunk_index_from_chunk_id(chunk_id)
+        chunk_index = inferred_chunk_idx if inferred_chunk_idx is not None else 0
 
     start_offset = d.get("start_offset")
     if not isinstance(start_offset, int):

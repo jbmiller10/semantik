@@ -3,6 +3,8 @@
  * These types match the backend MCP profile schemas.
  */
 
+import type { SearchMode } from './sparse-index';
+
 /**
  * Minimal collection info for MCP profile responses
  */
@@ -17,9 +19,10 @@ export interface CollectionSummary {
 export type MCPSearchType = 'semantic' | 'hybrid' | 'keyword' | 'question' | 'code';
 
 /**
- * Search modes for sparse/hybrid search
+ * Search modes for sparse/hybrid search.
+ * @deprecated Use SearchMode from sparse-index.ts directly. This alias is kept for backward compatibility.
  */
-export type MCPSearchMode = 'dense' | 'sparse' | 'hybrid';
+export type MCPSearchMode = SearchMode;
 
 /**
  * Full MCP profile information from the API

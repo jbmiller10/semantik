@@ -80,7 +80,7 @@ def _coerce_class(obj: Any) -> type | None:
         if isinstance(maybe_cls, type):
             return maybe_cls
         if maybe_cls is not None:
-            return maybe_cls.__class__
+            return type(maybe_cls)
     return None
 
 
@@ -435,7 +435,7 @@ def _resolve_plugin_type(plugin_cls: type) -> str | None:
     # Legacy compatibility: check for PLUGIN_TYPE without full protocol compliance
     # This allows older plugins to still load with a warning
     if hasattr(plugin_cls, "PLUGIN_TYPE"):
-        legacy_type: str = plugin_cls.PLUGIN_TYPE  # type: ignore[attr-defined]
+        legacy_type: str = plugin_cls.PLUGIN_TYPE
         if legacy_type in PROTOCOL_BY_TYPE:
             logger.warning(
                 "Plugin %s has PLUGIN_TYPE='%s' but doesn't fully satisfy %sProtocol. "
