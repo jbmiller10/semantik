@@ -1075,9 +1075,7 @@ class LLMProviderApiKey(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     last_used_at = Column(DateTime(timezone=True))
 
-    __table_args__ = (
-        UniqueConstraint("config_id", "provider", name="uq_llm_api_keys_config_provider"),
-    )
+    __table_args__ = (UniqueConstraint("config_id", "provider", name="uq_llm_api_keys_config_provider"),)
 
     # Relationships
     config = relationship("LLMProviderConfig", back_populates="api_keys")
