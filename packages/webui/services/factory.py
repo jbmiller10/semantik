@@ -35,9 +35,6 @@ from .redis_manager import RedisManager
 from .search_service import SearchService
 from .source_service import SourceService
 
-if TYPE_CHECKING:
-    from .agent_service import AgentService
-
 logger = logging.getLogger(__name__)
 
 
@@ -285,29 +282,6 @@ def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
 async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
     """FastAPI dependency for MCPProfileService injection."""
     return create_mcp_profile_service(db)
-
-
-def create_agent_service(db: AsyncSession) -> AgentService:
-    """Create an AgentService instance with all required dependencies.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured AgentService instance
-    """
-    # Lazy import to avoid circular dependency
-    from shared.database.repositories.agent_session_repository import AgentSessionRepository
-
-    from .agent_service import AgentService
-
-    session_repo = AgentSessionRepository(db)
-    return AgentService(db, session_repo)
-
-
-async def get_agent_service(db: AsyncSession = Depends(get_db)) -> AgentService:
-    """FastAPI dependency for AgentService injection."""
-    return create_agent_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

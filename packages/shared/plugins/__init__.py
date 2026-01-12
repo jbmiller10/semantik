@@ -4,7 +4,6 @@ from .adapters import get_config_schema
 from .base import SemanticPlugin
 from .dto_adapters import (
     ValidationError,
-    coerce_to_agent_message,
     coerce_to_ingested_document,
 )
 from .loader import ENTRYPOINT_GROUP, load_plugins
@@ -56,5 +55,4 @@ __all__ = [
     # DTO adapters
     "ValidationError",
     "coerce_to_ingested_document",
-    "coerce_to_agent_message",
 ]

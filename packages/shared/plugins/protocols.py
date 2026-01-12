@@ -1,6 +1,6 @@
 """Protocol interfaces for plugin runtime validation.
 
-Defines structural typing protocols for all 6 plugin types, enabling external
+Defines structural typing protocols for plugin types, enabling external
 plugins to be developed without importing anything from semantik.
 
 External plugins can implement these interfaces using only Python standard
@@ -465,124 +465,6 @@ class ExtractorProtocol(Protocol):
 
 
 # ============================================================================
-# Agent Protocol
-# ============================================================================
-
-
-@runtime_checkable
-class AgentProtocol(Protocol):
-    """Protocol for AI agents.
-
-    Agent plugins provide LLM-powered capabilities for various use cases
-    like search enhancement, summarization, and conversational interfaces.
-
-    Example external implementation:
-        class MyAgent:
-            PLUGIN_ID = "my-agent"
-            PLUGIN_TYPE = "agent"
-            PLUGIN_VERSION = "1.0.0"
-
-            async def execute(self, prompt: str, *, context=None, **kwargs):
-                yield {
-                    "id": "msg-1",
-                    "role": "assistant",
-                    "type": "text",
-                    "content": f"Response to: {prompt}",
-                    "timestamp": "2024-01-01T00:00:00Z",
-                }
-    """
-
-    PLUGIN_ID: ClassVar[str]
-    PLUGIN_TYPE: ClassVar[str]
-    PLUGIN_VERSION: ClassVar[str]
-
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
-        """Initialize agent.
-
-        Args:
-            config: Optional agent-specific configuration.
-        """
-        ...
-
-    def execute(
-        self,
-        prompt: str,
-        *,
-        context: dict[str, Any] | None = None,
-        system_prompt: str | None = None,
-        tools: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        session_id: str | None = None,
-        stream: bool = True,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Execute the agent and stream responses.
-
-        Args:
-            prompt: User prompt to process.
-            context: Runtime context with request, user, and collection info.
-            system_prompt: Optional system prompt override.
-            tools: Names of tools available for this execution.
-            model: Model identifier to use.
-            temperature: Sampling temperature.
-            max_tokens: Maximum output tokens.
-            session_id: Session ID for conversation continuity.
-            stream: Whether to stream partial responses.
-
-        Yields:
-            Message dictionaries with keys:
-                - id (str): Unique message identifier
-                - role (str): 'user', 'assistant', 'system', 'tool_call',
-                             'tool_result', or 'error'
-                - type (str): 'text', 'thinking', 'tool_use', 'tool_output',
-                             'partial', 'final', 'error', or 'metadata'
-                - content (str): Message content
-                - timestamp (str): ISO 8601 timestamp
-                - is_partial (bool, optional): Whether this is streaming partial
-                - usage (dict, optional): Token usage statistics
-                - tool_name (str, optional): For tool_use messages
-                - tool_input (dict, optional): Tool call arguments
-        """
-        ...
-
-    @classmethod
-    def get_capabilities(cls) -> dict[str, Any]:
-        """Declare agent capabilities.
-
-        Returns:
-            Dictionary with capability flags:
-                - supports_streaming (bool)
-                - supports_tools (bool)
-                - supports_sessions (bool)
-                - supports_extended_thinking (bool)
-                - max_context_tokens (int, optional)
-                - max_output_tokens (int, optional)
-                - supported_models (list[str])
-                - default_model (str, optional)
-        """
-        ...
-
-    @classmethod
-    def supported_use_cases(cls) -> list[str]:
-        """List supported use cases.
-
-        Returns:
-            List of use case strings. Valid values:
-                'hyde', 'query_expansion', 'query_understanding',
-                'summarization', 'reranking', 'answer_synthesis',
-                'tool_use', 'agentic_search', 'reasoning',
-                'assistant', 'code_generation', 'data_analysis'.
-        """
-        ...
-
-    @classmethod
-    def get_manifest(cls) -> dict[str, Any]:
-        """Return plugin metadata for discovery."""
-        ...
-
-
-# ============================================================================
 # Sparse Indexer Protocol
 # ============================================================================
 
@@ -695,7 +577,6 @@ PROTOCOL_BY_TYPE: dict[str, type] = {
     "chunking": ChunkingProtocol,
     "reranker": RerankerProtocol,
     "extractor": ExtractorProtocol,
-    "agent": AgentProtocol,
     "sparse_indexer": SparseIndexerProtocol,
 }
 """Mapping from plugin type string to corresponding protocol class.
