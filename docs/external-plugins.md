@@ -766,7 +766,7 @@ pip install semantik-plugin-myconnector
 
 2. **Verify plugin type:**
    ```python
-   assert MyConnector.PLUGIN_TYPE in ["connector", "embedding", "chunking", "reranker", "extractor", "agent"]
+   assert MyConnector.PLUGIN_TYPE in ["connector", "embedding", "chunking", "reranker", "extractor", "sparse_indexer"]
    ```
 
 3. **Check for import errors:**
@@ -792,13 +792,6 @@ If semantik rejects your plugin output, check:
    ```python
    assert len(doc["content_hash"]) == 64
    assert all(c in "0123456789abcdef" for c in doc["content_hash"])
-   ```
-
-3. **Invalid enum strings:**
-   ```python
-   # For agents
-   assert msg["role"] in {"user", "assistant", "system", "tool_call", "tool_result", "error"}
-   assert msg["type"] in {"text", "thinking", "tool_use", "tool_output", "partial", "final", "error", "metadata"}
    ```
 
 ### Debugging Tips
