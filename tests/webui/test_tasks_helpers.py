@@ -69,19 +69,6 @@ def create_mock_async_session_local(mock_session) -> None:
 class TestTaskHelperFunctions:
     """Test various helper functions used in tasks."""
 
-    @patch("webui.tasks.test_task")
-    def test_test_task(self, mock_test_task) -> None:
-        """Test the test_task for Celery verification."""
-        # Mock the decorated task to return expected result
-        mock_test_task.delay.return_value = Mock()
-        mock_test_task.return_value = {"status": "success", "message": "Celery is working!"}
-
-        # Call the task
-        result = mock_test_task(Mock())
-
-        assert result["status"] == "success"
-        assert result["message"] == "Celery is working!"
-
     def test_sanitize_audit_details(self) -> None:
         """Test audit details sanitization."""
         # Test with sensitive keys

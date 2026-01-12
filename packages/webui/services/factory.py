@@ -29,11 +29,9 @@ from .chunking.container import (
 from .chunking.orchestrator import ChunkingOrchestrator
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
-from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .projection_service import ProjectionService
 from .redis_manager import RedisManager
-from .resource_manager import ResourceManager
 from .search_service import SearchService
 from .source_service import SourceService
 
@@ -109,104 +107,6 @@ def create_collection_service(
         operation_repo=operation_repo,
         document_repo=document_repo,
         collection_source_repo=collection_source_repo,
-        qdrant_manager=qdrant_manager_instance,
-    )
-
-
-def create_document_scanning_service(db: AsyncSession) -> DocumentScanningService:
-    """Create a DocumentScanningService instance with required dependencies.
-
-    This factory function simplifies dependency injection for file scanning operations.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured DocumentScanningService instance
-
-    Example:
-        ```python
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from shared.database import get_db
-        from webui.services.factory import create_document_scanning_service
-
-        async def get_document_scanning_service(
-            db: AsyncSession = Depends(get_db)
-        ) -> DocumentScanningService:
-            return create_document_scanning_service(db)
-
-        # In your task or endpoint
-        async def scan_and_register_files(
-            collection_id: str,
-            source_path: str,
-            service: DocumentScanningService = Depends(get_document_scanning_service),
-        ):
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id,
-                source_path=source_path
-            )
-            return stats
-        ```
-    """
-    # Create repository instances
-    document_repo = DocumentRepository(db)
-
-    # Create and return service
-    return DocumentScanningService(
-        db_session=db,
-        document_repo=document_repo,
-    )
-
-
-def create_resource_manager(db: AsyncSession) -> ResourceManager:
-    """Create a ResourceManager instance with required dependencies.
-
-    This factory function creates a resource manager for monitoring and managing
-    resource allocation for collection operations.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured ResourceManager instance
-
-    Example:
-        ```python
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from shared.database import get_db
-        from webui.services.factory import create_resource_manager
-
-        async def get_resource_manager(
-            db: AsyncSession = Depends(get_db)
-        ) -> ResourceManager:
-            return create_resource_manager(db)
-
-        # In your endpoint or service
-        async def check_resources(
-            user_id: int,
-            resource_manager: ResourceManager = Depends(get_resource_manager),
-        ):
-            can_create = await resource_manager.can_create_collection(user_id)
-            return {"can_create": can_create}
-        ```
-    """
-    # Create repository instances
-    collection_repo = CollectionRepository(db)
-    operation_repo = OperationRepository(db)
-
-    qdrant_manager_instance = None
-    try:
-        qdrant_client = qdrant_connection_manager.get_client()
-        qdrant_manager_instance = QdrantManager(qdrant_client)
-    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
-        logger.warning("Qdrant client unavailable for resource metrics: %s", exc)
-
-    # Create and return resource manager
-    return ResourceManager(
-        collection_repo=collection_repo,
-        operation_repo=operation_repo,
         qdrant_manager=qdrant_manager_instance,
     )
 

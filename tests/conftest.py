@@ -57,7 +57,6 @@ from shared.database.models import (  # noqa: E402
 from webui.auth import create_access_token, get_current_user  # noqa: E402
 from webui.main import app  # noqa: E402
 from webui.qdrant import qdrant_manager  # noqa: E402
-from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager  # noqa: E402
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -204,8 +203,6 @@ def use_fakeredis():
         patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
         # Also patch the WebSocket manager's Redis imports
         patch("webui.websocket.scalable_manager.redis.from_url", return_value=fake_async_redis),
-        patch("webui.websocket.legacy_stream_manager.redis.from_url", return_value=fake_async_redis),
-        patch("webui.websocket.legacy_stream_manager.aioredis.from_url", return_value=fake_async_redis),
         # Patch service manager imports
         patch("webui.services.redis_manager.aioredis.from_url", return_value=fake_async_redis),
         patch("webui.services.redis_manager.redis.from_url", return_value=fake_sync_redis),
@@ -588,15 +585,6 @@ def mock_websocket() -> None:
     mock.close = AsyncMock()
     mock.receive_json = AsyncMock()
     return mock
-
-
-@pytest.fixture()
-def mock_websocket_manager(mock_redis_client) -> None:
-    """Create a mock WebSocket manager with Redis client."""
-
-    manager = RedisStreamWebSocketManager()
-    manager.redis = mock_redis_client
-    return manager
 
 
 @pytest.fixture()

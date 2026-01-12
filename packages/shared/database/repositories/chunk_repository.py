@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models import Chunk
@@ -33,41 +33,6 @@ class ChunkRepository(PartitionAwareMixin):
             session: AsyncSession for database operations
         """
         self.session = session
-
-    async def create_chunk(self, chunk_data: dict[str, Any]) -> Chunk:
-        """Create a single chunk.
-
-        Args:
-            chunk_data: Dictionary with chunk fields
-
-        Returns:
-            Created chunk instance
-
-        Raises:
-            ValueError: If collection_id is missing or data is invalid
-            TypeError: If data types are incorrect
-        """
-        # Comprehensive validation
-        chunk_data = PartitionValidation.validate_chunk_data(chunk_data)
-
-        # Remove id from chunk_data if present - let database generate it
-        # The id is auto-generated via BIGSERIAL sequence
-        if "id" in chunk_data:
-            del chunk_data["id"]
-
-        # Ensure partition key is present (tests may not have triggers/generation)
-        if chunk_data.get("partition_key") is None:
-            partition_key = await self.compute_partition_key(self.session, chunk_data["collection_id"])
-            chunk_data["partition_key"] = partition_key
-
-        chunk = Chunk(**chunk_data)
-        self.session.add(chunk)
-        await self.session.flush()
-
-        logger.debug(
-            f"Created chunk {chunk.id} for collection {chunk.collection_id} in partition {chunk.partition_key}"
-        )
-        return chunk
 
     async def create_chunks_bulk(self, chunks_data: list[dict[str, Any]]) -> int:
         """Bulk create chunks with partition-aware optimization.
@@ -247,71 +212,6 @@ class ChunkRepository(PartitionAwareMixin):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def update_chunk_embeddings(self, chunk_updates: list[dict[str, str]]) -> int:
-        """Update embedding vector IDs for chunks.
-
-        Groups updates by collection_id for efficient partition access.
-
-        Args:
-            chunk_updates: List of dicts with 'id', 'collection_id',
-                         and 'embedding_vector_id'
-
-        Returns:
-            Number of chunks updated
-
-        Raises:
-            ValueError: If update data is invalid
-            TypeError: If update data has wrong types
-        """
-        if not chunk_updates:
-            return 0
-
-        # Validate batch size
-        PartitionValidation.validate_batch_size(chunk_updates, "chunk embedding updates")
-
-        # Validate each update
-        validated_updates: list[dict[str, Any]] = []
-        for chunk_update in chunk_updates:
-            if not isinstance(chunk_update, dict):
-                raise TypeError("Each chunk update must be a dictionary")
-
-            # Validate required fields
-            if not all(key in chunk_update for key in ["id", "collection_id", "embedding_vector_id"]):
-                raise ValueError("Each update must have 'id', 'collection_id', and 'embedding_vector_id'")
-
-            # Validate chunk id as integer
-            if not isinstance(chunk_update["id"], int):
-                raise TypeError(f"chunk id must be an integer, got {type(chunk_update['id']).__name__}")
-
-            validated_update = {
-                "id": chunk_update["id"],
-                "collection_id": PartitionValidation.validate_partition_key(chunk_update["collection_id"]),
-                "embedding_vector_id": PartitionValidation.validate_uuid(
-                    chunk_update["embedding_vector_id"], "embedding_vector_id"
-                ),
-            }
-            validated_updates.append(validated_update)
-
-        # Group by collection for partition efficiency
-        updates_by_collection = self.group_by_partition_key(validated_updates, lambda u: u["collection_id"])
-
-        total_updated = 0
-        for collection_id, updates in updates_by_collection.items():
-            vector_map = {u["id"]: u["embedding_vector_id"] for u in updates}
-
-            # Update in batches per partition
-            for chunk_id, vector_id in vector_map.items():
-                stmt = (
-                    update(Chunk)
-                    .where(and_(Chunk.collection_id == collection_id, Chunk.id == chunk_id))
-                    .values(embedding_vector_id=vector_id)
-                )
-                result = await self.session.execute(stmt)
-                total_updated += result.rowcount or 0
-
-        logger.info(f"Updated embeddings for {total_updated} chunks")
-        return total_updated
-
     async def delete_chunks_by_document(self, document_id: str, collection_id: str) -> int:
         """Delete all chunks for a document with partition pruning.
 
@@ -452,39 +352,6 @@ class ChunkRepository(PartitionAwareMixin):
         count = result.scalar() or 0
         return count > 0
 
-    async def get_chunks_batch(self, collection_id: str, document_ids: list[str], limit: int = 1000) -> list[Chunk]:
-        """Batch fetch chunks for multiple documents.
-
-        Uses IN clause for efficient batch fetching.
-
-        Args:
-            collection_id: Collection ID (partition key)
-            document_ids: List of document IDs to fetch chunks for
-            limit: Maximum chunks to return
-
-        Returns:
-            List of chunks ordered by document_id and chunk_index
-        """
-        if not document_ids:
-            return []
-
-        # Validate inputs
-        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
-        validated_doc_ids = [
-            PartitionValidation.validate_uuid(doc_id, f"document_id[{i}]") for i, doc_id in enumerate(document_ids)
-        ]
-
-        # Use IN clause for batch fetching
-        query = (
-            select(Chunk)
-            .where(and_(Chunk.collection_id == collection_id, Chunk.document_id.in_(validated_doc_ids)))
-            .order_by(Chunk.document_id, Chunk.chunk_index)
-            .limit(limit)
-        )
-
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
-
     async def get_chunks_paginated(
         self, collection_id: str, page: int = 1, page_size: int = 100
     ) -> tuple[list[Chunk], int]:
@@ -526,78 +393,3 @@ class ChunkRepository(PartitionAwareMixin):
         total_count = rows[0][1] if rows else 0
 
         return chunks, total_count
-
-    async def get_chunk_statistics_optimized(self, collection_id: str) -> dict[str, Any]:
-        """Get optimized statistics for chunks in a collection.
-
-        Uses aggregation functions for efficient statistics calculation.
-
-        Args:
-            collection_id: Collection ID
-
-        Returns:
-            Dictionary with detailed statistics
-        """
-        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
-
-        # Single aggregation query for all statistics
-        stats_query = select(
-            func.count(Chunk.id).label("total_chunks"),
-            func.avg(func.length(Chunk.content)).label("avg_chunk_size"),
-            func.min(func.length(Chunk.content)).label("min_chunk_size"),
-            func.max(func.length(Chunk.content)).label("max_chunk_size"),
-            func.count(func.distinct(Chunk.document_id)).label("unique_documents"),
-            func.min(Chunk.created_at).label("first_chunk_created"),
-            func.max(Chunk.created_at).label("last_chunk_created"),
-        ).where(Chunk.collection_id == collection_id)
-
-        result = await self.session.execute(stats_query)
-        stats = result.one()
-
-        return {
-            "total_chunks": stats.total_chunks or 0,
-            "avg_chunk_size": float(stats.avg_chunk_size or 0),
-            "min_chunk_size": stats.min_chunk_size or 0,
-            "max_chunk_size": stats.max_chunk_size or 0,
-            "unique_documents": stats.unique_documents or 0,
-            "first_chunk_created": stats.first_chunk_created.isoformat() if stats.first_chunk_created else None,
-            "last_chunk_created": stats.last_chunk_created.isoformat() if stats.last_chunk_created else None,
-        }
-
-    async def update_chunks_batch(self, updates: list[dict[str, Any]]) -> int:
-        """Batch update chunks with various fields.
-
-        Groups updates by collection for partition efficiency.
-
-        Args:
-            updates: List of dicts with 'id', 'collection_id', and fields to update
-
-        Returns:
-            Number of chunks updated
-        """
-        if not updates:
-            return 0
-
-        # Validate batch size
-        PartitionValidation.validate_batch_size(updates, "chunk updates")
-
-        # Group by collection for partition efficiency
-        updates_by_collection = self.group_by_partition_key(updates, lambda u: u["collection_id"])
-
-        total_updated = 0
-        for collection_id, collection_updates in updates_by_collection.items():
-            for update_data in collection_updates:
-                chunk_id = update_data.pop("id")
-                update_data.pop("collection_id")  # Remove from update fields
-
-                if update_data:  # Only update if there are fields to update
-                    stmt = (
-                        update(Chunk)
-                        .where(and_(Chunk.collection_id == collection_id, Chunk.id == chunk_id))
-                        .values(**update_data)
-                    )
-                    result = await self.session.execute(stmt)
-                    total_updated += result.rowcount or 0
-
-        logger.info(f"Batch updated {total_updated} chunks")
-        return total_updated

@@ -161,24 +161,6 @@ class TestGetEmbeddingConcurrency:
         result = ingestion_module._get_embedding_concurrency()
         assert result == 1
 
-
-# ---------------------------------------------------------------------------
-# Tests for test_task
-# ---------------------------------------------------------------------------
-
-
-class TestTestTask:
-    """Tests for the simple test_task Celery task."""
-
-    def test_returns_success(self):
-        """Test that test_task returns expected success message."""
-        # Call the underlying run method directly (bypassing Celery wrapper)
-        # For bound tasks, we need to access the underlying function
-        result = ingestion_module.test_task.run()
-
-        assert result == {"status": "success", "message": "Celery is working!"}
-
-
 # ---------------------------------------------------------------------------
 # Tests for _process_index_operation
 # ---------------------------------------------------------------------------

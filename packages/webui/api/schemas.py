@@ -12,24 +12,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 # Enums
-class DocumentStatusEnum(str, Enum):
-    """Document processing status."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    DELETED = "deleted"
-
-
-class PermissionTypeEnum(str, Enum):
-    """Collection permission types."""
-
-    READ = "read"
-    WRITE = "write"
-    ADMIN = "admin"
-
-
 class SyncModeEnum(str, Enum):
     """Sync mode for collections."""
 
@@ -52,17 +34,6 @@ class UserCreate(UserBase):
     """Schema for creating a user."""
 
     password: str
-
-
-class UserUpdate(BaseModel):
-    """Schema for updating a user."""
-
-    username: str | None = None
-    email: str | None = None
-    full_name: str | None = None
-    password: str | None = None
-    is_active: bool | None = None
-    is_superuser: bool | None = None
 
 
 class UserResponse(UserBase):
@@ -385,21 +356,6 @@ class DocumentBase(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-class DocumentCreate(DocumentBase):
-    """Schema for creating a document."""
-
-    file_path: str
-    file_size: int
-    mime_type: str | None = None
-    content_hash: str
-
-
-class DocumentUpdate(BaseModel):
-    """Schema for updating a document."""
-
-    metadata: dict[str, Any] | None = None
-
-
 class DocumentResponse(DocumentBase):
     """Document response schema."""
 
@@ -440,15 +396,6 @@ class FailedDocumentCountResponse(BaseModel):
     total: int = 0
 
 
-class RetryDocumentsResponse(BaseModel):
-    """Response for bulk retry operation."""
-
-    reset_count: int
-    pending_count: int = 0
-    operation_id: str | None = None
-    message: str
-
-
 # API Key schemas
 class ApiKeyBase(BaseModel):
     """Base API key schema."""
@@ -456,10 +403,6 @@ class ApiKeyBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     permissions: dict[str, Any] | None = None
     expires_at: datetime | None = None
-
-
-class ApiKeyCreate(ApiKeyBase):
-    """Schema for creating an API key."""
 
 
 class ApiKeyResponse(ApiKeyBase):
@@ -471,40 +414,6 @@ class ApiKeyResponse(ApiKeyBase):
     last_used_at: datetime | None = None
     created_at: datetime
     is_active: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ApiKeyCreateResponse(ApiKeyResponse):
-    """Response when creating an API key, includes the actual key."""
-
-    api_key: str  # Only returned on creation
-
-
-# Permission schemas
-class CollectionPermissionBase(BaseModel):
-    """Base collection permission schema."""
-
-    permission: PermissionTypeEnum
-
-
-class CollectionPermissionCreate(CollectionPermissionBase):
-    """Schema for creating a collection permission."""
-
-    user_id: int | None = None
-    api_key_id: str | None = None
-
-    model_config = ConfigDict(json_schema_extra={"example": {"user_id": 2, "permission": "read"}})
-
-
-class CollectionPermissionResponse(CollectionPermissionBase):
-    """Collection permission response schema."""
-
-    id: int
-    collection_id: str
-    user_id: int | None = None
-    api_key_id: str | None = None
-    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -570,28 +479,6 @@ class SearchResponse(BaseModel):
                 "query": "How to implement authentication?",
                 "total_results": 1,
                 "search_time_ms": 125.5,
-            }
-        }
-    )
-
-
-# Batch operations
-class BatchDocumentUpload(BaseModel):
-    """Schema for batch document upload."""
-
-    collection_id: str
-    directory_path: str
-    file_patterns: list[str] | None = Field(default=["*"])
-    recursive: bool = True
-    metadata: dict[str, Any] | None = None
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
-                "directory_path": "/data/documents",
-                "file_patterns": ["*.pdf", "*.md", "*.txt"],
-                "recursive": True,
             }
         }
     )
@@ -758,32 +645,6 @@ class OperationListResponse(BaseModel):
 # Source schemas
 # Note: Sync policy (mode, interval, pause) is now managed at collection level.
 # Sources only track per-source telemetry (last_run_* fields).
-
-
-class SourceCreate(BaseModel):
-    """Schema for creating a source.
-
-    Note: Sync policy is managed at collection level, not source level.
-    """
-
-    source_type: str = Field(
-        default="directory",
-        description="Type of source connector (directory, git, imap)",
-    )
-    source_path: str = Field(
-        ...,
-        min_length=1,
-        description="Display path or identifier for the source",
-    )
-    source_config: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Connector-specific configuration",
-    )
-    secrets: dict[str, str] | None = Field(
-        default=None,
-        description="Connector secrets (write-only, never returned in responses). "
-        "Valid keys: password, token, ssh_key, ssh_passphrase",
-    )
 
 
 class SourceUpdate(BaseModel):

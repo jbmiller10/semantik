@@ -6,8 +6,7 @@ Manages resource allocation, limits, and quotas for collection operations.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 import psutil
@@ -115,97 +114,6 @@ class ResourceManager:
             logger.error("Failed to check resource allocation: %s", e, exc_info=True)
             return False
 
-    async def estimate_resources(self, source_path: str, model_name: str) -> ResourceEstimate:
-        """Estimate resources needed for processing a source path."""
-        try:
-            # Get total size of files
-
-            total_size_bytes = 0
-            file_count = 0
-
-            path = Path(source_path)
-            if path.is_file():
-                total_size_bytes = path.stat().st_size
-                file_count = 1
-            elif path.is_dir():
-                # Use rglob to recursively find all files
-                for file_path in path.rglob("*"):
-                    if file_path.is_file():
-                        try:
-                            total_size_bytes += file_path.stat().st_size
-                            file_count += 1
-                        except OSError:
-                            pass
-
-            # Estimate based on model and file size
-            # These are rough estimates and should be tuned based on actual usage
-            size_gb = total_size_bytes / 1024 / 1024 / 1024
-
-            # Memory estimate: 2x file size + model size + overhead
-            model_sizes = {
-                "Qwen/Qwen3-Embedding-0.6B": 1200,  # 1.2GB
-                "BAAI/bge-base-en-v1.5": 400,  # 400MB
-                "sentence-transformers/all-MiniLM-L6-v2": 100,  # 100MB
-            }
-            model_memory = model_sizes.get(model_name, 1000)  # Default 1GB
-
-            memory_mb = int((size_gb * 2048) + model_memory + 500)  # 500MB overhead
-
-            # Storage estimate: original files + vectors + metadata
-            # Vectors typically add 50-100% to storage needs
-            storage_gb = size_gb * 1.75
-
-            # CPU estimate: 1 core per 10 files or 1GB, whichever is higher
-            cpu_cores = max(file_count / 10, size_gb, 1.0)
-
-            # GPU memory if using GPU
-            gpu_memory_mb = model_memory if self._is_gpu_model(model_name) else 0
-
-            return ResourceEstimate(
-                memory_mb=memory_mb, storage_gb=storage_gb, cpu_cores=cpu_cores, gpu_memory_mb=gpu_memory_mb
-            )
-
-        except Exception as e:
-            logger.error("Failed to estimate resources: %s", e, exc_info=True)
-            # Return conservative estimate
-            return ResourceEstimate(memory_mb=2000, storage_gb=1.0, cpu_cores=1.0)
-
-    async def reserve_for_reindex(self, collection_id: str) -> bool:
-        """Reserve resources for reindexing operation."""
-        async with self._lock:
-            try:
-                # Get collection info
-                collection = await self.collection_repo.get_by_uuid(collection_id)
-                if not collection:
-                    return False
-
-                # Estimate resources (2x current size for blue-green)
-                total_size_bytes = self._get_collection_value(collection, "total_size_bytes", 0) or 0
-                size_gb = (total_size_bytes / 1024 / 1024 / 1024) * 2
-                memory_mb = int(size_gb * 1024 + 1000)  # Add 1GB overhead
-
-                estimate = ResourceEstimate(memory_mb=memory_mb, storage_gb=size_gb, cpu_cores=2.0)
-
-                # Check if resources available
-                if not await self._check_system_resources(estimate):
-                    return False
-
-                # Reserve resources
-                self._reserved_resources[f"reindex_{collection_id}"] = estimate
-                return True
-
-            except Exception as e:
-                logger.error("Failed to reserve resources for reindex: %s", e, exc_info=True)
-                return False
-
-    async def release_reindex_reservation(self, collection_id: str) -> None:
-        """Release reserved resources for reindex."""
-        async with self._lock:
-            key = f"reindex_{collection_id}"
-            if key in self._reserved_resources:
-                del self._reserved_resources[key]
-                logger.info(f"Released resources for reindex of collection {collection_id}")
-
     async def get_resource_usage(self, collection_id: str) -> dict[str, Any]:
         """Get current resource usage for a collection."""
         try:
@@ -291,17 +199,6 @@ class ResourceManager:
             logger.error("Failed to get user resource usage: %s", e, exc_info=True)
             return {"collections": 0, "storage_bytes": 0, "storage_gb": 0}
 
-    async def _get_recent_operations_count(self, user_id: int, hours: int = 1) -> int:
-        """Get count of recent operations for rate limiting."""
-        try:
-            since = datetime.now(UTC) - timedelta(hours=hours)
-            operations = await self.operation_repo.list_by_user(user_id, since=since)
-            return len(operations)
-
-        except Exception as e:
-            logger.error("Failed to get recent operations count: %s", e, exc_info=True)
-            return 0
-
     @staticmethod
     def _get_collection_value(collection: Any, key: str, default: Any | None = None) -> Any:
         if isinstance(collection, dict):
@@ -369,8 +266,3 @@ class ResourceManager:
         except Exception as e:
             logger.error("Failed to check system resources: %s", e, exc_info=True)
             return False
-
-    def _is_gpu_model(self, model_name: str) -> bool:  # noqa: ARG002
-        """Check if model typically uses GPU."""
-        # Most embedding models benefit from GPU
-        return True

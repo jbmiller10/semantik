@@ -146,41 +146,6 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             logger.error(f"Failed to get API key by hash: {e}")
             raise DatabaseOperationError("get", "api_key", str(e)) from e
 
-    async def list_user_api_keys(self, user_id: str) -> list[dict[str, Any]]:
-        """List all API keys for a user.
-
-        Args:
-            user_id: ID of the user
-
-        Returns:
-            List of API key dictionaries
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-        """
-        try:
-            # Validate and convert user_id
-            try:
-                user_id_int = int(user_id)
-            except ValueError as e:
-                raise InvalidUserIdError(user_id) from e
-
-            result = await self.session.execute(
-                select(ApiKey)
-                .where(ApiKey.user_id == user_id_int)
-                .options(selectinload(ApiKey.user))
-                .order_by(ApiKey.created_at.desc())
-            )
-            api_keys = result.scalars().all()
-
-            return [d for d in (self._api_key_to_dict(key) for key in api_keys) if d is not None]
-
-        except InvalidUserIdError:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to list API keys for user {user_id}: {e}")
-            raise DatabaseOperationError("list", "api_keys", str(e)) from e
-
     async def update_api_key(self, api_key_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update an API key.
 
@@ -236,49 +201,6 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
         except Exception as e:
             logger.error(f"Failed to delete API key {api_key_id}: {e}")
             raise DatabaseOperationError("delete", "api_key", str(e)) from e
-
-    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
-        """Verify an API key and return associated data if valid.
-
-        Args:
-            api_key: The actual API key string
-
-        Returns:
-            API key data with user info if valid, None otherwise
-        """
-        try:
-            # Hash the provided key
-            key_hash = self._hash_api_key(api_key)
-
-            # Look up by hash
-            result = await self.session.execute(
-                select(ApiKey)
-                .where((ApiKey.key_hash == key_hash) & (ApiKey.is_active))
-                .options(selectinload(ApiKey.user))
-            )
-            api_key_record = result.scalar_one_or_none()
-
-            if not api_key_record:
-                return None
-
-            # Check expiration
-            if api_key_record.expires_at and api_key_record.expires_at < datetime.now(UTC):
-                logger.info(f"API key {api_key_record.id} has expired")
-                return None
-
-            # Check if user is active
-            if not api_key_record.user.is_active:
-                logger.info(f"User {api_key_record.user_id} is inactive")
-                return None
-
-            # Update last used timestamp (fire-and-forget)
-            await self.update_last_used(api_key_record.id)
-
-            return self._api_key_to_dict(api_key_record)
-
-        except Exception as e:
-            logger.error(f"Failed to verify API key: {e}")
-            raise DatabaseOperationError("verify", "api_key", str(e)) from e
 
     async def update_last_used(self, api_key_id: str) -> None:
         """Update the last used timestamp for an API key.

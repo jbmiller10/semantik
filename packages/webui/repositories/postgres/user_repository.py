@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from passlib.context import CryptContext
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -172,130 +172,6 @@ class PostgreSQLUserRepository(PostgreSQLBaseRepository, UserRepository):
 
         # This should never be reached due to exceptions, but mypy needs it
         raise RuntimeError("Unexpected code path in get_user_by_username")
-
-    async def update_user(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
-        """Update a user.
-
-        Args:
-            user_id: ID of the user to update
-            updates: Dictionary of fields to update
-
-        Returns:
-            Updated user dictionary or None if not found
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-            EntityAlreadyExistsError: If username/email already taken
-        """
-        try:
-            # Validate and convert user_id
-            try:
-                user_id_int = int(user_id)
-            except ValueError as e:
-                raise InvalidUserIdError(user_id) from e
-
-            # Check if user exists
-            user = await self.session.get(User, user_id_int)
-            if not user:
-                return None
-
-            # Validate unique fields if being updated
-            if "username" in updates and updates["username"] != user.username:
-                existing = await self.session.scalar(select(User).where(User.username == updates["username"]))
-                if existing:
-                    raise EntityAlreadyExistsError("user", f"username: {updates['username']}")
-
-            if "email" in updates and updates["email"] != user.email:
-                existing = await self.session.scalar(select(User).where(User.email == updates["email"]))
-                if existing:
-                    raise EntityAlreadyExistsError("user", f"email: {updates['email']}")
-
-            # Update user fields
-            allowed_fields = {"username", "email", "full_name", "is_active", "is_superuser", "hashed_password"}
-            for field, value in updates.items():
-                if field in allowed_fields:
-                    setattr(user, field, value)
-
-            user.updated_at = datetime.now(UTC)
-            await self.session.flush()
-
-            logger.info(f"Updated user {user_id} with fields: {list(updates.keys())}")
-            return self._user_to_dict(user)
-
-        except (InvalidUserIdError, EntityAlreadyExistsError):
-            raise
-        except IntegrityError as e:
-            self.handle_integrity_error(e, "update_user")
-        except Exception as e:
-            logger.error(f"Failed to update user {user_id}: {e}")
-            raise DatabaseOperationError("update", "user", str(e)) from e
-
-        # This should never be reached due to exceptions, but mypy needs it
-        raise RuntimeError("Unexpected code path in update_user")
-
-    async def delete_user(self, user_id: str) -> bool:
-        """Delete a user.
-
-        Args:
-            user_id: ID of the user to delete
-
-        Returns:
-            True if deleted, False if not found
-
-        Raises:
-            InvalidUserIdError: If user_id is not numeric
-        """
-        try:
-            # Validate and convert user_id
-            try:
-                user_id_int = int(user_id)
-            except ValueError as e:
-                raise InvalidUserIdError(user_id) from e
-
-            # Use PostgreSQL's DELETE ... RETURNING for efficiency
-            result = await self.session.execute(delete(User).where(User.id == user_id_int).returning(User.id))
-            deleted_id = result.scalar_one_or_none()
-
-            if deleted_id:
-                logger.info(f"Deleted user {user_id}")
-                return True
-            return False
-
-        except InvalidUserIdError:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to delete user {user_id}: {e}")
-            raise DatabaseOperationError("delete", "user", str(e)) from e
-
-    async def list_users(self, **filters: Any) -> list[dict[str, Any]]:
-        """List users with optional filters.
-
-        Args:
-            **filters: Optional filters (is_active, is_superuser, etc.)
-
-        Returns:
-            List of user dictionaries
-        """
-        try:
-            query = select(User)
-
-            # Apply filters
-            if "is_active" in filters:
-                query = query.where(User.is_active == filters["is_active"])
-            if "is_superuser" in filters:
-                query = query.where(User.is_superuser == filters["is_superuser"])
-
-            # Order by creation date descending
-            query = query.order_by(User.created_at.desc())
-
-            result = await self.session.execute(query)
-            users = result.scalars().all()
-
-            return [d for d in (self._user_to_dict(user) for user in users) if d is not None]
-
-        except Exception as e:
-            logger.error(f"Failed to list users: {e}")
-            raise DatabaseOperationError("list", "users", str(e)) from e
 
     async def verify_password(self, username: str, password: str) -> dict[str, Any] | None:
         """Verify user password and return user data if valid.
