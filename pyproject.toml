@@ -6,6 +6,8 @@ authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"
 readme = "README.md"
 dependencies = [
+    "anthropic>=0.39.0,<0.40",
+    "openai>=1.54.0,<2",
     "qdrant-client>=1.9.0,<2",
     "sentence-transformers>=3.0.0,<4",
     "fastapi>=0.116.0,<0.117",
