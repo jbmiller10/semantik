@@ -193,8 +193,9 @@ dev-debug.log
 
 # Task files
 tasks.json
-tasks/ 
+tasks/
 !packages/webui/tasks/
+!tests/webui/tasks/
 tickets/
 TICKET*
 ticket_*
