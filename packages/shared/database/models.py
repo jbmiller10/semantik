@@ -179,6 +179,12 @@ class User(Base):
     operations = relationship("Operation", back_populates="user")
     audit_logs = relationship("CollectionAuditLog", back_populates="user")
     mcp_profiles = relationship("MCPProfile", back_populates="owner", cascade="all, delete-orphan")
+    llm_provider_config = relationship(
+        "LLMProviderConfig",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
 
 
 class Collection(Base):
@@ -988,3 +994,134 @@ class MCPProfileCollection(Base):
         primary_key=True,
     )
     order = Column(Integer, nullable=False, default=0)  # Lower values = higher priority
+
+
+class LLMProviderConfig(Base):
+    """Per-user LLM provider configuration.
+
+    Stores quality tier settings (high/low) for LLM model selection.
+    Each user has at most one config row (one-to-one with users).
+    API keys are stored separately in LLMProviderApiKey for security.
+    """
+
+    __tablename__ = "llm_provider_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # High-quality tier (complex tasks: summaries, entity extraction)
+    # NULL means "use application default from model registry"
+    high_quality_provider = Column(String(32))  # 'anthropic', 'openai', etc.
+    high_quality_model = Column(String(128))  # Model ID
+
+    # Low-quality tier (simple tasks: HyDE, keywords)
+    low_quality_provider = Column(String(32))
+    low_quality_model = Column(String(128))
+
+    # Optional defaults (can be overridden per-call)
+    default_temperature = Column(Float)
+    default_max_tokens = Column(Integer)
+    provider_config = Column(JSON)  # Provider-specific config
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "default_temperature IS NULL OR (default_temperature >= 0 AND default_temperature <= 2)",
+            name="ck_llm_provider_configs_temperature",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="llm_provider_config")
+    api_keys = relationship(
+        "LLMProviderApiKey",
+        back_populates="config",
+        cascade="all, delete-orphan",
+    )
+
+
+class LLMProviderApiKey(Base):
+    """Encrypted API keys for LLM providers.
+
+    Keys are stored per-provider (not per-tier). If both tiers use the
+    same provider, they share the key. Uses Fernet encryption via
+    SecretEncryption class.
+
+    The key_id field stores SHA-256 fingerprint of the encryption key
+    used, enabling future key rotation support.
+    """
+
+    __tablename__ = "llm_provider_api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    config_id = Column(
+        Integer,
+        ForeignKey("llm_provider_configs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    ciphertext = Column(LargeBinary, nullable=False)  # Fernet-encrypted API key
+    key_id = Column(String(64), nullable=False)  # Encryption key fingerprint
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    last_used_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("config_id", "provider", name="uq_llm_api_keys_config_provider"),
+    )
+
+    # Relationships
+    config = relationship("LLMProviderConfig", back_populates="api_keys")
+
+
+class LLMUsageEvent(Base):
+    """LLM token usage tracking.
+
+    Records usage per-request for both interactive (HyDE search) and
+    background operations (summarization). Uses provider-reported token
+    counts, not approximations.
+
+    Stored in a dedicated table (not OperationMetrics) because:
+    - HyDE runs in request path with no Operation record
+    - Enables per-user usage dashboards without joining Operations
+    """
+
+    __tablename__ = "llm_usage_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # What was called
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    model = Column(String(128), nullable=False)  # Model ID
+    quality_tier = Column(String(16), nullable=False)  # 'high' or 'low'
+    feature = Column(String(50), nullable=False)  # 'hyde', 'summary', 'extraction'
+
+    # Token counts (provider-reported)
+    input_tokens = Column(Integer, nullable=False)
+    output_tokens = Column(Integer, nullable=False)
+
+    # Optional context
+    operation_id = Column(Integer)  # NULL for interactive requests (HyDE)
+    collection_id = Column(String(36))
+    request_metadata = Column(JSON)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_llm_usage_user_created", "user_id", "created_at"),
+        Index("idx_llm_usage_feature", "user_id", "feature"),
+    )
