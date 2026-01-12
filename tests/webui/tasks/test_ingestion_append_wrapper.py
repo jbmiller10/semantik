@@ -109,7 +109,7 @@ async def test_process_append_operation_uses_orchestrator(monkeypatch):
 
         async def post(self, url, json=None, headers=None):  # noqa: D401
             self.posts.append((url, json))
-            return None
+            return
 
     monkeypatch.setattr(ingestion_module.httpx, "AsyncClient", _AsyncClient)
 
