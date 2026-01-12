@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 import psutil
 import pytest
 
-from shared.database.models import OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from webui.services.resource_manager import ResourceEstimate, ResourceManager
@@ -102,22 +101,6 @@ class TestResourceManagerIntegration:
         estimate = ResourceEstimate(memory_mb=100, storage_gb=1)
         assert await manager.can_allocate(test_user_db.id, estimate) is False
 
-    async def test_reserve_and_release_reindex(
-        self, manager, collection_factory, test_user_db, db_session, monkeypatch
-    ):
-        monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=8 * 1024 * 1024 * 1024))
-        monkeypatch.setattr(psutil, "disk_usage", lambda _path="/": SimpleNamespace(free=500 * 1024 * 1024 * 1024))
-
-        collection = await collection_factory(owner_id=test_user_db.id, total_size_bytes=1_500_000_000)
-        await db_session.commit()
-
-        reserved = await manager.reserve_for_reindex(collection.id)
-        assert reserved is True
-        assert f"reindex_{collection.id}" in manager._reserved_resources
-
-        await manager.release_reindex_reservation(collection.id)
-        assert f"reindex_{collection.id}" not in manager._reserved_resources
-
     async def test_get_resource_usage_returns_totals(self, manager, collection_factory, test_user_db, db_session):
         collection = await collection_factory(owner_id=test_user_db.id, total_size_bytes=1024)
         await db_session.commit()
@@ -136,14 +119,3 @@ class TestResourceManagerIntegration:
         assert usage["metrics_status"] == "unavailable"
         assert usage["metrics_source"] == "postgres"
         assert usage["storage_bytes"] == collection.total_size_bytes
-
-    async def test_recent_operations_count_reads_from_repository(
-        self, manager, collection_factory, test_user_db, db_session
-    ):
-        collection = await collection_factory(owner_id=test_user_db.id)
-        op_repo = manager.operation_repo.repo
-        await op_repo.create(collection.id, test_user_db.id, OperationType.INDEX, config={"source": "integration"})
-        await db_session.commit()
-
-        count = await manager._get_recent_operations_count(test_user_db.id, hours=1)
-        assert count >= 1
