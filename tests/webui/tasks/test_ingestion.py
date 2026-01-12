@@ -36,6 +36,7 @@ def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDoc
         content_hash=_VALID_HASH,
     )
 
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -160,6 +161,7 @@ class TestGetEmbeddingConcurrency:
         monkeypatch.setenv("EMBEDDING_CONCURRENCY_PER_WORKER", "not_a_number")
         result = ingestion_module._get_embedding_concurrency()
         assert result == 1
+
 
 # ---------------------------------------------------------------------------
 # Tests for _process_index_operation
@@ -513,9 +515,7 @@ class TestHandleTaskFailure:
         einfo = Mock()
 
         with (
-            patch.object(
-                ingestion_module, "_handle_task_failure_async", new_callable=AsyncMock
-            ),
+            patch.object(ingestion_module, "_handle_task_failure_async", new_callable=AsyncMock),
             patch("asyncio.run") as mock_run,
         ):
             mock_run.side_effect = lambda coro: asyncio.get_event_loop().run_until_complete(coro)
@@ -826,7 +826,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -911,7 +913,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -998,7 +1002,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -1086,7 +1092,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -1152,7 +1160,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1211,7 +1221,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1272,7 +1284,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1317,7 +1331,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1569,7 +1585,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1679,7 +1697,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1748,7 +1768,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1807,7 +1829,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1895,7 +1919,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -2014,7 +2040,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -2420,7 +2448,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2495,7 +2525,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2584,7 +2616,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2659,7 +2693,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
             patch("shared.database.repositories.chunk_repository.ChunkRepository"),
             patch("shared.database.repositories.document_artifact_repository.DocumentArtifactRepository"),
         ):
@@ -2692,7 +2728,9 @@ class TestSparseIndexingHelpers:
             patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
             patch("vecpipe.sparse.generate_sparse_collection_name", return_value="dense_sparse_bm25") as gen_name,
             patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()) as ensure_sparse,
-            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=True)) as store,
+            patch(
+                "shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=True)
+            ) as store,
             patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
         ):
             result = await ingestion_module._setup_sparse_collection_for_index(
@@ -2756,7 +2794,9 @@ class TestSparseIndexingHelpers:
 
             async def encode_documents(self, documents):  # type: ignore[no-untyped-def]
                 return [
-                    SparseVector(indices=(1,), values=(0.1,), chunk_id=doc["chunk_id"], metadata=doc.get("metadata", {}))
+                    SparseVector(
+                        indices=(1,), values=(0.1,), chunk_id=doc["chunk_id"], metadata=doc.get("metadata", {})
+                    )
                     for doc in documents
                 ]
 
@@ -2786,12 +2826,16 @@ class TestSparseIndexingHelpers:
         with (
             patch("shared.plugins.load_plugins"),
             patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
-            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)
+            ),
             patch("shared.database.collection_metadata.store_sparse_index_config", store),
             patch("vecpipe.sparse.upsert_sparse_vectors", upsert),
             patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
         ):
-            await ingestion_module._maybe_generate_sparse_vectors(chunks=chunks, points=points, qdrant_collection_name="dense")
+            await ingestion_module._maybe_generate_sparse_vectors(
+                chunks=chunks, points=points, qdrant_collection_name="dense"
+            )
 
         upsert.assert_awaited_once()
         _args = upsert.await_args.args
@@ -2820,15 +2864,15 @@ class TestSparseIndexingHelpers:
         mock_qdrant.close = AsyncMock()
 
         vecpipe_client = AsyncMock()
-        vecpipe_client.encode_documents = AsyncMock(
-            return_value=[{"chunk_id": "p1", "indices": [1], "values": [0.9]}]
-        )
+        vecpipe_client.encode_documents = AsyncMock(return_value=[{"chunk_id": "p1", "indices": [1], "values": [0.9]}])
 
         upsert = AsyncMock()
         store = AsyncMock(return_value=True)
 
         with (
-            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)
+            ),
             patch("shared.database.collection_metadata.store_sparse_index_config", store),
             patch("webui.clients.sparse_client.SparseEncodingClient", return_value=vecpipe_client),
             patch("vecpipe.sparse.upsert_sparse_vectors", upsert),

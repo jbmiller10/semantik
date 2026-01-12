@@ -451,6 +451,12 @@ def resolve_awaitable_sync(value: Any) -> Any:
             if loop is None or loop.is_closed():
                 loop = asyncio_module.new_event_loop()
                 loop_map[thread_id] = loop
+                # Reset database connection pool when event loop changes.
+                # asyncpg connections are bound to a specific event loop, so
+                # old connections cannot be reused on a new loop.
+                from shared.database.postgres_database import pg_connection_manager
+
+                pg_connection_manager.reset()
 
             # Maintain legacy attribute for compatibility with tests/patching.
             setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)

@@ -2,18 +2,11 @@
 
 from .adapters import get_config_schema
 from .base import SemanticPlugin
-from .dto_adapters import (
-    ValidationError,
-    coerce_to_ingested_document,
-)
+from .dto_adapters import ValidationError, coerce_to_ingested_document
 from .loader import ENTRYPOINT_GROUP, load_plugins
 from .manifest import PluginManifest
 from .registry import PluginRecord, PluginRegistry, PluginSource, plugin_registry
-from .security import (
-    SENSITIVE_ENV_PATTERNS,
-    audit_log,
-    get_sanitized_environment,
-)
+from .security import SENSITIVE_ENV_PATTERNS, audit_log, get_sanitized_environment
 from .state import (
     PluginState,
     PluginStateConfig,

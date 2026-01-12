@@ -1,0 +1,10 @@
+{
+  "include": ["packages", "apps", "tests", "alembic"],
+  "exclude": ["**/node_modules", "**/__pycache__", ".venv", "archive", "htmlcov"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
+}

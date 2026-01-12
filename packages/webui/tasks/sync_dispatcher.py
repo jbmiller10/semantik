@@ -188,6 +188,9 @@ def dispatch_due_syncs(self: Any) -> dict[str, Any]:  # noqa: ARG001
         try:
             result = loop.run_until_complete(_dispatch_due_syncs_async())
         finally:
+            # Reset connection manager BEFORE closing the loop to properly
+            # dispose of connections while the loop is still running.
+            pg_connection_manager.reset()
             loop.close()
 
         logger.info(

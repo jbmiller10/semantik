@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from shared.connectors.git import (
-    DEFAULT_MAX_FILE_SIZE,
-    DEFAULT_SHALLOW_DEPTH,
-    GitConnector,
-)
+from shared.connectors.git import DEFAULT_MAX_FILE_SIZE, DEFAULT_SHALLOW_DEPTH, GitConnector
 
 
 class TestGitConnectorInit:

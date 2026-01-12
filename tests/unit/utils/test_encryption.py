@@ -3,12 +3,7 @@
 import pytest
 from cryptography.fernet import Fernet
 
-from shared.utils.encryption import (
-    DecryptionError,
-    EncryptionNotConfiguredError,
-    SecretEncryption,
-    generate_fernet_key,
-)
+from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption, generate_fernet_key
 
 
 @pytest.fixture(autouse=True)

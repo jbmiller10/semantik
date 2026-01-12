@@ -12,11 +12,7 @@ from typing import Any, cast
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from vecpipe.cpu_offloader import (
-    defragment_cuda_memory,
-    get_cuda_memory_fragmentation,
-    get_offloader,
-)
+from vecpipe.cpu_offloader import defragment_cuda_memory, get_cuda_memory_fragmentation, get_offloader
 from vecpipe.search.state import get_resources
 
 logger = logging.getLogger(__name__)

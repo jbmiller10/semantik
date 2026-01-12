@@ -49,9 +49,7 @@ class TestPostgreSQLAuthRepositoryIntegration:
         await db_session.commit()
 
         token_value = f"inactive-token-{uuid4().hex}"
-        await self._create_token(
-            repository, str(test_user_db.id), token_value, datetime.now(UTC) + timedelta(days=1)
-        )
+        await self._create_token(repository, str(test_user_db.id), token_value, datetime.now(UTC) + timedelta(days=1))
         await db_session.commit()
 
         assert await repository.verify_refresh_token(token_value) is None
@@ -59,9 +57,7 @@ class TestPostgreSQLAuthRepositoryIntegration:
     async def test_revoke_token_marks_record(self, repository, db_session, test_user_db):
         """Revoking a token should mark it as revoked in the database."""
         token_value = f"revoke-me-{uuid4().hex}"
-        await self._create_token(
-            repository, str(test_user_db.id), token_value, datetime.now(UTC) + timedelta(days=1)
-        )
+        await self._create_token(repository, str(test_user_db.id), token_value, datetime.now(UTC) + timedelta(days=1))
         await db_session.commit()
 
         await repository.revoke_refresh_token(token_value)

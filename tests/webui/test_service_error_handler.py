@@ -15,11 +15,7 @@ from shared.database.exceptions import (
     InvalidStateError,
     ValidationError,
 )
-from webui.utils.service_error_handler import (
-    DEFAULT_EXCEPTION_MAPPINGS,
-    ExceptionMapping,
-    handle_service_errors,
-)
+from webui.utils.service_error_handler import DEFAULT_EXCEPTION_MAPPINGS, ExceptionMapping, handle_service_errors
 
 
 class TestHandleServiceErrorsDecorator:

@@ -1942,9 +1942,7 @@ async def _process_append_operation_impl(
         # Update source sync status
         if source_id is not None:
             try:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
                 source_repo = CollectionSourceRepository(session)
                 status = "success" if success else ("partial" if scan_errors else "failed")
@@ -1978,12 +1976,8 @@ async def _process_append_operation_impl(
         sync_run_id = op_config.get("sync_run_id")
         if sync_run_id is not None:
             try:
-                from shared.database.repositories.collection_repository import (
-                    CollectionRepository as _CollectionRepo,
-                )
-                from shared.database.repositories.collection_sync_run_repository import (
-                    CollectionSyncRunRepository,
-                )
+                from shared.database.repositories.collection_repository import CollectionRepository as _CollectionRepo
+                from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 
                 sync_run_repo = CollectionSyncRunRepository(session)
 
@@ -2054,9 +2048,7 @@ async def _process_append_operation_impl(
         # Update source sync status on failure
         if source_id is not None:
             try:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
                 source_repo = CollectionSourceRepository(session)
                 await source_repo.update_sync_status(
@@ -2078,12 +2070,8 @@ async def _process_append_operation_impl(
         sync_run_id = op_config.get("sync_run_id")
         if sync_run_id is not None:
             try:
-                from shared.database.repositories.collection_repository import (
-                    CollectionRepository as _CollectionRepo,
-                )
-                from shared.database.repositories.collection_sync_run_repository import (
-                    CollectionSyncRunRepository,
-                )
+                from shared.database.repositories.collection_repository import CollectionRepository as _CollectionRepo
+                from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 
                 sync_run_repo = CollectionSyncRunRepository(session)
 
@@ -2509,7 +2497,12 @@ def _handle_task_failure(
         return
 
     try:
+        # Reset connection manager before asyncio.run() as it creates and closes
+        # its own event loop, leaving any connections created on it orphaned.
+        pg_connection_manager.reset()
         asyncio.run(_handle_task_failure_async(operation_id, exc, task_id))
+        # Reset again after asyncio.run() closes its loop
+        pg_connection_manager.reset()
     except Exception as failure_error:  # pragma: no cover - defensive logging
         logger.error("Failed to handle task failure for operation %s: %s", operation_id, failure_error, exc_info=True)
 
