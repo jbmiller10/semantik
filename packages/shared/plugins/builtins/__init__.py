@@ -2,9 +2,6 @@
 
 This package contains the built-in plugins that ship with Semantik:
 
-Agent Plugins:
-    - ClaudeAgentPlugin: LLM agent powered by Claude
-
 Extractor Plugins:
     - KeywordExtractorPlugin: Keyword extraction from text
 
@@ -17,14 +14,12 @@ Sparse Indexer Plugins:
 """
 
 from shared.plugins.builtins.bm25_sparse_indexer import BM25SparseIndexerPlugin
-from shared.plugins.builtins.claude_agent import ClaudeAgentPlugin
 from shared.plugins.builtins.keyword_extractor import KeywordExtractorPlugin
 from shared.plugins.builtins.qwen3_reranker import Qwen3RerankerPlugin
 from shared.plugins.builtins.splade_indexer import SPLADESparseIndexerPlugin
 
 __all__ = [
     "BM25SparseIndexerPlugin",
-    "ClaudeAgentPlugin",
     "KeywordExtractorPlugin",
     "Qwen3RerankerPlugin",
     "SPLADESparseIndexerPlugin",

@@ -15,7 +15,6 @@ Import Organization:
 
 from passlib.context import CryptContext
 
-from .agent_session import AgentSession, AgentSessionMessage
 from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
 from .collection_metadata import (
     ensure_metadata_collection,
@@ -51,18 +50,13 @@ from .factory import (
 )
 from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
-from .repositories.agent_session_repository import AgentSessionRepository
 from .repositories.projection_run_repository import ProjectionRunRepository
 from .utils import parse_user_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 __all__ = [
-    # Agent session models
-    "AgentSession",
-    "AgentSessionMessage",
     # Repository interfaces
-    "AgentSessionRepository",
     "BaseRepository",
     "UserRepository",
     "CollectionRepository",

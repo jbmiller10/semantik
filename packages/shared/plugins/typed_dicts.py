@@ -25,32 +25,6 @@ PROTOCOL_VERSION = "1.0.0"
 # Valid string values for fields that map to internal enums.
 # External plugins use these strings; adapters convert to enums.
 
-MESSAGE_ROLES = frozenset(
-    {
-        "user",
-        "assistant",
-        "system",
-        "tool_call",
-        "tool_result",
-        "error",
-    }
-)
-"""Valid values for AgentMessageDict.role field."""
-
-MESSAGE_TYPES = frozenset(
-    {
-        "text",
-        "thinking",
-        "tool_use",
-        "tool_output",
-        "partial",
-        "final",
-        "error",
-        "metadata",
-    }
-)
-"""Valid values for AgentMessageDict.type field."""
-
 EMBEDDING_MODES = frozenset({"query", "document"})
 """Valid values for embedding mode parameter."""
 
@@ -66,24 +40,6 @@ EXTRACTION_TYPES = frozenset(
     }
 )
 """Valid values for extraction_types parameter."""
-
-AGENT_USE_CASES = frozenset(
-    {
-        "hyde",
-        "query_expansion",
-        "query_understanding",
-        "summarization",
-        "reranking",
-        "answer_synthesis",
-        "tool_use",
-        "agentic_search",
-        "reasoning",
-        "assistant",
-        "code_generation",
-        "data_analysis",
-    }
-)
-"""Valid values for AgentProtocol.supported_use_cases()."""
 
 SPARSE_TYPES = frozenset({"bm25", "splade"})
 """Valid values for SparseIndexerCapabilitiesDict.sparse_type field."""
@@ -275,100 +231,6 @@ class ExtractionResultDict(TypedDict, total=False):
     sentiment: float | None  # -1.0 to 1.0
     summary: str | None
     custom: dict[str, Any]
-
-
-# ============================================================================
-# Agent DTOs
-# ============================================================================
-
-
-class TokenUsageDict(TypedDict, total=False):
-    """Token usage statistics.
-
-    Included in AgentMessageDict for tracking costs.
-    """
-
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_write_tokens: int
-    reasoning_tokens: int
-
-
-class AgentMessageDict(TypedDict):
-    """Message in agent conversation.
-
-    Yielded by AgentProtocol.execute().
-
-    Attributes:
-        id: Unique message identifier.
-        role: Message role (see MESSAGE_ROLES).
-        type: Message type (see MESSAGE_TYPES).
-        content: Message content.
-        timestamp: ISO 8601 timestamp string.
-    """
-
-    id: str
-    role: str  # See MESSAGE_ROLES
-    type: str  # See MESSAGE_TYPES
-    content: str
-    timestamp: str  # ISO 8601 format
-    tool_name: NotRequired[str | None]
-    tool_call_id: NotRequired[str | None]
-    tool_input: NotRequired[dict[str, Any] | None]
-    tool_output: NotRequired[dict[str, Any] | None]
-    model: NotRequired[str | None]
-    usage: NotRequired[TokenUsageDict | None]
-    cost_usd: NotRequired[float | None]
-    is_partial: NotRequired[bool]
-    sequence_number: NotRequired[int]
-    error_code: NotRequired[str | None]
-    error_details: NotRequired[dict[str, Any] | None]
-
-
-class AgentCapabilitiesDict(TypedDict, total=False):
-    """Agent capability declaration.
-
-    Returned by AgentProtocol.get_capabilities().
-    """
-
-    supports_streaming: bool
-    supports_tools: bool
-    supports_parallel_tools: bool
-    supports_sessions: bool
-    supports_session_fork: bool
-    supports_interruption: bool
-    supports_extended_thinking: bool
-    supports_thinking_budget: bool
-    supports_subagents: bool
-    supports_handoffs: bool
-    max_context_tokens: int | None
-    max_output_tokens: int | None
-    supported_models: list[str]
-    default_model: str | None
-    max_tools: int | None
-
-
-class AgentContextDict(TypedDict, total=False):
-    """Runtime context for agent execution.
-
-    Passed to AgentProtocol.execute() as context parameter.
-    """
-
-    request_id: str
-    user_id: str | None
-    collection_id: str | None
-    collection_name: str | None
-    original_query: str | None
-    retrieved_chunks: list[dict[str, Any]] | None
-    session_id: str | None
-    conversation_history: list[AgentMessageDict] | None
-    available_tools: list[str] | None
-    tool_configs: dict[str, dict[str, Any]] | None
-    max_tokens: int | None
-    timeout_seconds: float | None
-    trace_id: str | None
-    parent_span_id: str | None
 
 
 # ============================================================================

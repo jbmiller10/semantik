@@ -122,7 +122,6 @@ Semantik supports 6 plugin types:
 | `chunking` | Text segmentation | `chunk()` |
 | `reranker` | Search result reordering | `rerank()` |
 | `extractor` | Entity/metadata extraction | `extract()` |
-| `agent` | LLM-powered capabilities | `execute()` |
 
 ---
 
@@ -536,96 +535,6 @@ class MyExtractor:
         }
 ```
 
-### Agent Plugin
-
-Agent plugins provide LLM-powered capabilities.
-
-```python
-from typing import ClassVar, Any, AsyncIterator
-from datetime import datetime, timezone
-import uuid
-
-
-class MyAgent:
-    PLUGIN_ID: ClassVar[str] = "my-agent"
-    PLUGIN_TYPE: ClassVar[str] = "agent"
-    PLUGIN_VERSION: ClassVar[str] = "1.0.0"
-
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
-        self._config = config or {}
-
-    async def execute(
-        self,
-        prompt: str,
-        *,
-        context: dict[str, Any] | None = None,
-        system_prompt: str | None = None,
-        tools: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        session_id: str | None = None,
-        stream: bool = True,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Execute the agent and stream responses.
-
-        Args:
-            prompt: User prompt to process.
-            context: Runtime context with request/user/collection info.
-            system_prompt: Optional system prompt override.
-            tools: Names of available tools.
-            model: Model identifier.
-            temperature: Sampling temperature.
-            max_tokens: Maximum output tokens.
-            session_id: Session ID for conversation continuity.
-            stream: Whether to stream partial responses.
-
-        Yields:
-            Message dicts with id, role, type, content, timestamp.
-        """
-        # Your agent logic here...
-        # This example yields a simple response
-
-        yield {
-            "id": str(uuid.uuid4()),
-            "role": "assistant",  # See MESSAGE_ROLES below
-            "type": "text",       # See MESSAGE_TYPES below
-            "content": f"Response to: {prompt}",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "is_partial": False,
-            "sequence_number": 0,
-        }
-
-    @classmethod
-    def get_capabilities(cls) -> dict[str, Any]:
-        """Declare agent capabilities."""
-        return {
-            "supports_streaming": True,
-            "supports_tools": False,
-            "supports_sessions": True,
-            "supports_extended_thinking": False,
-            "max_context_tokens": 100000,
-            "max_output_tokens": 4096,
-            "supported_models": ["my-model-v1"],
-            "default_model": "my-model-v1",
-        }
-
-    @classmethod
-    def supported_use_cases(cls) -> list[str]:
-        """List supported use cases."""
-        return ["assistant", "summarization"]
-
-    @classmethod
-    def get_manifest(cls) -> dict[str, Any]:
-        return {
-            "id": cls.PLUGIN_ID,
-            "type": cls.PLUGIN_TYPE,
-            "version": cls.PLUGIN_VERSION,
-            "display_name": "My Agent",
-            "description": "Custom AI agent",
-        }
-```
-
 ---
 
 ## Data Format Specifications
@@ -666,26 +575,6 @@ Metadata fields (all optional):
 - `token_count`: Number of tokens
 - `heading_hierarchy`: List of parent headings
 
-### Message Format (Agents)
-
-Agents must yield messages matching `AgentMessageDict`:
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | `str` | Yes | Unique message identifier |
-| `role` | `str` | Yes | See MESSAGE_ROLES below |
-| `type` | `str` | Yes | See MESSAGE_TYPES below |
-| `content` | `str` | Yes | Message content |
-| `timestamp` | `str` | Yes | ISO 8601 timestamp |
-| `tool_name` | `str \| None` | No | For tool_use messages |
-| `tool_call_id` | `str \| None` | No | Tool call identifier |
-| `tool_input` | `dict \| None` | No | Tool call arguments |
-| `tool_output` | `dict \| None` | No | Tool result |
-| `model` | `str \| None` | No | Model used |
-| `usage` | `dict \| None` | No | Token usage statistics |
-| `is_partial` | `bool` | No | Whether streaming partial |
-| `sequence_number` | `int` | No | Message order |
-
 ### Rerank Result Format
 
 Rerankers must return results matching `RerankResultDict`:
@@ -703,26 +592,6 @@ Rerankers must return results matching `RerankResultDict`:
 
 Since external plugins can't import semantik enums, use these string values:
 
-### MESSAGE_ROLES
-For `AgentMessageDict.role`:
-- `user` - User message
-- `assistant` - Assistant response
-- `system` - System message
-- `tool_call` - Tool invocation
-- `tool_result` - Tool output
-- `error` - Error message
-
-### MESSAGE_TYPES
-For `AgentMessageDict.type`:
-- `text` - Regular text content
-- `thinking` - Reasoning/thinking content
-- `tool_use` - Tool invocation
-- `tool_output` - Tool result
-- `partial` - Streaming partial response
-- `final` - Final response
-- `error` - Error content
-- `metadata` - Metadata message
-
 ### EMBEDDING_MODES
 For `embed_texts()` mode parameter:
 - `query` - Processing search queries (may apply prefixes)
@@ -737,21 +606,6 @@ For `extract()` extraction_types parameter:
 - `sentiment` - Sentiment analysis
 - `summary` - Text summarization
 - `custom` - Custom extraction
-
-### AGENT_USE_CASES
-For `supported_use_cases()`:
-- `hyde` - Hypothetical Document Embeddings
-- `query_expansion` - Query expansion
-- `query_understanding` - Query analysis
-- `summarization` - Text summarization
-- `reranking` - Result reranking
-- `answer_synthesis` - Answer generation
-- `tool_use` - Tool-using agent
-- `agentic_search` - Agentic search
-- `reasoning` - Complex reasoning
-- `assistant` - General assistant
-- `code_generation` - Code generation
-- `data_analysis` - Data analysis
 
 ---
 
@@ -912,7 +766,7 @@ pip install semantik-plugin-myconnector
 
 2. **Verify plugin type:**
    ```python
-   assert MyConnector.PLUGIN_TYPE in ["connector", "embedding", "chunking", "reranker", "extractor", "agent"]
+   assert MyConnector.PLUGIN_TYPE in ["connector", "embedding", "chunking", "reranker", "extractor", "sparse_indexer"]
    ```
 
 3. **Check for import errors:**
@@ -938,13 +792,6 @@ If semantik rejects your plugin output, check:
    ```python
    assert len(doc["content_hash"]) == 64
    assert all(c in "0123456789abcdef" for c in doc["content_hash"])
-   ```
-
-3. **Invalid enum strings:**
-   ```python
-   # For agents
-   assert msg["role"] in {"user", "assistant", "system", "tool_call", "tool_result", "error"}
-   assert msg["type"] in {"text", "thinking", "tool_use", "tool_output", "partial", "final", "error", "metadata"}
    ```
 
 ### Debugging Tips

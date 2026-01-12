@@ -1603,7 +1603,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                result = await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify APPEND handler was called
                 mock_append.assert_called_once()
@@ -1713,7 +1713,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                result = await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify REMOVE_SOURCE handler was called
                 mock_remove.assert_called_once()
@@ -1754,14 +1754,14 @@ class TestProcessCollectionOperationAsyncRouting:
                     return_value=mock_operation_repo,
                 ),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(ValueError, match="not found in database"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
                 mock_updater.__aexit__ = AsyncMock(return_value=None)
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("nonexistent", mock_celery_task)
+                with pytest.raises(ValueError, match="not found in database"):
+                    await ingestion_module._process_collection_operation_async("nonexistent", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -1817,7 +1817,6 @@ class TestProcessCollectionOperationAsyncRouting:
                     return_value=mock_collection_repo,
                 ),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(ValueError, match="Collection .* not found"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
@@ -1826,7 +1825,8 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                with pytest.raises(ValueError, match="Collection .* not found"):
+                    await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -1920,7 +1920,6 @@ class TestProcessCollectionOperationAsyncRouting:
                 ),
                 patch.object(ingestion_module, "_record_operation_metrics", new_callable=AsyncMock),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(RuntimeError, match="Test failure"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
@@ -1929,7 +1928,8 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                with pytest.raises(RuntimeError, match="Test failure"):
+                    await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -2006,7 +2006,7 @@ class TestProcessCollectionOperationAsyncRouting:
 
         captured_collection = None
 
-        async def capture_collection(*args, **kwargs):
+        async def capture_collection(*args, **_kwargs):
             nonlocal captured_collection
             captured_collection = args[1]  # collection is second positional arg
             return {"success": True}
@@ -2928,7 +2928,7 @@ class TestRetryDocumentsOperation:
             ingestion_module,
             "process_documents_parallel",
             new=AsyncMock(return_value={"processed": 1, "failed": 0, "vectors": 10}),
-        ) as mock_parallel:
+        ):
             result = await ingestion_module._process_retry_documents_operation(
                 operation=operation,
                 collection=collection,

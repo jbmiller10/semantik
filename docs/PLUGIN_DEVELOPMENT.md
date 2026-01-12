@@ -26,7 +26,6 @@ This guide covers the ABC-based approach where plugins inherit from `SemanticPlu
 | **connector** | Data source integrations | `ConnectorPlugin` |
 | **reranker** | Search result reranking | `RerankerPlugin` |
 | **extractor** | Metadata extraction | `ExtractorPlugin` |
-| **agent** | LLM-powered capabilities | `AgentPlugin` |
 | **sparse_indexer** | Sparse vectors (BM25/SPLADE) | `SparseIndexerPlugin` |
 
 ## Quick Start

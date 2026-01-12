@@ -1,6 +1,5 @@
 """Tests for Qdrant utility functions."""
 
-import pytest
 from webui.tasks.qdrant_utils import build_chunk_point
 
 

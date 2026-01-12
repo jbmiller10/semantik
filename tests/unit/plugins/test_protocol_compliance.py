@@ -15,7 +15,6 @@ from __future__ import annotations
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from shared.connectors.base import BaseConnector
 from shared.embedding.plugin_base import BaseEmbeddingPlugin
-from shared.plugins.types.agent import AgentPlugin
 from shared.plugins.types.extractor import ExtractorPlugin
 from shared.plugins.types.reranker import RerankerPlugin
 
@@ -226,43 +225,6 @@ class TestEmbeddingProtocolCompliance:
         assert callable(getattr(BaseEmbeddingPlugin, "get_definition", None))
         assert callable(getattr(BaseEmbeddingPlugin, "supports_model", None))
         assert callable(getattr(BaseEmbeddingPlugin, "get_manifest", None))
-
-
-class TestAgentProtocolCompliance:
-    """Verify AgentPlugin satisfies AgentProtocol."""
-
-    def test_has_plugin_type(self) -> None:
-        """AgentPlugin must have PLUGIN_TYPE set to 'agent'."""
-        assert hasattr(AgentPlugin, "PLUGIN_TYPE")
-        assert isinstance(AgentPlugin.PLUGIN_TYPE, str)
-        assert AgentPlugin.PLUGIN_TYPE == "agent"
-
-    def test_inherits_plugin_class_vars(self) -> None:
-        """AgentPlugin inherits PLUGIN_ID and PLUGIN_VERSION from SemanticPlugin."""
-        # These are inherited from SemanticPlugin base class
-        # They will be set by concrete subclasses
-        from shared.plugins.base import SemanticPlugin
-
-        assert issubclass(AgentPlugin, SemanticPlugin)
-
-    def test_has_required_methods(self) -> None:
-        """AgentPlugin must have all protocol-required methods."""
-        assert hasattr(AgentPlugin, "execute")
-        assert hasattr(AgentPlugin, "get_capabilities")
-        assert hasattr(AgentPlugin, "supported_use_cases")
-        assert hasattr(AgentPlugin, "get_manifest")
-
-    def test_satisfies_protocol_requirements(self) -> None:
-        """AgentPlugin must satisfy all AgentProtocol requirements.
-
-        Note: issubclass() doesn't work with protocols that have ClassVar members,
-        so we verify structural compliance by checking all requirements directly.
-        """
-        # Methods
-        assert callable(getattr(AgentPlugin, "execute", None))
-        assert callable(getattr(AgentPlugin, "get_capabilities", None))
-        assert callable(getattr(AgentPlugin, "supported_use_cases", None))
-        assert callable(getattr(AgentPlugin, "get_manifest", None))
 
 
 class TestProtocolVersionConsistency:
