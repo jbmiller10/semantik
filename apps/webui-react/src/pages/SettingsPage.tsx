@@ -4,8 +4,11 @@ import DatabaseSettings from '../components/settings/DatabaseSettings';
 import PluginsSettings from '../components/settings/PluginsSettings';
 import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
 import LLMSettings from '../components/settings/LLMSettings';
+import SearchPreferencesSettings from '../components/settings/SearchPreferencesSettings';
+import CollectionDefaultsSettings from '../components/settings/CollectionDefaultsSettings';
+import AdminSettings from '../components/settings/AdminSettings';
 
-type SettingsTab = 'database' | 'plugins' | 'mcp' | 'llm';
+type SettingsTab = 'database' | 'plugins' | 'mcp' | 'llm' | 'search' | 'defaults' | 'system';
 
 function SettingsPage() {
   const navigate = useNavigate();
@@ -147,6 +150,90 @@ function SettingsPage() {
             </svg>
             LLM
           </button>
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${
+                activeTab === 'search'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }
+            `}
+          >
+            <svg
+              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
+                activeTab === 'search' ? 'text-blue-500' : 'text-gray-400'
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            Search
+          </button>
+          <button
+            onClick={() => setActiveTab('defaults')}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${
+                activeTab === 'defaults'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }
+            `}
+          >
+            <svg
+              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
+                activeTab === 'defaults' ? 'text-blue-500' : 'text-gray-400'
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            Defaults
+          </button>
+          <button
+            onClick={() => setActiveTab('system')}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${
+                activeTab === 'system'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }
+            `}
+          >
+            <svg
+              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
+                activeTab === 'system' ? 'text-blue-500' : 'text-gray-400'
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
+              />
+            </svg>
+            System
+          </button>
         </nav>
       </div>
 
@@ -156,6 +243,9 @@ function SettingsPage() {
         {activeTab === 'plugins' && <PluginsSettings />}
         {activeTab === 'mcp' && <MCPProfilesSettings />}
         {activeTab === 'llm' && <LLMSettings />}
+        {activeTab === 'search' && <SearchPreferencesSettings />}
+        {activeTab === 'defaults' && <CollectionDefaultsSettings />}
+        {activeTab === 'system' && <AdminSettings />}
       </div>
     </div>
   );
