@@ -95,18 +95,6 @@ async def preferences_api_client(mock_preferences_repo, mock_db_session):
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
-async def unauthenticated_client():
-    """Provide an AsyncClient without authentication."""
-    app.dependency_overrides.clear()
-
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
-
-    app.dependency_overrides.clear()
-
-
 class TestGetPreferences:
     """Tests for GET /api/v2/preferences endpoint."""
 
@@ -144,10 +132,17 @@ class TestGetPreferences:
         mock_repo.get_or_create.assert_called_once_with(1)
 
     @pytest.mark.asyncio()
-    async def test_get_preferences_requires_auth(self, unauthenticated_client):
+    async def test_get_preferences_requires_auth(self, api_client_unauthenticated):
         """Test that GET requires authentication."""
-        response = await unauthenticated_client.get("/api/v2/preferences")
-        assert response.status_code == 401
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = await api_client_unauthenticated.get("/api/v2/preferences")
+            assert response.status_code == 401
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth
 
 
 class TestUpdatePreferences:
@@ -296,13 +291,20 @@ class TestUpdatePreferences:
         assert response.status_code == 422
 
     @pytest.mark.asyncio()
-    async def test_put_preferences_requires_auth(self, unauthenticated_client):
+    async def test_put_preferences_requires_auth(self, api_client_unauthenticated):
         """Test that PUT requires authentication."""
-        response = await unauthenticated_client.put(
-            "/api/v2/preferences",
-            json={"search": {"top_k": 20}},
-        )
-        assert response.status_code == 401
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = await api_client_unauthenticated.put(
+                "/api/v2/preferences",
+                json={"search": {"top_k": 20}},
+            )
+            assert response.status_code == 401
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth
 
 
 class TestResetSearchPreferences:
@@ -319,10 +321,17 @@ class TestResetSearchPreferences:
         mock_repo.reset_search.assert_called_once_with(1)
 
     @pytest.mark.asyncio()
-    async def test_reset_search_requires_auth(self, unauthenticated_client):
+    async def test_reset_search_requires_auth(self, api_client_unauthenticated):
         """Test that reset search requires authentication."""
-        response = await unauthenticated_client.post("/api/v2/preferences/reset/search")
-        assert response.status_code == 401
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = await api_client_unauthenticated.post("/api/v2/preferences/reset/search")
+            assert response.status_code == 401
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth
 
 
 class TestResetCollectionDefaults:
@@ -339,7 +348,14 @@ class TestResetCollectionDefaults:
         mock_repo.reset_collection_defaults.assert_called_once_with(1)
 
     @pytest.mark.asyncio()
-    async def test_reset_collection_defaults_requires_auth(self, unauthenticated_client):
+    async def test_reset_collection_defaults_requires_auth(self, api_client_unauthenticated):
         """Test that reset collection defaults requires authentication."""
-        response = await unauthenticated_client.post("/api/v2/preferences/reset/collection-defaults")
-        assert response.status_code == 401
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = await api_client_unauthenticated.post("/api/v2/preferences/reset/collection-defaults")
+            assert response.status_code == 401
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth
