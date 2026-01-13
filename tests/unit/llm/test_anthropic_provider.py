@@ -16,7 +16,7 @@ from shared.llm.providers.anthropic_provider import AnthropicLLMProvider
 class TestAnthropicLLMProvider:
     """Tests for AnthropicLLMProvider."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def provider(self):
         """Create a fresh provider instance."""
         return AnthropicLLMProvider()

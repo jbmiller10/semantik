@@ -16,7 +16,7 @@ from shared.llm.providers.openai_provider import OpenAILLMProvider
 class TestOpenAILLMProvider:
     """Tests for OpenAILLMProvider."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def provider(self):
         """Create a fresh provider instance."""
         return OpenAILLMProvider()
@@ -319,9 +319,7 @@ class TestOpenAILLMProvider:
         with patch("shared.llm.providers.openai_provider.AsyncOpenAI"):
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(
-                provider.initialize(api_key="test-key", model="gpt-4o-mini")
-            )
+            asyncio.get_event_loop().run_until_complete(provider.initialize(api_key="test-key", model="gpt-4o-mini"))
 
             info = provider.get_model_info()
 

@@ -222,6 +222,7 @@ class TestModelInfo:
             description="Test",
         )
 
-        # Should not raise
+        # Should not raise - can be hashed and added to set
         hash(model)
-        {model}  # Can add to set
+        model_set = {model}
+        assert len(model_set) == 1

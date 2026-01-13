@@ -160,18 +160,14 @@ class TestLLMContextLengthError:
 
     def test_message_includes_limits(self):
         """Message includes max and requested tokens."""
-        err = LLMContextLengthError(
-            provider="anthropic", max_tokens=200000, requested=250000
-        )
+        err = LLMContextLengthError(provider="anthropic", max_tokens=200000, requested=250000)
         assert "200000" in str(err)
         assert "250000" in str(err)
         assert "anthropic" in str(err).lower()
 
     def test_has_all_attributes(self):
         """Has provider, max_tokens, and requested attributes."""
-        err = LLMContextLengthError(
-            provider="openai", max_tokens=128000, requested=150000
-        )
+        err = LLMContextLengthError(provider="openai", max_tokens=128000, requested=150000)
         assert err.provider == "openai"
         assert err.max_tokens == 128000
         assert err.requested == 150000

@@ -56,6 +56,7 @@ from .exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+from .factory import LLMServiceFactory
 from .model_registry import (
     ModelInfo,
     get_all_models,
@@ -65,6 +66,7 @@ from .model_registry import (
 )
 from .providers import AnthropicLLMProvider, OpenAILLMProvider
 from .types import LLMProviderType, LLMQualityTier, LLMResponse
+from .usage_tracking import record_llm_usage, record_usage_simple
 
 __all__ = [
     # Base class
@@ -87,6 +89,11 @@ __all__ = [
     "get_default_model",
     "get_all_models",
     "get_model_by_id",
+    # Factory
+    "LLMServiceFactory",
+    # Usage tracking
+    "record_llm_usage",
+    "record_usage_simple",
     # Providers
     "AnthropicLLMProvider",
     "OpenAILLMProvider",
