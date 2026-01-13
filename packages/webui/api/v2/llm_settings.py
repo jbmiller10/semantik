@@ -117,19 +117,10 @@ async def update_llm_settings(
     config = await repo.get_or_create(user_id)
 
     # Update tier configuration if provided
-    update_fields: dict[str, Any] = {}
-    if update.high_quality_provider is not None:
-        update_fields["high_quality_provider"] = update.high_quality_provider
-    if update.high_quality_model is not None:
-        update_fields["high_quality_model"] = update.high_quality_model
-    if update.low_quality_provider is not None:
-        update_fields["low_quality_provider"] = update.low_quality_provider
-    if update.low_quality_model is not None:
-        update_fields["low_quality_model"] = update.low_quality_model
-    if update.default_temperature is not None:
-        update_fields["default_temperature"] = update.default_temperature
-    if update.default_max_tokens is not None:
-        update_fields["default_max_tokens"] = update.default_max_tokens
+    update_fields: dict[str, Any] = update.model_dump(
+        exclude_unset=True,
+        exclude={"anthropic_api_key", "openai_api_key"},
+    )
 
     if update_fields:
         config = await repo.update(user_id, **update_fields)

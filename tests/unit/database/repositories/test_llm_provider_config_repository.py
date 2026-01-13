@@ -104,6 +104,19 @@ class TestLLMProviderConfigRepository:
         with pytest.raises(ValueError, match="Invalid provider"):
             await repo.update(123, high_quality_provider="unknown")
 
+    async def test_update_allows_clearing_fields(self, repo, mock_session):
+        """Explicit None should clear a previously set field."""
+        mock_config = MagicMock()
+        mock_config.high_quality_provider = "anthropic"
+        mock_config.default_temperature = 0.7
+
+        with patch.object(repo, "get_or_create", new=AsyncMock(return_value=mock_config)):
+            await repo.update(123, high_quality_provider=None, default_temperature=None)
+
+        assert mock_config.high_quality_provider is None
+        assert mock_config.default_temperature is None
+        mock_session.flush.assert_called_once()
+
     async def test_update_tier_config(self, repo):
         """update_tier_config updates correct tier."""
         with (patch.object(repo, "update", return_value=MagicMock()) as mock_update,):
