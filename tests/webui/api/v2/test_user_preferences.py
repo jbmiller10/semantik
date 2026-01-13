@@ -30,7 +30,7 @@ def mock_user_preferences():
     prefs.search_similarity_threshold = None
     # Collection defaults
     prefs.default_embedding_model = None
-    prefs.default_quantization = "none"
+    prefs.default_quantization = "float16"
     prefs.default_chunking_strategy = "recursive"
     prefs.default_chunk_size = 1024
     prefs.default_chunk_overlap = 200
@@ -117,7 +117,7 @@ class TestGetPreferences:
 
         # Verify collection defaults
         assert data["collection_defaults"]["embedding_model"] is None
-        assert data["collection_defaults"]["quantization"] == "none"
+        assert data["collection_defaults"]["quantization"] == "float16"
         assert data["collection_defaults"]["chunking_strategy"] == "recursive"
         assert data["collection_defaults"]["chunk_size"] == 1024
         assert data["collection_defaults"]["chunk_overlap"] == 200
@@ -185,7 +185,7 @@ class TestUpdatePreferences:
             json={
                 "collection_defaults": {
                     "embedding_model": "nomic-embed-text",
-                    "quantization": "scalar",
+                    "quantization": "float32",
                     "chunking_strategy": "markdown",
                     "chunk_size": 512,
                     "chunk_overlap": 100,
@@ -200,7 +200,7 @@ class TestUpdatePreferences:
         mock_repo.update.assert_called_once()
         call_kwargs = mock_repo.update.call_args[1]
         assert call_kwargs["default_embedding_model"] == "nomic-embed-text"
-        assert call_kwargs["default_quantization"] == "scalar"
+        assert call_kwargs["default_quantization"] == "float32"
         assert call_kwargs["default_chunking_strategy"] == "markdown"
         assert call_kwargs["default_chunk_size"] == 512
         assert call_kwargs["default_chunk_overlap"] == 100
@@ -239,7 +239,7 @@ class TestUpdatePreferences:
                 "collection_defaults": {
                     "chunk_size": 100,
                     "embedding_model": None,
-                    "quantization": "none",
+                    "quantization": "float16",
                     "chunking_strategy": "recursive",
                     "chunk_overlap": 200,
                     "enable_sparse": False,
@@ -257,7 +257,7 @@ class TestUpdatePreferences:
                 "collection_defaults": {
                     "chunk_size": 10000,
                     "embedding_model": None,
-                    "quantization": "none",
+                    "quantization": "float16",
                     "chunking_strategy": "recursive",
                     "chunk_overlap": 200,
                     "enable_sparse": False,
@@ -278,7 +278,7 @@ class TestUpdatePreferences:
             json={
                 "collection_defaults": {
                     "embedding_model": None,
-                    "quantization": "none",
+                    "quantization": "float16",
                     "chunking_strategy": "recursive",
                     "chunk_size": 1024,
                     "chunk_overlap": 200,

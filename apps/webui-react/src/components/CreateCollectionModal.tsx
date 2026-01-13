@@ -7,6 +7,7 @@ import { useEmbeddingModels } from '../hooks/useModels';
 import { useConnectorCatalog, useGitPreview, useImapPreview } from '../hooks/useConnectors';
 import { useUIStore } from '../stores/uiStore';
 import { useChunkingStore } from '../stores/chunkingStore';
+import { usePreferences } from '../hooks/usePreferences';
 import { useNavigate } from 'react-router-dom';
 import { getInputClassName } from '../utils/formStyles';
 import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
@@ -16,6 +17,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
 import type { CreateCollectionRequest, SyncMode } from '../types/collection';
 import type { GitPreviewResponse, ImapPreviewResponse } from '../types/connector';
+import type { ChunkingStrategyType } from '../types/chunking';
 
 interface CreateCollectionModalProps {
   onClose: () => void;
@@ -29,10 +31,12 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
-  const { strategyConfig } = useChunkingStore();
+  const { strategyConfig, setStrategy, updateConfiguration } = useChunkingStore();
+  const { data: prefs } = usePreferences();
   const navigate = useNavigate();
   const { data: modelsData, isLoading: modelsLoading } = useEmbeddingModels();
   const formRef = useRef<HTMLFormElement>(null);
+  const [prefsApplied, setPrefsApplied] = useState(false);
 
   // Connector catalog and preview hooks
   const { data: catalog, isLoading: catalogLoading } = useConnectorCatalog();
@@ -141,10 +145,35 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         onClose();
       }
     };
-    
+
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, isSubmitting]);
+
+  // Apply user preferences to form on first load
+  useEffect(() => {
+    if (prefs && !prefsApplied) {
+      // Apply form defaults
+      setFormData(prev => ({
+        ...prev,
+        embedding_model: prefs.collection_defaults.embedding_model ?? DEFAULT_EMBEDDING_MODEL,
+        quantization: prefs.collection_defaults.quantization,
+      }));
+
+      // Apply sparse indexing defaults
+      setSparseEnabled(prefs.collection_defaults.enable_sparse);
+      setSparsePlugin(prefs.collection_defaults.sparse_type === 'splade' ? 'splade-local' : 'bm25-local');
+
+      // Apply chunking defaults - set strategy first, then update configuration
+      setStrategy(prefs.collection_defaults.chunking_strategy as ChunkingStrategyType);
+      updateConfiguration({
+        chunkSize: prefs.collection_defaults.chunk_size,
+        chunkOverlap: prefs.collection_defaults.chunk_overlap,
+      });
+
+      setPrefsApplied(true);
+    }
+  }, [prefs, prefsApplied, setStrategy, updateConfiguration]);
 
   // Initialize default values when connector type changes
   useEffect(() => {

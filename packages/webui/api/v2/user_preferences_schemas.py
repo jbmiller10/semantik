@@ -41,7 +41,7 @@ class CollectionDefaults(BaseModel):
         max_length=128,
         description="Default embedding model (null for system default)",
     )
-    quantization: Literal["none", "scalar", "binary"] = Field(default="none", description="Vector quantization type")
+    quantization: Literal["float32", "float16", "int8"] = Field(default="float16", description="Model precision type")
     chunking_strategy: Literal["character", "recursive", "markdown", "semantic"] = Field(
         default="recursive", description="Text chunking strategy"
     )
@@ -64,7 +64,7 @@ class CollectionDefaults(BaseModel):
         json_schema_extra={
             "example": {
                 "embedding_model": None,
-                "quantization": "none",
+                "quantization": "float16",
                 "chunking_strategy": "recursive",
                 "chunk_size": 1024,
                 "chunk_overlap": 200,
@@ -97,7 +97,7 @@ class UserPreferencesResponse(BaseModel):
                 },
                 "collection_defaults": {
                     "embedding_model": None,
-                    "quantization": "none",
+                    "quantization": "float16",
                     "chunking_strategy": "recursive",
                     "chunk_size": 1024,
                     "chunk_overlap": 200,

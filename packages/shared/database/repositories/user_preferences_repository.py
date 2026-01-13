@@ -58,7 +58,7 @@ class UserPreferencesRepository:
 
     # Valid values for constrained fields
     VALID_SEARCH_MODES = frozenset({"dense", "sparse", "hybrid"})
-    VALID_QUANTIZATION = frozenset({"none", "scalar", "binary"})
+    VALID_QUANTIZATION = frozenset({"float32", "float16", "int8"})
     VALID_CHUNKING_STRATEGIES = frozenset({"character", "recursive", "markdown", "semantic"})
     VALID_SPARSE_TYPES = frozenset({"bm25", "splade"})
 
@@ -73,7 +73,7 @@ class UserPreferencesRepository:
 
     COLLECTION_DEFAULTS: dict[str, int | str | bool | None] = {
         "default_embedding_model": None,
-        "default_quantization": "none",
+        "default_quantization": "float16",
         "default_chunking_strategy": "recursive",
         "default_chunk_size": 1024,
         "default_chunk_overlap": 200,
@@ -250,7 +250,7 @@ class UserPreferencesRepository:
             search_rrf_k: RRF constant (1-100)
             search_similarity_threshold: Minimum similarity (0.0-1.0 or None)
             default_embedding_model: Default embedding model or None
-            default_quantization: Quantization type ('none', 'scalar', 'binary')
+            default_quantization: Model precision ('float32', 'float16', 'int8')
             default_chunking_strategy: Chunking strategy
             default_chunk_size: Chunk size (256-4096)
             default_chunk_overlap: Chunk overlap (0-512)

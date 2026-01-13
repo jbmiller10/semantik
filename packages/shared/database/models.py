@@ -1147,7 +1147,7 @@ class UserPreferences(Base):
 
     Collection defaults:
     - default_embedding_model: Model ID or NULL for system default
-    - default_quantization: 'none', 'scalar', 'binary' (default 'none')
+    - default_quantization: 'float32', 'float16', 'int8' (default 'float16')
     - default_chunking_strategy: 'character', 'recursive', 'markdown', 'semantic'
     - default_chunk_size: 256-4096 (default 1024)
     - default_chunk_overlap: 0-512 (default 200)
@@ -1176,7 +1176,7 @@ class UserPreferences(Base):
 
     # Collection defaults
     default_embedding_model = Column(String(128), nullable=True)
-    default_quantization = Column(String(16), nullable=False, default="none")
+    default_quantization = Column(String(16), nullable=False, default="float16")
     default_chunking_strategy = Column(String(32), nullable=False, default="recursive")
     default_chunk_size = Column(Integer, nullable=False, default=1024)
     default_chunk_overlap = Column(Integer, nullable=False, default=200)
@@ -1206,7 +1206,7 @@ class UserPreferences(Base):
             name="ck_user_preferences_search_similarity_threshold",
         ),
         CheckConstraint(
-            "default_quantization IN ('none', 'scalar', 'binary')",
+            "default_quantization IN ('float32', 'float16', 'int8')",
             name="ck_user_preferences_default_quantization",
         ),
         CheckConstraint(

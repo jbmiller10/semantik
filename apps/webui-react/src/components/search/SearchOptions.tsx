@@ -2,6 +2,8 @@ import React from 'react';
 import { useSearchStore } from '../../stores/searchStore';
 import { ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { RerankingConfiguration } from '../RerankingConfiguration';
+import { useUpdatePreferences } from '../../hooks/usePreferences';
+import type { SearchMode } from '../../types/preferences';
 
 export default function SearchOptions() {
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -11,10 +13,23 @@ export default function SearchOptions() {
         getValidationError,
         setFieldTouched
     } = useSearchStore();
+    const { mutate: updatePrefs, isPending: savingPrefs } = useUpdatePreferences();
 
     const handleParamChange = (key: string, value: string | number | boolean) => {
         setFieldTouched(key, true);
         validateAndUpdateSearchParams({ [key]: value });
+    };
+
+    const handleSaveAsDefaults = () => {
+        updatePrefs({
+            search: {
+                top_k: searchParams.topK,
+                mode: searchParams.searchMode as SearchMode,
+                use_reranker: searchParams.useReranker,
+                rrf_k: searchParams.rrfK,
+                similarity_threshold: searchParams.scoreThreshold || null,
+            },
+        });
     };
 
     return (
@@ -92,6 +107,18 @@ export default function SearchOptions() {
                             quantization={searchParams.rerankQuantization}
                             onChange={validateAndUpdateSearchParams}
                         />
+                    </div>
+
+                    {/* Save as Defaults */}
+                    <div className="pt-4 border-t border-gray-200 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleSaveAsDefaults}
+                            disabled={savingPrefs}
+                            className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        >
+                            {savingPrefs ? 'Saving...' : 'Save as defaults'}
+                        </button>
                     </div>
                 </div>
             )}

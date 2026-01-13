@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, X, Loader2 } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
@@ -7,6 +7,7 @@ import { SearchModeSelector } from './SearchModeSelector';
 import { searchV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import { sanitizeQuery } from '../../utils/searchValidation';
+import { usePreferences } from '../../hooks/usePreferences';
 
 import type { Collection } from '../../types/collection';
 import type { SearchResult as ApiSearchResult } from '../../services/api/v2/types';
@@ -52,6 +53,24 @@ export default function SearchForm({ collections }: SearchFormProps) {
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
+
+    // User preferences for search defaults
+    const { data: prefs } = usePreferences();
+    const [prefsInitialized, setPrefsInitialized] = useState(false);
+
+    // Initialize search params from user preferences on first load
+    useEffect(() => {
+        if (prefs && !prefsInitialized) {
+            validateAndUpdateSearchParams({
+                topK: prefs.search.top_k,
+                searchMode: prefs.search.mode,
+                useReranker: prefs.search.use_reranker,
+                rrfK: prefs.search.rrf_k,
+                scoreThreshold: prefs.search.similarity_threshold ?? 0.0,
+            });
+            setPrefsInitialized(true);
+        }
+    }, [prefs, prefsInitialized, validateAndUpdateSearchParams]);
 
     // Cleanup abort controller on unmount
     useEffect(() => {

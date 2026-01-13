@@ -9,8 +9,8 @@ export type SearchMode = 'dense' | 'sparse' | 'hybrid';
 /** Chunking strategy for document processing */
 export type ChunkingStrategy = 'character' | 'recursive' | 'markdown' | 'semantic';
 
-/** Vector quantization level */
-export type Quantization = 'none' | 'scalar' | 'binary';
+/** Model precision level */
+export type Quantization = 'float32' | 'float16' | 'int8';
 
 /** Sparse indexing type */
 export type SparseType = 'bm25' | 'splade';

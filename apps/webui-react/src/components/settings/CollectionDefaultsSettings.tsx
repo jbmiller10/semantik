@@ -25,7 +25,7 @@ interface CollectionFormState {
 
 const DEFAULT_FORM_STATE: CollectionFormState = {
   embedding_model: '',
-  quantization: 'none',
+  quantization: 'float16',
   chunking_strategy: 'recursive',
   chunk_size: 1024,
   chunk_overlap: 200,
@@ -217,48 +217,48 @@ export default function CollectionDefaultsSettings() {
               </p>
             </div>
 
-            {/* Quantization */}
+            {/* Model Precision */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Vector Quantization
+                Model Precision
               </label>
               <div className="flex space-x-2">
                 <button
                   type="button"
-                  onClick={() => handleChange('quantization', 'none')}
+                  onClick={() => handleChange('quantization', 'float32')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
-                    formState.quantization === 'none'
+                    formState.quantization === 'float32'
                       ? 'bg-blue-100 border-blue-500 text-blue-700'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  None
+                  float32
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleChange('quantization', 'scalar')}
+                  onClick={() => handleChange('quantization', 'float16')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
-                    formState.quantization === 'scalar'
+                    formState.quantization === 'float16'
                       ? 'bg-blue-100 border-blue-500 text-blue-700'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  Scalar
+                  float16
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleChange('quantization', 'binary')}
+                  onClick={() => handleChange('quantization', 'int8')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
-                    formState.quantization === 'binary'
+                    formState.quantization === 'int8'
                       ? 'bg-blue-100 border-blue-500 text-blue-700'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  Binary
+                  int8
                 </button>
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Reduces storage at the cost of some accuracy
+                Reduces GPU memory usage. float16 is recommended for most models.
               </p>
             </div>
           </div>

@@ -48,7 +48,7 @@ def upgrade() -> None:
         sa.Column("search_similarity_threshold", sa.Float(), nullable=True),
         # Collection defaults
         sa.Column("default_embedding_model", sa.String(128), nullable=True),
-        sa.Column("default_quantization", sa.String(16), nullable=False, server_default="none"),
+        sa.Column("default_quantization", sa.String(16), nullable=False, server_default="float16"),
         sa.Column("default_chunking_strategy", sa.String(32), nullable=False, server_default="recursive"),
         sa.Column("default_chunk_size", sa.Integer(), nullable=False, server_default="1024"),
         sa.Column("default_chunk_overlap", sa.Integer(), nullable=False, server_default="200"),
@@ -106,7 +106,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_user_preferences_default_quantization",
         "user_preferences",
-        "default_quantization IN ('none', 'scalar', 'binary')",
+        "default_quantization IN ('float32', 'float16', 'int8')",
     )
 
     op.create_check_constraint(

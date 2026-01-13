@@ -42,9 +42,9 @@ class TestUserPreferencesRepository:
 
     def test_validate_quantization_valid(self, repo):
         """Valid quantization values pass validation."""
-        repo._validate_quantization("none")
-        repo._validate_quantization("scalar")
-        repo._validate_quantization("binary")
+        repo._validate_quantization("float32")
+        repo._validate_quantization("float16")
+        repo._validate_quantization("int8")
 
     def test_validate_quantization_invalid(self, repo):
         """Invalid quantization raises ValidationError."""
@@ -304,7 +304,7 @@ class TestUserPreferencesRepository:
             result = await repo.reset_collection_defaults(123)
 
         assert result.default_embedding_model is None
-        assert result.default_quantization == "none"
+        assert result.default_quantization == "float16"
         assert result.default_chunking_strategy == "recursive"
         assert result.default_chunk_size == 1024
         assert result.default_chunk_overlap == 200
@@ -391,7 +391,7 @@ class TestUserPreferencesRepository:
     def test_collection_defaults_values(self, repo):
         """Verify COLLECTION_DEFAULTS contains correct values."""
         assert repo.COLLECTION_DEFAULTS["default_embedding_model"] is None
-        assert repo.COLLECTION_DEFAULTS["default_quantization"] == "none"
+        assert repo.COLLECTION_DEFAULTS["default_quantization"] == "float16"
         assert repo.COLLECTION_DEFAULTS["default_chunking_strategy"] == "recursive"
         assert repo.COLLECTION_DEFAULTS["default_chunk_size"] == 1024
         assert repo.COLLECTION_DEFAULTS["default_chunk_overlap"] == 200
