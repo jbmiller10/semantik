@@ -115,7 +115,7 @@ class SystemSettingsService:
         """
         self._session_factory = session_factory
         self._cache: dict[str, Any] = {}
-        self._cache_expiry: datetime = datetime.min
+        self._cache_expiry: datetime = datetime.min.replace(tzinfo=UTC)
         self._lock = asyncio.Lock()
 
     async def get_setting(self, key: str, default: Any = None) -> Any:
@@ -201,7 +201,7 @@ class SystemSettingsService:
 
     def invalidate_cache(self) -> None:
         """Force cache refresh on next access."""
-        self._cache_expiry = datetime.min
+        self._cache_expiry = datetime.min.replace(tzinfo=UTC)
         logger.debug("System settings cache invalidated")
 
 
