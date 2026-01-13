@@ -11,6 +11,7 @@ import type {
   LLMTestRequest,
   LLMTestResponse,
   TokenUsageResponse,
+  LLMProviderType,
 } from '../../../types/llm';
 
 export const llmApi = {
@@ -48,4 +49,16 @@ export const llmApi = {
    */
   getUsage: (days: number = 30) =>
     apiClient.get<TokenUsageResponse>('/api/v2/llm/usage', { params: { days } }),
+
+  /**
+   * Refresh models from provider API.
+   * Fetches available models directly from the provider (Anthropic/OpenAI).
+   * Rate limited: 5 requests/minute per user.
+   * @param provider Provider to fetch models from
+   * @param apiKey API key for the provider
+   */
+  refreshModels: (provider: LLMProviderType, apiKey: string) =>
+    apiClient.get<AvailableModelsResponse>('/api/v2/llm/models/refresh', {
+      params: { provider, api_key: apiKey },
+    }),
 };

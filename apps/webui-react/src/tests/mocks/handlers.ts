@@ -454,4 +454,177 @@ export const handlers = [
       partial_failure: false,
     })
   }),
+
+  // LLM Settings endpoints
+  http.get('/api/v2/llm/settings', () => {
+    return HttpResponse.json({
+      high_quality_provider: 'anthropic',
+      high_quality_model: 'claude-opus-4-5-20251101',
+      low_quality_provider: 'anthropic',
+      low_quality_model: 'claude-3-5-haiku-20241022',
+      anthropic_has_key: true,
+      openai_has_key: false,
+      default_temperature: 0.7,
+      default_max_tokens: 4096,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    })
+  }),
+
+  http.put('/api/v2/llm/settings', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({
+      high_quality_provider: body.high_quality_provider ?? 'anthropic',
+      high_quality_model: body.high_quality_model ?? 'claude-opus-4-5-20251101',
+      low_quality_provider: body.low_quality_provider ?? 'anthropic',
+      low_quality_model: body.low_quality_model ?? 'claude-3-5-haiku-20241022',
+      anthropic_has_key: !!body.anthropic_api_key || true,
+      openai_has_key: !!body.openai_api_key || false,
+      default_temperature: body.default_temperature ?? 0.7,
+      default_max_tokens: body.default_max_tokens ?? 4096,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.get('/api/v2/llm/models', () => {
+    return HttpResponse.json({
+      models: [
+        {
+          id: 'claude-opus-4-5-20251101',
+          name: 'Opus 4.5',
+          display_name: 'Claude - Opus 4.5',
+          provider: 'anthropic',
+          tier_recommendation: 'high',
+          context_window: 200000,
+          description: 'Most capable Claude model for complex tasks',
+          is_curated: true,
+        },
+        {
+          id: 'claude-sonnet-4-20250514',
+          name: 'Sonnet 4',
+          display_name: 'Claude - Sonnet 4',
+          provider: 'anthropic',
+          tier_recommendation: 'high',
+          context_window: 200000,
+          description: 'Balanced performance and cost',
+          is_curated: true,
+        },
+        {
+          id: 'claude-3-5-haiku-20241022',
+          name: 'Haiku 3.5',
+          display_name: 'Claude - Haiku 3.5',
+          provider: 'anthropic',
+          tier_recommendation: 'low',
+          context_window: 200000,
+          description: 'Fast and cost-effective for simple tasks',
+          is_curated: true,
+        },
+        {
+          id: 'gpt-4o',
+          name: 'GPT-4o',
+          display_name: 'OpenAI - GPT-4o',
+          provider: 'openai',
+          tier_recommendation: 'high',
+          context_window: 128000,
+          description: 'OpenAI flagship model with vision',
+          is_curated: true,
+        },
+        {
+          id: 'gpt-4o-mini',
+          name: 'GPT-4o Mini',
+          display_name: 'OpenAI - GPT-4o Mini',
+          provider: 'openai',
+          tier_recommendation: 'low',
+          context_window: 128000,
+          description: 'Fast and affordable for simple tasks',
+          is_curated: true,
+        },
+      ],
+    })
+  }),
+
+  http.get('/api/v2/llm/models/refresh', ({ request }) => {
+    const url = new URL(request.url)
+    const provider = url.searchParams.get('provider')
+
+    if (provider === 'anthropic') {
+      return HttpResponse.json({
+        models: [
+          {
+            id: 'claude-opus-4-5-20251101',
+            name: 'Opus 4.5',
+            display_name: 'Claude - Opus 4.5',
+            provider: 'anthropic',
+            tier_recommendation: 'high',
+            context_window: 200000,
+            description: 'Claude model: claude-opus-4-5-20251101',
+            is_curated: false,
+          },
+          {
+            id: 'claude-sonnet-4-20250514',
+            name: 'Sonnet 4',
+            display_name: 'Claude - Sonnet 4',
+            provider: 'anthropic',
+            tier_recommendation: 'high',
+            context_window: 200000,
+            description: 'Claude model: claude-sonnet-4-20250514',
+            is_curated: false,
+          },
+        ],
+      })
+    }
+
+    return HttpResponse.json({
+      models: [
+        {
+          id: 'gpt-4o',
+          name: 'GPT-4o',
+          display_name: 'OpenAI - GPT-4o',
+          provider: 'openai',
+          tier_recommendation: 'high',
+          context_window: 128000,
+          description: 'OpenAI model: gpt-4o',
+          is_curated: false,
+        },
+      ],
+    })
+  }),
+
+  http.post('/api/v2/llm/test', async ({ request }) => {
+    const body = await request.json() as { provider: string; api_key: string }
+
+    // Simulate invalid API key
+    if (body.api_key === 'invalid-key') {
+      return HttpResponse.json({
+        success: false,
+        message: 'Invalid API key',
+        model_tested: null,
+      })
+    }
+
+    return HttpResponse.json({
+      success: true,
+      message: `Successfully connected to ${body.provider} API`,
+      model_tested: body.provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini',
+    })
+  }),
+
+  http.get('/api/v2/llm/usage', () => {
+    return HttpResponse.json({
+      total_input_tokens: 58023,
+      total_output_tokens: 30245,
+      total_tokens: 88268,
+      by_feature: {
+        hyde: { input_tokens: 12345, output_tokens: 6789, total_tokens: 19134 },
+        summary: { input_tokens: 45678, output_tokens: 23456, total_tokens: 69134 },
+      },
+      by_provider: {
+        anthropic: { input_tokens: 50000, output_tokens: 25000, total_tokens: 75000 },
+        openai: { input_tokens: 8023, output_tokens: 5245, total_tokens: 13268 },
+      },
+      event_count: 156,
+      period_days: 30,
+    })
+  }),
 ]

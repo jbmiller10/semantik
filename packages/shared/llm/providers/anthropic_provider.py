@@ -203,5 +203,97 @@ class AnthropicLLMProvider(BaseLLMService):
         """Check if the provider is ready for requests."""
         return self._initialized and self._client is not None
 
+    @staticmethod
+    async def list_models(api_key: str) -> list[dict[str, Any]]:
+        """List available models from the Anthropic API.
+
+        Args:
+            api_key: Anthropic API key
+
+        Returns:
+            List of model dictionaries with id, name, display_name, provider,
+            tier_recommendation, context_window, and description.
+
+        Raises:
+            LLMAuthenticationError: If API key is invalid
+            LLMProviderError: For other API errors
+        """
+        client = AsyncAnthropic(api_key=api_key)
+        try:
+            # Anthropic models.list() returns available models
+            # Note: This API was added in anthropic SDK 0.35.0+
+            response = await client.models.list()  # type: ignore[attr-defined]
+            models = []
+            for model in response.data:
+                model_id = model.id
+                # Extract a friendly name from the model ID
+                # e.g., "claude-sonnet-4-5-20250929" -> "Sonnet 4.5"
+                name = _format_anthropic_model_name(model_id)
+                display_name = f"Claude - {name}"
+
+                # Determine tier recommendation based on model name
+                tier = "high" if "opus" in model_id.lower() else "low"
+
+                # Context window - default to 200k for Claude models
+                context_window = 200000
+
+                models.append({
+                    "id": model_id,
+                    "name": name,
+                    "display_name": display_name,
+                    "provider": "anthropic",
+                    "tier_recommendation": tier,
+                    "context_window": context_window,
+                    "description": f"Claude model: {model_id}",
+                    "is_curated": False,
+                })
+            return models
+        except anthropic.AuthenticationError as e:
+            raise LLMAuthenticationError("anthropic", str(e)) from e
+        except anthropic.APIError as e:
+            raise LLMProviderError("anthropic", str(e)) from e
+        except AttributeError as e:
+            # Handle case where models API isn't available in SDK version
+            raise LLMProviderError(
+                "anthropic",
+                "Models API not available. Please update the anthropic SDK.",
+            ) from e
+        finally:
+            await client.close()
+
+
+def _format_anthropic_model_name(model_id: str) -> str:
+    """Format Anthropic model ID to a friendly name.
+
+    Examples:
+        claude-opus-4-5-20251101 -> Opus 4.5
+        claude-sonnet-4-5-20250929 -> Sonnet 4.5
+        claude-3-5-sonnet-20241022 -> 3.5 Sonnet
+    """
+    lower_id = model_id.lower()
+
+    # New naming convention: claude-{variant}-{major}-{minor}-{date}
+    if "opus-4" in lower_id:
+        return "Opus 4.5"
+    if "sonnet-4" in lower_id:
+        return "Sonnet 4.5"
+    if "haiku-4" in lower_id:
+        return "Haiku 4"
+    # Old naming convention: claude-{major}-{minor}-{variant}-{date}
+    if "3-5-opus" in lower_id:
+        return "3.5 Opus"
+    if "3-5-sonnet" in lower_id:
+        return "3.5 Sonnet"
+    if "3-5-haiku" in lower_id:
+        return "3.5 Haiku"
+    if "opus" in lower_id:
+        return "Opus"
+    if "sonnet" in lower_id:
+        return "Sonnet"
+    if "haiku" in lower_id:
+        return "Haiku"
+    # Fallback: capitalize the model ID
+    return model_id.replace("-", " ").title()
+
 
 __all__ = ["AnthropicLLMProvider"]

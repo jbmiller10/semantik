@@ -11,6 +11,7 @@ import type {
   LLMSettingsUpdate,
   LLMSettingsResponse,
   LLMTestRequest,
+  LLMProviderType,
 } from '../types/llm';
 
 /**
@@ -152,5 +153,50 @@ export function useLLMUsage(days: number = 30, settings?: LLMSettingsResponse) {
     // Only fetch if user has configured at least one provider
     enabled: !!settings?.anthropic_has_key || !!settings?.openai_has_key,
     staleTime: 60 * 1000, // Consider stale after 1 minute
+  });
+}
+
+/**
+ * Hook to refresh models from provider API.
+ * Fetches available models directly from the provider.
+ * Rate limited: 5 requests/minute.
+ */
+export function useRefreshLLMModels() {
+  const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
+
+  return useMutation({
+    mutationFn: async ({
+      provider,
+      apiKey,
+    }: {
+      provider: LLMProviderType;
+      apiKey: string;
+    }) => {
+      const response = await llmApi.refreshModels(provider, apiKey);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Update the models cache with the refreshed data
+      queryClient.setQueryData(llmKeys.models(), data);
+      addToast({
+        type: 'success',
+        message: `Loaded ${data.models.length} models from provider`,
+      });
+    },
+    onError: (error) => {
+      const apiError = ApiErrorHandler.handle(error);
+      if (apiError.statusCode === 429) {
+        addToast({
+          type: 'error',
+          message: 'Rate limit exceeded. Please wait before refreshing again.',
+        });
+      } else {
+        addToast({
+          type: 'error',
+          message: apiError.message || 'Failed to refresh models',
+        });
+      }
+    },
   });
 }

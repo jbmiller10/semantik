@@ -216,5 +216,130 @@ class OpenAILLMProvider(BaseLLMService):
         """Check if the provider is ready for requests."""
         return self._initialized and self._client is not None
 
+    @staticmethod
+    async def list_models(api_key: str) -> list[dict[str, Any]]:
+        """List available chat models from the OpenAI API.
+
+        Args:
+            api_key: OpenAI API key
+
+        Returns:
+            List of model dictionaries with id, name, display_name, provider,
+            tier_recommendation, context_window, and description.
+            Only includes chat-capable models (gpt-* models).
+
+        Raises:
+            LLMAuthenticationError: If API key is invalid
+            LLMProviderError: For other API errors
+        """
+        client = AsyncOpenAI(api_key=api_key)
+        try:
+            response = await client.models.list()
+            models = []
+            for model in response.data:
+                model_id = model.id
+                # Only include chat-capable models
+                if not _is_chat_model(model_id):
+                    continue
+
+                name = _format_openai_model_name(model_id)
+                display_name = f"OpenAI - {name}"
+                tier = _get_openai_tier(model_id)
+                context_window = _get_openai_context_window(model_id)
+
+                models.append({
+                    "id": model_id,
+                    "name": name,
+                    "display_name": display_name,
+                    "provider": "openai",
+                    "tier_recommendation": tier,
+                    "context_window": context_window,
+                    "description": f"OpenAI model: {model_id}",
+                    "is_curated": False,
+                })
+
+            # Sort by name for consistent ordering
+            models.sort(key=lambda m: str(m["name"]))
+            return models
+        except openai.AuthenticationError as e:
+            raise LLMAuthenticationError("openai", str(e)) from e
+        except openai.APIError as e:
+            raise LLMProviderError("openai", str(e)) from e
+        finally:
+            await client.close()
+
+
+def _is_chat_model(model_id: str) -> bool:
+    """Check if a model is a chat-capable model."""
+    lower_id = model_id.lower()
+    # Include GPT models that support chat completions
+    chat_prefixes = ["gpt-4", "gpt-3.5", "chatgpt", "o1", "o3"]
+    # Exclude non-chat models
+    exclude_suffixes = ["-instruct", "-base", "-vision-preview"]
+
+    if (
+        any(prefix in lower_id for prefix in chat_prefixes)
+        and not any(suffix in lower_id for suffix in exclude_suffixes)
+    ):
+        return True
+    return False
+
+
+def _format_openai_model_name(model_id: str) -> str:
+    """Format OpenAI model ID to a friendly name."""
+    lower_id = model_id.lower()
+
+    if "gpt-4o-mini" in lower_id:
+        return "GPT-4o Mini"
+    if "gpt-4o" in lower_id:
+        return "GPT-4o"
+    if "gpt-4-turbo" in lower_id:
+        return "GPT-4 Turbo"
+    if "gpt-4" in lower_id:
+        return "GPT-4"
+    if "gpt-3.5-turbo" in lower_id:
+        return "GPT-3.5 Turbo"
+    if "o1-mini" in lower_id:
+        return "o1 Mini"
+    if "o1-preview" in lower_id:
+        return "o1 Preview"
+    if "o1" in lower_id:
+        return "o1"
+    if "o3-mini" in lower_id:
+        return "o3 Mini"
+    if "o3" in lower_id:
+        return "o3"
+    return model_id
+
+
+def _get_openai_tier(model_id: str) -> str:
+    """Determine tier recommendation for OpenAI model."""
+    lower_id = model_id.lower()
+    # High tier: larger, more capable models
+    high_tier_patterns = ["gpt-4o", "gpt-4-turbo", "o1", "o3"]
+    # Low tier (fast/cheap): mini models, 3.5
+    low_tier_patterns = ["mini", "gpt-3.5"]
+
+    if any(p in lower_id for p in low_tier_patterns):
+        return "low"
+    if any(p in lower_id for p in high_tier_patterns):
+        return "high"
+    return "high"  # Default to high for unknown models
+
+
+def _get_openai_context_window(model_id: str) -> int:
+    """Get context window size for OpenAI model."""
+    lower_id = model_id.lower()
+
+    if "gpt-4o" in lower_id or "gpt-4-turbo" in lower_id:
+        return 128000
+    if "gpt-4" in lower_id:
+        return 8192
+    if "gpt-3.5-turbo" in lower_id:
+        return 16385
+    if "o1" in lower_id or "o3" in lower_id:
+        return 128000
+    return 128000  # Default for newer models
+
 
 __all__ = ["OpenAILLMProvider"]

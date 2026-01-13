@@ -50,7 +50,7 @@ export interface LLMSettingsResponse {
   updated_at: string;
 }
 
-/** Available model info from curated registry */
+/** Available model info from curated registry or provider API */
 export interface AvailableModel {
   /** Model ID (e.g., "claude-opus-4-5-20251101") */
   id: string;
@@ -66,6 +66,8 @@ export interface AvailableModel {
   context_window: number;
   /** Human-readable description */
   description: string;
+  /** True for curated models, false for API-fetched models */
+  is_curated: boolean;
 }
 
 /** Response for GET /api/v2/llm/models */

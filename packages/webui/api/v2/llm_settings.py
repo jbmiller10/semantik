@@ -183,6 +183,9 @@ async def list_available_models() -> AvailableModelsResponse:
 
     Returns a static list of recommended models. For custom model IDs,
     use the test endpoint to validate before saving.
+
+    To fetch models directly from provider APIs, use GET /models/refresh
+    with a valid API key.
     """
     models = get_all_models()
 
@@ -196,10 +199,89 @@ async def list_available_models() -> AvailableModelsResponse:
                 tier_recommendation=m.tier_recommendation,
                 context_window=m.context_window,
                 description=m.description,
+                is_curated=True,
             )
             for m in models
         ]
     )
+
+
+@router.get(
+    "/models/refresh",
+    response_model=AvailableModelsResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid API key or provider error"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit(RateLimitConfig.LLM_TEST_RATE)  # Rate limit to prevent API abuse
+async def refresh_models_from_api(
+    request: Request,  # noqa: ARG001 - Required for rate limiter
+    provider: str = Query(..., pattern="^(anthropic|openai)$", description="Provider to fetch models from"),
+    api_key: str = Query(..., min_length=1, description="API key for the provider"),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+) -> AvailableModelsResponse:
+    """Fetch available models directly from the provider's API.
+
+    This endpoint is rate limited to prevent API abuse.
+    Requires a valid API key for the specified provider.
+
+    Returns models from the provider API, merged with curated registry models.
+    Curated models appear first, followed by API-fetched models.
+    """
+    try:
+        if provider == "anthropic":
+            api_models = await AnthropicLLMProvider.list_models(api_key)
+        else:
+            api_models = await OpenAILLMProvider.list_models(api_key)
+
+        # Get curated models for this provider
+        curated = get_all_models()
+        curated_ids = {m.id for m in curated if m.provider == provider}
+
+        # Build response: curated models first, then API models not in curated list
+        result_models = [
+            AvailableModel(
+                id=m.id,
+                name=m.name,
+                display_name=m.display_name,
+                provider=m.provider,
+                tier_recommendation=m.tier_recommendation,
+                context_window=m.context_window,
+                description=m.description,
+                is_curated=True,
+            )
+            for m in curated
+            if m.provider == provider
+        ]
+
+        # Add API models that aren't in the curated list
+        for m in api_models:
+            if m["id"] not in curated_ids:
+                result_models.append(
+                    AvailableModel(
+                        id=m["id"],
+                        name=m["name"],
+                        display_name=m["display_name"],
+                        provider=m["provider"],
+                        tier_recommendation=m["tier_recommendation"],
+                        context_window=m["context_window"],
+                        description=m["description"],
+                        is_curated=False,
+                    )
+                )
+
+        return AvailableModelsResponse(models=result_models)
+
+    except LLMAuthenticationError as e:
+        logger.info("Model refresh failed for %s: authentication error", provider)
+        raise LLMProviderError(provider, f"Authentication failed: {e}") from e
+    except LLMProviderError:
+        raise
+    except Exception as e:
+        logger.error("Unexpected error refreshing models for %s: %s", provider, e)
+        raise LLMProviderError(provider, "Failed to fetch models from provider API") from e
 
 
 @router.post(

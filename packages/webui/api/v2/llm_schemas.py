@@ -77,7 +77,7 @@ class LLMSettingsResponse(BaseModel):
 
 
 class AvailableModel(BaseModel):
-    """Model info from curated registry."""
+    """Model info from curated registry or provider API."""
 
     id: str
     name: str
@@ -86,6 +86,7 @@ class AvailableModel(BaseModel):
     tier_recommendation: str
     context_window: int
     description: str
+    is_curated: bool = True  # True for curated registry, False for API-fetched
 
     model_config = ConfigDict(extra="forbid")
 
