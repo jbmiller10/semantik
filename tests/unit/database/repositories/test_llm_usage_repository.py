@@ -43,7 +43,7 @@ class TestUsageSummary:
             period_days=30,
         )
 
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(AttributeError, match="cannot assign"):
             summary.total_tokens = 200  # type: ignore
 
 
