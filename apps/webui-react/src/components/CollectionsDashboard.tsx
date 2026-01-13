@@ -84,7 +84,7 @@ function CollectionsDashboard() {
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
-            <label htmlFor="collection-search" className="sr-only">Search collections</label>
+            <label htmlFor="collection-search" className="sr-only">Search collections by name or description</label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <svg className="h-5 w-5 text-gray-400 group-focus-within:text-brand-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -103,6 +103,7 @@ function CollectionsDashboard() {
           </div>
 
           <div>
+            <label htmlFor="status-filter" className="sr-only">Filter collections by status</label>
             <select
               id="status-filter"
               value={filterStatus}

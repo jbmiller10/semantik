@@ -62,10 +62,8 @@ describe('CollectionCard', () => {
     // Check labels
     expect(screen.getByText('Documents')).toBeInTheDocument()
     expect(screen.getByText('Vectors')).toBeInTheDocument()
-    expect(screen.getByText('Last updated')).toBeInTheDocument()
-    
-    // Check formatted date
-    expect(screen.getByText('Jan 14, 2025')).toBeInTheDocument()
+    // Updated date is shown inline with the date
+    expect(screen.getByText(/Updated/)).toBeInTheDocument()
   })
 
   it('renders different status colors correctly', () => {
@@ -158,9 +156,9 @@ describe('CollectionCard', () => {
     expect(screen.getByText('Indexing documents...')).toBeInTheDocument()
     
     // Check that the card has the processing styles
-    const card = screen.getByText('test-collection').closest('div[class*="border-2"]')
-    expect(card).toHaveClass('border-blue-500')
-    expect(card).toHaveClass('bg-blue-50')
+    const card = screen.getByText('test-collection').closest('div[class*="ring-2"]')
+    expect(card).toBeTruthy()
+    expect(card).toHaveClass('ring-brand-400')
   })
 
   it('disables manage button during processing', () => {

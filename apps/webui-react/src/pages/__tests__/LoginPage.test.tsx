@@ -52,28 +52,28 @@ describe('LoginPage', () => {
   it('renders login form by default', () => {
     renderWithProviders(<LoginPage />)
     
-    expect(screen.getByText('Sign in to Semantik')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument()
+    expect(screen.getByText('Welcome Back')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter your username')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.getByText("Don't have an account? Register")).toBeInTheDocument()
-    
+    expect(screen.getByText("Don't have an account? Create one")).toBeInTheDocument()
+
     // Email and full name fields should not be visible in login mode
-    expect(screen.queryByPlaceholderText('Email address')).not.toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('Full Name (optional)')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Enter your email')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Enter your full name (optional)')).not.toBeInTheDocument()
   })
 
   it('toggles to registration form', async () => {
     const user = userEvent.setup()
     renderWithProviders(<LoginPage />)
     
-    const toggleButton = screen.getByText("Don't have an account? Register")
+    const toggleButton = screen.getByText("Don't have an account? Create one")
     await user.click(toggleButton)
     
-    expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Full Name (optional)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument()
+    expect(screen.getByText('Join Semantik')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter your email')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter your full name (optional)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create Account' })).toBeInTheDocument()
     expect(screen.getByText('Already have an account? Sign in')).toBeInTheDocument()
   })
 
@@ -83,8 +83,8 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />)
     
     // Fill in login form with credentials that match the default handler
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
     
     // Submit form
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -126,8 +126,8 @@ describe('LoginPage', () => {
     
     renderWithProviders(<LoginPage />)
     
-    await user.type(screen.getByPlaceholderText('Username'), 'wronguser')
-    await user.type(screen.getByPlaceholderText('Password'), 'wrongpass')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'wronguser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'wrongpass')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     
     await waitFor(() => {
@@ -161,20 +161,20 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />)
     
     // Switch to registration mode
-    await user.click(screen.getByText("Don't have an account? Register"))
+    await user.click(screen.getByText("Don't have an account? Create one"))
     
     // Fill in registration form
-    await user.type(screen.getByPlaceholderText('Username'), 'newuser')
-    await user.type(screen.getByPlaceholderText('Email address'), 'new@example.com')
-    await user.type(screen.getByPlaceholderText('Full Name (optional)'), 'New User')
-    await user.type(screen.getByPlaceholderText('Password'), 'newpass1')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'newuser')
+    await user.type(screen.getByPlaceholderText('Enter your email'), 'new@example.com')
+    await user.type(screen.getByPlaceholderText('Enter your full name (optional)'), 'New User')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'newpass1')
     
     // Submit form
-    await user.click(screen.getByRole('button', { name: 'Register' }))
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
     
     // Wait for the form to be processed (button should become enabled again)
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: 'Register' })
+      const button = screen.getByRole('button', { name: 'Create Account' })
       expect(button).toBeEnabled()
     })
     
@@ -184,13 +184,13 @@ describe('LoginPage', () => {
     
     if (successToast) {
       // Should switch back to login mode after successful registration
-      expect(screen.getByText('Sign in to Semantik')).toBeInTheDocument()
+      expect(screen.getByText('Welcome Back')).toBeInTheDocument()
       // Username should be preserved, password should be cleared
-      expect(screen.getByPlaceholderText('Username')).toHaveValue('newuser')
-      expect(screen.getByPlaceholderText('Password')).toHaveValue('')
+      expect(screen.getByPlaceholderText('Enter your username')).toHaveValue('newuser')
+      expect(screen.getByPlaceholderText('Enter your password')).toHaveValue('')
     } else {
       // If registration failed, we should still be in registration mode
-      expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
+      expect(screen.getByText('Join Semantik')).toBeInTheDocument()
     }
   })
 
@@ -209,22 +209,22 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />)
     
     // Switch to registration mode
-    await user.click(screen.getByText("Don't have an account? Register"))
+    await user.click(screen.getByText("Don't have an account? Create one"))
     
     // Fill in registration form
-    await user.type(screen.getByPlaceholderText('Username'), 'existinguser')
-    await user.type(screen.getByPlaceholderText('Email address'), 'existing@example.com')
-    await user.type(screen.getByPlaceholderText('Password'), 'password')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'existinguser')
+    await user.type(screen.getByPlaceholderText('Enter your email'), 'existing@example.com')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'password')
     
     // Submit form
-    await user.click(screen.getByRole('button', { name: 'Register' }))
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
     
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Register' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Create Account' })).toBeEnabled()
     })
     
     // Should still be in registration mode
-    expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
+    expect(screen.getByText('Join Semantik')).toBeInTheDocument()
     
     // Registration failed - key verification is staying in registration mode
   })
@@ -234,8 +234,8 @@ describe('LoginPage', () => {
     
     renderWithProviders(<LoginPage />)
     
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
     
     const submitButton = screen.getByRole('button', { name: 'Sign in' })
     expect(submitButton).toBeEnabled()
@@ -265,8 +265,8 @@ describe('LoginPage', () => {
     
     renderWithProviders(<LoginPage />)
     
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
+    await user.type(screen.getByPlaceholderText('Enter your username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     
     await waitFor(() => {
