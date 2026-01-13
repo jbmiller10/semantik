@@ -76,11 +76,44 @@ class CollectionDefaults(BaseModel):
     )
 
 
+class InterfacePreferences(BaseModel):
+    """User preferences for UI behavior."""
+
+    data_refresh_interval_ms: int = Field(
+        default=30000,
+        ge=10000,
+        le=60000,
+        description="Data polling interval in milliseconds (10s-60s)",
+    )
+    visualization_sample_limit: int = Field(
+        default=200000,
+        ge=10000,
+        le=500000,
+        description="Maximum points for UMAP/PCA visualizations (10K-500K)",
+    )
+    animation_enabled: bool = Field(
+        default=True,
+        description="Enable UI animations",
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "data_refresh_interval_ms": 30000,
+                "visualization_sample_limit": 200000,
+                "animation_enabled": True,
+            }
+        },
+    )
+
+
 class UserPreferencesResponse(BaseModel):
     """Response for GET /preferences."""
 
     search: SearchPreferences
     collection_defaults: CollectionDefaults
+    interface: InterfacePreferences
     created_at: datetime
     updated_at: datetime
 
@@ -105,6 +138,11 @@ class UserPreferencesResponse(BaseModel):
                     "sparse_type": "bm25",
                     "enable_hybrid": False,
                 },
+                "interface": {
+                    "data_refresh_interval_ms": 30000,
+                    "visualization_sample_limit": 200000,
+                    "animation_enabled": True,
+                },
                 "created_at": "2024-01-15T10:30:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
@@ -117,6 +155,7 @@ class UserPreferencesUpdate(BaseModel):
 
     search: SearchPreferences | None = None
     collection_defaults: CollectionDefaults | None = None
+    interface: InterfacePreferences | None = None
 
     model_config = ConfigDict(
         extra="forbid",
@@ -124,6 +163,7 @@ class UserPreferencesUpdate(BaseModel):
             "example": {
                 "search": {"top_k": 20, "mode": "hybrid"},
                 "collection_defaults": {"chunk_size": 512},
+                "interface": {"animation_enabled": False},
             }
         },
     )

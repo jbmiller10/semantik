@@ -37,6 +37,10 @@ def mock_user_preferences():
     prefs.default_enable_sparse = False
     prefs.default_sparse_type = "bm25"
     prefs.default_enable_hybrid = False
+    # Interface preferences
+    prefs.data_refresh_interval_ms = 30000
+    prefs.visualization_sample_limit = 200000
+    prefs.animation_enabled = True
     # Timestamps
     prefs.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     prefs.updated_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
@@ -52,6 +56,7 @@ async def mock_preferences_repo(mock_user_preferences):
     repo.update = AsyncMock(return_value=mock_user_preferences)
     repo.reset_search = AsyncMock(return_value=mock_user_preferences)
     repo.reset_collection_defaults = AsyncMock(return_value=mock_user_preferences)
+    repo.reset_interface = AsyncMock(return_value=mock_user_preferences)
     return repo
 
 
@@ -124,6 +129,11 @@ class TestGetPreferences:
         assert data["collection_defaults"]["enable_sparse"] is False
         assert data["collection_defaults"]["sparse_type"] == "bm25"
         assert data["collection_defaults"]["enable_hybrid"] is False
+
+        # Verify interface preferences
+        assert data["interface"]["data_refresh_interval_ms"] == 30000
+        assert data["interface"]["visualization_sample_limit"] == 200000
+        assert data["interface"]["animation_enabled"] is True
 
         # Verify timestamps
         assert "created_at" in data
@@ -356,6 +366,33 @@ class TestResetCollectionDefaults:
         settings.DISABLE_AUTH = False
         try:
             response = await api_client_unauthenticated.post("/api/v2/preferences/reset/collection-defaults")
+            assert response.status_code == 401
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth
+
+
+class TestResetInterfacePreferences:
+    """Tests for POST /api/v2/preferences/reset/interface endpoint."""
+
+    @pytest.mark.asyncio()
+    async def test_reset_interface_preferences(self, preferences_api_client):
+        """Test that reset interface preferences works."""
+        client, mock_repo = preferences_api_client
+
+        response = await client.post("/api/v2/preferences/reset/interface")
+
+        assert response.status_code == 200
+        mock_repo.reset_interface.assert_called_once_with(1)
+
+    @pytest.mark.asyncio()
+    async def test_reset_interface_requires_auth(self, api_client_unauthenticated):
+        """Test that reset interface requires authentication."""
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = await api_client_unauthenticated.post("/api/v2/preferences/reset/interface")
             assert response.status_code == 401
         finally:
             settings.DISABLE_AUTH = original_disable_auth

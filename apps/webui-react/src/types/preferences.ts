@@ -54,12 +54,25 @@ export interface CollectionDefaults {
 }
 
 /**
+ * Interface preferences - UI behavior settings.
+ */
+export interface InterfacePreferences {
+  /** Data polling interval in milliseconds (10000-60000) */
+  data_refresh_interval_ms: number;
+  /** Maximum points for UMAP/PCA visualizations (10000-500000) */
+  visualization_sample_limit: number;
+  /** Enable UI animations */
+  animation_enabled: boolean;
+}
+
+/**
  * Response from GET /api/v2/preferences.
  * Contains all user preferences with timestamps.
  */
 export interface UserPreferencesResponse {
   search: SearchPreferences;
   collection_defaults: CollectionDefaults;
+  interface: InterfacePreferences;
   /** ISO 8601 timestamp */
   created_at: string;
   /** ISO 8601 timestamp */
@@ -73,4 +86,5 @@ export interface UserPreferencesResponse {
 export interface UserPreferencesUpdate {
   search?: Partial<SearchPreferences>;
   collection_defaults?: Partial<CollectionDefaults>;
+  interface?: Partial<InterfacePreferences>;
 }

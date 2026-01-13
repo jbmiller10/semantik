@@ -12,6 +12,7 @@ from shared.database.repositories.user_preferences_repository import UserPrefere
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.user_preferences_schemas import (
     CollectionDefaults,
+    InterfacePreferences,
     SearchPreferences,
     UserPreferencesResponse,
     UserPreferencesUpdate,
@@ -54,6 +55,11 @@ def _to_response(prefs: UserPreferences) -> UserPreferencesResponse:
             enable_sparse=prefs.default_enable_sparse,
             sparse_type=prefs.default_sparse_type,
             enable_hybrid=prefs.default_enable_hybrid,
+        ),
+        interface=InterfacePreferences(
+            data_refresh_interval_ms=prefs.data_refresh_interval_ms,
+            visualization_sample_limit=prefs.visualization_sample_limit,
+            animation_enabled=prefs.animation_enabled,
         ),
         created_at=prefs.created_at,
         updated_at=prefs.updated_at,
@@ -123,6 +129,11 @@ async def update_preferences(
         update_kwargs["default_sparse_type"] = update.collection_defaults.sparse_type
         update_kwargs["default_enable_hybrid"] = update.collection_defaults.enable_hybrid
 
+    if update.interface is not None:
+        update_kwargs["data_refresh_interval_ms"] = update.interface.data_refresh_interval_ms
+        update_kwargs["visualization_sample_limit"] = update.interface.visualization_sample_limit
+        update_kwargs["animation_enabled"] = update.interface.animation_enabled
+
     prefs = await repo.update(user_id, **update_kwargs)
     await db.commit()
 
@@ -171,4 +182,26 @@ async def reset_collection_defaults(
     await db.commit()
 
     logger.info("Reset collection defaults for user %s", user_id)
+    return _to_response(prefs)
+
+
+@router.post(
+    "/reset/interface",
+    response_model=UserPreferencesResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+    },
+)
+async def reset_interface_preferences(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    repo: UserPreferencesRepository = Depends(_get_preferences_repo),
+    db: AsyncSession = Depends(get_db),
+) -> UserPreferencesResponse:
+    """Reset interface preferences to default values."""
+    user_id = int(current_user["id"])
+
+    prefs = await repo.reset_interface(user_id)
+    await db.commit()
+
+    logger.info("Reset interface preferences for user %s", user_id)
     return _to_response(prefs)

@@ -1,9 +1,10 @@
-import { Search, FileText, Sparkles } from 'lucide-react';
+import { Search, FileText, Sparkles, Settings2 } from 'lucide-react';
 import { CollapsibleSection } from './CollapsibleSection';
 import SectionErrorBoundary from './SectionErrorBoundary';
 import SearchPreferencesSettings from './SearchPreferencesSettings';
 import CollectionDefaultsSettings from './CollectionDefaultsSettings';
 import LLMSettings from './LLMSettings';
+import InterfaceSettings from './InterfaceSettings';
 
 /**
  * PreferencesTab displays user-configurable settings in collapsible sections.
@@ -15,7 +16,7 @@ export default function PreferencesTab() {
       <div>
         <h3 className="text-lg font-medium text-gray-900">Preferences</h3>
         <p className="mt-1 text-sm text-gray-500">
-          Configure your search, collection defaults, and AI settings.
+          Configure your search, collection defaults, AI settings, and interface preferences.
         </p>
       </div>
 
@@ -49,6 +50,17 @@ export default function PreferencesTab() {
           defaultOpen={false}
         >
           <LLMSettings />
+        </CollapsibleSection>
+      </SectionErrorBoundary>
+
+      <SectionErrorBoundary sectionName="Interface Settings">
+        <CollapsibleSection
+          name="preferences-interface"
+          title="Interface"
+          icon={Settings2}
+          defaultOpen={false}
+        >
+          <InterfaceSettings />
         </CollapsibleSection>
       </SectionErrorBoundary>
     </div>

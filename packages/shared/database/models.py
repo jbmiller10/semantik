@@ -1132,9 +1132,9 @@ class LLMUsageEvent(Base):
 
 
 class UserPreferences(Base):
-    """Per-user preferences for search and collection defaults.
+    """Per-user preferences for search, collection defaults, and interface settings.
 
-    Stores user-specific settings for search behavior and collection creation.
+    Stores user-specific settings for search behavior, collection creation, and UI.
     Each user has at most one preferences row (one-to-one with users).
     Missing preferences use application defaults via get_or_create pattern.
 
@@ -1154,6 +1154,11 @@ class UserPreferences(Base):
     - default_enable_sparse: Enable sparse indexing (default false)
     - default_sparse_type: 'bm25' or 'splade' (default 'bm25')
     - default_enable_hybrid: Enable hybrid search (requires sparse, default false)
+
+    Interface preferences:
+    - data_refresh_interval_ms: Data polling interval in ms (10000-60000, default 30000)
+    - visualization_sample_limit: Max points for UMAP/PCA (10000-500000, default 200000)
+    - animation_enabled: Enable UI animations (default true)
     """
 
     __tablename__ = "user_preferences"
@@ -1183,6 +1188,11 @@ class UserPreferences(Base):
     default_enable_sparse = Column(Boolean, nullable=False, default=False)
     default_sparse_type = Column(String(16), nullable=False, default="bm25")
     default_enable_hybrid = Column(Boolean, nullable=False, default=False)
+
+    # Interface preferences
+    data_refresh_interval_ms = Column(Integer, nullable=False, default=30000)
+    visualization_sample_limit = Column(Integer, nullable=False, default=200000)
+    animation_enabled = Column(Boolean, nullable=False, default=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -1228,6 +1238,14 @@ class UserPreferences(Base):
         CheckConstraint(
             "default_enable_hybrid = false OR default_enable_sparse = true",
             name="ck_user_preferences_hybrid_requires_sparse",
+        ),
+        CheckConstraint(
+            "data_refresh_interval_ms >= 10000 AND data_refresh_interval_ms <= 60000",
+            name="ck_user_preferences_data_refresh_interval_ms",
+        ),
+        CheckConstraint(
+            "visualization_sample_limit >= 10000 AND visualization_sample_limit <= 500000",
+            name="ck_user_preferences_visualization_sample_limit",
         ),
     )
 

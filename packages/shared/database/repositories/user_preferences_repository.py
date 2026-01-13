@@ -82,6 +82,12 @@ class UserPreferencesRepository:
         "default_enable_hybrid": False,
     }
 
+    INTERFACE_DEFAULTS: dict[str, int | bool] = {
+        "data_refresh_interval_ms": 30000,
+        "visualization_sample_limit": 200000,
+        "animation_enabled": True,
+    }
+
     def __init__(self, session: AsyncSession) -> None:
         """Initialize with database session.
 
@@ -236,6 +242,10 @@ class UserPreferencesRepository:
         default_enable_sparse: bool | _UnsetType = UNSET,
         default_sparse_type: str | _UnsetType = UNSET,
         default_enable_hybrid: bool | _UnsetType = UNSET,
+        # Interface preferences
+        data_refresh_interval_ms: int | _UnsetType = UNSET,
+        visualization_sample_limit: int | _UnsetType = UNSET,
+        animation_enabled: bool | _UnsetType = UNSET,
     ) -> UserPreferences:
         """Update user preferences.
 
@@ -257,6 +267,9 @@ class UserPreferencesRepository:
             default_enable_sparse: Enable sparse indexing
             default_sparse_type: Sparse type ('bm25', 'splade')
             default_enable_hybrid: Enable hybrid search (requires sparse)
+            data_refresh_interval_ms: Data polling interval in ms (10000-60000)
+            visualization_sample_limit: Max points for UMAP/PCA (10000-500000)
+            animation_enabled: Enable UI animations
 
         Returns:
             Updated UserPreferences instance
@@ -284,6 +297,10 @@ class UserPreferencesRepository:
             self._validate_range(default_chunk_overlap, 0, 512, "default_chunk_overlap")
         if not isinstance(default_sparse_type, _UnsetType):
             self._validate_sparse_type(default_sparse_type)
+        if not isinstance(data_refresh_interval_ms, _UnsetType):
+            self._validate_range(data_refresh_interval_ms, 10000, 60000, "data_refresh_interval_ms")
+        if not isinstance(visualization_sample_limit, _UnsetType):
+            self._validate_range(visualization_sample_limit, 10000, 500000, "visualization_sample_limit")
 
         try:
             prefs = await self.get_or_create(user_id)
@@ -324,6 +341,14 @@ class UserPreferencesRepository:
                 prefs.default_sparse_type = default_sparse_type
             if default_enable_hybrid is not UNSET:
                 prefs.default_enable_hybrid = default_enable_hybrid
+
+            # Update only provided fields - Interface preferences
+            if data_refresh_interval_ms is not UNSET:
+                prefs.data_refresh_interval_ms = data_refresh_interval_ms
+            if visualization_sample_limit is not UNSET:
+                prefs.visualization_sample_limit = visualization_sample_limit
+            if animation_enabled is not UNSET:
+                prefs.animation_enabled = animation_enabled
 
             prefs.updated_at = datetime.now(UTC)
 
@@ -422,3 +447,40 @@ class UserPreferencesRepository:
         except Exception as e:
             logger.error("Failed to reset collection defaults for user %s: %s", user_id, e, exc_info=True)
             raise DatabaseOperationError("reset_collection_defaults", "UserPreferences", str(e)) from e
+
+    @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
+    async def reset_interface(self, user_id: int) -> UserPreferences:
+        """Reset interface preferences to defaults.
+
+        Resets: data_refresh_interval_ms, visualization_sample_limit,
+                animation_enabled
+
+        Args:
+            user_id: The user's ID
+
+        Returns:
+            Updated UserPreferences with default interface settings
+
+        Raises:
+            DatabaseOperationError: For database errors
+        """
+        try:
+            prefs = await self.get_or_create(user_id)
+
+            # Reset all interface preference fields
+            prefs.data_refresh_interval_ms = self.INTERFACE_DEFAULTS["data_refresh_interval_ms"]
+            prefs.visualization_sample_limit = self.INTERFACE_DEFAULTS["visualization_sample_limit"]
+            prefs.animation_enabled = self.INTERFACE_DEFAULTS["animation_enabled"]
+
+            prefs.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+            logger.info(f"Reset interface preferences for user_id={user_id}")
+
+            return prefs
+
+        except DatabaseOperationError:
+            raise
+        except Exception as e:
+            logger.error("Failed to reset interface preferences for user %s: %s", user_id, e, exc_info=True)
+            raise DatabaseOperationError("reset_interface", "UserPreferences", str(e)) from e

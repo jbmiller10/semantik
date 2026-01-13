@@ -31,4 +31,10 @@ export const preferencesApi = {
    */
   resetCollectionDefaults: () =>
     apiClient.post<UserPreferencesResponse>('/api/v2/preferences/reset/collection-defaults'),
+
+  /**
+   * Reset interface preferences to default values.
+   */
+  resetInterface: () =>
+    apiClient.post<UserPreferencesResponse>('/api/v2/preferences/reset/interface'),
 };

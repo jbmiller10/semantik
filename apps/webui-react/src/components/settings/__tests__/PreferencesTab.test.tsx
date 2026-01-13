@@ -25,6 +25,10 @@ vi.mock('../LLMSettings', () => ({
   default: () => <div data-testid="llm-settings">LLM Settings Content</div>,
 }));
 
+vi.mock('../InterfaceSettings', () => ({
+  default: () => <div data-testid="interface-settings">Interface Settings Content</div>,
+}));
+
 describe('PreferencesTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,7 +47,7 @@ describe('PreferencesTab', () => {
     expect(screen.getByText('Preferences')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Configure your search, collection defaults, and AI settings.'
+        'Configure your search, collection defaults, AI settings, and interface preferences.'
       )
     ).toBeInTheDocument();
   });
@@ -69,12 +73,19 @@ describe('PreferencesTab', () => {
     expect(screen.getByTestId('llm-settings')).toBeInTheDocument();
   });
 
-  it('renders all three CollapsibleSections', () => {
+  it('renders the Interface section', () => {
+    render(<PreferencesTab />);
+
+    expect(screen.getByText('Interface')).toBeInTheDocument();
+    expect(screen.getByTestId('interface-settings')).toBeInTheDocument();
+  });
+
+  it('renders all four CollapsibleSections', () => {
     render(<PreferencesTab />);
 
     // Each section has a button for expand/collapse
     const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(4);
   });
 
   describe('default open states', () => {
@@ -97,7 +108,7 @@ describe('PreferencesTab', () => {
       );
     });
 
-    it('passes defaultOpen=false to Collection Defaults and LLM sections', () => {
+    it('passes defaultOpen=false to Collection Defaults, LLM, and Interface sections', () => {
       const mockIsSectionOpen = vi.fn().mockReturnValue(false);
       vi.mocked(useSettingsUIStore).mockReturnValue({
         toggleSection: vi.fn(),
@@ -109,12 +120,13 @@ describe('PreferencesTab', () => {
 
       render(<PreferencesTab />);
 
-      // Check Collection Defaults and LLM sections default to closed
+      // Check Collection Defaults, LLM, and Interface sections default to closed
       expect(mockIsSectionOpen).toHaveBeenCalledWith(
         'preferences-collection-defaults',
         false
       );
       expect(mockIsSectionOpen).toHaveBeenCalledWith('preferences-llm', false);
+      expect(mockIsSectionOpen).toHaveBeenCalledWith('preferences-interface', false);
     });
   });
 });

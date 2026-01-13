@@ -123,3 +123,33 @@ export function useResetCollectionDefaults() {
     },
   });
 }
+
+/**
+ * Hook to reset interface preferences to defaults.
+ * Shows toast notifications on success/error.
+ */
+export function useResetInterfacePreferences() {
+  const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
+
+  return useMutation<UserPreferencesResponse, Error>({
+    mutationFn: async () => {
+      const response = await preferencesApi.resetInterface();
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: preferencesKeys.settings() });
+      addToast({
+        type: 'success',
+        message: 'Interface preferences reset to defaults',
+      });
+    },
+    onError: (error) => {
+      const apiError = ApiErrorHandler.handle(error);
+      addToast({
+        type: 'error',
+        message: apiError.message || 'Failed to reset interface preferences',
+      });
+    },
+  });
+}
