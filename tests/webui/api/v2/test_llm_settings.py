@@ -208,6 +208,48 @@ class TestUpdateLLMSettings:
 
         assert response.status_code == 422  # Validation error
 
+    @pytest.mark.asyncio()
+    async def test_put_settings_allows_clearing_fields_with_null(self, llm_api_client, mock_llm_config):
+        """Explicit JSON null should clear saved settings back to defaults."""
+        client, mock_repo, _ = llm_api_client
+
+        cleared_config = MagicMock()
+        cleared_config.id = mock_llm_config.id
+        cleared_config.user_id = mock_llm_config.user_id
+        cleared_config.high_quality_provider = None
+        cleared_config.high_quality_model = None
+        cleared_config.low_quality_provider = mock_llm_config.low_quality_provider
+        cleared_config.low_quality_model = mock_llm_config.low_quality_model
+        cleared_config.default_temperature = None
+        cleared_config.default_max_tokens = mock_llm_config.default_max_tokens
+        cleared_config.created_at = mock_llm_config.created_at
+        cleared_config.updated_at = mock_llm_config.updated_at
+
+        mock_repo.update.return_value = cleared_config
+        mock_repo.get_by_user_id.return_value = cleared_config
+
+        response = await client.put(
+            "/api/v2/llm/settings",
+            json={
+                "high_quality_provider": None,
+                "high_quality_model": None,
+                "default_temperature": None,
+            },
+        )
+
+        assert response.status_code == 200
+        mock_repo.update.assert_called_once_with(
+            1,
+            high_quality_provider=None,
+            high_quality_model=None,
+            default_temperature=None,
+        )
+
+        data = response.json()
+        assert data["high_quality_provider"] is None
+        assert data["high_quality_model"] is None
+        assert data["default_temperature"] is None
+
 
 class TestListModels:
     """Tests for GET /api/v2/llm/models endpoint."""

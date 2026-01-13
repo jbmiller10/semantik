@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from sqlalchemy import delete, select, update
 
@@ -19,6 +19,16 @@ if TYPE_CHECKING:
     from shared.llm.types import LLMQualityTier
 
 logger = logging.getLogger(__name__)
+
+
+class _UnsetType:
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET: Final[_UnsetType] = _UnsetType()
 
 
 class LLMProviderConfigRepository:
@@ -147,17 +157,18 @@ class LLMProviderConfigRepository:
         self,
         user_id: int,
         *,
-        high_quality_provider: str | None = None,
-        high_quality_model: str | None = None,
-        low_quality_provider: str | None = None,
-        low_quality_model: str | None = None,
-        default_temperature: float | None = None,
-        default_max_tokens: int | None = None,
-        provider_config: dict[str, Any] | None = None,
+        high_quality_provider: str | None | _UnsetType = UNSET,
+        high_quality_model: str | None | _UnsetType = UNSET,
+        low_quality_provider: str | None | _UnsetType = UNSET,
+        low_quality_model: str | None | _UnsetType = UNSET,
+        default_temperature: float | None | _UnsetType = UNSET,
+        default_max_tokens: int | None | _UnsetType = UNSET,
+        provider_config: dict[str, Any] | None | _UnsetType = UNSET,
     ) -> LLMProviderConfig:
         """Update LLM configuration for a user.
 
         Only updates fields that are explicitly provided.
+        Pass None to clear a field back to defaults.
         Creates config if it doesn't exist.
 
         Args:
@@ -178,32 +189,36 @@ class LLMProviderConfigRepository:
             DatabaseOperationError: For database errors
         """
         # Validate temperature if provided
-        if default_temperature is not None and not (0.0 <= default_temperature <= 2.0):
+        if (
+            default_temperature is not UNSET
+            and default_temperature is not None
+            and not (0.0 <= default_temperature <= 2.0)
+        ):
             raise ValueError("default_temperature must be between 0.0 and 2.0")
 
         # Validate providers if provided
-        if high_quality_provider is not None:
+        if high_quality_provider is not UNSET and high_quality_provider is not None:
             self._validate_provider(high_quality_provider)
-        if low_quality_provider is not None:
+        if low_quality_provider is not UNSET and low_quality_provider is not None:
             self._validate_provider(low_quality_provider)
 
         try:
             config = await self.get_or_create(user_id)
 
             # Update only provided fields
-            if high_quality_provider is not None:
+            if high_quality_provider is not UNSET:
                 config.high_quality_provider = high_quality_provider
-            if high_quality_model is not None:
+            if high_quality_model is not UNSET:
                 config.high_quality_model = high_quality_model
-            if low_quality_provider is not None:
+            if low_quality_provider is not UNSET:
                 config.low_quality_provider = low_quality_provider
-            if low_quality_model is not None:
+            if low_quality_model is not UNSET:
                 config.low_quality_model = low_quality_model
-            if default_temperature is not None:
+            if default_temperature is not UNSET:
                 config.default_temperature = default_temperature
-            if default_max_tokens is not None:
+            if default_max_tokens is not UNSET:
                 config.default_max_tokens = default_max_tokens
-            if provider_config is not None:
+            if provider_config is not UNSET:
                 config.provider_config = provider_config
 
             config.updated_at = datetime.now(UTC)
