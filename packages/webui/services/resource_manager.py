@@ -128,9 +128,7 @@ class ResourceManager:
             # Check user quotas
             user_usage = await self._get_user_resource_usage(user_id)
 
-            max_storage_gb = await self._get_system_setting(
-                "max_storage_gb_per_user", settings.MAX_STORAGE_GB_PER_USER
-            )
+            max_storage_gb = await self._get_system_setting("max_storage_gb_per_user", settings.MAX_STORAGE_GB_PER_USER)
             # max_operations_per_hour = 10  # Not enforced - rate limiting disabled
 
             if user_usage["storage_gb"] + resources.storage_gb > max_storage_gb:
