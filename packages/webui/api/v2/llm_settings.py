@@ -8,15 +8,9 @@ from starlette.requests import Request  # noqa: TCH002 - Required at runtime for
 
 from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError
-from shared.database.repositories.llm_provider_config_repository import (
-    LLMProviderConfigRepository,
-)
+from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
 from shared.database.repositories.llm_usage_repository import LLMUsageRepository
-from shared.llm.exceptions import (
-    LLMAuthenticationError,
-    LLMProviderError,
-    LLMTimeoutError,
-)
+from shared.llm.exceptions import LLMAuthenticationError, LLMProviderError, LLMTimeoutError
 from shared.llm.model_registry import get_all_models, get_default_model
 from shared.llm.providers.anthropic_provider import AnthropicLLMProvider
 from shared.llm.providers.openai_provider import OpenAILLMProvider

@@ -11,12 +11,7 @@ import openai
 from openai import AsyncOpenAI
 
 from shared.llm.base import BaseLLMService
-from shared.llm.exceptions import (
-    LLMAuthenticationError,
-    LLMProviderError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from shared.llm.exceptions import LLMAuthenticationError, LLMProviderError, LLMRateLimitError, LLMTimeoutError
 from shared.llm.model_registry import get_model_by_id
 from shared.llm.types import LLMResponse
 
@@ -247,16 +242,18 @@ class OpenAILLMProvider(BaseLLMService):
                 tier = _get_openai_tier(model_id)
                 context_window = _get_openai_context_window(model_id)
 
-                models.append({
-                    "id": model_id,
-                    "name": name,
-                    "display_name": display_name,
-                    "provider": "openai",
-                    "tier_recommendation": tier,
-                    "context_window": context_window,
-                    "description": f"OpenAI model: {model_id}",
-                    "is_curated": False,
-                })
+                models.append(
+                    {
+                        "id": model_id,
+                        "name": name,
+                        "display_name": display_name,
+                        "provider": "openai",
+                        "tier_recommendation": tier,
+                        "context_window": context_window,
+                        "description": f"OpenAI model: {model_id}",
+                        "is_curated": False,
+                    }
+                )
 
             # Sort by name for consistent ordering
             models.sort(key=lambda m: str(m["name"]))
@@ -277,9 +274,8 @@ def _is_chat_model(model_id: str) -> bool:
     # Exclude non-chat models
     exclude_suffixes = ["-instruct", "-base", "-vision-preview"]
 
-    if (
-        any(prefix in lower_id for prefix in chat_prefixes)
-        and not any(suffix in lower_id for suffix in exclude_suffixes)
+    if any(prefix in lower_id for prefix in chat_prefixes) and not any(
+        suffix in lower_id for suffix in exclude_suffixes
     ):
         return True
     return False

@@ -2,13 +2,7 @@
 
 import pytest
 
-from shared.llm.model_registry import (
-    ModelInfo,
-    get_all_models,
-    get_default_model,
-    get_model_by_id,
-    load_model_registry,
-)
+from shared.llm.model_registry import ModelInfo, get_all_models, get_default_model, get_model_by_id, load_model_registry
 
 
 class TestLoadModelRegistry:

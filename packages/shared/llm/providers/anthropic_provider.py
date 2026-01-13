@@ -11,12 +11,7 @@ import anthropic
 from anthropic import AsyncAnthropic
 
 from shared.llm.base import BaseLLMService
-from shared.llm.exceptions import (
-    LLMAuthenticationError,
-    LLMProviderError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from shared.llm.exceptions import LLMAuthenticationError, LLMProviderError, LLMRateLimitError, LLMTimeoutError
 from shared.llm.model_registry import get_model_by_id
 from shared.llm.types import LLMResponse
 
@@ -237,16 +232,18 @@ class AnthropicLLMProvider(BaseLLMService):
                 # Context window - default to 200k for Claude models
                 context_window = 200000
 
-                models.append({
-                    "id": model_id,
-                    "name": name,
-                    "display_name": display_name,
-                    "provider": "anthropic",
-                    "tier_recommendation": tier,
-                    "context_window": context_window,
-                    "description": f"Claude model: {model_id}",
-                    "is_curated": False,
-                })
+                models.append(
+                    {
+                        "id": model_id,
+                        "name": name,
+                        "display_name": display_name,
+                        "provider": "anthropic",
+                        "tier_recommendation": tier,
+                        "context_window": context_window,
+                        "description": f"Claude model: {model_id}",
+                        "is_curated": False,
+                    }
+                )
             return models
         except anthropic.AuthenticationError as e:
             raise LLMAuthenticationError("anthropic", str(e)) from e

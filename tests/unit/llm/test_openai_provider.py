@@ -4,12 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.llm.exceptions import (
-    LLMAuthenticationError,
-    LLMProviderError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from shared.llm.exceptions import LLMAuthenticationError, LLMProviderError, LLMRateLimitError, LLMTimeoutError
 from shared.llm.providers.openai_provider import OpenAILLMProvider
 
 

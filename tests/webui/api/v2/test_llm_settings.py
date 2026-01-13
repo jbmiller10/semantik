@@ -9,13 +9,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from shared.database.repositories.llm_provider_config_repository import (
-    LLMProviderConfigRepository,
-)
-from shared.database.repositories.llm_usage_repository import (
-    LLMUsageRepository,
-    UsageSummary,
-)
+from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
+from shared.database.repositories.llm_usage_repository import LLMUsageRepository, UsageSummary
 from shared.llm.exceptions import LLMAuthenticationError
 from webui.api.v2.llm_settings import _get_config_repo, _get_usage_repo
 from webui.auth import get_current_user
