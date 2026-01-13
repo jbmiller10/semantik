@@ -1233,3 +1233,31 @@ class UserPreferences(Base):
 
     # Relationships
     user = relationship("User", back_populates="preferences")
+
+
+class SystemSettings(Base):
+    """Key-value store for system-wide admin settings.
+
+    This table stores configurable system parameters that can be modified
+    by administrators through the UI instead of requiring environment variables.
+    Values are stored as JSON and support any JSON-serializable type.
+
+    A JSON null value means "use environment variable fallback".
+
+    Example:
+        >>> setting = SystemSettings(
+        ...     key="max_collections_per_user",
+        ...     value=20,
+        ...     updated_by=admin_user_id,
+        ... )
+    """
+
+    __tablename__ = "system_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[updated_by])

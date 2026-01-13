@@ -10,6 +10,7 @@ from .llm_usage_repository import LLMUsageRepository, UsageSummary
 from .operation_repository import OperationRepository
 from .plugin_config_repository import PluginConfigRepository
 from .projection_run_repository import ProjectionRunRepository
+from .system_settings_repository import SystemSettingsRepository
 from .user_preferences_repository import UserPreferencesRepository
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "OperationRepository",
     "PluginConfigRepository",
     "ProjectionRunRepository",
+    "SystemSettingsRepository",
     "UsageSummary",
     "UserPreferencesRepository",
 ]
