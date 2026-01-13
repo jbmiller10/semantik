@@ -1,5 +1,5 @@
 /**
- * Admin Settings component (System tab).
+ * System Status Card component (System tab).
  * Displays read-only system information, limits, health status, and GPU info.
  */
 import { useSystemInfo, useSystemHealth, useSystemStatus } from '../../hooks/useSystemInfo';
@@ -31,7 +31,7 @@ function InfoRow({ label, value }: { label: string; value: string | number | nul
   );
 }
 
-export default function AdminSettings() {
+export default function SystemStatusCard() {
   const { data: systemInfo, isLoading: infoLoading, error: infoError } = useSystemInfo();
   const { data: systemHealth, isLoading: healthLoading } = useSystemHealth();
   const { data: systemStatus, isLoading: statusLoading } = useSystemStatus();

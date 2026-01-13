@@ -1,9 +1,9 @@
-import AdminSettings from './AdminSettings';
+import SystemStatusCard from './SystemStatusCard';
 
 /**
  * SystemTab displays read-only system information and health status.
- * This tab is visible to all users and wraps the existing AdminSettings component.
+ * This tab is visible to all users.
  */
 export default function SystemTab() {
-  return <AdminSettings />;
+  return <SystemStatusCard />;
 }
