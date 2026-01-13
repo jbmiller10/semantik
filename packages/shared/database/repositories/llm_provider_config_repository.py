@@ -98,9 +98,7 @@ class LLMProviderConfigRepository:
             DatabaseOperationError: For database errors
         """
         try:
-            result = await self.session.execute(
-                select(LLMProviderConfig).where(LLMProviderConfig.user_id == user_id)
-            )
+            result = await self.session.execute(select(LLMProviderConfig).where(LLMProviderConfig.user_id == user_id))
             return result.scalar_one_or_none()
 
         except Exception as e:
@@ -280,9 +278,7 @@ class LLMProviderConfigRepository:
             DatabaseOperationError: For database errors
         """
         try:
-            result = await self.session.execute(
-                delete(LLMProviderConfig).where(LLMProviderConfig.user_id == user_id)
-            )
+            result = await self.session.execute(delete(LLMProviderConfig).where(LLMProviderConfig.user_id == user_id))
             deleted = (result.rowcount or 0) > 0
 
             if deleted:

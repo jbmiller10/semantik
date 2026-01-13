@@ -106,9 +106,7 @@ class TestLLMProviderConfigRepository:
 
     async def test_update_tier_config(self, repo):
         """update_tier_config updates correct tier."""
-        with (
-            patch.object(repo, "update", return_value=MagicMock()) as mock_update,
-        ):
+        with (patch.object(repo, "update", return_value=MagicMock()) as mock_update,):
             await repo.update_tier_config(
                 user_id=123,
                 tier=LLMQualityTier.HIGH,
@@ -124,9 +122,7 @@ class TestLLMProviderConfigRepository:
 
     async def test_update_tier_config_low(self, repo):
         """update_tier_config updates low tier correctly."""
-        with (
-            patch.object(repo, "update", return_value=MagicMock()) as mock_update,
-        ):
+        with (patch.object(repo, "update", return_value=MagicMock()) as mock_update,):
             await repo.update_tier_config(
                 user_id=123,
                 tier=LLMQualityTier.LOW,
@@ -171,9 +167,7 @@ class TestLLMProviderConfigRepository:
 
     async def test_set_api_key_encrypts(self, repo, mock_session):
         """set_api_key encrypts the key before storing."""
-        with (
-            patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,
-        ):
+        with (patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,):
             mock_enc.encrypt.return_value = b"encrypted"
             mock_enc.get_key_id.return_value = "key123"
             mock_session.execute.return_value = MagicMock()
@@ -185,11 +179,7 @@ class TestLLMProviderConfigRepository:
 
     async def test_set_api_key_raises_encryption_error(self, repo):
         """set_api_key raises when encryption not configured."""
-        with (
-            patch(
-                "shared.database.repositories.llm_provider_config_repository.SecretEncryption"
-            ) as mock_enc,
-        ):
+        with (patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,):
             mock_enc.encrypt.side_effect = EncryptionNotConfiguredError("Not configured")
 
             with pytest.raises(EncryptionNotConfiguredError):
@@ -203,9 +193,7 @@ class TestLLMProviderConfigRepository:
         mock_result.scalar_one_or_none.return_value = mock_key
         mock_session.execute.return_value = mock_result
 
-        with (
-            patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,
-        ):
+        with (patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,):
             mock_enc.decrypt.return_value = "decrypted-key"
 
             result = await repo.get_api_key(1, "anthropic")
@@ -288,9 +276,7 @@ class TestLLMProviderConfigRepository:
 
     async def test_set_api_key_db_error(self, repo, mock_session):
         """set_api_key wraps database errors."""
-        with (
-            patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,
-        ):
+        with (patch("shared.database.repositories.llm_provider_config_repository.SecretEncryption") as mock_enc,):
             mock_enc.encrypt.return_value = b"encrypted"
             mock_enc.get_key_id.return_value = "key123"
             mock_session.execute.side_effect = Exception("DB error")

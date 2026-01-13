@@ -169,8 +169,7 @@ class LLMServiceFactory:
         await provider.initialize(api_key=api_key, model=model, **kwargs)
 
         logger.info(
-            f"Created {provider_type} provider for user {user_id}, "
-            f"tier={quality_tier.value}, model={model}"
+            f"Created {provider_type} provider for user {user_id}, " f"tier={quality_tier.value}, model={model}"
         )
 
         return provider

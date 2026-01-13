@@ -129,8 +129,7 @@ class LLMUsageRepository:
             await self.session.flush()
 
             logger.debug(
-                f"Recorded LLM usage: feature={feature}, provider={provider}, "
-                f"tokens={input_tokens}+{output_tokens}"
+                f"Recorded LLM usage: feature={feature}, provider={provider}, " f"tokens={input_tokens}+{output_tokens}"
             )
 
             return event
