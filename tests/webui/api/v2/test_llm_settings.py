@@ -332,33 +332,23 @@ class TestGetUsage:
 class TestUnauthorized:
     """Tests for unauthorized access."""
 
-    @pytest_asyncio.fixture
-    async def unauthenticated_client(self):
-        """Provide an AsyncClient without auth."""
-        # Clear any existing overrides
-        app.dependency_overrides.clear()
-
-        transport = ASGITransport(app=app, raise_app_exceptions=False)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
-
     @pytest.mark.asyncio()
-    async def test_get_settings_unauthorized(self, unauthenticated_client):
+    async def test_get_settings_unauthorized(self, api_client_unauthenticated):
         """Test that unauthorized requests are rejected."""
-        response = await unauthenticated_client.get("/api/v2/llm/settings")
+        response = await api_client_unauthenticated.get("/api/v2/llm/settings")
         assert response.status_code == 401
 
     @pytest.mark.asyncio()
-    async def test_put_settings_unauthorized(self, unauthenticated_client):
+    async def test_put_settings_unauthorized(self, api_client_unauthenticated):
         """Test that unauthorized updates are rejected."""
-        response = await unauthenticated_client.put(
+        response = await api_client_unauthenticated.put(
             "/api/v2/llm/settings",
             json={"high_quality_provider": "anthropic"},
         )
         assert response.status_code == 401
 
     @pytest.mark.asyncio()
-    async def test_get_usage_unauthorized(self, unauthenticated_client):
+    async def test_get_usage_unauthorized(self, api_client_unauthenticated):
         """Test that unauthorized usage requests are rejected."""
-        response = await unauthenticated_client.get("/api/v2/llm/usage")
+        response = await api_client_unauthenticated.get("/api/v2/llm/usage")
         assert response.status_code == 401
