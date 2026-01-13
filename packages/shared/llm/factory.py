@@ -6,7 +6,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
-from shared.llm.base import BaseLLMService
 from shared.llm.exceptions import LLMAuthenticationError, LLMNotConfiguredError
 from shared.llm.model_registry import get_default_model
 from shared.llm.providers.anthropic_provider import AnthropicLLMProvider
@@ -15,6 +14,8 @@ from shared.llm.types import LLMQualityTier
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from shared.llm.base import BaseLLMService
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class LLMServiceFactory:
         ```
     """
 
-    def __init__(self, session: "AsyncSession") -> None:
+    def __init__(self, session: AsyncSession) -> None:
         """Initialize factory with database session.
 
         Args:
@@ -169,7 +170,7 @@ class LLMServiceFactory:
         await provider.initialize(api_key=api_key, model=model, **kwargs)
 
         logger.info(
-            f"Created {provider_type} provider for user {user_id}, " f"tier={quality_tier.value}, model={model}"
+            f"Created {provider_type} provider for user {user_id}, tier={quality_tier.value}, model={model}"
         )
 
         return provider

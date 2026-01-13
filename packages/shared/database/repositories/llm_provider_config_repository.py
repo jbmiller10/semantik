@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError
@@ -15,6 +14,8 @@ from shared.database.models import LLMProviderApiKey, LLMProviderConfig
 from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from shared.llm.types import LLMQualityTier
 
 logger = logging.getLogger(__name__)
@@ -255,12 +256,11 @@ class LLMProviderConfigRepository:
                 high_quality_provider=provider,
                 high_quality_model=model,
             )
-        else:
-            return await self.update(
-                user_id,
-                low_quality_provider=provider,
-                low_quality_model=model,
-            )
+        return await self.update(
+            user_id,
+            low_quality_provider=provider,
+            low_quality_model=model,
+        )
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def delete(self, user_id: int) -> bool:

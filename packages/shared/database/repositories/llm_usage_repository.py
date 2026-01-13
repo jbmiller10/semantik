@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError
 from shared.database.models import LLMUsageEvent
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +131,7 @@ class LLMUsageRepository:
             await self.session.flush()
 
             logger.debug(
-                f"Recorded LLM usage: feature={feature}, provider={provider}, " f"tokens={input_tokens}+{output_tokens}"
+                f"Recorded LLM usage: feature={feature}, provider={provider}, tokens={input_tokens}+{output_tokens}"
             )
 
             return event

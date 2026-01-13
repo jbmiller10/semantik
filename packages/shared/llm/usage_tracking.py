@@ -10,21 +10,21 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from shared.database.models import LLMUsageEvent
 from shared.database.repositories.llm_usage_repository import LLMUsageRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from shared.database.models import LLMUsageEvent
     from shared.llm.types import LLMResponse
 
 logger = logging.getLogger(__name__)
 
 
 async def record_llm_usage(
-    session: "AsyncSession",
+    session: AsyncSession,
     user_id: int,
-    response: "LLMResponse",
+    response: LLMResponse,
     *,
     feature: str,
     quality_tier: str,
@@ -81,7 +81,7 @@ async def record_llm_usage(
 
 
 async def record_usage_simple(
-    session: "AsyncSession",
+    session: AsyncSession,
     user_id: int,
     provider: str,
     model: str,
