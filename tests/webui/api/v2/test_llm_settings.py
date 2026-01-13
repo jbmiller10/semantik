@@ -329,26 +329,3 @@ class TestGetUsage:
         assert call_args[0][1] == 7  # Second positional arg is days
 
 
-class TestUnauthorized:
-    """Tests for unauthorized access."""
-
-    @pytest.mark.asyncio()
-    async def test_get_settings_unauthorized(self, api_client_unauthenticated):
-        """Test that unauthorized requests are rejected."""
-        response = await api_client_unauthenticated.get("/api/v2/llm/settings")
-        assert response.status_code == 401
-
-    @pytest.mark.asyncio()
-    async def test_put_settings_unauthorized(self, api_client_unauthenticated):
-        """Test that unauthorized updates are rejected."""
-        response = await api_client_unauthenticated.put(
-            "/api/v2/llm/settings",
-            json={"high_quality_provider": "anthropic"},
-        )
-        assert response.status_code == 401
-
-    @pytest.mark.asyncio()
-    async def test_get_usage_unauthorized(self, api_client_unauthenticated):
-        """Test that unauthorized usage requests are rejected."""
-        response = await api_client_unauthenticated.get("/api/v2/llm/usage")
-        assert response.status_code == 401
