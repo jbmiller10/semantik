@@ -257,6 +257,8 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
       - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Connector secrets encryption (Fernet key for encrypting credentials)
+      - CONNECTOR_SECRETS_KEY=${CONNECTOR_SECRETS_KEY:-}
     volumes:
       # Mount data directories
       - ./data:/app/data
@@ -346,6 +348,8 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
       - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Connector secrets encryption (Fernet key for encrypting credentials)
+      - CONNECTOR_SECRETS_KEY=${CONNECTOR_SECRETS_KEY:-}
     volumes:
       # Mount data directories
       - ./data:/app/data

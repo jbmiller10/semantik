@@ -259,6 +259,48 @@ describe('LLMSettings', () => {
         });
       });
     });
+
+    it('shows inline success message after successful test', async () => {
+      const user = userEvent.setup();
+      mockTestMutateAsync.mockResolvedValue({
+        success: true,
+        message: 'Successfully connected to Anthropic API',
+        model_tested: 'claude-3-5-haiku-20241022',
+      });
+
+      render(<LLMSettings />);
+
+      const inputs = screen.getAllByPlaceholderText(/sk-ant-|••••••••••••/);
+      await user.type(inputs[0], 'sk-ant-test-key');
+
+      const testButtons = screen.getAllByRole('button', { name: 'Test' });
+      await user.click(testButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText(/✓.*Successfully connected to Anthropic API/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows inline error message after failed test', async () => {
+      const user = userEvent.setup();
+      mockTestMutateAsync.mockResolvedValue({
+        success: false,
+        message: 'Invalid API key',
+        model_tested: null,
+      });
+
+      render(<LLMSettings />);
+
+      const inputs = screen.getAllByPlaceholderText(/sk-ant-|••••••••••••/);
+      await user.type(inputs[0], 'invalid-key');
+
+      const testButtons = screen.getAllByRole('button', { name: 'Test' });
+      await user.click(testButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText(/✗.*Invalid API key/)).toBeInTheDocument();
+      });
+    });
   });
 
   describe('provider selection', () => {

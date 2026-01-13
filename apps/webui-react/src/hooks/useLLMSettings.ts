@@ -159,6 +159,7 @@ export function useLLMUsage(days: number = 30, settings?: LLMSettingsResponse) {
 /**
  * Hook to refresh models from provider API.
  * Fetches available models directly from the provider.
+ * Merges with existing models from other providers.
  * Rate limited: 5 requests/minute.
  */
 export function useRefreshLLMModels() {
@@ -174,14 +175,26 @@ export function useRefreshLLMModels() {
       apiKey: string;
     }) => {
       const response = await llmApi.refreshModels(provider, apiKey);
-      return response.data;
+      return { provider, data: response.data };
     },
-    onSuccess: (data) => {
-      // Update the models cache with the refreshed data
-      queryClient.setQueryData(llmKeys.models(), data);
+    onSuccess: ({ provider, data }) => {
+      // Merge refreshed models with existing models from other providers
+      const existingData = queryClient.getQueryData<{ models: Array<{ provider: string }> }>(
+        llmKeys.models()
+      );
+
+      const otherProviderModels = existingData?.models.filter(
+        (m) => m.provider !== provider
+      ) || [];
+
+      const mergedData = {
+        models: [...otherProviderModels, ...data.models],
+      };
+
+      queryClient.setQueryData(llmKeys.models(), mergedData);
       addToast({
         type: 'success',
-        message: `Loaded ${data.models.length} models from provider`,
+        message: `Loaded ${data.models.length} ${provider} models`,
       });
     },
     onError: (error) => {

@@ -49,6 +49,11 @@ export default function LLMSettings() {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    provider: LLMProviderType;
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   // Initialize form state from settings
   useEffect(() => {
@@ -125,7 +130,21 @@ export default function LLMSettings() {
       const apiKey =
         provider === 'anthropic' ? formState.anthropic_api_key : formState.openai_api_key;
       if (!apiKey) return;
-      await testKeyMutation.mutateAsync({ provider, api_key: apiKey });
+      setTestResult(null); // Clear previous result
+      try {
+        const result = await testKeyMutation.mutateAsync({ provider, api_key: apiKey });
+        setTestResult({
+          provider,
+          success: result.success,
+          message: result.message,
+        });
+      } catch {
+        setTestResult({
+          provider,
+          success: false,
+          message: 'Test failed - check your API key',
+        });
+      }
     },
     [formState.anthropic_api_key, formState.openai_api_key, testKeyMutation]
   );
@@ -324,6 +343,18 @@ export default function LLMSettings() {
                   {testKeyMutation.isPending ? 'Testing...' : 'Test'}
                 </button>
               </div>
+              {testResult && testResult.provider === 'anthropic' && (
+                <div
+                  className={`mt-2 p-2 rounded text-sm ${
+                    testResult.success
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {testResult.success ? '✓ ' : '✗ '}
+                  {testResult.message}
+                </div>
+              )}
             </div>
 
             {/* OpenAI API Key */}
@@ -367,6 +398,18 @@ export default function LLMSettings() {
                   {testKeyMutation.isPending ? 'Testing...' : 'Test'}
                 </button>
               </div>
+              {testResult && testResult.provider === 'openai' && (
+                <div
+                  className={`mt-2 p-2 rounded text-sm ${
+                    testResult.success
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {testResult.success ? '✓ ' : '✗ '}
+                  {testResult.message}
+                </div>
+              )}
             </div>
           </div>
         </div>
