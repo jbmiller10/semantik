@@ -24,10 +24,7 @@ from sqlalchemy.pool import NullPool
 
 from shared.config import settings
 from shared.config.postgres import postgres_config
-from shared.database.collection_metadata import (
-    get_sparse_index_config,
-    store_sparse_index_config,
-)
+from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry

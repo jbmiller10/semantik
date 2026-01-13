@@ -18,10 +18,7 @@ from webui.api.schemas import (
     ImapPreviewResponse,
 )
 from webui.auth import get_current_user
-from webui.services.connector_registry import (
-    get_connector_catalog,
-    get_connector_definition,
-)
+from webui.services.connector_registry import get_connector_catalog, get_connector_definition
 
 logger = logging.getLogger(__name__)
 

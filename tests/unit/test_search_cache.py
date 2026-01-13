@@ -10,9 +10,7 @@ import pytest
 # Import cache module via the same path the service uses to avoid module aliasing issues
 # (packages.vecpipe vs vecpipe can create separate module instances)
 from vecpipe.search import cache
-from vecpipe.search.cache import (
-    clear_cache as clear_cache_direct,
-)
+from vecpipe.search.cache import clear_cache as clear_cache_direct
 
 
 @pytest.fixture(autouse=True)

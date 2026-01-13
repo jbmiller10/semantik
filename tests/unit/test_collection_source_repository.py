@@ -12,9 +12,7 @@ from shared.database.exceptions import (
     EntityNotFoundError,
     ValidationError,
 )
-from shared.database.repositories.collection_source_repository import (
-    CollectionSourceRepository,
-)
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
 
 @pytest.fixture()

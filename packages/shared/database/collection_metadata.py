@@ -7,14 +7,7 @@ import uuid
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient, QdrantClient
-from qdrant_client.models import (
-    Distance,
-    FieldCondition,
-    Filter,
-    MatchValue,
-    PointStruct,
-    VectorParams,
-)
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
 
 logger = logging.getLogger(__name__)
 

@@ -15,12 +15,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
-from webui.api.schemas import (
-    ErrorResponse,
-    SourceListResponse,
-    SourceResponse,
-    SourceUpdate,
-)
+from webui.api.schemas import ErrorResponse, SourceListResponse, SourceResponse, SourceUpdate
 from webui.auth import get_current_user
 from webui.services.factory import get_source_service
 from webui.services.source_service import SourceService

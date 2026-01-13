@@ -15,15 +15,7 @@ from fastapi.testclient import TestClient
 
 import vecpipe.search_api as search_api_module
 from shared.contracts.search import BatchSearchRequest, SearchRequest
-from vecpipe.search_api import (
-    PointPayload,
-    UpsertPoint,
-    UpsertRequest,
-    app,
-    batch_search,
-    search_post,
-    upsert_points,
-)
+from vecpipe.search_api import PointPayload, UpsertPoint, UpsertRequest, app, batch_search, search_post, upsert_points
 
 
 @pytest.fixture()

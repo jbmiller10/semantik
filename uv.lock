@@ -158,6 +158,24 @@ wheels = [
 ]
 
 [[package]]
+name = "anthropic"
+version = "0.39.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/02/2ea51930009d7537c4648f51d1bb3202ec76704cbb39a2a863ab38bee3dd/anthropic-0.39.0.tar.gz", hash = "sha256:94671cc80765f9ce693f76d63a97ee9bef4c2d6063c044e983d21a2e262f63ba", size = 189339, upload-time = "2024-11-04T18:25:19.372Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/61/2580eaa171cab20708d59d39cadd15f78a6c617759e8d0a12e18fe3302d1/anthropic-0.39.0-py3-none-any.whl", hash = "sha256:ea17093ae0ce0e1768b0c46501d6086b5bcd74ff39d68cd2d6396374e9de7c09", size = 198392, upload-time = "2024-11-04T18:25:17.681Z" },
+]
+
+[[package]]
 name = "antlr4-python3-runtime"
 version = "4.9.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3360,6 +3378,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "aiofiles" },
     { name = "alembic" },
+    { name = "anthropic" },
     { name = "asyncpg" },
     { name = "bitsandbytes" },
     { name = "celery", extra = ["redis"] },
@@ -3373,6 +3392,7 @@ dependencies = [
     { name = "llama-index-embeddings-openai" },
     { name = "mcp" },
     { name = "numpy" },
+    { name = "openai" },
     { name = "packages" },
     { name = "pandas" },
     { name = "passlib", extra = ["bcrypt"] },
@@ -3441,6 +3461,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=0.26.0" },
     { name = "aiofiles", specifier = ">=24.1.0,<25" },
     { name = "alembic", specifier = ">=1.13.1,<2" },
+    { name = "anthropic", specifier = ">=0.39.0,<0.40" },
     { name = "asyncpg", specifier = ">=0.30.0,<0.31" },
     { name = "bitsandbytes", specifier = ">=0.46.0,<0.47" },
     { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6" },
@@ -3456,6 +3477,7 @@ requires-dist = [
     { name = "llama-index-embeddings-openai", specifier = ">=0.5.0,<0.6" },
     { name = "mcp", specifier = ">=1.0.0,<2" },
     { name = "numpy", specifier = "<2" },
+    { name = "openai", specifier = ">=1.54.0,<2" },
     { name = "packages", specifier = ">=0.1.0" },
     { name = "pandas", specifier = ">=2.2.0,<3" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4,<2" },

@@ -1,0 +1,33 @@
+# Curated list of recommended LLM models
+# This list is used for the UI dropdown and default model selection.
+# Advanced users can enter custom model IDs via freeform input.
+
+anthropic:
+  - id: claude-opus-4-5-20251101
+    name: "Opus 4.5"
+    display_name: "Claude - Opus 4.5"
+    tier_recommendation: high
+    context_window: 200000
+    description: "Most capable for complex reasoning"
+
+  - id: claude-sonnet-4-5-20250929
+    name: "Sonnet 4.5"
+    display_name: "Claude - Sonnet 4.5"
+    tier_recommendation: low
+    context_window: 200000
+    description: "Fast and cost-effective"
+
+openai:
+  - id: gpt-4o
+    name: "GPT-4o"
+    display_name: "OpenAI - GPT-4o"
+    tier_recommendation: high
+    context_window: 128000
+    description: "Most capable GPT model"
+
+  - id: gpt-4o-mini
+    name: "GPT-4o Mini"
+    display_name: "OpenAI - GPT-4o Mini"
+    tier_recommendation: low
+    context_window: 128000
+    description: "Fast and inexpensive"

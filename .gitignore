@@ -270,3 +270,5 @@ review-chunk-*.txt
 
 # Codebase review outputs
 reviews/
+
+research_papers/

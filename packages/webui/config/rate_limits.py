@@ -50,6 +50,10 @@ class RateLimitConfig:
     PLUGIN_HEALTH_RATE = f"{PLUGIN_HEALTH_LIMIT}/minute"
     PLUGIN_LIST_RATE = f"{PLUGIN_LIST_LIMIT}/minute"
 
+    # LLM settings rate limits
+    LLM_TEST_LIMIT = int(os.getenv("LLM_TEST_RATE_LIMIT", "5"))
+    LLM_TEST_RATE = f"{LLM_TEST_LIMIT}/minute"
+
     # Default global limit
     DEFAULT_LIMIT = "1000/hour"
 

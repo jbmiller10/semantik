@@ -10,13 +10,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 
 from shared.config import settings
-from shared.contracts.search import (
-    BatchSearchRequest,
-    BatchSearchResponse,
-    SearchMode,
-    SearchRequest,
-    SearchResponse,
-)
+from shared.contracts.search import BatchSearchRequest, BatchSearchResponse, SearchMode, SearchRequest, SearchResponse
 from vecpipe.search import service, state as search_state
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 

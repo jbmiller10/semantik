@@ -18,11 +18,7 @@ from shared.plugins.builtins.bm25_sparse_indexer import (
     BM25SparseIndexerPlugin,
 )
 from shared.plugins.protocols import SparseIndexerProtocol
-from shared.plugins.types.sparse_indexer import (
-    SparseIndexerCapabilities,
-    SparseQueryVector,
-    SparseVector,
-)
+from shared.plugins.types.sparse_indexer import SparseIndexerCapabilities, SparseQueryVector, SparseVector
 
 
 class TestBM25PluginAttributes:

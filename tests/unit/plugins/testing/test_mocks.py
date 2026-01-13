@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.plugins.testing.mocks import (
-    MockChunker,
-    MockDocument,
-    MockEmbeddingService,
-    MockExtractor,
-    MockReranker,
-)
+from shared.plugins.testing.mocks import MockChunker, MockDocument, MockEmbeddingService, MockExtractor, MockReranker
 from shared.plugins.types.extractor import ExtractionResult
 
 

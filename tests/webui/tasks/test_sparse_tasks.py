@@ -90,7 +90,10 @@ async def test_reindex_collection_async_local_bm25_happy_path() -> None:
         patch("webui.sparse_tasks._load_sparse_indexer_plugin", return_value=_DummyIndexer()),
         patch("webui.sparse_tasks.create_async_engine", return_value=_dummy_engine()),
         patch("webui.sparse_tasks.async_sessionmaker", return_value=lambda *_a, **_k: _DummySession()),
-        patch("webui.sparse_tasks.CollectionRepository", return_value=AsyncMock(get_by_uuid=AsyncMock(return_value=_DummyCollection("dense")))),
+        patch(
+            "webui.sparse_tasks.CollectionRepository",
+            return_value=AsyncMock(get_by_uuid=AsyncMock(return_value=_DummyCollection("dense"))),
+        ),
         patch("webui.sparse_tasks.AsyncQdrantClient", return_value=qdrant),
         patch("webui.sparse_tasks.ensure_sparse_collection", new=AsyncMock()),
         patch("webui.sparse_tasks.upsert_sparse_vectors", new=AsyncMock()),
@@ -118,16 +121,17 @@ async def test_reindex_collection_async_vecpipe_path_uses_sparse_client() -> Non
     qdrant.scroll = AsyncMock(side_effect=[(points, None), ([], None)])
 
     vecpipe_client = AsyncMock()
-    vecpipe_client.encode_documents = AsyncMock(
-        return_value=[{"chunk_id": "uuid-1", "indices": [1], "values": [0.5]}]
-    )
+    vecpipe_client.encode_documents = AsyncMock(return_value=[{"chunk_id": "uuid-1", "indices": [1], "values": [0.5]}])
 
     record = SimpleNamespace(plugin_type="sparse_indexer", plugin_class=SimpleNamespace(SPARSE_TYPE="splade"))
 
     with (
         patch("webui.sparse_tasks.create_async_engine", return_value=_dummy_engine()),
         patch("webui.sparse_tasks.async_sessionmaker", return_value=lambda *_a, **_k: _DummySession()),
-        patch("webui.sparse_tasks.CollectionRepository", return_value=AsyncMock(get_by_uuid=AsyncMock(return_value=_DummyCollection("dense")))),
+        patch(
+            "webui.sparse_tasks.CollectionRepository",
+            return_value=AsyncMock(get_by_uuid=AsyncMock(return_value=_DummyCollection("dense"))),
+        ),
         patch("webui.sparse_tasks.AsyncQdrantClient", return_value=qdrant),
         patch("webui.sparse_tasks.SparseEncodingClient", return_value=vecpipe_client),
         patch("webui.sparse_tasks.plugin_registry.find_by_id", return_value=record),
@@ -140,4 +144,3 @@ async def test_reindex_collection_async_vecpipe_path_uses_sparse_client() -> Non
 
     assert result["status"] == "completed"
     vecpipe_client.encode_documents.assert_awaited_once()
-

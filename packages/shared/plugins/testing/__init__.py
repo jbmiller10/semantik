@@ -89,10 +89,8 @@ Mock Classes
 - ``MockChunker``: Mock chunker
 """
 
-from .contracts import (
-    # Protocol-based test mixins (for external plugins with no semantik imports)
+from .contracts import (  # Protocol-based test mixins (for external plugins with no semantik imports); ABC-based contract tests (require inheritance)
     AgentProtocolTestMixin,
-    # ABC-based contract tests (require inheritance)
     ChunkingPluginContractTest,
     ChunkingProtocolTestMixin,
     ConnectorPluginContractTest,
@@ -127,13 +125,7 @@ from .fixtures import (
     sample_short_text,
     sample_text,
 )
-from .mocks import (
-    MockChunker,
-    MockDocument,
-    MockEmbeddingService,
-    MockExtractor,
-    MockReranker,
-)
+from .mocks import MockChunker, MockDocument, MockEmbeddingService, MockExtractor, MockReranker
 
 __all__ = [
     # ABC-based contract test classes (require inheritance)

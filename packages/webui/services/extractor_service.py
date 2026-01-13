@@ -9,11 +9,7 @@ from typing import Any, cast
 
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, plugin_registry
-from shared.plugins.types.extractor import (
-    ExtractionResult,
-    ExtractionType,
-    ExtractorPlugin,
-)
+from shared.plugins.types.extractor import ExtractionResult, ExtractionType, ExtractorPlugin
 
 logger = logging.getLogger(__name__)
 

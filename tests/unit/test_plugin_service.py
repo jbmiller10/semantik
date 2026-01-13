@@ -9,12 +9,7 @@ import pytest
 from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
-from webui.services.plugin_service import (
-    PluginService,
-    _coerce_type,
-    _validate_value,
-    validate_config_schema,
-)
+from webui.services.plugin_service import PluginService, _coerce_type, _validate_value, validate_config_schema
 
 
 @pytest.fixture(autouse=True)

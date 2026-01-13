@@ -11,11 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from vecpipe.memory_governor import (
-    GPUMemoryGovernor,
-    MemoryBudget,
-    ModelType,
-)
+from vecpipe.memory_governor import GPUMemoryGovernor, MemoryBudget, ModelType
 
 
 @pytest.fixture()

@@ -86,10 +86,7 @@ class CollectionService:
         from qdrant_client import AsyncQdrantClient
 
         from shared.config import settings
-        from shared.database.collection_metadata import (
-            delete_sparse_index_config,
-            get_sparse_index_config,
-        )
+        from shared.database.collection_metadata import delete_sparse_index_config, get_sparse_index_config
         from vecpipe.sparse import delete_sparse_collection
 
         async_qdrant = AsyncQdrantClient(
@@ -1560,10 +1557,7 @@ class CollectionService:
         from qdrant_client import AsyncQdrantClient
 
         from shared.config import settings
-        from shared.database.collection_metadata import (
-            get_sparse_index_config,
-            store_sparse_index_config,
-        )
+        from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
         from shared.plugins import load_plugins, plugin_registry
         from vecpipe.sparse import ensure_sparse_collection, generate_sparse_collection_name
 
@@ -1646,10 +1640,7 @@ class CollectionService:
         from qdrant_client import AsyncQdrantClient
 
         from shared.config import settings
-        from shared.database.collection_metadata import (
-            delete_sparse_index_config,
-            get_sparse_index_config,
-        )
+        from shared.database.collection_metadata import delete_sparse_index_config, get_sparse_index_config
         from vecpipe.sparse import delete_sparse_collection
 
         # Get collection with permission check

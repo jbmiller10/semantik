@@ -55,6 +55,7 @@ from .api.v2 import (
     documents as v2_documents,
     embedding as v2_embedding,
     extractors as v2_extractors,
+    llm_settings as v2_llm_settings,
     mcp_profiles as v2_mcp_profiles,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
@@ -352,6 +353,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_search.router)
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
+    app.include_router(v2_llm_settings.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution

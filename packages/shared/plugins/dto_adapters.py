@@ -36,11 +36,7 @@ from shared.plugins.typed_dicts import (
 )
 from shared.plugins.types.extractor import Entity, ExtractionResult
 from shared.plugins.types.reranker import RerankerCapabilities, RerankResult
-from shared.plugins.types.sparse_indexer import (
-    SparseIndexerCapabilities,
-    SparseQueryVector,
-    SparseVector,
-)
+from shared.plugins.types.sparse_indexer import SparseIndexerCapabilities, SparseQueryVector, SparseVector
 
 # ============================================================================
 # Validation Error
