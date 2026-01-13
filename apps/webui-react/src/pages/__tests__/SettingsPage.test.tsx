@@ -1,302 +1,222 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
-import { server } from '../../tests/mocks/server'
-import { render as renderWithProviders } from '../../tests/utils/test-utils'
-import SettingsPage from '../SettingsPage'
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { render as renderWithProviders } from '../../tests/utils/test-utils';
+import SettingsPage from '../SettingsPage';
+import { useAuthStore } from '../../stores/authStore';
 
-const mockNavigate = vi.fn()
+const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom')
+  const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-  }
-})
+  };
+});
+
+// Mock authStore
+vi.mock('../../stores/authStore', () => ({
+  useAuthStore: vi.fn(),
+}));
 
 // Mock alert
-global.alert = vi.fn()
+global.alert = vi.fn();
 
-const mockStats = {
-  collection_count: 15,
-  file_count: 250,
-  database_size_mb: 128,
-  parquet_files_count: 30,
-  parquet_size_mb: 64,
-}
+// Mock child components to isolate SettingsPage tests
+vi.mock('../../components/settings/PreferencesTab', () => ({
+  default: () => <div data-testid="preferences-tab">Preferences Content</div>,
+}));
+
+vi.mock('../../components/settings/AdminTab', () => ({
+  default: () => <div data-testid="admin-tab">Admin Content</div>,
+}));
+
+vi.mock('../../components/settings/SystemTab', () => ({
+  default: () => <div data-testid="system-tab">System Content</div>,
+}));
+
+vi.mock('../../components/settings/PluginsSettings', () => ({
+  default: () => <div data-testid="plugins-settings">Plugins Content</div>,
+}));
+
+vi.mock('../../components/settings/MCPProfilesSettings', () => ({
+  default: () => <div data-testid="mcp-settings">MCP Content</div>,
+}));
+
+const mockSuperuser = {
+  id: 1,
+  username: 'admin',
+  email: 'admin@test.com',
+  is_active: true,
+  is_superuser: true,
+  created_at: new Date().toISOString(),
+};
+
+const mockRegularUser = {
+  id: 2,
+  username: 'user',
+  email: 'user@test.com',
+  is_active: true,
+  is_superuser: false,
+  created_at: new Date().toISOString(),
+};
 
 describe('SettingsPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockNavigate.mockClear()
-    
-    
-    // Default handler for stats
-    server.use(
-      http.get('/api/settings/stats', () => {
-        return HttpResponse.json(mockStats)
-      })
-    )
-  })
+    vi.clearAllMocks();
+    mockNavigate.mockClear();
+  });
 
-  it('renders settings page with header and back button', () => {
-    renderWithProviders(<SettingsPage />)
-    
-    expect(screen.getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByText('Manage your database, plugins, and system settings')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /back to home/i })).toBeInTheDocument()
-  })
+  describe('header and navigation', () => {
+    beforeEach(() => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: mockRegularUser };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+    });
 
-  it('navigates back to home when back button is clicked', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<SettingsPage />)
-    
-    await user.click(screen.getByRole('button', { name: /back to home/i }))
-    
-    expect(mockNavigate).toHaveBeenCalledWith('/')
-  })
+    it('renders settings page with header and back button', () => {
+      renderWithProviders(<SettingsPage />);
 
-  it('loads and displays database statistics', async () => {
-    renderWithProviders(<SettingsPage />)
-    
-    // Initially shows loading state
-    expect(screen.getByText('Loading statistics...')).toBeInTheDocument()
-    
-    // Wait for stats to load
-    await waitFor(() => {
-      expect(screen.queryByText('Loading statistics...')).not.toBeInTheDocument()
-    })
-    
-    // Check that stats are displayed
-    expect(screen.getByText('Total Collections')).toBeInTheDocument()
-    expect(screen.getByText('15')).toBeInTheDocument()
-    
-    expect(screen.getByText('Total Files')).toBeInTheDocument()
-    expect(screen.getByText('250')).toBeInTheDocument()
-    
-    expect(screen.getByText('Database Size')).toBeInTheDocument()
-    expect(screen.getByText('128 MB')).toBeInTheDocument()
-    
-    expect(screen.getByText('Parquet Files')).toBeInTheDocument()
-    expect(screen.getByText('30')).toBeInTheDocument()
-    
-    expect(screen.getByText('Parquet Size')).toBeInTheDocument()
-    expect(screen.getByText('64 MB')).toBeInTheDocument()
-  })
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+      expect(
+        screen.getByText('Manage your preferences, plugins, and system settings')
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /back to home/i })
+      ).toBeInTheDocument();
+    });
 
-  it('handles error when loading statistics fails', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    
-    server.use(
-      http.get('/api/settings/stats', () => {
-        return HttpResponse.error()
-      })
-    )
-    
-    renderWithProviders(<SettingsPage />)
-    
-    await waitFor(() => {
-      expect(screen.queryByText('Loading statistics...')).not.toBeInTheDocument()
-    })
-    
-    expect(screen.getByText('Failed to load statistics')).toBeInTheDocument()
-    expect(consoleError).toHaveBeenCalledWith('Failed to load statistics:', expect.any(Error))
-    
-    consoleError.mockRestore()
-  })
+    it('navigates back to home when back button is clicked', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage />);
 
-  it('formats large numbers with commas', async () => {
-    server.use(
-      http.get('/api/settings/stats', () => {
-        return HttpResponse.json({
-          collection_count: 1500,
-          file_count: 25000,
-          database_size_mb: 1024,
-          parquet_files_count: 3000,
-          parquet_size_mb: 512,
-        })
-      })
-    )
-    
-    renderWithProviders(<SettingsPage />)
-    
-    await waitFor(() => {
-      expect(screen.getByText('1,500')).toBeInTheDocument()
-      expect(screen.getByText('25,000')).toBeInTheDocument()
-      expect(screen.getByText('3,000')).toBeInTheDocument()
-    })
-  })
+      await user.click(screen.getByRole('button', { name: /back to home/i }));
 
-  it('shows danger zone with reset database button', () => {
-    renderWithProviders(<SettingsPage />)
-    
-    expect(screen.getByText('Danger Zone')).toBeInTheDocument()
-    expect(screen.getAllByText('Reset Database')).toHaveLength(2) // h4 and button
-    expect(screen.getByText(/This will delete all collections, files, and associated data/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reset database/i })).toBeInTheDocument()
-  })
+      expect(mockNavigate).toHaveBeenCalledWith('/');
+    });
+  });
 
-  it('shows confirmation dialog when reset button is clicked', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<SettingsPage />)
-    
-    // Get the actual button (not the heading)
-    const resetButtons = screen.getAllByRole('button', { name: /reset database/i })
-    const resetButton = resetButtons[0] // Should be the actual button in the danger zone
-    await user.click(resetButton)
-    
-    // Check confirmation dialog appears
-    expect(screen.getByText('Confirm Database Reset')).toBeInTheDocument()
-    expect(screen.getByText(/Are you sure you want to reset the database/)).toBeInTheDocument()
-    expect(screen.getByText('Type "RESET" to confirm:')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Type RESET')).toBeInTheDocument()
-    
-    // Check buttons in dialog - there should be multiple "Reset Database" buttons now
-    const allResetButtons = screen.getAllByRole('button', { name: 'Reset Database' })
-    expect(allResetButtons.length).toBeGreaterThanOrEqual(2) // One in dialog, one original
-    expect(allResetButtons[1]).toBeDisabled() // Dialog button should be disabled initially
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
-  })
+  describe('tab navigation for regular users', () => {
+    beforeEach(() => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: mockRegularUser };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+    });
 
-  it('enables reset button only when RESET is typed', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<SettingsPage />)
-    
-    await user.click(screen.getByRole('button', { name: /reset database/i }))
-    
-    const confirmInput = screen.getByPlaceholderText('Type RESET')
-    const resetButton = screen.getAllByRole('button', { name: 'Reset Database' })[1] // Second one is in dialog
-    
-    // Initially disabled
-    expect(resetButton).toBeDisabled()
-    
-    // Type wrong text
-    await user.type(confirmInput, 'reset')
-    expect(resetButton).toBeDisabled()
-    
-    // Clear and type correct text
-    await user.clear(confirmInput)
-    await user.type(confirmInput, 'RESET')
-    expect(resetButton).toBeEnabled()
-  })
+    it('shows 4 tabs for regular users (no Admin tab)', () => {
+      renderWithProviders(<SettingsPage />);
 
-  it('cancels reset when cancel button is clicked', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<SettingsPage />)
-    
-    await user.click(screen.getByRole('button', { name: /reset database/i }))
-    
-    // Dialog should be visible
-    expect(screen.getByText('Confirm Database Reset')).toBeInTheDocument()
-    
-    // Type something in the input
-    await user.type(screen.getByPlaceholderText('Type RESET'), 'RES')
-    
-    // Click cancel
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    
-    // Dialog should be gone
-    expect(screen.queryByText('Confirm Database Reset')).not.toBeInTheDocument()
-    
-    // Click reset button again to verify input was cleared
-    await user.click(screen.getByRole('button', { name: /reset database/i }))
-    expect(screen.getByPlaceholderText('Type RESET')).toHaveValue('')
-  })
+      expect(screen.getByText('Preferences')).toBeInTheDocument();
+      expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+      expect(screen.getByText('System')).toBeInTheDocument();
+      expect(screen.getByText('Plugins')).toBeInTheDocument();
+      expect(screen.getByText('MCP Profiles')).toBeInTheDocument();
+    });
 
-  it('handles successful database reset', async () => {
-    const user = userEvent.setup()
-    
-    server.use(
-      http.post('/api/settings/reset-database', () => {
-        return HttpResponse.json({ message: 'Database reset successfully' })
-      })
-    )
-    
-    renderWithProviders(<SettingsPage />)
-    
-    // Open dialog and confirm
-    await user.click(screen.getByRole('button', { name: /reset database/i }))
-    await user.type(screen.getByPlaceholderText('Type RESET'), 'RESET')
-    
-    const resetButton = screen.getAllByRole('button', { name: 'Reset Database' })[1]
-    await user.click(resetButton)
-    
-    // Check that the operation completes successfully
-    await waitFor(() => {
-      expect(global.alert).toHaveBeenCalledWith('Database reset successfully!')
-    }, { timeout: 5000 })
-    
-    // Check navigation
-    expect(mockNavigate).toHaveBeenCalledWith('/')
-    
-    // Dialog should be closed
-    expect(screen.queryByText('Confirm Database Reset')).not.toBeInTheDocument()
-  })
+    it('defaults to Preferences tab', () => {
+      renderWithProviders(<SettingsPage />);
 
-  it('handles database reset error', async () => {
-    const user = userEvent.setup()
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    
-    server.use(
-      http.post('/api/settings/reset-database', () => {
-        return HttpResponse.json(
-          { detail: 'Failed to reset database' },
-          { status: 500 }
-        )
-      })
-    )
-    
-    renderWithProviders(<SettingsPage />)
-    
-    // Open dialog and confirm
-    await user.click(screen.getByRole('button', { name: /reset database/i }))
-    await user.type(screen.getByPlaceholderText('Type RESET'), 'RESET')
-    await user.click(screen.getAllByRole('button', { name: 'Reset Database' })[1])
-    
-    await waitFor(() => {
-      expect(global.alert).toHaveBeenCalledWith('Failed to reset database: Failed to reset database')
-    })
-    
-    expect(consoleError).toHaveBeenCalledWith('Failed to reset database:', expect.any(Error))
-    
-    // Should not navigate on error
-    expect(mockNavigate).not.toHaveBeenCalled()
-    
-    // Reset button should be enabled again
-    expect(screen.getAllByRole('button', { name: 'Reset Database' })[1]).toBeEnabled()
-    
-    consoleError.mockRestore()
-  })
+      expect(screen.getByTestId('preferences-tab')).toBeInTheDocument();
+    });
 
-  it('displays all statistic cards with proper icons', async () => {
-    renderWithProviders(<SettingsPage />)
-    
-    await waitFor(() => {
-      expect(screen.queryByText('Loading statistics...')).not.toBeInTheDocument()
-    })
-    
-    // Check that all cards are rendered with their values
-    const cards = [
-      { label: 'Total Collections', value: '15' },
-      { label: 'Total Files', value: '250' },
-      { label: 'Database Size', value: '128 MB' },
-      { label: 'Parquet Files', value: '30' },
-      { label: 'Parquet Size', value: '64 MB' },
-    ]
-    
-    cards.forEach(card => {
-      expect(screen.getByText(card.label)).toBeInTheDocument()
-      if (card.value.includes('MB')) {
-        expect(screen.getByText(card.value)).toBeInTheDocument()
-      } else {
-        expect(screen.getByText(card.value)).toBeInTheDocument()
-      }
-    })
-    
-    // Check that there are multiple stat cards
-    const databaseSizeElement = screen.getByText('Database Size')
-    const container = databaseSizeElement.closest('.bg-gray-50')
-    expect(container).toBeInTheDocument()
-  })
-})
+    it('can switch between tabs', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage />);
+
+      // Switch to System tab
+      await user.click(screen.getByText('System'));
+      expect(screen.getByTestId('system-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('preferences-tab')).not.toBeInTheDocument();
+
+      // Switch to Plugins tab
+      await user.click(screen.getByText('Plugins'));
+      expect(screen.getByTestId('plugins-settings')).toBeInTheDocument();
+
+      // Switch to MCP tab
+      await user.click(screen.getByText('MCP Profiles'));
+      expect(screen.getByTestId('mcp-settings')).toBeInTheDocument();
+    });
+  });
+
+  describe('tab navigation for superusers', () => {
+    beforeEach(() => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: mockSuperuser };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+    });
+
+    it('shows 5 tabs for superusers (includes Admin tab)', () => {
+      renderWithProviders(<SettingsPage />);
+
+      expect(screen.getByText('Preferences')).toBeInTheDocument();
+      expect(screen.getByText('Admin')).toBeInTheDocument();
+      expect(screen.getByText('System')).toBeInTheDocument();
+      expect(screen.getByText('Plugins')).toBeInTheDocument();
+      expect(screen.getByText('MCP Profiles')).toBeInTheDocument();
+    });
+
+    it('can access Admin tab', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage />);
+
+      await user.click(screen.getByText('Admin'));
+
+      expect(screen.getByTestId('admin-tab')).toBeInTheDocument();
+    });
+  });
+
+  describe('access control edge cases', () => {
+    it('handles null user gracefully', () => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: null };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+
+      renderWithProviders(<SettingsPage />);
+
+      // Should show 4 tabs (no Admin)
+      expect(screen.getByText('Preferences')).toBeInTheDocument();
+      expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    });
+
+    it('handles undefined user gracefully', () => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: undefined };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+
+      renderWithProviders(<SettingsPage />);
+
+      // Should show 4 tabs (no Admin)
+      expect(screen.getByText('Preferences')).toBeInTheDocument();
+      expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tab styling', () => {
+    beforeEach(() => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: mockRegularUser };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+    });
+
+    it('applies active styling to selected tab', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage />);
+
+      // Preferences should be active by default
+      const preferencesButton = screen.getByText('Preferences').closest('button');
+      expect(preferencesButton).toHaveClass('border-blue-500');
+
+      // Switch to System
+      await user.click(screen.getByText('System'));
+      const systemButton = screen.getByText('System').closest('button');
+      expect(systemButton).toHaveClass('border-blue-500');
+      expect(preferencesButton).not.toHaveClass('border-blue-500');
+    });
+  });
+});
