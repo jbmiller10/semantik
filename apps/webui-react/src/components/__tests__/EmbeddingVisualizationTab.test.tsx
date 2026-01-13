@@ -1446,7 +1446,9 @@ describe('EmbeddingVisualizationTab', () => {
   });
 
   it('switches render modes manually and resolves query selections near the cursor', async () => {
-    setupProjectionApiMocks({ pointCount: 25_000 });
+    // Point count must exceed the DEFAULT_DENSITY_THRESHOLD (200,000 from preferences)
+    // to trigger density mode by default
+    setupProjectionApiMocks({ pointCount: 250_000 });
 
     const { user } = await renderTabAndLoadProjection();
 

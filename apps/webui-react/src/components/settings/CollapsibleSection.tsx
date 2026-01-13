@@ -58,7 +58,7 @@ export function CollapsibleSection({
 
   const handleToggle = () => {
     const newState = !isOpen;
-    toggleSection(name);
+    toggleSection(name, defaultOpen);
     onToggle?.(newState);
   };
 

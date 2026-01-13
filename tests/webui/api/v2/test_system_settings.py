@@ -282,11 +282,14 @@ class TestGetDefaultSettings:
         self,
         api_client_admin: AsyncClientType,
     ) -> None:
-        """Admin should receive default values."""
+        """Admin should receive default values wrapped in 'defaults' key."""
         response = await api_client_admin.get(SYSTEM_SETTINGS_DEFAULTS_PATH)
 
         assert response.status_code == 200
-        defaults = response.json()
+        body = response.json()
+        # Response is wrapped in 'defaults' for frontend compatibility
+        assert "defaults" in body
+        defaults = body["defaults"]
         # Verify some known defaults
         assert defaults["max_collections_per_user"] == 10
         assert defaults["cache_ttl_seconds"] == 300

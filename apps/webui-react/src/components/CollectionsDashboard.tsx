@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useCollections } from '../hooks/useCollections';
+import { useAnimationEnabled } from '../contexts/AnimationContext';
+import { withAnimation } from '../utils/animationClasses';
 import CollectionCard from './CollectionCard';
 import CreateCollectionModal from './CreateCollectionModal';
 
@@ -7,6 +9,7 @@ function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const animationEnabled = useAnimationEnabled();
 
   // Use React Query hook to fetch collections
   const { data: collections = [], isLoading, error, refetch } = useCollections();
@@ -52,7 +55,7 @@ function CollectionsDashboard() {
   if (isLoading && collections.length === 0) {
     return (
       <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" role="status" aria-label="Loading collections"></div>
+        <div className={withAnimation('rounded-full h-8 w-8 border-b-2 border-blue-600', animationEnabled, 'animate-spin')} role="status" aria-label="Loading collections"></div>
       </div>
     );
   }

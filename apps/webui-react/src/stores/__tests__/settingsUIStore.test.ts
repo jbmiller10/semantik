@@ -45,14 +45,25 @@ describe('settingsUIStore', () => {
   });
 
   describe('toggleSection', () => {
-    it('toggles section from undefined to true (negation of undefined)', () => {
+    it('toggles section from undefined with defaultOpen=true to false', () => {
       const { result } = renderHook(() => useSettingsUIStore());
 
       act(() => {
+        // With defaultOpen=true (default), effective state is true, so toggle -> false
         result.current.toggleSection('test-section');
       });
 
-      // !undefined = true
+      expect(result.current.sectionStates['test-section']).toBe(false);
+    });
+
+    it('toggles section from undefined with defaultOpen=false to true', () => {
+      const { result } = renderHook(() => useSettingsUIStore());
+
+      act(() => {
+        // With defaultOpen=false, effective state is false, so toggle -> true
+        result.current.toggleSection('test-section', false);
+      });
+
       expect(result.current.sectionStates['test-section']).toBe(true);
     });
 
@@ -82,6 +93,22 @@ describe('settingsUIStore', () => {
       });
 
       expect(result.current.sectionStates['test-section']).toBe(false);
+    });
+
+    it('respects defaultOpen parameter when toggling unset section', () => {
+      const { result } = renderHook(() => useSettingsUIStore());
+
+      // First toggle with defaultOpen=true should close the section
+      act(() => {
+        result.current.toggleSection('section-a', true);
+      });
+      expect(result.current.sectionStates['section-a']).toBe(false);
+
+      // First toggle with defaultOpen=false should open the section
+      act(() => {
+        result.current.toggleSection('section-b', false);
+      });
+      expect(result.current.sectionStates['section-b']).toBe(true);
     });
   });
 

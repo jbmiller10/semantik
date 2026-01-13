@@ -8,6 +8,7 @@ supported features, and service health information.
 import asyncio
 import logging
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import httpx
@@ -25,8 +26,11 @@ from webui.config.rate_limits import RateLimitConfig
 
 logger = logging.getLogger(__name__)
 
-# Version from pyproject.toml - imported at startup
-APP_VERSION = "0.7.7"
+# Version from pyproject.toml via package metadata
+try:
+    APP_VERSION = version("semantik")
+except PackageNotFoundError:
+    APP_VERSION = "0.0.0-dev"
 
 router = APIRouter(prefix="/api/v2/system", tags=["system-v2"])
 

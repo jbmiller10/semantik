@@ -4,6 +4,8 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { systemApi } from '../services/api/v2/system';
+import { usePreferences } from './usePreferences';
+import { DEFAULT_REFRESH_INTERVAL_MS } from './useRefreshInterval';
 
 /**
  * Query key factory for system queries.
@@ -34,9 +36,15 @@ export function useSystemInfo() {
 
 /**
  * Hook to fetch health status for all backend services.
- * Auto-refreshes every 30 seconds for real-time monitoring.
+ * Auto-refreshes based on user's preferred interval for real-time monitoring.
  */
 export function useSystemHealth() {
+  const { data: preferences } = usePreferences();
+
+  // Get user's preferred refresh interval, with fallback to default
+  const refreshInterval =
+    preferences?.interface?.data_refresh_interval_ms ?? DEFAULT_REFRESH_INTERVAL_MS;
+
   return useQuery({
     queryKey: systemKeys.health(),
     queryFn: async () => {
@@ -44,7 +52,7 @@ export function useSystemHealth() {
       return response.data;
     },
     staleTime: 15 * 1000, // 15 seconds
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchInterval: refreshInterval, // Use user's preferred interval
     refetchOnWindowFocus: true,
   });
 }

@@ -648,6 +648,11 @@ export const handlers = [
         sparse_type: 'bm25',
         enable_hybrid: false,
       },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
       created_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z',
     })
@@ -673,6 +678,11 @@ export const handlers = [
         sparse_type: (body.collection_defaults as Record<string, unknown>)?.sparse_type ?? 'bm25',
         enable_hybrid: (body.collection_defaults as Record<string, unknown>)?.enable_hybrid ?? false,
       },
+      interface: {
+        data_refresh_interval_ms: (body.interface as Record<string, unknown>)?.data_refresh_interval_ms ?? 30000,
+        visualization_sample_limit: (body.interface as Record<string, unknown>)?.visualization_sample_limit ?? 200000,
+        animation_enabled: (body.interface as Record<string, unknown>)?.animation_enabled ?? true,
+      },
       created_at: '2025-01-01T00:00:00Z',
       updated_at: new Date().toISOString(),
     })
@@ -696,6 +706,11 @@ export const handlers = [
         enable_sparse: false,
         sparse_type: 'bm25',
         enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
       },
       created_at: '2025-01-01T00:00:00Z',
       updated_at: new Date().toISOString(),
@@ -721,8 +736,85 @@ export const handlers = [
         sparse_type: 'bm25',
         enable_hybrid: false,
       },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
       created_at: '2025-01-01T00:00:00Z',
       updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/interface', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  // System Settings endpoints (admin-only)
+  http.get('/api/v2/system-settings', () => {
+    return HttpResponse.json({
+      settings: {
+        max_collections_per_user: { value: 10, updated_at: null, updated_by: null },
+        max_storage_gb_per_user: { value: 50, updated_at: null, updated_by: null },
+        max_document_size_mb: { value: 100, updated_at: null, updated_by: null },
+      },
+    })
+  }),
+
+  http.get('/api/v2/system-settings/effective', () => {
+    return HttpResponse.json({
+      settings: {
+        max_collections_per_user: 10,
+        max_storage_gb_per_user: 50,
+        max_document_size_mb: 100,
+      },
+    })
+  }),
+
+  http.get('/api/v2/system-settings/defaults', () => {
+    return HttpResponse.json({
+      defaults: {
+        max_collections_per_user: 10,
+        max_storage_gb_per_user: 50,
+        max_document_size_mb: 100,
+      },
+    })
+  }),
+
+  http.patch('/api/v2/system-settings', async ({ request }) => {
+    const body = await request.json() as { settings: Record<string, unknown> }
+    const keys = Object.keys(body.settings || {})
+    return HttpResponse.json({
+      updated: keys,
+      settings: keys.reduce((acc, key) => ({
+        ...acc,
+        [key]: { value: body.settings[key], updated_at: new Date().toISOString(), updated_by: 1 },
+      }), {}),
     })
   }),
 ]

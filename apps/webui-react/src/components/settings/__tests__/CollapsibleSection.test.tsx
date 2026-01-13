@@ -135,7 +135,8 @@ describe('CollapsibleSection', () => {
       const header = screen.getByRole('button');
       await user.click(header);
 
-      expect(mockToggleSection).toHaveBeenCalledWith('test-section');
+      // toggleSection receives (name, defaultOpen) - defaultOpen is true by default
+      expect(mockToggleSection).toHaveBeenCalledWith('test-section', true);
     });
 
     it('calls onToggle callback with new state when toggling to closed', async () => {

@@ -67,6 +67,12 @@ class EffectiveSettingsResponse(BaseModel):
     settings: dict[str, Any] = Field(description="Map of setting keys to their effective values")
 
 
+class DefaultSettingsResponse(BaseModel):
+    """Response containing default values for all system settings."""
+
+    defaults: dict[str, Any] = Field(description="Map of setting keys to their default values")
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -271,7 +277,7 @@ async def update_system_settings(
 
 @router.get(
     "/defaults",
-    response_model=dict[str, Any],
+    response_model=DefaultSettingsResponse,
     responses={
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         403: {"model": ErrorResponse, "description": "Admin access required"},
@@ -279,7 +285,7 @@ async def update_system_settings(
 )
 async def get_default_settings(
     current_user: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
+) -> DefaultSettingsResponse:
     """Get the default values for all system settings (admin-only).
 
     These are the fallback values used when a setting is not configured
@@ -287,4 +293,4 @@ async def get_default_settings(
     """
     _require_admin(current_user)
 
-    return dict(SYSTEM_SETTING_DEFAULTS)
+    return DefaultSettingsResponse(defaults=dict(SYSTEM_SETTING_DEFAULTS))

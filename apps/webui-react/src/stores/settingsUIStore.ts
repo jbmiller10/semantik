@@ -8,8 +8,8 @@ interface SettingsUIState {
   /** Set a specific section's open state */
   setSectionOpen: (sectionName: string, isOpen: boolean) => void;
 
-  /** Toggle a section's open state */
-  toggleSection: (sectionName: string) => void;
+  /** Toggle a section's open state, respecting defaultOpen for initial state */
+  toggleSection: (sectionName: string, defaultOpen?: boolean) => void;
 
   /** Get whether a section is open, with fallback to defaultOpen */
   isSectionOpen: (sectionName: string, defaultOpen?: boolean) => boolean;
@@ -31,13 +31,17 @@ export const useSettingsUIStore = create<SettingsUIState>()(
           },
         })),
 
-      toggleSection: (sectionName) =>
-        set((state) => ({
-          sectionStates: {
-            ...state.sectionStates,
-            [sectionName]: !state.sectionStates[sectionName],
-          },
-        })),
+      toggleSection: (sectionName, defaultOpen = true) =>
+        set((state) => {
+          const currentState = state.sectionStates[sectionName];
+          const effectiveState = currentState !== undefined ? currentState : defaultOpen;
+          return {
+            sectionStates: {
+              ...state.sectionStates,
+              [sectionName]: !effectiveState,
+            },
+          };
+        }),
 
       isSectionOpen: (sectionName, defaultOpen = true) => {
         const state = get().sectionStates[sectionName];
