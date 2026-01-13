@@ -185,6 +185,12 @@ class User(Base):
         uselist=False,  # One-to-one
         cascade="all, delete-orphan",
     )
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
 
 
 class Collection(Base):
@@ -1123,3 +1129,107 @@ class LLMUsageEvent(Base):
         Index("idx_llm_usage_user_created", "user_id", "created_at"),
         Index("idx_llm_usage_feature", "user_id", "feature"),
     )
+
+
+class UserPreferences(Base):
+    """Per-user preferences for search and collection defaults.
+
+    Stores user-specific settings for search behavior and collection creation.
+    Each user has at most one preferences row (one-to-one with users).
+    Missing preferences use application defaults via get_or_create pattern.
+
+    Search preferences:
+    - search_top_k: Number of results to return (5-50, default 10)
+    - search_mode: 'dense', 'sparse', or 'hybrid' (default 'dense')
+    - search_use_reranker: Enable reranking (default false)
+    - search_rrf_k: RRF constant for hybrid fusion (1-100, default 60)
+    - search_similarity_threshold: Minimum similarity score (0-1, NULL for no threshold)
+
+    Collection defaults:
+    - default_embedding_model: Model ID or NULL for system default
+    - default_quantization: 'none', 'scalar', 'binary' (default 'none')
+    - default_chunking_strategy: 'character', 'recursive', 'markdown', 'semantic'
+    - default_chunk_size: 256-4096 (default 1024)
+    - default_chunk_overlap: 0-512 (default 200)
+    - default_enable_sparse: Enable sparse indexing (default false)
+    - default_sparse_type: 'bm25' or 'splade' (default 'bm25')
+    - default_enable_hybrid: Enable hybrid search (requires sparse, default false)
+    """
+
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # Search preferences
+    search_top_k = Column(Integer, nullable=False, default=10)
+    search_mode = Column(String(16), nullable=False, default="dense")
+    search_use_reranker = Column(Boolean, nullable=False, default=False)
+    search_rrf_k = Column(Integer, nullable=False, default=60)
+    search_similarity_threshold = Column(Float, nullable=True)
+
+    # Collection defaults
+    default_embedding_model = Column(String(128), nullable=True)
+    default_quantization = Column(String(16), nullable=False, default="none")
+    default_chunking_strategy = Column(String(32), nullable=False, default="recursive")
+    default_chunk_size = Column(Integer, nullable=False, default=1024)
+    default_chunk_overlap = Column(Integer, nullable=False, default=200)
+    default_enable_sparse = Column(Boolean, nullable=False, default=False)
+    default_sparse_type = Column(String(16), nullable=False, default="bm25")
+    default_enable_hybrid = Column(Boolean, nullable=False, default=False)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "search_top_k >= 5 AND search_top_k <= 50",
+            name="ck_user_preferences_search_top_k",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_user_preferences_search_mode",
+        ),
+        CheckConstraint(
+            "search_rrf_k >= 1 AND search_rrf_k <= 100",
+            name="ck_user_preferences_search_rrf_k",
+        ),
+        CheckConstraint(
+            "search_similarity_threshold IS NULL OR (search_similarity_threshold >= 0.0 AND search_similarity_threshold <= 1.0)",
+            name="ck_user_preferences_search_similarity_threshold",
+        ),
+        CheckConstraint(
+            "default_quantization IN ('none', 'scalar', 'binary')",
+            name="ck_user_preferences_default_quantization",
+        ),
+        CheckConstraint(
+            "default_chunking_strategy IN ('character', 'recursive', 'markdown', 'semantic')",
+            name="ck_user_preferences_default_chunking_strategy",
+        ),
+        CheckConstraint(
+            "default_chunk_size >= 256 AND default_chunk_size <= 4096",
+            name="ck_user_preferences_default_chunk_size",
+        ),
+        CheckConstraint(
+            "default_chunk_overlap >= 0 AND default_chunk_overlap <= 512",
+            name="ck_user_preferences_default_chunk_overlap",
+        ),
+        CheckConstraint(
+            "default_sparse_type IN ('bm25', 'splade')",
+            name="ck_user_preferences_default_sparse_type",
+        ),
+        CheckConstraint(
+            "default_enable_hybrid = false OR default_enable_sparse = true",
+            name="ck_user_preferences_hybrid_requires_sparse",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="preferences")

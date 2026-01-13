@@ -10,6 +10,7 @@ from .llm_usage_repository import LLMUsageRepository, UsageSummary
 from .operation_repository import OperationRepository
 from .plugin_config_repository import PluginConfigRepository
 from .projection_run_repository import ProjectionRunRepository
+from .user_preferences_repository import UserPreferencesRepository
 
 __all__ = [
     "ChunkRepository",
@@ -23,4 +24,5 @@ __all__ = [
     "PluginConfigRepository",
     "ProjectionRunRepository",
     "UsageSummary",
+    "UserPreferencesRepository",
 ]
