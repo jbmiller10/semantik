@@ -30,7 +30,8 @@ function Layout() {
     navigate('/login');
   };
 
-  const tabs = [
+  type TabId = 'search' | 'collections' | 'operations';
+  const tabs: { id: TabId; label: string }[] = [
     { id: 'collections', label: 'Collections' },
     { id: 'operations', label: 'Active Operations' },
     { id: 'search', label: 'Search' },
@@ -96,7 +97,7 @@ function Layout() {
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`
                     px-6 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
                     ${activeTab === tab.id
