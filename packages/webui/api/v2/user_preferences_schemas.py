@@ -12,13 +12,9 @@ class SearchPreferences(BaseModel):
     """User preferences for search behavior."""
 
     top_k: int = Field(default=10, ge=5, le=50, description="Number of results to return")
-    mode: Literal["dense", "sparse", "hybrid"] = Field(
-        default="dense", description="Search mode"
-    )
+    mode: Literal["dense", "sparse", "hybrid"] = Field(default="dense", description="Search mode")
     use_reranker: bool = Field(default=False, description="Enable reranking")
-    rrf_k: int = Field(
-        default=60, ge=1, le=100, description="RRF constant for hybrid fusion"
-    )
+    rrf_k: int = Field(default=60, ge=1, le=100, description="RRF constant for hybrid fusion")
     similarity_threshold: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Minimum similarity score (null for no threshold)"
     )
@@ -45,25 +41,15 @@ class CollectionDefaults(BaseModel):
         max_length=128,
         description="Default embedding model (null for system default)",
     )
-    quantization: Literal["none", "scalar", "binary"] = Field(
-        default="none", description="Vector quantization type"
-    )
+    quantization: Literal["none", "scalar", "binary"] = Field(default="none", description="Vector quantization type")
     chunking_strategy: Literal["character", "recursive", "markdown", "semantic"] = Field(
         default="recursive", description="Text chunking strategy"
     )
-    chunk_size: int = Field(
-        default=1024, ge=256, le=4096, description="Chunk size in characters"
-    )
-    chunk_overlap: int = Field(
-        default=200, ge=0, le=512, description="Chunk overlap in characters"
-    )
+    chunk_size: int = Field(default=1024, ge=256, le=4096, description="Chunk size in characters")
+    chunk_overlap: int = Field(default=200, ge=0, le=512, description="Chunk overlap in characters")
     enable_sparse: bool = Field(default=False, description="Enable sparse indexing")
-    sparse_type: Literal["bm25", "splade"] = Field(
-        default="bm25", description="Sparse indexer type"
-    )
-    enable_hybrid: bool = Field(
-        default=False, description="Enable hybrid search (requires sparse indexing)"
-    )
+    sparse_type: Literal["bm25", "splade"] = Field(default="bm25", description="Sparse indexer type")
+    enable_hybrid: bool = Field(default=False, description="Enable hybrid search (requires sparse indexing)")
 
     @model_validator(mode="after")
     def hybrid_requires_sparse(self) -> Self:

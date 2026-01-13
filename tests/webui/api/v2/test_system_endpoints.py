@@ -75,7 +75,11 @@ class TestSystemHealth:
         ):
             mock_db.return_value = {"status": "healthy", "message": "Database connection successful"}
             mock_redis.return_value = {"status": "healthy", "message": "Redis connection successful"}
-            mock_qdrant.return_value = {"status": "healthy", "message": "Qdrant connection successful", "collections_count": 5}
+            mock_qdrant.return_value = {
+                "status": "healthy",
+                "message": "Qdrant connection successful",
+                "collections_count": 5,
+            }
             mock_search.return_value = {"status": "healthy", "message": "Search API connection successful"}
 
             response = await system_api_client.get("/api/v2/system/health")
