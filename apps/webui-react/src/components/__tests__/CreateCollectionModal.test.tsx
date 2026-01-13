@@ -147,6 +147,14 @@ vi.mock('../../hooks/useOperationProgress', () => ({
   }),
 }));
 
+// Mock usePreferences to avoid interference with form state
+vi.mock('../../hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    data: null, // Return null so preferences don't override test state
+    isLoading: false,
+  }),
+}));
+
 // Helper function to render with wrapper
 const renderCreateCollectionModal = (props = {}) => {
   return render(

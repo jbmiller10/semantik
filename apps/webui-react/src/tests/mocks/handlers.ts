@@ -627,4 +627,102 @@ export const handlers = [
       period_days: 30,
     })
   }),
+
+  // User Preferences endpoints
+  http.get('/api/v2/preferences', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    })
+  }),
+
+  http.put('/api/v2/preferences', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({
+      search: {
+        top_k: (body.search as Record<string, unknown>)?.top_k ?? 10,
+        mode: (body.search as Record<string, unknown>)?.mode ?? 'dense',
+        use_reranker: (body.search as Record<string, unknown>)?.use_reranker ?? false,
+        rrf_k: (body.search as Record<string, unknown>)?.rrf_k ?? 60,
+        similarity_threshold: (body.search as Record<string, unknown>)?.similarity_threshold ?? null,
+      },
+      collection_defaults: {
+        embedding_model: (body.collection_defaults as Record<string, unknown>)?.embedding_model ?? null,
+        quantization: (body.collection_defaults as Record<string, unknown>)?.quantization ?? 'float16',
+        chunking_strategy: (body.collection_defaults as Record<string, unknown>)?.chunking_strategy ?? 'recursive',
+        chunk_size: (body.collection_defaults as Record<string, unknown>)?.chunk_size ?? 1024,
+        chunk_overlap: (body.collection_defaults as Record<string, unknown>)?.chunk_overlap ?? 200,
+        enable_sparse: (body.collection_defaults as Record<string, unknown>)?.enable_sparse ?? false,
+        sparse_type: (body.collection_defaults as Record<string, unknown>)?.sparse_type ?? 'bm25',
+        enable_hybrid: (body.collection_defaults as Record<string, unknown>)?.enable_hybrid ?? false,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/search', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/collection-defaults', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
 ]
