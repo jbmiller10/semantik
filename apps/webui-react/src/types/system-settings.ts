@@ -73,8 +73,6 @@ export interface ResourceLimitsSettings {
   max_storage_gb_per_user: number;
   /** Maximum document size in MB (default: 100) */
   max_document_size_mb: number;
-  /** Maximum artifact size in MB (default: 50) */
-  max_artifact_size_mb: number;
 }
 
 /**
@@ -91,12 +89,8 @@ export interface PerformanceSettings {
  * GPU and memory management settings.
  */
 export interface GpuMemorySettings {
-  /** GPU memory reserve percent (default: 0.10) */
-  gpu_memory_reserve_percent: number;
   /** GPU memory max percent (default: 0.90) */
   gpu_memory_max_percent: number;
-  /** CPU memory reserve percent (default: 0.20) */
-  cpu_memory_reserve_percent: number;
   /** CPU memory max percent (default: 0.50) */
   cpu_memory_max_percent: number;
   /** Enable CPU offload (default: true) */
@@ -133,7 +127,6 @@ export function extractResourceLimits(
     max_collections_per_user: (settings.max_collections_per_user as number) ?? 10,
     max_storage_gb_per_user: (settings.max_storage_gb_per_user as number) ?? 50,
     max_document_size_mb: (settings.max_document_size_mb as number) ?? 100,
-    max_artifact_size_mb: (settings.max_artifact_size_mb as number) ?? 50,
   };
 }
 
@@ -156,9 +149,7 @@ export function extractGpuMemorySettings(
   settings: Record<string, unknown>
 ): GpuMemorySettings {
   return {
-    gpu_memory_reserve_percent: (settings.gpu_memory_reserve_percent as number) ?? 0.1,
     gpu_memory_max_percent: (settings.gpu_memory_max_percent as number) ?? 0.9,
-    cpu_memory_reserve_percent: (settings.cpu_memory_reserve_percent as number) ?? 0.2,
     cpu_memory_max_percent: (settings.cpu_memory_max_percent as number) ?? 0.5,
     enable_cpu_offload: (settings.enable_cpu_offload as boolean) ?? true,
     eviction_idle_threshold_seconds: (settings.eviction_idle_threshold_seconds as number) ?? 120,

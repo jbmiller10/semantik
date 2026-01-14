@@ -110,8 +110,8 @@ export default function SystemStatusCard() {
           </svg>
           <div className="ml-3">
             <p className="text-sm text-blue-700">
-              These settings are read-only and configured by your system administrator.
-              Service health auto-refreshes every 30 seconds.
+              These settings are read-only and configured via environment variables in your
+              Docker Compose file or .env file. Service health auto-refreshes every 30 seconds.
             </p>
           </div>
         </div>
@@ -125,23 +125,6 @@ export default function SystemStatusCard() {
             <InfoRow label="Version" value={systemInfo?.version} />
             <InfoRow label="Environment" value={systemInfo?.environment} />
             <InfoRow label="Python Version" value={systemInfo?.python_version} />
-          </div>
-        </div>
-      </div>
-
-      {/* Resource Limits */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Resource Limits</h4>
-          <div className="space-y-1">
-            <InfoRow
-              label="Max Collections per User"
-              value={systemInfo?.limits?.max_collections_per_user}
-            />
-            <InfoRow
-              label="Max Storage per User"
-              value={systemInfo?.limits?.max_storage_gb_per_user ? `${systemInfo.limits.max_storage_gb_per_user} GB` : undefined}
-            />
           </div>
         </div>
       </div>

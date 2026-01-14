@@ -9,9 +9,7 @@ import { extractGpuMemorySettings } from '../../types/system-settings';
 import type { GpuMemorySettings as GpuMemorySettingsType } from '../../types/system-settings';
 
 const GPU_MEMORY_KEYS = [
-  'gpu_memory_reserve_percent',
   'gpu_memory_max_percent',
-  'cpu_memory_reserve_percent',
   'cpu_memory_max_percent',
   'enable_cpu_offload',
   'eviction_idle_threshold_seconds',
@@ -23,9 +21,7 @@ export default function GpuMemorySettings() {
   const resetMutation = useResetSettingsToDefaults();
 
   const [formState, setFormState] = useState<GpuMemorySettingsType>({
-    gpu_memory_reserve_percent: 0.1,
     gpu_memory_max_percent: 0.9,
-    cpu_memory_reserve_percent: 0.2,
     cpu_memory_max_percent: 0.5,
     enable_cpu_offload: true,
     eviction_idle_threshold_seconds: 120,
@@ -48,9 +44,7 @@ export default function GpuMemorySettings() {
   const handleSave = useCallback(async () => {
     await updateMutation.mutateAsync({
       settings: {
-        gpu_memory_reserve_percent: formState.gpu_memory_reserve_percent,
         gpu_memory_max_percent: formState.gpu_memory_max_percent,
-        cpu_memory_reserve_percent: formState.cpu_memory_reserve_percent,
         cpu_memory_max_percent: formState.cpu_memory_max_percent,
         enable_cpu_offload: formState.enable_cpu_offload,
         eviction_idle_threshold_seconds: formState.eviction_idle_threshold_seconds,
@@ -113,29 +107,10 @@ export default function GpuMemorySettings() {
       <div>
         <h4 className="text-sm font-medium text-gray-900 mb-3">GPU Memory</h4>
         <div className="space-y-4 ml-4">
-          {/* GPU Memory Reserve */}
+          {/* GPU Memory Limit */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              GPU Memory Reserve ({(formState.gpu_memory_reserve_percent * 100).toFixed(0)}%)
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={0.5}
-              step={0.05}
-              value={formState.gpu_memory_reserve_percent}
-              onChange={(e) => handleChange('gpu_memory_reserve_percent', parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Percentage of GPU memory to reserve for system use (0-50%)
-            </p>
-          </div>
-
-          {/* GPU Memory Max */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              GPU Memory Max ({(formState.gpu_memory_max_percent * 100).toFixed(0)}%)
+              GPU Memory Limit ({(formState.gpu_memory_max_percent * 100).toFixed(0)}%)
             </label>
             <input
               type="range"
@@ -155,31 +130,12 @@ export default function GpuMemorySettings() {
 
       {/* CPU Memory Section */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">CPU Memory</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-3">CPU Memory (Warm Models)</h4>
         <div className="space-y-4 ml-4">
-          {/* CPU Memory Reserve */}
+          {/* CPU Memory Limit */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              CPU Memory Reserve ({(formState.cpu_memory_reserve_percent * 100).toFixed(0)}%)
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={0.5}
-              step={0.05}
-              value={formState.cpu_memory_reserve_percent}
-              onChange={(e) => handleChange('cpu_memory_reserve_percent', parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Percentage of CPU memory to reserve for system use (0-50%)
-            </p>
-          </div>
-
-          {/* CPU Memory Max */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              CPU Memory Max ({(formState.cpu_memory_max_percent * 100).toFixed(0)}%)
+              CPU Memory Limit ({(formState.cpu_memory_max_percent * 100).toFixed(0)}%)
             </label>
             <input
               type="range"
@@ -191,7 +147,7 @@ export default function GpuMemorySettings() {
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Maximum CPU memory percentage the application can use (30-90%)
+              Maximum CPU memory for warm models when offloaded from GPU (30-90%)
             </p>
           </div>
         </div>

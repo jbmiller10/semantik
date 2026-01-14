@@ -12,7 +12,6 @@ const RESOURCE_LIMIT_KEYS = [
   'max_collections_per_user',
   'max_storage_gb_per_user',
   'max_document_size_mb',
-  'max_artifact_size_mb',
 ];
 
 export default function ResourceLimitsSettings() {
@@ -24,7 +23,6 @@ export default function ResourceLimitsSettings() {
     max_collections_per_user: 10,
     max_storage_gb_per_user: 50,
     max_document_size_mb: 100,
-    max_artifact_size_mb: 50,
   });
 
   // Initialize form state from effective settings
@@ -47,7 +45,6 @@ export default function ResourceLimitsSettings() {
         max_collections_per_user: formState.max_collections_per_user,
         max_storage_gb_per_user: formState.max_storage_gb_per_user,
         max_document_size_mb: formState.max_document_size_mb,
-        max_artifact_size_mb: formState.max_artifact_size_mb,
       },
     });
   }, [formState, updateMutation]);
@@ -155,24 +152,6 @@ export default function ResourceLimitsSettings() {
           />
           <p className="mt-1 text-xs text-gray-500">
             Maximum size of a single document in megabytes (1-1000)
-          </p>
-        </div>
-
-        {/* Max Artifact Size */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Max Artifact Size (MB)
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={500}
-            value={formState.max_artifact_size_mb}
-            onChange={(e) => handleChange('max_artifact_size_mb', parseInt(e.target.value, 10) || 50)}
-            className={getInputClassName(false, false)}
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Maximum size of generated artifacts (parquet files) in megabytes (1-500)
           </p>
         </div>
       </div>
