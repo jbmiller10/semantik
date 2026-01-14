@@ -328,6 +328,11 @@ async def test_api_key(
             message="Local LLM provider does not require an API key",
             model_tested=None,
         )
+    if api_key is None:
+        return LLMTestResponse(
+            success=False,
+            message="API key is required for non-local providers",
+        )
 
     # Get a default model for testing
     try:

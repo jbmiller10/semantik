@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -46,18 +47,16 @@ class LLMModelManager:
     def __init__(
         self,
         governor: GPUMemoryGovernor | None = None,
-        unload_after_seconds: int | None = None,  # noqa: ARG002
+        unload_after_seconds: int | None = None,
         executor: ThreadPoolExecutor | None = None,
     ) -> None:
         """Initialize the LLM model manager.
 
         Args:
             governor: Optional GPU memory governor for coordinated memory management
-            unload_after_seconds: Unused in Phase 1 (governor handles eviction)
+            unload_after_seconds: Idle timeout before unloading models
             executor: Optional ThreadPoolExecutor for blocking operations
         """
-        # unload_after_seconds is accepted for API consistency but unused in Phase 1
-        _ = unload_after_seconds
         self._governor = governor
         self._models: dict[str, tuple[Any, Any]] = {}  # key -> (model, tokenizer)
         self._inflight_loads: dict[str, asyncio.Task[tuple[Any, Any]]] = {}
@@ -65,6 +64,12 @@ class LLMModelManager:
         self._model_locks: dict[str, asyncio.Lock] = {}
         self._executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm-gen-")
         self._owns_executor = executor is None
+        self._unload_after_seconds = (
+            settings.LLM_UNLOAD_AFTER_SECONDS if unload_after_seconds is None else unload_after_seconds
+        )
+        self._last_used: dict[str, float] = {}
+        self._idle_unload_task: asyncio.Task[None] | None = None
+        self._shutdown_event = asyncio.Event()
 
         # Register callbacks with governor
         if governor:
@@ -78,11 +83,55 @@ class LLMModelManager:
         else:
             logger.info("LLMModelManager initialized without memory governor")
 
+        if self._unload_after_seconds and self._unload_after_seconds > 0:
+            logger.info("LLM idle unload set to %ss", self._unload_after_seconds)
+
     def _get_model_lock(self, key: str) -> asyncio.Lock:
         """Get or create a per-model lock for serialized generation."""
         if key not in self._model_locks:
             self._model_locks[key] = asyncio.Lock()
         return self._model_locks[key]
+
+    def _ensure_idle_unload_task_started(self) -> None:
+        """Start background idle-unload loop if enabled and not already running."""
+        if not self._unload_after_seconds or self._unload_after_seconds <= 0:
+            return
+        if self._idle_unload_task and not self._idle_unload_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._idle_unload_task = loop.create_task(self._idle_unload_loop())
+
+    async def _idle_unload_loop(self) -> None:
+        """Periodically unload idle models."""
+        try:
+            while not self._shutdown_event.is_set():
+                await asyncio.sleep(self._unload_after_seconds)
+                await self._unload_idle_models()
+        except asyncio.CancelledError:
+            return
+
+    async def _unload_idle_models(self) -> None:
+        """Unload models that have been idle longer than the configured timeout."""
+        if not self._unload_after_seconds or self._unload_after_seconds <= 0:
+            return
+
+        now = time.time()
+        async with self._global_lock:
+            idle_keys = [
+                key for key, last_used in self._last_used.items() if now - last_used >= self._unload_after_seconds
+            ]
+
+        for key in idle_keys:
+            model_name, quantization = key.rsplit(":", 1)
+            await self._unload_model(
+                model_name=model_name,
+                quantization=quantization,
+                reason="Idle timeout",
+                notify_governor=True,
+            )
 
     async def generate(
         self,
@@ -114,6 +163,7 @@ class LLMModelManager:
         Raises:
             RuntimeError: If insufficient GPU memory or model loading fails
         """
+        self._ensure_idle_unload_task_started()
         key = f"{model_name}:{quantization}"
         async with self._get_model_lock(key):
             model, tokenizer = await self._ensure_model_loaded(model_name, quantization)
@@ -134,6 +184,8 @@ class LLMModelManager:
             # Touch for LRU update
             if self._governor:
                 await self._governor.touch(model_name, ModelType.LLM, quantization)
+
+            self._last_used[key] = time.time()
 
             return {
                 "content": content,
@@ -205,6 +257,7 @@ class LLMModelManager:
         Returns:
             Tuple of (model, tokenizer)
         """
+        self._ensure_idle_unload_task_started()
         key = f"{model_name}:{quantization}"
 
         async with self._global_lock:
@@ -258,6 +311,7 @@ class LLMModelManager:
 
         async with self._global_lock:
             self._models[key] = (model, tokenizer)
+            self._last_used[key] = time.time()
 
         if self._governor:
             # Pass explicit memory_mb; the governor otherwise calls vecpipe.memory_utils,
@@ -351,6 +405,41 @@ class LLMModelManager:
         logger.info("Successfully loaded %s", model_name)
         return model, tokenizer
 
+    async def _unload_model(
+        self,
+        model_name: str,
+        quantization: str,
+        reason: str,
+        notify_governor: bool,
+    ) -> None:
+        """Unload a model and optionally sync governor tracking."""
+        import torch
+
+        key = f"{model_name}:{quantization}"
+
+        # Ensure eviction waits for any in-flight generation
+        async with self._get_model_lock(key):
+            async with self._global_lock:
+                model_entry = self._models.pop(key, None)
+                self._last_used.pop(key, None)
+
+        if model_entry is None:
+            logger.warning("Unload requested for '%s' but not loaded", key)
+            return
+
+        model, tokenizer = model_entry
+        del model
+        del tokenizer
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+
+        if notify_governor and self._governor:
+            await self._governor.mark_unloaded(model_name, ModelType.LLM, quantization)
+
+        logger.info("%s unload of LLM '%s'", reason, key)
+
     async def _governor_unload_callback(self, model_name: str, quantization: str) -> None:
         """Fully unload model from memory (governor callback).
 
@@ -358,34 +447,40 @@ class LLMModelManager:
             model_name: Model identifier
             quantization: Quantization type
         """
-        import torch
-
-        key = f"{model_name}:{quantization}"
-
-        # Ensure eviction waits for any in-flight generation
-        async with self._get_model_lock(key), self._global_lock:
-            if key in self._models:
-                model, tokenizer = self._models.pop(key)
-                del model
-                del tokenizer
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                logger.info("Governor-initiated unload of LLM '%s'", key)
-            else:
-                logger.warning("Governor requested unload of '%s' but not loaded", key)
+        await self._unload_model(
+            model_name=model_name,
+            quantization=quantization,
+            reason="Governor-initiated",
+            notify_governor=False,
+        )
 
     async def shutdown(self) -> None:
         """Shutdown the manager and cleanup resources."""
         logger.info("Shutting down LLMModelManager...")
 
+        self._shutdown_event.set()
+        if self._idle_unload_task and not self._idle_unload_task.done():
+            self._idle_unload_task.cancel()
+            try:
+                await self._idle_unload_task
+            except asyncio.CancelledError:
+                pass
+
         async with self._global_lock:
-            # Unload all models
-            for key in list(self._models.keys()):
-                model_name, quantization = key.rsplit(":", 1)
-                await self._governor_unload_callback(model_name, quantization)
+            keys = list(self._models.keys())
+
+        for key in keys:
+            model_name, quantization = key.rsplit(":", 1)
+            await self._unload_model(
+                model_name=model_name,
+                quantization=quantization,
+                reason="Shutdown",
+                notify_governor=True,
+            )
+
+        async with self._global_lock:
             self._models.clear()
+            self._last_used.clear()
 
         # Shutdown executor if we own it
         if self._owns_executor and self._executor is not None:

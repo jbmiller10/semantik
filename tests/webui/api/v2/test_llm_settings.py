@@ -333,6 +333,38 @@ class TestTestApiKey:
         assert data["success"] is False
         assert "Authentication failed" in data["message"]
 
+    @pytest.mark.asyncio()
+    async def test_test_endpoint_local_provider_no_key(self, llm_api_client):
+        """Test that local provider does not require an API key."""
+        client, _, _ = llm_api_client
+
+        response = await client.post(
+            "/api/v2/llm/test",
+            json={
+                "provider": "local",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "does not require an API key" in data["message"]
+        assert data["model_tested"] is None
+
+    @pytest.mark.asyncio()
+    async def test_test_endpoint_requires_key_for_non_local(self, llm_api_client):
+        """Test that non-local providers require an API key."""
+        client, _, _ = llm_api_client
+
+        response = await client.post(
+            "/api/v2/llm/test",
+            json={
+                "provider": "anthropic",
+            },
+        )
+
+        assert response.status_code == 422
+
 
 class TestGetUsage:
     """Tests for GET /api/v2/llm/usage endpoint."""

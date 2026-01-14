@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TCH003 - Required at runtime for Pydantic
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LLMSettingsUpdate(BaseModel):
@@ -112,7 +112,13 @@ class LLMTestRequest(BaseModel):
     """Request to test API key validity."""
 
     provider: Literal["anthropic", "openai", "local"]
-    api_key: str = Field(..., min_length=1, description="API key to test")
+    api_key: str | None = Field(default=None, min_length=1, description="API key to test")
+
+    @model_validator(mode="after")
+    def _validate_api_key(self) -> "LLMTestRequest":
+        if self.provider != "local" and not self.api_key:
+            raise ValueError("api_key is required for non-local providers")
+        return self
 
     model_config = ConfigDict(
         extra="forbid",

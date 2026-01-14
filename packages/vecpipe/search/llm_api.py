@@ -8,18 +8,21 @@ Provides endpoints for local LLM inference:
 """
 
 import logging
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from shared.config import settings
 from vecpipe.search.router import require_internal_api_key
 from vecpipe.search.state import get_resources
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/llm", tags=["llm"])
+
+LLMQuantization = Literal["int4", "int8", "float16"]
 
 
 # -----------------------------------------------------------------------------
@@ -38,8 +41,8 @@ class LLMGenerateRequest(BaseModel):
         ...,
         description="HuggingFace model ID (e.g., 'Qwen/Qwen2.5-1.5B-Instruct')",
     )
-    quantization: str = Field(
-        default="int8",
+    quantization: LLMQuantization = Field(
+        default=settings.DEFAULT_LLM_QUANTIZATION,
         description="Quantization type: 'int4', 'int8', or 'float16'",
     )
     prompts: list[str] = Field(
@@ -82,8 +85,8 @@ class LLMPreloadRequest(BaseModel):
         ...,
         description="HuggingFace model ID to preload",
     )
-    quantization: str = Field(
-        default="int8",
+    quantization: LLMQuantization = Field(
+        default=settings.DEFAULT_LLM_QUANTIZATION,
         description="Quantization type: 'int4', 'int8', or 'float16'",
     )
 

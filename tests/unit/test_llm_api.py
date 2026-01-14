@@ -197,6 +197,19 @@ class TestLLMGenerateEndpoint:
             )
         assert response.status_code == 507
 
+    def test_generate_invalid_quantization(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
+        """Test generate rejects unknown quantization values."""
+        response = client_with_manager.post(
+            "/llm/generate",
+            headers=auth_headers,
+            json={
+                "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+                "quantization": "float32",
+                "prompts": ["Test prompt"],
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestLLMModelsEndpoint:
     """Tests for GET /llm/models endpoint."""
@@ -274,6 +287,18 @@ class TestLLMPreloadEndpoint:
                 json={"model_name": "Qwen/Qwen2.5-7B-Instruct"},
             )
         assert response.status_code == 507
+
+    def test_preload_invalid_quantization(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
+        """Test preload rejects unknown quantization values."""
+        response = client_with_manager.post(
+            "/llm/models/load",
+            headers=auth_headers,
+            json={
+                "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+                "quantization": "float32",
+            },
+        )
+        assert response.status_code == 422
 
 
 class TestLLMHealthEndpoint:

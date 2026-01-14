@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from shared.config import settings
 from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
 from shared.llm.exceptions import LLMAuthenticationError, LLMNotConfiguredError
 from shared.llm.model_registry import get_default_model
@@ -160,7 +161,8 @@ class LLMServiceFactory:
             api_key = ""  # Local models don't need authentication
             # Get quantization from provider_config JSON
             local_cfg = (config.provider_config or {}).get("local", {})
-            quantization = local_cfg.get(f"{quality_tier.value}_quantization", "int8")
+            default_quantization = settings.DEFAULT_LLM_QUANTIZATION or "int8"
+            quantization = local_cfg.get(f"{quality_tier.value}_quantization") or default_quantization
         else:
             api_key = await self._config_repo.get_api_key(config.id, provider_type)
             if api_key is None:

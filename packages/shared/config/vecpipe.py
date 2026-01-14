@@ -44,7 +44,7 @@ class VecpipeConfig(BaseConfig):
 
     # Local LLM Configuration
     ENABLE_LOCAL_LLM: bool = True  # Enable local LLM support in VecPipe
-    DEFAULT_LLM_QUANTIZATION: str = "int8"  # Default quantization for local LLMs (int4, int8)
+    DEFAULT_LLM_QUANTIZATION: str = "int8"  # Default quantization for local LLMs (int4, int8, float16)
     LLM_UNLOAD_AFTER_SECONDS: int = 300  # Inactivity timeout before LLM is eligible for eviction
     LLM_KV_CACHE_BUFFER_MB: int = 1024  # Conservative KV cache + runtime overhead per loaded LLM
     LLM_TRUST_REMOTE_CODE: bool = False  # Require explicit opt-in for models with remote code
