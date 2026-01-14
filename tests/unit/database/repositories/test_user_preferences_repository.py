@@ -162,12 +162,12 @@ class TestUserPreferencesRepository:
     # =========================================================================
 
     async def test_update_validates_search_top_k(self, repo):
-        """Update validates search_top_k range."""
+        """Update validates search_top_k range (1-250)."""
         with pytest.raises(ValidationError, match="must be between"):
-            await repo.update(123, search_top_k=4)  # Below minimum
+            await repo.update(123, search_top_k=0)  # Below minimum
 
         with pytest.raises(ValidationError, match="must be between"):
-            await repo.update(123, search_top_k=51)  # Above maximum
+            await repo.update(123, search_top_k=251)  # Above maximum
 
     async def test_update_validates_search_mode(self, repo):
         """Update validates search_mode value."""
