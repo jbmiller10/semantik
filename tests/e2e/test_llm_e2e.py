@@ -424,3 +424,131 @@ class TestLLMProviderBehavior:
                 quality_tier=LLMQualityTier.LOW,
             )
             assert low_provider.__class__.__name__ == "AnthropicLLMProvider"
+
+    async def test_local_provider_configuration_workflow(
+        self,
+        db_session: AsyncSession,
+        test_user_db: User,
+    ) -> None:
+        """Complete flow with local provider: config → no key → use provider."""
+        user_id = cast(int, test_user_db.id)
+        config_repo = LLMProviderConfigRepository(db_session)
+
+        # Step 1: Configure local provider for LOW tier
+        await config_repo.get_or_create(user_id)
+        await config_repo.update(
+            user_id,
+            low_quality_provider="local",
+            low_quality_model="Qwen/Qwen2.5-1.5B-Instruct",
+            provider_config={"local": {"low_quantization": "int8"}},
+        )
+        await db_session.commit()
+
+        # Step 2: Verify configuration saved correctly (no API key needed for local)
+        config = await config_repo.get_by_user_id(user_id)
+        assert config is not None
+        assert config.low_quality_provider == "local"
+        assert config.low_quality_model == "Qwen/Qwen2.5-1.5B-Instruct"
+
+        # Step 3: Create provider and verify it works without API key
+        factory = LLMServiceFactory(db_session)
+
+        with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
+            provider = await factory.create_provider_for_tier(
+                user_id=user_id,
+                quality_tier=LLMQualityTier.LOW,
+            )
+
+        assert provider.is_initialized
+        assert provider.__class__.__name__ == "LocalLLMProvider"
+
+    async def test_mixed_provider_configuration(
+        self,
+        db_session: AsyncSession,
+        test_user_db: User,
+    ) -> None:
+        """User can configure local for LOW and cloud for HIGH."""
+        user_id = cast(int, test_user_db.id)
+        config_repo = LLMProviderConfigRepository(db_session)
+
+        # Setup: Anthropic for HIGH, local for LOW
+        config = await config_repo.get_or_create(user_id)
+        config_id = cast(int, config.id)
+        await config_repo.update(
+            user_id,
+            high_quality_provider="anthropic",
+            high_quality_model="claude-opus-4-5-20251101",
+            low_quality_provider="local",
+            low_quality_model="Qwen/Qwen2.5-1.5B-Instruct",
+            provider_config={"local": {"low_quantization": "int8"}},
+        )
+        await config_repo.set_api_key(config_id, "anthropic", "sk-ant-test")
+        await db_session.commit()
+
+        factory = LLMServiceFactory(db_session)
+
+        # Create HIGH tier provider (Anthropic - needs API key)
+        with patch("shared.llm.providers.anthropic_provider.AsyncAnthropic") as mock_anthropic:
+            mock_anthropic.return_value = AsyncMock()
+            high_provider = await factory.create_provider_for_tier(
+                user_id=user_id,
+                quality_tier=LLMQualityTier.HIGH,
+            )
+            assert high_provider.__class__.__name__ == "AnthropicLLMProvider"
+
+        # Create LOW tier provider (Local - no API key needed)
+        with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
+            low_provider = await factory.create_provider_for_tier(
+                user_id=user_id,
+                quality_tier=LLMQualityTier.LOW,
+            )
+            assert low_provider.__class__.__name__ == "LocalLLMProvider"
+
+    async def test_local_provider_graceful_degradation(
+        self,
+        db_session: AsyncSession,
+        test_user_db: User,
+    ) -> None:
+        """Local provider errors should be catchable for graceful degradation."""
+        import httpx
+
+        from shared.llm.providers.local_provider import LocalLLMProvider
+
+        user_id = cast(int, test_user_db.id)
+        config_repo = LLMProviderConfigRepository(db_session)
+
+        # Setup local provider
+        await config_repo.get_or_create(user_id)
+        await config_repo.update(
+            user_id,
+            low_quality_provider="local",
+            low_quality_model="Qwen/Qwen2.5-1.5B-Instruct",
+        )
+        await db_session.commit()
+
+        factory = LLMServiceFactory(db_session)
+
+        with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
+            base_provider = await factory.create_provider_for_tier(
+                user_id=user_id,
+                quality_tier=LLMQualityTier.LOW,
+            )
+        provider = cast(LocalLLMProvider, base_provider)
+
+        # Mock HTTP client to simulate VecPipe error
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            message="Service unavailable",
+            request=MagicMock(),
+            response=mock_response,
+        )
+
+        with patch.object(provider._client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+
+            # Error should be catchable
+            from shared.llm.exceptions import LLMProviderError
+
+            with pytest.raises(LLMProviderError):
+                await provider.generate(prompt="Test")
