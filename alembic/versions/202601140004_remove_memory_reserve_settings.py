@@ -9,8 +9,9 @@ were redundant with gpu_memory_max_percent and cpu_memory_max_percent.
 The reserve settings have been removed in favor of the simpler max settings.
 """
 
-from alembic import op
+import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "202601140004"
@@ -30,7 +31,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     for key in REMOVED_KEYS:
         conn.execute(
-            "DELETE FROM system_settings WHERE key = :key",
+            sa.text("DELETE FROM system_settings WHERE key = :key"),
             {"key": key},
         )
 
@@ -45,10 +46,10 @@ def downgrade() -> None:
     for key, value in defaults.items():
         # Use INSERT ... ON CONFLICT to handle case where key might exist
         conn.execute(
-            """
+            sa.text("""
             INSERT INTO system_settings (key, value, updated_at)
             VALUES (:key, :value, NOW())
             ON CONFLICT (key) DO NOTHING
-            """,
+            """),
             {"key": key, "value": value},
         )
