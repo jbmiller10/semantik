@@ -27,6 +27,8 @@ const mockSettings: LLMSettingsResponse = {
   low_quality_model: 'claude-3-5-haiku-20241022',
   anthropic_has_key: true,
   openai_has_key: false,
+  local_high_quantization: null,
+  local_low_quantization: null,
   default_temperature: 0.7,
   default_max_tokens: 4096,
   created_at: '2025-01-01T00:00:00Z',
@@ -74,6 +76,28 @@ const mockModels: AvailableModelsResponse = {
       context_window: 128000,
       description: 'Fast and affordable',
       is_curated: true,
+    },
+    {
+      id: 'Qwen/Qwen2.5-3B-Instruct',
+      name: 'Qwen 2.5 3B',
+      display_name: 'Local - Qwen 2.5 3B',
+      provider: 'local',
+      tier_recommendation: 'high',
+      context_window: 32768,
+      description: 'Medium local model',
+      is_curated: true,
+      memory_mb: { float16: 7000, int8: 4000, int4: 2500 },
+    },
+    {
+      id: 'Qwen/Qwen2.5-1.5B-Instruct',
+      name: 'Qwen 2.5 1.5B',
+      display_name: 'Local - Qwen 2.5 1.5B',
+      provider: 'local',
+      tier_recommendation: 'low',
+      context_window: 32768,
+      description: 'Small local model',
+      is_curated: true,
+      memory_mb: { float16: 3500, int8: 2000, int4: 1200 },
     },
   ],
 };
@@ -191,7 +215,7 @@ describe('LLMSettings', () => {
 
       expect(screen.getByText('LLM Not Configured')).toBeInTheDocument();
       expect(
-        screen.getByText(/Add an API key below to enable AI features/)
+        screen.getByText(/Add an API key below or select a Local \(GPU\) provider to enable AI features/)
       ).toBeInTheDocument();
     });
   });
@@ -465,6 +489,137 @@ describe('LLMSettings', () => {
           provider: 'anthropic',
           apiKey: 'sk-ant-test-key',
         });
+      });
+    });
+  });
+
+  describe('local provider', () => {
+    it('renders Local (GPU) provider button for both tiers', () => {
+      render(<LLMSettings />);
+
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      expect(localButtons).toHaveLength(2);
+    });
+
+    it('shows quantization selector when local provider is selected', async () => {
+      const user = userEvent.setup();
+      render(<LLMSettings />);
+
+      // Click Local (GPU) button for high quality tier
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // Quantization buttons should appear
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'INT8 (Balanced)' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'INT4 (Less VRAM)' })).toBeInTheDocument();
+      });
+    });
+
+    it('hides refresh button when local provider is selected', async () => {
+      const user = userEvent.setup();
+      render(<LLMSettings />);
+
+      // Initially 2 refresh buttons visible (for Anthropic providers)
+      let refreshButtons = screen.getAllByRole('button', { name: /Refresh from API/i });
+      expect(refreshButtons).toHaveLength(2);
+
+      // Click Local (GPU) button for high quality tier
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // Now only 1 refresh button should be visible (low quality tier still on Anthropic)
+      await waitFor(() => {
+        refreshButtons = screen.getAllByRole('button', { name: /Refresh from API/i });
+        expect(refreshButtons).toHaveLength(1);
+      });
+    });
+
+    it('shows local models when local provider is selected', async () => {
+      const user = userEvent.setup();
+      render(<LLMSettings />);
+
+      // Click Local (GPU) button
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // The model dropdown should contain local models
+      await waitFor(() => {
+        const selects = screen.getAllByRole('combobox');
+        expect(selects[0]).toContainHTML('Local - Qwen 2.5 3B');
+      });
+    });
+
+    it('shows Local LLM info box when local provider is selected', async () => {
+      const user = userEvent.setup();
+      render(<LLMSettings />);
+
+      // Initially no Local LLM info box
+      expect(screen.queryByText('Local LLM (GPU)')).not.toBeInTheDocument();
+
+      // Click Local (GPU) button
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // Local LLM info box should appear
+      await waitFor(() => {
+        expect(screen.getByText('Local LLM (GPU)')).toBeInTheDocument();
+        expect(screen.getByText(/Local models run entirely on your GPU/)).toBeInTheDocument();
+      });
+    });
+
+    it('does not show unconfigured warning when local provider is selected', async () => {
+      const user = userEvent.setup();
+
+      // Start with no API keys configured
+      vi.mocked(useLLMSettingsModule.useLLMSettings).mockReturnValue({
+        data: { ...mockSettings, anthropic_has_key: false, openai_has_key: false },
+        isLoading: false,
+        error: null,
+      } as unknown as ReturnType<typeof useLLMSettingsModule.useLLMSettings>);
+
+      render(<LLMSettings />);
+
+      // Initially shows unconfigured warning
+      expect(screen.getByText('LLM Not Configured')).toBeInTheDocument();
+
+      // Click Local (GPU) button
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // Unconfigured warning should disappear
+      await waitFor(() => {
+        expect(screen.queryByText('LLM Not Configured')).not.toBeInTheDocument();
+      });
+    });
+
+    it('includes quantization in save payload when local provider is selected', async () => {
+      const user = userEvent.setup();
+      mockMutateAsync.mockResolvedValue(mockSettings);
+
+      render(<LLMSettings />);
+
+      // Select local provider for high quality tier
+      const localButtons = screen.getAllByRole('button', { name: 'Local (GPU)' });
+      await user.click(localButtons[0]);
+
+      // Select INT4 quantization
+      await waitFor(async () => {
+        const int4Button = screen.getByRole('button', { name: 'INT4 (Less VRAM)' });
+        await user.click(int4Button);
+      });
+
+      // Save settings
+      const saveButton = screen.getByRole('button', { name: 'Save Settings' });
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            high_quality_provider: 'local',
+            local_high_quantization: 'int4',
+          })
+        );
       });
     });
   });

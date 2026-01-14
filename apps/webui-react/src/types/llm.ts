@@ -3,8 +3,11 @@
  * Matches backend Pydantic schemas from packages/webui/api/v2/llm_schemas.py
  */
 
-/** Provider type union - matches backend Literal["anthropic", "openai"] */
-export type LLMProviderType = 'anthropic' | 'openai';
+/** Provider type union - matches backend Literal["anthropic", "openai", "local"] */
+export type LLMProviderType = 'anthropic' | 'openai' | 'local';
+
+/** Quantization options for local models */
+export type LocalQuantization = 'int4' | 'int8';
 
 /**
  * Request body for updating LLM settings.
@@ -23,6 +26,10 @@ export interface LLMSettingsUpdate {
   anthropic_api_key?: string | null;
   /** OpenAI API key (write-only, shared across tiers) */
   openai_api_key?: string | null;
+  /** Local model quantization for high quality tier */
+  local_high_quantization?: LocalQuantization | null;
+  /** Local model quantization for low quality tier */
+  local_low_quantization?: LocalQuantization | null;
   /** Default temperature (0.0 - 2.0) */
   default_temperature?: number | null;
   /** Default max tokens (1 - 200000) */
@@ -42,6 +49,10 @@ export interface LLMSettingsResponse {
   anthropic_has_key: boolean;
   /** True if OpenAI API key is configured */
   openai_has_key: boolean;
+  /** Local model quantization for high quality tier */
+  local_high_quantization: string | null;
+  /** Local model quantization for low quality tier */
+  local_low_quantization: string | null;
   default_temperature: number | null;
   default_max_tokens: number | null;
   /** ISO 8601 timestamp */
@@ -68,6 +79,8 @@ export interface AvailableModel {
   description: string;
   /** True for curated models, false for API-fetched models */
   is_curated: boolean;
+  /** Memory requirements per quantization (local models only) */
+  memory_mb?: Record<string, number> | null;
 }
 
 /** Response for GET /api/v2/llm/models */
@@ -79,6 +92,11 @@ export interface AvailableModelsResponse {
 export interface LLMTestRequest {
   provider: LLMProviderType;
   api_key: string;
+}
+
+/** Request body for POST /api/v2/llm/test (local provider variant) */
+export interface LLMTestRequestLocal {
+  provider: 'local';
 }
 
 /** Response for POST /api/v2/llm/test */

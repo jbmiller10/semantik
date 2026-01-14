@@ -13,7 +13,7 @@ import {
   useRefreshLLMModels,
 } from '../../hooks/useLLMSettings';
 import { getInputClassName } from '../../utils/formStyles';
-import type { LLMProviderType, AvailableModel } from '../../types/llm';
+import type { LLMProviderType, LocalQuantization, AvailableModel } from '../../types/llm';
 
 interface FormState {
   high_quality_provider: LLMProviderType | null;
@@ -22,6 +22,8 @@ interface FormState {
   low_quality_model: string | null;
   anthropic_api_key: string;
   openai_api_key: string;
+  local_high_quantization: LocalQuantization;
+  local_low_quantization: LocalQuantization;
   default_temperature: number | null;
   default_max_tokens: number | null;
 }
@@ -33,6 +35,8 @@ const DEFAULT_FORM_STATE: FormState = {
   low_quality_model: null,
   anthropic_api_key: '',
   openai_api_key: '',
+  local_high_quantization: 'int8',
+  local_low_quantization: 'int8',
   default_temperature: null,
   default_max_tokens: null,
 };
@@ -65,6 +69,8 @@ export default function LLMSettings() {
         low_quality_model: settings.low_quality_model,
         anthropic_api_key: '',
         openai_api_key: '',
+        local_high_quantization: (settings.local_high_quantization as LocalQuantization) || 'int8',
+        local_low_quantization: (settings.local_low_quantization as LocalQuantization) || 'int8',
         default_temperature: settings.default_temperature,
         default_max_tokens: settings.default_max_tokens,
       });
@@ -85,13 +91,27 @@ export default function LLMSettings() {
           ...prev,
           high_quality_provider: provider,
           high_quality_model: null, // Reset model when provider changes
+          // Reset quantization to default when switching to local
+          ...(provider === 'local' && { local_high_quantization: 'int8' as const }),
         }));
       } else {
         setFormState((prev) => ({
           ...prev,
           low_quality_provider: provider,
           low_quality_model: null,
+          ...(provider === 'local' && { local_low_quantization: 'int8' as const }),
         }));
+      }
+    },
+    []
+  );
+
+  const handleQuantizationChange = useCallback(
+    (tier: 'high' | 'low', quantization: LocalQuantization) => {
+      if (tier === 'high') {
+        setFormState((prev) => ({ ...prev, local_high_quantization: quantization }));
+      } else {
+        setFormState((prev) => ({ ...prev, local_low_quantization: quantization }));
       }
     },
     []
@@ -113,6 +133,14 @@ export default function LLMSettings() {
     }
     if (formState.openai_api_key) {
       updateData.openai_api_key = formState.openai_api_key;
+    }
+
+    // Include quantization settings when local provider is selected
+    if (formState.high_quality_provider === 'local') {
+      updateData.local_high_quantization = formState.local_high_quantization;
+    }
+    if (formState.low_quality_provider === 'local') {
+      updateData.local_low_quantization = formState.local_low_quantization;
     }
 
     await updateMutation.mutateAsync(updateData);
@@ -229,6 +257,8 @@ export default function LLMSettings() {
   }
 
   const hasAnyKey = settings?.anthropic_has_key || settings?.openai_has_key;
+  const hasLocalProvider = formState.high_quality_provider === 'local' || formState.low_quality_provider === 'local';
+  const hasAnyConfig = hasAnyKey || hasLocalProvider;
 
   return (
     <div className="space-y-6">
@@ -241,7 +271,7 @@ export default function LLMSettings() {
       </div>
 
       {/* Info box for unconfigured state */}
-      {!hasAnyKey && (
+      {!hasAnyConfig && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex">
             <svg
@@ -260,8 +290,7 @@ export default function LLMSettings() {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-yellow-800">LLM Not Configured</h3>
               <p className="mt-1 text-sm text-yellow-700">
-                Add an API key below to enable AI features. Your keys are encrypted and stored
-                securely.
+                Add an API key below or select a Local (GPU) provider to enable AI features.
               </p>
             </div>
           </div>
@@ -295,6 +324,34 @@ export default function LLMSettings() {
           </div>
         </div>
       </div>
+
+      {/* Local LLM Info (shown when local provider is selected) */}
+      {hasLocalProvider && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex">
+            <svg
+              className="h-5 w-5 text-purple-400 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+              />
+            </svg>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-purple-800">Local LLM (GPU)</h3>
+              <p className="mt-1 text-sm text-purple-700">
+                Local models run entirely on your GPU. No API key required.
+                First-time model downloads may take several minutes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* API Keys Section */}
       <div className="bg-white shadow rounded-lg">
@@ -428,10 +485,14 @@ export default function LLMSettings() {
         canRefresh={
           formState.high_quality_provider === 'anthropic'
             ? !!formState.anthropic_api_key
-            : !!formState.openai_api_key
+            : formState.high_quality_provider === 'openai'
+            ? !!formState.openai_api_key
+            : false
         }
         isRefreshing={refreshModelsMutation.isPending}
         tierRecommendation="high"
+        quantization={formState.local_high_quantization}
+        onQuantizationChange={(q) => handleQuantizationChange('high', q)}
       />
 
       {/* Low Quality Tier */}
@@ -447,10 +508,14 @@ export default function LLMSettings() {
         canRefresh={
           formState.low_quality_provider === 'anthropic'
             ? !!formState.anthropic_api_key
-            : !!formState.openai_api_key
+            : formState.low_quality_provider === 'openai'
+            ? !!formState.openai_api_key
+            : false
         }
         isRefreshing={refreshModelsMutation.isPending}
         tierRecommendation="low"
+        quantization={formState.local_low_quantization}
+        onQuantizationChange={(q) => handleQuantizationChange('low', q)}
       />
 
       {/* Advanced Settings */}
@@ -634,6 +699,8 @@ interface TierConfigCardProps {
   canRefresh: boolean;
   isRefreshing: boolean;
   tierRecommendation: 'high' | 'low';
+  quantization?: LocalQuantization;
+  onQuantizationChange?: (quantization: LocalQuantization) => void;
 }
 
 function TierConfigCard({
@@ -648,6 +715,8 @@ function TierConfigCard({
   canRefresh,
   isRefreshing,
   tierRecommendation,
+  quantization,
+  onQuantizationChange,
 }: TierConfigCardProps) {
   // Filter to show recommended models first
   const sortedModels = [...models].sort((a, b) => {
@@ -691,6 +760,17 @@ function TierConfigCard({
               >
                 OpenAI
               </button>
+              <button
+                type="button"
+                onClick={() => onProviderChange('local')}
+                className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                  provider === 'local'
+                    ? 'bg-purple-100 border-purple-500 text-purple-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Local (GPU)
+              </button>
             </div>
           </div>
 
@@ -698,7 +778,7 @@ function TierConfigCard({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700">Model</label>
-              {provider && (
+              {provider && provider !== 'local' && (
                 <button
                   type="button"
                   onClick={() => onRefreshModels(provider)}
@@ -728,6 +808,61 @@ function TierConfigCard({
               <p className="mt-1 text-xs text-gray-500">* Fetched from provider API</p>
             )}
           </div>
+
+          {/* Quantization Selection (local provider only) */}
+          {provider === 'local' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Quantization</label>
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  onClick={() => onQuantizationChange?.('int8')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
+                    quantization === 'int8'
+                      ? 'bg-purple-100 border-purple-500 text-purple-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  INT8 (Balanced)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onQuantizationChange?.('int4')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
+                    quantization === 'int4'
+                      ? 'bg-purple-100 border-purple-500 text-purple-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  INT4 (Less VRAM)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Memory Estimate (local provider with selected model) */}
+          {provider === 'local' && model && (() => {
+            const selectedModel = models.find(m => m.id === model);
+            const memoryMb = selectedModel?.memory_mb?.[quantization || 'int8'];
+            if (!memoryMb) return null;
+            return (
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center text-sm">
+                  <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  <span className="text-gray-600">
+                    Estimated VRAM: <strong>{memoryMb.toLocaleString()} MB</strong>
+                  </span>
+                </div>
+                {memoryMb > 8000 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    This model requires a GPU with at least {Math.ceil(memoryMb / 1024)} GB VRAM
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
