@@ -46,10 +46,12 @@ def downgrade() -> None:
     for key, value in defaults.items():
         # Use INSERT ... ON CONFLICT to handle case where key might exist
         conn.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO system_settings (key, value, updated_at)
             VALUES (:key, :value, NOW())
             ON CONFLICT (key) DO NOTHING
-            """),
+            """
+            ),
             {"key": key, "value": value},
         )
