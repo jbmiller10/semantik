@@ -115,7 +115,7 @@ class LLMTestRequest(BaseModel):
     api_key: str | None = Field(default=None, min_length=1, description="API key to test")
 
     @model_validator(mode="after")
-    def _validate_api_key(self) -> "LLMTestRequest":
+    def _validate_api_key(self) -> LLMTestRequest:
         if self.provider != "local" and not self.api_key:
             raise ValueError("api_key is required for non-local providers")
         return self

@@ -14,6 +14,7 @@ Key design decisions:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gc
 import logging
 import time
@@ -418,10 +419,9 @@ class LLMModelManager:
         key = f"{model_name}:{quantization}"
 
         # Ensure eviction waits for any in-flight generation
-        async with self._get_model_lock(key):
-            async with self._global_lock:
-                model_entry = self._models.pop(key, None)
-                self._last_used.pop(key, None)
+        async with self._get_model_lock(key), self._global_lock:
+            model_entry = self._models.pop(key, None)
+            self._last_used.pop(key, None)
 
         if model_entry is None:
             logger.warning("Unload requested for '%s' but not loaded", key)
@@ -461,10 +461,8 @@ class LLMModelManager:
         self._shutdown_event.set()
         if self._idle_unload_task and not self._idle_unload_task.done():
             self._idle_unload_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_unload_task
-            except asyncio.CancelledError:
-                pass
 
         async with self._global_lock:
             keys = list(self._models.keys())

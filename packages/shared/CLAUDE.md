@@ -282,6 +282,45 @@
       - testing_utils.py: Test helpers
     </files>
   </module>
+
+  <module path="llm/">
+    <purpose>LLM service abstraction with provider plugins for HyDE, summarization, etc.</purpose>
+    <structure>
+      - base.py: BaseLLMService interface (initialize, generate, cleanup, async context manager)
+      - types.py: LLMQualityTier (HIGH/LOW), LLMResponse, LLMProviderType (anthropic/openai/local)
+      - exceptions.py: LLMError hierarchy (6 exception types)
+      - factory.py: LLMServiceFactory - creates provider for user's configured tier
+      - model_registry.py: ModelInfo dataclass, registry loader with LRU cache
+      - model_registry.yaml: Curated models with memory_mb estimates for local models
+      - usage_tracking.py: LLMUsageEventRepository for token usage logging
+      - providers/anthropic_provider.py: HTTP client to Anthropic API
+      - providers/openai_provider.py: HTTP client to OpenAI API
+      - providers/local_provider.py: HTTP client to VecPipe /llm/generate endpoint
+    </structure>
+    <provider-pattern>
+      Cloud providers (anthropic, openai) call external APIs directly.
+      Local provider calls VecPipe internally - GPU memory managed by VecPipe's governor.
+    </provider-pattern>
+    <quality-tiers>
+      - HIGH: Complex tasks (summarization, entity extraction) - best models
+      - LOW: Simple tasks (HyDE, keywords) - fast/cheap models
+      Users configure provider + model per tier in WebUI settings.
+    </quality-tiers>
+    <factory-usage>
+      from shared.llm.factory import LLMServiceFactory
+      from shared.llm.types import LLMQualityTier
+
+      factory = LLMServiceFactory(session)
+      provider = await factory.create_provider_for_tier(user_id, LLMQualityTier.LOW)
+      async with provider:
+          response = await provider.generate(prompt="...", max_tokens=256)
+    </factory-usage>
+    <local-provider-specifics>
+      - Reuses SEARCH_API_URL + X-Internal-Api-Key (same as embedding proxies)
+      - Quantization passed via kwargs: initialize(api_key="", model=model, quantization="int8")
+      - No API key required for local provider
+    </local-provider-specifics>
+  </module>
 </modules>
 
 <repository-pattern>
@@ -328,6 +367,15 @@
     +-- ChunkingConfigError
     +-- DocumentTooLargeError
   </chunking-hierarchy>
+  <llm-hierarchy path="llm/exceptions.py">
+    LLMError (base)
+    +-- LLMNotConfiguredError: User hasn't set up LLM settings
+    +-- LLMAuthenticationError: Invalid or missing API key
+    +-- LLMRateLimitError: Provider rate limit (retryable)
+    +-- LLMProviderError: General provider error (network, API)
+    +-- LLMTimeoutError: Request timed out
+    +-- LLMContextLengthError: Input exceeds model context window
+  </llm-hierarchy>
   <translation>
     Use chunking/infrastructure/exception_translator.py to convert between layers
   </translation>
