@@ -12,14 +12,18 @@ class LLMSettingsUpdate(BaseModel):
     """Request body for updating LLM settings."""
 
     # Tier configuration (NULL = use defaults from model registry)
-    high_quality_provider: Literal["anthropic", "openai"] | None = None
+    high_quality_provider: Literal["anthropic", "openai", "local"] | None = None
     high_quality_model: str | None = Field(default=None, max_length=128)
-    low_quality_provider: Literal["anthropic", "openai"] | None = None
+    low_quality_provider: Literal["anthropic", "openai", "local"] | None = None
     low_quality_model: str | None = Field(default=None, max_length=128)
 
     # API keys per PROVIDER (write-only, shared across tiers)
     anthropic_api_key: str | None = Field(default=None, min_length=1)
     openai_api_key: str | None = Field(default=None, min_length=1)
+
+    # Local model quantization (stored in provider_config JSON)
+    local_high_quantization: Literal["int4", "int8"] | None = Field(default=None)
+    local_low_quantization: Literal["int4", "int8"] | None = Field(default=None)
 
     # Optional defaults
     default_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -51,6 +55,10 @@ class LLMSettingsResponse(BaseModel):
     # Per-provider key status (never return actual keys)
     anthropic_has_key: bool
     openai_has_key: bool
+
+    # Local model quantization settings
+    local_high_quantization: str | None = None
+    local_low_quantization: str | None = None
 
     default_temperature: float | None
     default_max_tokens: int | None
@@ -87,6 +95,7 @@ class AvailableModel(BaseModel):
     context_window: int
     description: str
     is_curated: bool = True  # True for curated registry, False for API-fetched
+    memory_mb: dict[str, int] | None = None  # Memory per quantization for local models
 
     model_config = ConfigDict(extra="forbid")
 
@@ -102,7 +111,7 @@ class AvailableModelsResponse(BaseModel):
 class LLMTestRequest(BaseModel):
     """Request to test API key validity."""
 
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "local"]
     api_key: str = Field(..., min_length=1, description="API key to test")
 
     model_config = ConfigDict(

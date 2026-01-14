@@ -67,7 +67,7 @@ class LLMProviderConfigRepository:
     """
 
     # Valid provider types (validated in application layer, not DB)
-    VALID_PROVIDERS = frozenset({"anthropic", "openai"})
+    VALID_PROVIDERS = frozenset({"anthropic", "openai", "local"})
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize with database session.

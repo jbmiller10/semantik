@@ -76,6 +76,11 @@ async def get_llm_settings(
     anthropic_has_key = await repo.has_api_key(config.id, "anthropic")
     openai_has_key = await repo.has_api_key(config.id, "openai")
 
+    # Extract local quantization from provider_config JSON
+    local_cfg = (config.provider_config or {}).get("local", {})
+    local_high_quantization = local_cfg.get("high_quantization")
+    local_low_quantization = local_cfg.get("low_quantization")
+
     return LLMSettingsResponse(
         high_quality_provider=config.high_quality_provider,
         high_quality_model=config.high_quality_model,
@@ -83,6 +88,8 @@ async def get_llm_settings(
         low_quality_model=config.low_quality_model,
         anthropic_has_key=anthropic_has_key,
         openai_has_key=openai_has_key,
+        local_high_quantization=local_high_quantization,
+        local_low_quantization=local_low_quantization,
         default_temperature=config.default_temperature,
         default_max_tokens=config.default_max_tokens,
         created_at=config.created_at,
@@ -119,8 +126,20 @@ async def update_llm_settings(
     # Update tier configuration if provided
     update_fields: dict[str, Any] = update.model_dump(
         exclude_unset=True,
-        exclude={"anthropic_api_key", "openai_api_key"},
+        exclude={"anthropic_api_key", "openai_api_key", "local_high_quantization", "local_low_quantization"},
     )
+
+    # Handle local quantization - store in provider_config JSON
+    if update.local_high_quantization is not None or update.local_low_quantization is not None:
+        current_provider_config = config.provider_config or {}
+        local_cfg = current_provider_config.get("local", {})
+        if update.local_high_quantization is not None:
+            local_cfg["high_quantization"] = update.local_high_quantization
+        if update.local_low_quantization is not None:
+            local_cfg["low_quantization"] = update.local_low_quantization
+        current_provider_config["local"] = local_cfg
+        update_fields["provider_config"] = current_provider_config
+        logger.info("Updated local LLM quantization settings for user %s", user_id)
 
     if update_fields:
         config = await repo.update(user_id, **update_fields)
@@ -145,6 +164,11 @@ async def update_llm_settings(
     anthropic_has_key = await repo.has_api_key(config.id, "anthropic")
     openai_has_key = await repo.has_api_key(config.id, "openai")
 
+    # Extract local quantization from provider_config JSON
+    local_cfg = (config.provider_config or {}).get("local", {})
+    local_high_quantization = local_cfg.get("high_quantization")
+    local_low_quantization = local_cfg.get("low_quantization")
+
     return LLMSettingsResponse(
         high_quality_provider=config.high_quality_provider,
         high_quality_model=config.high_quality_model,
@@ -152,6 +176,8 @@ async def update_llm_settings(
         low_quality_model=config.low_quality_model,
         anthropic_has_key=anthropic_has_key,
         openai_has_key=openai_has_key,
+        local_high_quantization=local_high_quantization,
+        local_low_quantization=local_low_quantization,
         default_temperature=config.default_temperature,
         default_max_tokens=config.default_max_tokens,
         created_at=config.created_at,
@@ -185,6 +211,7 @@ async def list_available_models() -> AvailableModelsResponse:
                 context_window=m.context_window,
                 description=m.description,
                 is_curated=True,
+                memory_mb=m.memory_mb,  # Include memory requirements for local models
             )
             for m in models
         ]
@@ -288,9 +315,19 @@ async def test_api_key(
 
     This endpoint is rate limited to 5 requests per minute to prevent abuse.
     The API key is NOT saved - use PUT /settings to store keys.
+
+    For local providers, no API key testing is needed as they run locally.
     """
     provider_type = test_request.provider
     api_key = test_request.api_key
+
+    # Local providers don't need API key testing
+    if provider_type == "local":
+        return LLMTestResponse(
+            success=True,
+            message="Local LLM provider does not require an API key",
+            model_tested=None,
+        )
 
     # Get a default model for testing
     try:
