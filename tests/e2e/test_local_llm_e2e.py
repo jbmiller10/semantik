@@ -481,8 +481,7 @@ class TestLocalLLMHyDEIntegration:
 
         # HyDE prompt generates hypothetical passages
         hyde_prompt = (
-            "Write a passage that would be relevant to the following search query: "
-            "'How does machine learning work?'"
+            "Write a passage that would be relevant to the following search query: " "'How does machine learning work?'"
         )
 
         mock_response = _create_mock_vecpipe_response(
