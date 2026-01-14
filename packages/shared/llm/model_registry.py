@@ -3,7 +3,7 @@
 Loads model metadata from YAML file with LRU caching.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -22,6 +22,22 @@ class ModelInfo:
     tier_recommendation: str  # "high" or "low"
     context_window: int
     description: str
+    memory_mb: dict[str, int] | None = field(default=None)  # Memory estimates per quantization (local models only)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for API serialization."""
+        result: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "display_name": self.display_name,
+            "provider": self.provider,
+            "tier_recommendation": self.tier_recommendation,
+            "context_window": self.context_window,
+            "description": self.description,
+        }
+        if self.memory_mb is not None:
+            result["memory_mb"] = self.memory_mb
+        return result
 
 
 @lru_cache(maxsize=1)
@@ -46,6 +62,7 @@ def load_model_registry() -> dict[str, list[ModelInfo]]:
                 tier_recommendation=m["tier_recommendation"],
                 context_window=m["context_window"],
                 description=m["description"],
+                memory_mb=m.get("memory_mb"),  # Optional field for local models
             )
             for m in models
         ]
@@ -56,7 +73,7 @@ def get_default_model(provider: str, tier: str) -> str:
     """Get default model ID for provider and tier.
 
     Args:
-        provider: Provider name ("anthropic" or "openai")
+        provider: Provider name ("anthropic", "openai", or "local")
         tier: Quality tier ("high" or "low")
 
     Returns:
@@ -82,16 +99,42 @@ def get_all_models() -> list[ModelInfo]:
     return [m for models in registry.values() for m in models]
 
 
-def get_model_by_id(model_id: str) -> ModelInfo | None:
-    """Get model info by ID.
+def get_models_by_provider(provider: str) -> list[ModelInfo]:
+    """Get all models for a specific provider.
+
+    Args:
+        provider: Provider name ("anthropic", "openai", "local")
+
+    Returns:
+        List of ModelInfo objects for that provider, empty if none found.
+    """
+    registry = load_model_registry()
+    return registry.get(provider, [])
+
+
+def get_model_by_id(model_id: str, provider: str | None = None) -> ModelInfo | None:
+    """Get model info by ID, optionally filtered by provider.
 
     Args:
         model_id: The model identifier to look up
+        provider: Optional provider to filter by (for disambiguation)
 
     Returns:
         ModelInfo if found, None otherwise
+
+    Note:
+        Backward compatible - existing calls without provider arg still work.
     """
     registry = load_model_registry()
+
+    # If provider specified, only search that provider
+    if provider is not None:
+        for model in registry.get(provider, []):
+            if model.id == model_id:
+                return model
+        return None
+
+    # Otherwise search all providers (original behavior)
     for models in registry.values():
         for model in models:
             if model.id == model_id:
@@ -104,5 +147,6 @@ __all__ = [
     "load_model_registry",
     "get_default_model",
     "get_all_models",
+    "get_models_by_provider",
     "get_model_by_id",
 ]

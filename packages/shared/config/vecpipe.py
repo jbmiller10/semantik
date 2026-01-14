@@ -42,6 +42,13 @@ class VecpipeConfig(BaseConfig):
     BATCH_SIZE_SAFETY_MARGIN: float = 0.2  # 20% safety margin for GPU memory to prevent OOM
     BATCH_SIZE_INCREASE_THRESHOLD: int = 10  # Number of successful batches before attempting to increase size
 
+    # Local LLM Configuration
+    ENABLE_LOCAL_LLM: bool = True  # Enable local LLM support in VecPipe
+    DEFAULT_LLM_QUANTIZATION: str = "int8"  # Default quantization for local LLMs (int4, int8)
+    LLM_UNLOAD_AFTER_SECONDS: int = 300  # Inactivity timeout before LLM is eligible for eviction
+    LLM_KV_CACHE_BUFFER_MB: int = 1024  # Conservative KV cache + runtime overhead per loaded LLM
+    LLM_TRUST_REMOTE_CODE: bool = False  # Require explicit opt-in for models with remote code
+
     # Additional Paths specific to vecpipe
     @property
     def operations_dir(self) -> Path:
