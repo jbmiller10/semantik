@@ -24,7 +24,7 @@ async def test_request_memory_cpu_only_mode() -> None:
 
 
 def test_get_actual_free_gpu_mb_no_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
-    budget = MemoryBudget(total_gpu_mb=1000, total_cpu_mb=1024, gpu_reserve_percent=0.0, gpu_max_percent=1.0)
+    budget = MemoryBudget(total_gpu_mb=1000, total_cpu_mb=1024, gpu_max_percent=1.0)
     governor = GPUMemoryGovernor(budget=budget)
 
     model = TrackedModel(

@@ -43,14 +43,14 @@ class TestParseEnvValue:
 
     def test_parse_float(self):
         """Parses float string to float."""
-        result = _parse_env_value("gpu_memory_reserve_percent", "0.15")
-        assert result == 0.15
+        result = _parse_env_value("gpu_memory_max_percent", "0.85")
+        assert result == 0.85
         assert isinstance(result, float)
 
     def test_parse_float_invalid(self):
         """Returns default for invalid float string."""
-        result = _parse_env_value("gpu_memory_reserve_percent", "not_a_float")
-        assert result == 0.10  # Default from SYSTEM_SETTING_DEFAULTS
+        result = _parse_env_value("gpu_memory_max_percent", "not_a_float")
+        assert result == 0.90  # Default from SYSTEM_SETTING_DEFAULTS
 
     def test_unknown_key_returns_string(self):
         """Returns string as-is for unknown keys."""
@@ -242,7 +242,7 @@ class TestSystemSettingsService:
         assert "cache_ttl_seconds" in result
         assert result["cache_ttl_seconds"] == 600  # From cache
         # Should include other defaults too
-        assert "gpu_memory_reserve_percent" in result
+        assert "gpu_memory_max_percent" in result
 
 
 class TestGetSystemSettingsService:

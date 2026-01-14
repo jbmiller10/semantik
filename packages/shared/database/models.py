@@ -1139,7 +1139,7 @@ class UserPreferences(Base):
     Missing preferences use application defaults via get_or_create pattern.
 
     Search preferences:
-    - search_top_k: Number of results to return (5-50, default 10)
+    - search_top_k: Number of results to return (1-250, default 10)
     - search_mode: 'dense', 'sparse', or 'hybrid' (default 'dense')
     - search_use_reranker: Enable reranking (default false)
     - search_rrf_k: RRF constant for hybrid fusion (1-100, default 60)
@@ -1200,7 +1200,7 @@ class UserPreferences(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "search_top_k >= 5 AND search_top_k <= 50",
+            "search_top_k >= 1 AND search_top_k <= 250",
             name="ck_user_preferences_search_top_k",
         ),
         CheckConstraint(

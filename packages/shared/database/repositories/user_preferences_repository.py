@@ -254,7 +254,7 @@ class UserPreferencesRepository:
 
         Args:
             user_id: The user's ID
-            search_top_k: Number of search results (5-50)
+            search_top_k: Number of search results (1-250)
             search_mode: Search mode ('dense', 'sparse', 'hybrid')
             search_use_reranker: Enable reranking
             search_rrf_k: RRF constant (1-100)
@@ -280,7 +280,7 @@ class UserPreferencesRepository:
         """
         # Validate constrained fields
         if not isinstance(search_top_k, _UnsetType):
-            self._validate_range(search_top_k, 5, 50, "search_top_k")
+            self._validate_range(search_top_k, 1, 250, "search_top_k")
         if not isinstance(search_mode, _UnsetType):
             self._validate_search_mode(search_mode)
         if not isinstance(search_rrf_k, _UnsetType):

@@ -38,14 +38,11 @@ DEFAULT_SETTINGS = [
     "max_collections_per_user",
     "max_storage_gb_per_user",
     "max_document_size_mb",
-    "max_artifact_size_mb",
     # Performance
     "cache_ttl_seconds",
     "model_unload_timeout_seconds",
     # GPU & Memory
-    "gpu_memory_reserve_percent",
     "gpu_memory_max_percent",
-    "cpu_memory_reserve_percent",
     "cpu_memory_max_percent",
     "enable_cpu_offload",
     "eviction_idle_threshold_seconds",

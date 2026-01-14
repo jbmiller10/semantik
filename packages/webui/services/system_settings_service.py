@@ -32,14 +32,11 @@ SYSTEM_SETTING_DEFAULTS: dict[str, Any] = {
     "max_collections_per_user": 10,
     "max_storage_gb_per_user": 50,
     "max_document_size_mb": 100,
-    "max_artifact_size_mb": 50,
     # Performance
     "cache_ttl_seconds": 300,
     "model_unload_timeout_seconds": 300,
     # GPU & Memory
-    "gpu_memory_reserve_percent": 0.10,
     "gpu_memory_max_percent": 0.90,
-    "cpu_memory_reserve_percent": 0.20,
     "cpu_memory_max_percent": 0.50,
     "enable_cpu_offload": True,
     "eviction_idle_threshold_seconds": 120,

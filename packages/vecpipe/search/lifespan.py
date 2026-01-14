@@ -114,9 +114,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         # Build memory budget from settings using factory for auto-detection
         budget = create_memory_budget(
             total_gpu_mb=None,  # Auto-detect GPU memory via factory
-            gpu_reserve_percent=settings.GPU_MEMORY_RESERVE_PERCENT,
             gpu_max_percent=settings.GPU_MEMORY_MAX_PERCENT,
-            cpu_reserve_percent=settings.CPU_MEMORY_RESERVE_PERCENT,
             cpu_max_percent=settings.CPU_MEMORY_MAX_PERCENT,
         )
 

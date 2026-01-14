@@ -215,12 +215,9 @@
   </eviction-strategy>
 
   <configuration>
-    GPU limits:
-      - GPU_MEMORY_RESERVE_PERCENT=0.10 (keep 10% free)
-      - GPU_MEMORY_MAX_PERCENT=0.90 (never use >90%)
-    CPU limits (warm pool):
-      - CPU_MEMORY_RESERVE_PERCENT=0.20 (keep 20% free)
-      - CPU_MEMORY_MAX_PERCENT=0.50 (max 50% for warm models)
+    Memory limits:
+      - GPU_MEMORY_MAX_PERCENT=0.90 (max GPU memory usage)
+      - CPU_MEMORY_MAX_PERCENT=0.50 (max CPU memory for warm models)
     Behavior:
       - ENABLE_MEMORY_GOVERNOR=true (use GovernedModelManager)
       - ENABLE_CPU_OFFLOAD=true
