@@ -36,7 +36,6 @@ SYSTEM_SETTING_DEFAULTS: dict[str, Any] = {
     # Performance
     "cache_ttl_seconds": 300,
     "model_unload_timeout_seconds": 300,
-    "search_candidate_multiplier": 3,
     # GPU & Memory
     "gpu_memory_reserve_percent": 0.10,
     "gpu_memory_max_percent": 0.90,

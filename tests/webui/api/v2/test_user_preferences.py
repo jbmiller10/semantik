@@ -220,20 +220,20 @@ class TestUpdatePreferences:
 
     @pytest.mark.asyncio()
     async def test_put_preferences_validates_top_k_range(self, preferences_api_client):
-        """Test that top_k is validated to be between 5 and 50."""
+        """Test that top_k is validated to be between 1 and 250."""
         client, _ = preferences_api_client
 
         # Below minimum
         response = await client.put(
             "/api/v2/preferences",
-            json={"search": {"top_k": 3, "mode": "dense", "use_reranker": False, "rrf_k": 60}},
+            json={"search": {"top_k": 0, "mode": "dense", "use_reranker": False, "rrf_k": 60}},
         )
         assert response.status_code == 422
 
         # Above maximum
         response = await client.put(
             "/api/v2/preferences",
-            json={"search": {"top_k": 100, "mode": "dense", "use_reranker": False, "rrf_k": 60}},
+            json={"search": {"top_k": 300, "mode": "dense", "use_reranker": False, "rrf_k": 60}},
         )
         assert response.status_code == 422
 

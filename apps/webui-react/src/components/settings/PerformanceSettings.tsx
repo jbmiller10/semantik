@@ -11,7 +11,6 @@ import type { PerformanceSettings as PerformanceSettingsType } from '../../types
 const PERFORMANCE_KEYS = [
   'cache_ttl_seconds',
   'model_unload_timeout_seconds',
-  'search_candidate_multiplier',
 ];
 
 export default function PerformanceSettings() {
@@ -22,7 +21,6 @@ export default function PerformanceSettings() {
   const [formState, setFormState] = useState<PerformanceSettingsType>({
     cache_ttl_seconds: 300,
     model_unload_timeout_seconds: 300,
-    search_candidate_multiplier: 3,
   });
 
   // Initialize form state from effective settings
@@ -44,7 +42,6 @@ export default function PerformanceSettings() {
       settings: {
         cache_ttl_seconds: formState.cache_ttl_seconds,
         model_unload_timeout_seconds: formState.model_unload_timeout_seconds,
-        search_candidate_multiplier: formState.search_candidate_multiplier,
       },
     });
   }, [formState, updateMutation]);
@@ -135,24 +132,6 @@ export default function PerformanceSettings() {
           />
           <p className="mt-1 text-xs text-gray-500">
             Time before idle models are unloaded from GPU memory (60-3600 seconds)
-          </p>
-        </div>
-
-        {/* Search Candidate Multiplier */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Search Candidate Multiplier
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={formState.search_candidate_multiplier}
-            onChange={(e) => handleChange('search_candidate_multiplier', parseInt(e.target.value, 10) || 3)}
-            className={getInputClassName(false, false)}
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Multiplier for initial search candidates before filtering (1-10). Higher values improve recall but use more memory.
           </p>
         </div>
       </div>

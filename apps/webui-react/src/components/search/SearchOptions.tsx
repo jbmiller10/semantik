@@ -63,7 +63,7 @@ export default function SearchOptions() {
                                 value={searchParams.topK}
                                 onChange={(e) => handleParamChange('topK', parseInt(e.target.value))}
                                 min={1}
-                                max={100}
+                                max={250}
                                 className={`w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 ${getValidationError('topK') ? 'border-red-300 bg-red-50' : 'border-gray-300'
                                     }`}
                             />
@@ -71,7 +71,7 @@ export default function SearchOptions() {
                                 <p className="mt-1 text-xs text-red-600">{getValidationError('topK')}</p>
                             )}
                             <p className="mt-1 text-xs text-gray-500">
-                                Number of results to return (1-100)
+                                Number of results to return (1-250)
                             </p>
                         </div>
 

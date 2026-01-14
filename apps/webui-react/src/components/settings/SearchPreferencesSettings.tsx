@@ -171,14 +171,14 @@ export default function SearchPreferencesSettings() {
               </label>
               <input
                 type="number"
-                min={5}
-                max={50}
+                min={1}
+                max={250}
                 value={formState.top_k}
                 onChange={(e) => handleChange('top_k', parseInt(e.target.value, 10) || 10)}
                 className={getInputClassName(false, false)}
               />
               <p className="mt-1 text-xs text-gray-500">
-                Number of results to return (5-50)
+                Number of results to return (1-250)
               </p>
             </div>
 

@@ -42,7 +42,6 @@ DEFAULT_SETTINGS = [
     # Performance
     "cache_ttl_seconds",
     "model_unload_timeout_seconds",
-    "search_candidate_multiplier",
     # GPU & Memory
     "gpu_memory_reserve_percent",
     "gpu_memory_max_percent",

@@ -85,8 +85,6 @@ export interface PerformanceSettings {
   cache_ttl_seconds: number;
   /** Model unload timeout in seconds (default: 300) */
   model_unload_timeout_seconds: number;
-  /** Search candidate multiplier (default: 3) */
-  search_candidate_multiplier: number;
 }
 
 /**
@@ -148,7 +146,6 @@ export function extractPerformanceSettings(
   return {
     cache_ttl_seconds: (settings.cache_ttl_seconds as number) ?? 300,
     model_unload_timeout_seconds: (settings.model_unload_timeout_seconds as number) ?? 300,
-    search_candidate_multiplier: (settings.search_candidate_multiplier as number) ?? 3,
   };
 }
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class SearchPreferences(BaseModel):
     """User preferences for search behavior."""
 
-    top_k: int = Field(default=10, ge=5, le=50, description="Number of results to return")
+    top_k: int = Field(default=10, ge=1, le=250, description="Number of results to return")
     mode: Literal["dense", "sparse", "hybrid"] = Field(default="dense", description="Search mode")
     use_reranker: bool = Field(default=False, description="Enable reranking")
     rrf_k: int = Field(default=60, ge=1, le=100, description="RRF constant for hybrid fusion")
