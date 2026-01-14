@@ -4,15 +4,21 @@ Resource Manager for Collection Operations.
 Manages resource allocation, limits, and quotas for collection operations.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psutil
 
 from shared.config import settings
 from shared.managers import QdrantCollectionNotFoundError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +49,41 @@ class ResourceManager:
         collection_repo: Any,
         operation_repo: Any,
         qdrant_manager: Any | None,
+        session_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.collection_repo = collection_repo
         self.operation_repo = operation_repo
         self.qdrant_manager = qdrant_manager
+        self._session_factory = session_factory
 
         self._reserved_resources: dict[str, ResourceEstimate] = {}
         self._lock = asyncio.Lock()
         self._usage_cache: dict[str, tuple[dict[str, Any], datetime]] = {}
         self._usage_cache_lock = asyncio.Lock()
         self._usage_cache_ttl_seconds = self.RESOURCE_USAGE_CACHE_TTL_SECONDS
+
+    async def _get_system_setting(self, key: str, fallback: Any) -> Any:
+        """Get a system setting from DB or fall back to config/default.
+
+        Args:
+            key: The setting key (e.g., "max_collections_per_user")
+            fallback: Value to use if DB lookup fails or is not configured
+
+        Returns:
+            The setting value from DB, or fallback if unavailable
+        """
+        if self._session_factory is None:
+            return fallback
+
+        try:
+            from webui.services.system_settings_service import get_system_settings_service
+
+            service = get_system_settings_service(self._session_factory)
+            value = await service.get_setting(key)
+            return value if value is not None else fallback
+        except Exception as e:
+            logger.debug("Failed to get system setting '%s', using fallback: %s", key, e)
+            return fallback
 
     async def can_create_collection(self, user_id: int) -> bool:
         """Check if user can create a new collection."""
@@ -61,7 +92,9 @@ class ResourceManager:
             collections, _ = await self.collection_repo.list_for_user(user_id)
             active_collections = [c for c in collections if c.status != "deleted"]
 
-            max_collections = settings.MAX_COLLECTIONS_PER_USER
+            max_collections = await self._get_system_setting(
+                "max_collections_per_user", settings.MAX_COLLECTIONS_PER_USER
+            )
 
             return bool(len(active_collections) < max_collections)
 
@@ -95,7 +128,7 @@ class ResourceManager:
             # Check user quotas
             user_usage = await self._get_user_resource_usage(user_id)
 
-            max_storage_gb = settings.MAX_STORAGE_GB_PER_USER
+            max_storage_gb = await self._get_system_setting("max_storage_gb_per_user", settings.MAX_STORAGE_GB_PER_USER)
             # max_operations_per_hour = 10  # Not enforced - rate limiting disabled
 
             if user_usage["storage_gb"] + resources.storage_gb > max_storage_gb:

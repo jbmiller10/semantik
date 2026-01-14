@@ -14,6 +14,7 @@ from webui.api.v2.plugins import router as plugins_router
 from webui.api.v2.projections import router as projections_router
 from webui.api.v2.search import router as search_router
 from webui.api.v2.system import router as system_router
+from webui.api.v2.system_settings import router as system_settings_router
 
 __all__ = [
     "collections_router",
@@ -25,4 +26,5 @@ __all__ = [
     "projections_router",
     "search_router",
     "system_router",
+    "system_settings_router",
 ]

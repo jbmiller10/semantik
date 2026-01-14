@@ -1,10 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Match original body background */
+/* Base Styles */
 body {
-  @apply bg-gray-100;
+  @apply bg-surface-50 text-surface-900 font-sans antialiased;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.15) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-sm border border-white/50 shadow-sm transition-all duration-300;
+}
+
+.heading-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-accent-600;
 }
 
 /* Progress bar shimmer effect */

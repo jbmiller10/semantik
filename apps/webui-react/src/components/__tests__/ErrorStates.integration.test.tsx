@@ -185,8 +185,10 @@ describe('Error States - Integration Tests', () => {
       // Should show prominent create button(s)
       const createButtons = screen.getAllByRole('button', { name: /create.*collection/i })
       expect(createButtons.length).toBeGreaterThan(0)
-      // Check at least one has the primary button style
-      expect(createButtons.some(button => button.classList.contains('bg-blue-600'))).toBe(true)
+      // Check at least one has a button style (bg-blue-600 or bg-brand-50)
+      expect(createButtons.some(button =>
+        button.classList.contains('bg-blue-600') || button.classList.contains('bg-brand-50')
+      )).toBe(true)
     })
 
     it('should show empty search results appropriately', () => {

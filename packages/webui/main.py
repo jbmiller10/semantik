@@ -65,6 +65,8 @@ from .api.v2 import (
     search as v2_search,
     sources as v2_sources,
     system as v2_system,
+    system_settings as v2_system_settings,
+    user_preferences as v2_user_preferences,
 )
 from .api.v2.directory_scan import directory_scan_websocket
 from .api.v2.operations import operation_websocket, operation_websocket_global
@@ -353,7 +355,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_search.router)
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
+    app.include_router(v2_system_settings.router)
     app.include_router(v2_llm_settings.router)
+    app.include_router(v2_user_preferences.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution

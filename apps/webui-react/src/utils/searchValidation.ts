@@ -39,7 +39,7 @@ export const DEFAULT_VALIDATION_RULES: SearchValidationRules = {
   },
   topK: {
     min: 1,
-    max: 100,
+    max: 250,
   },
   scoreThreshold: {
     min: 0.0,

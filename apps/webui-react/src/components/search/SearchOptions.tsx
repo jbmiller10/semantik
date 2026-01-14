@@ -2,6 +2,8 @@ import React from 'react';
 import { useSearchStore } from '../../stores/searchStore';
 import { ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { RerankingConfiguration } from '../RerankingConfiguration';
+import { useUpdatePreferences } from '../../hooks/usePreferences';
+import type { SearchMode } from '../../types/preferences';
 
 export default function SearchOptions() {
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -11,10 +13,23 @@ export default function SearchOptions() {
         getValidationError,
         setFieldTouched
     } = useSearchStore();
+    const { mutate: updatePrefs, isPending: savingPrefs } = useUpdatePreferences();
 
     const handleParamChange = (key: string, value: string | number | boolean) => {
         setFieldTouched(key, true);
         validateAndUpdateSearchParams({ [key]: value });
+    };
+
+    const handleSaveAsDefaults = () => {
+        updatePrefs({
+            search: {
+                top_k: searchParams.topK,
+                mode: searchParams.searchMode as SearchMode,
+                use_reranker: searchParams.useReranker,
+                rrf_k: searchParams.rrfK,
+                similarity_threshold: searchParams.scoreThreshold || null,
+            },
+        });
     };
 
     return (
@@ -48,7 +63,7 @@ export default function SearchOptions() {
                                 value={searchParams.topK}
                                 onChange={(e) => handleParamChange('topK', parseInt(e.target.value))}
                                 min={1}
-                                max={100}
+                                max={250}
                                 className={`w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 ${getValidationError('topK') ? 'border-red-300 bg-red-50' : 'border-gray-300'
                                     }`}
                             />
@@ -56,7 +71,7 @@ export default function SearchOptions() {
                                 <p className="mt-1 text-xs text-red-600">{getValidationError('topK')}</p>
                             )}
                             <p className="mt-1 text-xs text-gray-500">
-                                Number of results to return (1-100)
+                                Number of results to return (1-250)
                             </p>
                         </div>
 
@@ -92,6 +107,18 @@ export default function SearchOptions() {
                             quantization={searchParams.rerankQuantization}
                             onChange={validateAndUpdateSearchParams}
                         />
+                    </div>
+
+                    {/* Save as Defaults */}
+                    <div className="pt-4 border-t border-gray-200 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleSaveAsDefaults}
+                            disabled={savingPrefs}
+                            className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        >
+                            {savingPrefs ? 'Saving...' : 'Save as defaults'}
+                        </button>
                     </div>
                 </div>
             )}

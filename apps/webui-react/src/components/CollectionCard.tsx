@@ -88,24 +88,24 @@ function CollectionCard({ collection }: CollectionCardProps) {
   };
 
   const isProcessing = collection.status === 'processing' || collection.isProcessing || collection.activeOperation;
-  const cardBorderColor = isProcessing ? 'border-blue-500' : collection.status === 'error' ? 'border-red-300' : 'border-gray-200';
-  const cardBackground = isProcessing ? 'bg-blue-50' : collection.status === 'error' ? 'bg-red-50' : 'bg-white';
 
   return (
-    <div 
+    <div
       data-testid="collection-card"
-      className={`relative rounded-lg border-2 shadow-sm hover:shadow-lg transition-all ${cardBorderColor} ${cardBackground} overflow-hidden`}>
+      className={`relative group glass-card rounded-2xl overflow-hidden hover:-translate-y-1 ${isProcessing ? 'ring-2 ring-brand-400 ring-opacity-50' : ''
+        }`}
+    >
       {/* Processing indicator bar */}
       {isProcessing && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={collection.activeOperation?.progress || 50} aria-label="Operation progress">
-          <div className="h-full bg-blue-600 animate-pulse" style={{ width: `${collection.activeOperation?.progress || 50}%` }} />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-brand-100/50" role="progressbar">
+          <div className="h-full bg-gradient-to-r from-brand-500 to-accent-500 animate-pulse" style={{ width: `${collection.activeOperation?.progress || 50}%` }} />
         </div>
       )}
 
-      <div className="p-5">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-medium text-gray-900 truncate" title={collection.name}>
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1 min-w-0 pr-4">
+            <h3 className="text-lg font-bold text-gray-900 truncate" title={collection.name}>
               {collection.name}
             </h3>
             {collection.description && (
@@ -113,22 +113,23 @@ function CollectionCard({ collection }: CollectionCardProps) {
                 {collection.description}
               </p>
             )}
-            <p className="mt-1 text-xs text-gray-500">
+            <div className="mt-2 text-xs font-mono text-brand-600/80 bg-brand-50 px-2 py-1 rounded-md inline-block">
               {getModelDisplayName(collection.embedding_model)}
-            </p>
+            </div>
           </div>
-          <div className="ml-2 flex-shrink-0">
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(collection.status)}`} role="status" aria-label={`Collection status: ${collection.status}`}>
-              <span aria-hidden="true">{getStatusIcon(collection.status)}</span>
-              {collection.status}
+          <div className="flex-shrink-0">
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${getStatusColor(collection.status)}`}>
+              {getStatusIcon(collection.status)}
+              <span className="capitalize">{collection.status}</span>
             </span>
           </div>
         </div>
 
         {/* Active operation message */}
         {collection.activeOperation && (
-          <div className="mt-3 p-2 bg-blue-100 rounded-md">
-            <p className="text-xs text-blue-700">
+          <div className="mb-4 p-3 bg-brand-50/80 rounded-xl border border-brand-100">
+            <p className="text-xs font-medium text-brand-700 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
               {collection.activeOperation.type === 'index' && 'Indexing documents...'}
               {collection.activeOperation.type === 'append' && 'Adding new documents...'}
               {collection.activeOperation.type === 'reindex' && 'Reindexing collection...'}
@@ -140,63 +141,45 @@ function CollectionCard({ collection }: CollectionCardProps) {
 
         {/* Status message if error or degraded */}
         {collection.status_message && (collection.status === 'error' || collection.status === 'degraded') && (
-          <div className={`mt-3 p-2 rounded-md ${collection.status === 'error' ? 'bg-red-100' : 'bg-yellow-100'}`}>
-            <p className={`text-xs ${collection.status === 'error' ? 'text-red-700' : 'text-yellow-700'}`}>
+          <div className={`mb-4 p-3 rounded-xl border ${collection.status === 'error' ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'}`}>
+            <p className={`text-xs font-medium ${collection.status === 'error' ? 'text-red-700' : 'text-yellow-700'}`}>
               {collection.status_message}
             </p>
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 py-4 border-t border-gray-100">
           <div>
-            <dt className="text-xs font-medium text-gray-500">Documents</dt>
-            <dd className="mt-1 text-sm font-semibold text-gray-900">
+            <dt className="text-xs font-medium text-gray-400 uppercase tracking-wider">Documents</dt>
+            <dd className="mt-0.5 text-sm font-bold text-gray-900">
               {formatNumber(collection.document_count)}
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-gray-500">Vectors</dt>
-            <dd className="mt-1 text-sm font-semibold text-gray-900">
+            <dt className="text-xs font-medium text-gray-400 uppercase tracking-wider">Vectors</dt>
+            <dd className="mt-0.5 text-sm font-bold text-gray-900">
               {formatNumber(collection.vector_count)}
             </dd>
           </div>
         </div>
 
-        <div className="mt-4">
-          <dt className="text-xs font-medium text-gray-500">Last updated</dt>
-          <dd className="mt-1 text-sm text-gray-900">{formatDate(collection.updated_at)}</dd>
-        </div>
-      </div>
-
-      <div className="bg-gray-50 px-5 py-3">
-        <button
-          onClick={() => {
-            setShowCollectionDetailsModal(collection.id);
-          }}
-          className="w-full flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={!!isProcessing}
-        >
-          <svg
-            className="mr-2 -ml-1 h-4 w-4 text-gray-500"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100">
+          <div className="text-xs text-gray-400">
+            Updated {formatDate(collection.updated_at)}
+          </div>
+          <button
+            onClick={() => {
+              setShowCollectionDetailsModal(collection.id);
+            }}
+            className="text-sm font-semibold text-brand-600 hover:text-brand-800 transition-colors flex items-center group/btn"
+            disabled={!!isProcessing}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          Manage
-        </button>
+            Manage
+            <svg className="ml-1 w-4 h-4 transform group-hover/btn:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import {
 } from '../hooks/useProjections';
 import { useProjectionTooltip } from '../hooks/useProjectionTooltip';
 import { useOperationProgress } from '../hooks/useOperationProgress';
+import { usePreferences } from '../hooks/usePreferences';
 import { projectionsV2Api } from '../services/api/v2/projections';
 import { searchV2Api } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
@@ -170,8 +171,9 @@ const SAMPLE_LIMIT_CAP = 200_000;
 
 type RenderMode = 'auto' | 'points' | 'density';
 
+// Default density threshold (used if user preference is not available).
 // Above this many points, "auto" mode prefers density rendering for performance.
-const DENSITY_THRESHOLD = 20_000;
+const DEFAULT_DENSITY_THRESHOLD = 20_000;
 const RENDER_MODE_OPTIONS: RenderMode[] = ['auto', 'points', 'density'];
 
 const REDUCER_OPTIONS: Array<{
@@ -228,6 +230,11 @@ export function EmbeddingVisualizationTab({
   collectionVectorCount,
   collectionUpdatedAt,
 }: EmbeddingVisualizationTabProps) {
+  // User preferences for visualization settings
+  const { data: preferences } = usePreferences();
+  const densityThreshold =
+    preferences?.interface?.visualization_sample_limit ?? DEFAULT_DENSITY_THRESHOLD;
+
   // Projection run configuration and list state
   const [selectedReducer, setSelectedReducer] = useState<ProjectionReducer>('umap');
   const [selectedColorBy, setSelectedColorBy] = useState<string>('document_id');
@@ -528,12 +535,13 @@ export function EmbeddingVisualizationTab({
   }, [activeProjection.projectionId, renderModeByProjection]);
 
   // Concrete mode passed to EmbeddingView. Auto switches to 'density' for large point clouds.
+  // The threshold is configurable via user preferences (visualization_sample_limit).
   const effectiveRenderMode = useMemo<'points' | 'density'>(() => {
     if (currentRenderMode !== 'auto') {
       return currentRenderMode;
     }
-    return activeProjection.pointCount >= DENSITY_THRESHOLD ? 'density' : 'points';
-  }, [currentRenderMode, activeProjection.pointCount]);
+    return activeProjection.pointCount >= densityThreshold ? 'density' : 'points';
+  }, [currentRenderMode, activeProjection.pointCount, densityThreshold]);
   const hasLegend = Boolean(activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0);
 
   // Cluster labels are derived from backend legend + arrays.
@@ -1178,7 +1186,7 @@ export function EmbeddingVisualizationTab({
                   </div>
                   <span className="text-xs text-gray-500">
                     {currentRenderMode === 'auto'
-                      ? `Auto switches to density at ${DENSITY_THRESHOLD.toLocaleString()}+ points`
+                      ? `Auto switches to density at ${densityThreshold.toLocaleString()}+ points`
                       : `Forced ${currentRenderMode}`}
                   </span>
                 </div>

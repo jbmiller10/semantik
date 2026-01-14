@@ -62,9 +62,9 @@ describe('Layout', () => {
 
   it('renders header with app title and user info', () => {
     render(<Layout />)
-    
+
     expect(screen.getByText('Semantik')).toBeInTheDocument()
-    expect(screen.getByText('Document Embedding Pipeline')).toBeInTheDocument()
+    expect(screen.getByText('Document Pipeline')).toBeInTheDocument()
     expect(screen.getByText('testuser')).toBeInTheDocument()
   })
 
@@ -79,11 +79,11 @@ describe('Layout', () => {
       activeTab: 'search',
       setActiveTab: mockSetActiveTab,
     })
-    
+
     render(<Layout />)
-    
+
     const searchTab = screen.getByRole('button', { name: 'Search' })
-    expect(searchTab).toHaveClass('border-blue-500', 'text-blue-600')
+    expect(searchTab).toHaveClass('bg-white', 'text-brand-600')
   })
 
   it('handles tab switching', async () => {

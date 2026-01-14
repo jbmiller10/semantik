@@ -173,11 +173,35 @@ export const handlers = [
   }),
 
   // V2 API endpoints
+  // System info
+  http.get('/api/v2/system/info', () => {
+    return HttpResponse.json({
+      version: '0.8.0',
+      environment: 'development',
+      python_version: '3.11.0',
+      rate_limits: {
+        chunking_preview: '10/minute',
+        plugin_install: '5/minute',
+        llm_test: '3/minute',
+      },
+    })
+  }),
+
+  // System health
+  http.get('/api/v2/system/health', () => {
+    return HttpResponse.json({
+      postgres: { status: 'healthy', message: 'Connected' },
+      redis: { status: 'healthy', message: 'Connected' },
+      qdrant: { status: 'healthy', message: 'Connected' },
+      vecpipe: { status: 'healthy', message: 'Connected' },
+    })
+  }),
+
   // System status
   http.get('/api/v2/system/status', () => {
     return HttpResponse.json({
       healthy: true,
-      version: '0.7.7',
+      version: '0.8.0',
       services: {
         database: 'healthy',
         redis: 'healthy',
@@ -186,6 +210,9 @@ export const handlers = [
       reranking_available: true,
       gpu_available: true,
       gpu_memory_mb: 8192,
+      cuda_device_name: 'NVIDIA GeForce RTX 4090',
+      cuda_device_count: 1,
+      available_reranking_models: ['Qwen/Qwen3-Reranker-0.6B'],
     })
   }),
 
@@ -625,6 +652,224 @@ export const handlers = [
       },
       event_count: 156,
       period_days: 30,
+    })
+  }),
+
+  // User Preferences endpoints
+  http.get('/api/v2/preferences', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    })
+  }),
+
+  http.put('/api/v2/preferences', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({
+      search: {
+        top_k: (body.search as Record<string, unknown>)?.top_k ?? 10,
+        mode: (body.search as Record<string, unknown>)?.mode ?? 'dense',
+        use_reranker: (body.search as Record<string, unknown>)?.use_reranker ?? false,
+        rrf_k: (body.search as Record<string, unknown>)?.rrf_k ?? 60,
+        similarity_threshold: (body.search as Record<string, unknown>)?.similarity_threshold ?? null,
+      },
+      collection_defaults: {
+        embedding_model: (body.collection_defaults as Record<string, unknown>)?.embedding_model ?? null,
+        quantization: (body.collection_defaults as Record<string, unknown>)?.quantization ?? 'float16',
+        chunking_strategy: (body.collection_defaults as Record<string, unknown>)?.chunking_strategy ?? 'recursive',
+        chunk_size: (body.collection_defaults as Record<string, unknown>)?.chunk_size ?? 1024,
+        chunk_overlap: (body.collection_defaults as Record<string, unknown>)?.chunk_overlap ?? 200,
+        enable_sparse: (body.collection_defaults as Record<string, unknown>)?.enable_sparse ?? false,
+        sparse_type: (body.collection_defaults as Record<string, unknown>)?.sparse_type ?? 'bm25',
+        enable_hybrid: (body.collection_defaults as Record<string, unknown>)?.enable_hybrid ?? false,
+      },
+      interface: {
+        data_refresh_interval_ms: (body.interface as Record<string, unknown>)?.data_refresh_interval_ms ?? 30000,
+        visualization_sample_limit: (body.interface as Record<string, unknown>)?.visualization_sample_limit ?? 200000,
+        animation_enabled: (body.interface as Record<string, unknown>)?.animation_enabled ?? true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/search', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/collection-defaults', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  http.post('/api/v2/preferences/reset/interface', () => {
+    return HttpResponse.json({
+      search: {
+        top_k: 10,
+        mode: 'dense',
+        use_reranker: false,
+        rrf_k: 60,
+        similarity_threshold: null,
+      },
+      collection_defaults: {
+        embedding_model: null,
+        quantization: 'float16',
+        chunking_strategy: 'recursive',
+        chunk_size: 1024,
+        chunk_overlap: 200,
+        enable_sparse: false,
+        sparse_type: 'bm25',
+        enable_hybrid: false,
+      },
+      interface: {
+        data_refresh_interval_ms: 30000,
+        visualization_sample_limit: 200000,
+        animation_enabled: true,
+      },
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: new Date().toISOString(),
+    })
+  }),
+
+  // System Settings endpoints (admin-only)
+  http.get('/api/v2/system-settings', () => {
+    return HttpResponse.json({
+      settings: {
+        max_collections_per_user: { value: 10, updated_at: null, updated_by: null },
+        max_storage_gb_per_user: { value: 50, updated_at: null, updated_by: null },
+        max_document_size_mb: { value: 100, updated_at: null, updated_by: null },
+      },
+    })
+  }),
+
+  http.get('/api/v2/system-settings/effective', () => {
+    return HttpResponse.json({
+      settings: {
+        // GPU & Memory settings
+        gpu_memory_max_percent: 0.9,
+        cpu_memory_max_percent: 0.5,
+        enable_cpu_offload: true,
+        eviction_idle_threshold_seconds: 120,
+        // Search & Rerank settings
+        rerank_candidate_multiplier: 5,
+        rerank_min_candidates: 20,
+        rerank_max_candidates: 200,
+        rerank_hybrid_weight: 0.3,
+        // Resource limits
+        max_collections_per_user: 10,
+        max_storage_gb_per_user: 50,
+        max_document_size_mb: 100,
+        // Performance settings
+        cache_ttl_seconds: 300,
+        model_unload_timeout_seconds: 300,
+      },
+    })
+  }),
+
+  http.get('/api/v2/system-settings/defaults', () => {
+    return HttpResponse.json({
+      defaults: {
+        // GPU & Memory settings
+        gpu_memory_max_percent: 0.9,
+        cpu_memory_max_percent: 0.5,
+        enable_cpu_offload: true,
+        eviction_idle_threshold_seconds: 120,
+        // Search & Rerank settings
+        rerank_candidate_multiplier: 5,
+        rerank_min_candidates: 20,
+        rerank_max_candidates: 200,
+        rerank_hybrid_weight: 0.3,
+        // Resource limits
+        max_collections_per_user: 10,
+        max_storage_gb_per_user: 50,
+        max_document_size_mb: 100,
+        // Performance settings
+        cache_ttl_seconds: 300,
+        model_unload_timeout_seconds: 300,
+      },
+    })
+  }),
+
+  http.patch('/api/v2/system-settings', async ({ request }) => {
+    const body = await request.json() as { settings: Record<string, unknown> }
+    const keys = Object.keys(body.settings || {})
+    return HttpResponse.json({
+      updated: keys,
+      settings: keys.reduce((acc, key) => ({
+        ...acc,
+        [key]: { value: body.settings[key], updated_at: new Date().toISOString(), updated_by: 1 },
+      }), {}),
     })
   }),
 ]

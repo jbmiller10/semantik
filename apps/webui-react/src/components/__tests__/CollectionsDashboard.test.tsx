@@ -372,7 +372,7 @@ describe('CollectionsDashboard', () => {
       renderWithQueryClient(<CollectionsDashboard />);
 
       expect(screen.getByText('No collections yet')).toBeInTheDocument();
-      expect(screen.getByText('Get started by creating your first collection.')).toBeInTheDocument();
+      expect(screen.getByText('Get started by creating your first collection to begin embedding your documents.')).toBeInTheDocument();
       
       // Should show the create button in empty state
       const createButtons = screen.getAllByText('Create Collection');
@@ -620,7 +620,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const srOnlyLabels = screen.getAllByText('Search collections').filter(
+      const srOnlyLabels = screen.getAllByText('Search collections by name or description').filter(
         element => element.classList.contains('sr-only')
       );
       expect(srOnlyLabels.length).toBeGreaterThan(0);

@@ -8,6 +8,8 @@ import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
+import { useAnimationEnabled } from '../contexts/AnimationContext';
+import { withAnimation } from '../utils/animationClasses';
 // Note: useOperationsSocket moved to Layout.tsx for global coverage
 
 /**
@@ -41,6 +43,7 @@ function ActiveOperationsTab() {
   const setActiveTab = useUIStore((state) => state.setActiveTab);
   const setShowCollectionDetailsModal = useUIStore((state) => state.setShowCollectionDetailsModal);
   const { data: collections = [] } = useCollections();
+  const animationEnabled = useAnimationEnabled();
 
   const collectionNameById = useMemo(() => {
     return collections.reduce<Record<string, string>>((acc, collection) => {
@@ -85,7 +88,7 @@ function ActiveOperationsTab() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className={withAnimation('rounded-full h-8 w-8 border-b-2 border-blue-600', animationEnabled, 'animate-spin')}></div>
       </div>
     );
   }

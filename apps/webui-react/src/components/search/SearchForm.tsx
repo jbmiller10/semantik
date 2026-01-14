@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, X, Loader2 } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
@@ -7,6 +7,7 @@ import { SearchModeSelector } from './SearchModeSelector';
 import { searchV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import { sanitizeQuery } from '../../utils/searchValidation';
+import { usePreferences } from '../../hooks/usePreferences';
 
 import type { Collection } from '../../types/collection';
 import type { SearchResult as ApiSearchResult } from '../../services/api/v2/types';
@@ -52,6 +53,24 @@ export default function SearchForm({ collections }: SearchFormProps) {
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
+
+    // User preferences for search defaults
+    const { data: prefs } = usePreferences();
+    const [prefsInitialized, setPrefsInitialized] = useState(false);
+
+    // Initialize search params from user preferences on first load
+    useEffect(() => {
+        if (prefs && !prefsInitialized) {
+            validateAndUpdateSearchParams({
+                topK: prefs.search.top_k,
+                searchMode: prefs.search.mode,
+                useReranker: prefs.search.use_reranker,
+                rrfK: prefs.search.rrf_k,
+                scoreThreshold: prefs.search.similarity_threshold ?? 0.0,
+            });
+            setPrefsInitialized(true);
+        }
+    }, [prefs, prefsInitialized, validateAndUpdateSearchParams]);
 
     // Cleanup abort controller on unmount
     useEffect(() => {
@@ -228,10 +247,10 @@ export default function SearchForm({ collections }: SearchFormProps) {
     };
 
     return (
-        <form onSubmit={handleSearch} className="space-y-6">
+        <form onSubmit={handleSearch} className="space-y-8">
             {/* Search Input Group */}
             <div className="space-y-4">
-                <div className="relative">
+                <div className="relative group">
                     <input
                         type="text"
                         value={searchParams.query}
@@ -240,33 +259,36 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             validateAndUpdateSearchParams({ query: e.target.value });
                         }}
                         placeholder="Enter your search query..."
-                        className={`w-full pl-4 pr-12 py-3 text-lg border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${getValidationError('query') ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                        className={`w-full pl-5 pr-12 py-4 text-lg border rounded-xl shadow-sm transition-all duration-200 outline-none
+                            ${getValidationError('query')
+                                ? 'border-red-300 bg-red-50 focus:ring-2 focus:ring-red-200'
+                                : 'border-gray-200 bg-white/50 focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10'
                             }`}
                         disabled={loading}
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
                         {loading ? (
                             <button
                                 type="button"
                                 onClick={handleCancel}
-                                className="p-1 hover:bg-gray-100 rounded-full text-gray-500"
+                                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
                                 title="Cancel search"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         ) : (
-                            <Search className="w-5 h-5 text-gray-400" />
+                            <Search className="w-6 h-6 text-brand-400 group-focus-within:text-brand-600 transition-colors" />
                         )}
                     </div>
                 </div>
                 {getValidationError('query') && (
-                    <p className="text-sm text-red-600">{getValidationError('query')}</p>
+                    <p className="text-sm text-red-600 font-medium ml-1">{getValidationError('query')}</p>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Collection Selector */}
-                    <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="lg:col-span-2 space-y-1.5">
+                        <label className="block text-sm font-semibold text-gray-700 ml-1">
                             Collections
                         </label>
                         <CollectionMultiSelect
@@ -278,13 +300,13 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             }}
                         />
                         {getValidationError('collections') && (
-                            <p className="mt-1 text-sm text-red-600">{getValidationError('collections')}</p>
+                            <p className="text-sm text-red-600 font-medium ml-1">{getValidationError('collections')}</p>
                         )}
                     </div>
 
-                    {/* Embedding Mode Selector (for instruction prefix) */}
-                    <div>
-                        <label htmlFor="search-type" className="block text-sm font-medium text-gray-700 mb-1">
+                    {/* Embedding Mode Selector */}
+                    <div className="space-y-1.5">
+                        <label htmlFor="search-type" className="block text-sm font-semibold text-gray-700 ml-1">
                             Embedding Mode
                         </label>
                         <select
@@ -294,44 +316,48 @@ export default function SearchForm({ collections }: SearchFormProps) {
                                 setFieldTouched('searchType', true);
                                 validateAndUpdateSearchParams({ searchType: e.target.value as 'semantic' | 'hybrid' | 'question' | 'code' });
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2.5 bg-white/50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all duration-200"
                             disabled={loading}
                         >
                             <option value="semantic">General</option>
                             <option value="question">Question Answering</option>
                             <option value="code">Code Search</option>
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 ml-1">
                             Controls embedding instruction/prefix
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
-            <SearchModeSelector
-                searchMode={searchParams.searchMode}
-                rrfK={searchParams.rrfK}
-                onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
-                onRrfKChange={(k: number) => validateAndUpdateSearchParams({ rrfK: k })}
-                disabled={loading}
-                sparseAvailable={true}
-            />
+            <div className="border-t border-gray-100 pt-6">
+                {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
+                <SearchModeSelector
+                    searchMode={searchParams.searchMode}
+                    rrfK={searchParams.rrfK}
+                    onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
+                    onRrfKChange={(k: number) => validateAndUpdateSearchParams({ rrfK: k })}
+                    disabled={loading}
+                    sparseAvailable={true}
+                />
+            </div>
 
             {/* Advanced Options */}
-            <SearchOptions />
+            <div className="glass-card bg-brand-50/30 rounded-xl p-4 border border-brand-100/50">
+                <SearchOptions />
+            </div>
 
             {/* Search Button */}
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end pt-2">
                 <button
                     type="submit"
                     disabled={loading}
                     className={`
-            px-8 py-3 rounded-lg font-medium text-white shadow-sm transition-all
-            flex items-center space-x-2
+            px-8 py-3.5 rounded-xl font-bold text-white shadow-lg shadow-brand-500/25 transition-all duration-200
+            flex items-center space-x-2.5 transform hover:-translate-y-0.5
             ${loading
-                            ? 'bg-blue-400 cursor-not-allowed'
-                            : 'bg-blue-600 hover:bg-blue-700 hover:shadow-md active:transform active:scale-95'
+                            ? 'bg-brand-400 cursor-not-allowed shadow-none translate-y-0'
+                            : 'bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 hover:shadow-brand-500/40 active:translate-y-0'
                         }
           `}
                 >

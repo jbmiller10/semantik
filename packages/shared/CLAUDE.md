@@ -227,7 +227,7 @@
       Use properties for Docker path detection (data_dir, logs_dir)
     </pattern>
     <vecpipe-gpu-settings>
-      ENABLE_MEMORY_GOVERNOR, GPU_MEMORY_RESERVE_PERCENT, GPU_MEMORY_MAX_PERCENT
+      ENABLE_MEMORY_GOVERNOR, GPU_MEMORY_MAX_PERCENT, CPU_MEMORY_MAX_PERCENT
       ENABLE_CPU_OFFLOAD, EVICTION_IDLE_THRESHOLD_SECONDS
       ENABLE_ADAPTIVE_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE
     </vecpipe-gpu-settings>

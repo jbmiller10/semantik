@@ -31,6 +31,18 @@ vi.mock('../../hooks/useCollections', () => ({
   }),
 }));
 
+// Mock usePreferences to avoid interference with search store state
+vi.mock('../../hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    data: null, // Return null so preferences don't override test state
+    isLoading: false,
+  }),
+  useUpdatePreferences: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 // Create a test wrapper with React Query
 const createWrapper = () => {
   const queryClient = new QueryClient({

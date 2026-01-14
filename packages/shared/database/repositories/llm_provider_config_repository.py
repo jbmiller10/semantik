@@ -189,17 +189,16 @@ class LLMProviderConfigRepository:
             DatabaseOperationError: For database errors
         """
         # Validate temperature if provided
-        if (
-            default_temperature is not UNSET
-            and default_temperature is not None
-            and not (0.0 <= default_temperature <= 2.0)
-        ):
-            raise ValueError("default_temperature must be between 0.0 and 2.0")
+        # Use isinstance for mypy type narrowing (mypy doesn't narrow custom sentinels with `is not`)
+        if not isinstance(default_temperature, _UnsetType) and default_temperature is not None:  # noqa: SIM102
+            if not (0.0 <= default_temperature <= 2.0):
+                raise ValueError("default_temperature must be between 0.0 and 2.0")
 
         # Validate providers if provided
-        if high_quality_provider is not UNSET and high_quality_provider is not None:
+        # Use isinstance for mypy type narrowing (mypy doesn't narrow custom sentinels with `is not`)
+        if not isinstance(high_quality_provider, _UnsetType) and high_quality_provider is not None:
             self._validate_provider(high_quality_provider)
-        if low_quality_provider is not UNSET and low_quality_provider is not None:
+        if not isinstance(low_quality_provider, _UnsetType) and low_quality_provider is not None:
             self._validate_provider(low_quality_provider)
 
         try:
