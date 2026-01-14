@@ -15,12 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from shared.config import settings as shared_settings
-from webui.api.health import (
-    _check_database_health,
-    _check_qdrant_health,
-    _check_redis_health,
-    _check_search_api_health,
-)
+from webui.api.health import _check_database_health, _check_qdrant_health, _check_redis_health, _check_search_api_health
 from webui.auth import get_current_user
 from webui.config.rate_limits import RateLimitConfig
 

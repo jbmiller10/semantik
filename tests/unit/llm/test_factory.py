@@ -273,9 +273,7 @@ class TestHasProviderConfigured:
         mock_config.low_quality_provider = "local"
         mock_config.high_quality_provider = None
 
-        with (
-            patch.object(factory._config_repo, "get_by_user_id", return_value=mock_config),
-        ):
+        with (patch.object(factory._config_repo, "get_by_user_id", return_value=mock_config),):
             result = await factory.has_provider_configured(
                 user_id=123,
                 quality_tier=LLMQualityTier.LOW,

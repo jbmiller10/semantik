@@ -42,9 +42,7 @@ class TestLocalLLMProvider:
     async def test_initialize_with_quantization(self, provider):
         """initialize() accepts quantization parameter."""
         with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
-            await provider.initialize(
-                api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int4"
-            )
+            await provider.initialize(api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int4")
             assert provider._quantization == "int4"
 
     async def test_initialize_default_quantization(self, provider):
@@ -111,9 +109,7 @@ class TestLocalLLMProvider:
     async def test_generate_sends_correct_payload(self, provider):
         """generate() sends correct payload to VecPipe."""
         with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
-            await provider.initialize(
-                api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int4"
-            )
+            await provider.initialize(api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int4")
 
             mock_response = MagicMock()
             mock_response.json.return_value = {
@@ -171,9 +167,7 @@ class TestLocalLLMProvider:
                 provider._client,
                 "post",
                 new_callable=AsyncMock,
-                side_effect=httpx.HTTPStatusError(
-                    "error", request=MagicMock(), response=mock_response
-                ),
+                side_effect=httpx.HTTPStatusError("error", request=MagicMock(), response=mock_response),
             ):
                 with pytest.raises(LLMProviderError) as exc_info:
                     await provider.generate("Hello")
@@ -195,9 +189,7 @@ class TestLocalLLMProvider:
                 provider._client,
                 "post",
                 new_callable=AsyncMock,
-                side_effect=httpx.HTTPStatusError(
-                    "error", request=MagicMock(), response=mock_response
-                ),
+                side_effect=httpx.HTTPStatusError("error", request=MagicMock(), response=mock_response),
             ):
                 with pytest.raises(LLMProviderError) as exc_info:
                     await provider.generate("Hello")
@@ -229,9 +221,7 @@ class TestLocalLLMProvider:
 
         with patch("shared.config.internal_api_key.ensure_internal_api_key", return_value="test-key"):
             asyncio.get_event_loop().run_until_complete(
-                provider.initialize(
-                    api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int8"
-                )
+                provider.initialize(api_key="", model="Qwen/Qwen2.5-1.5B-Instruct", quantization="int8")
             )
 
             info = provider.get_model_info()

@@ -157,20 +157,12 @@ class LocalLLMProvider(BaseLLMService):
             status = e.response.status_code
             detail = e.response.text
             if status == 507:
-                raise LLMProviderError(
-                    self.PROVIDER_NAME, f"Insufficient GPU memory: {detail}", status
-                ) from e
+                raise LLMProviderError(self.PROVIDER_NAME, f"Insufficient GPU memory: {detail}", status) from e
             if status == 503:
-                raise LLMProviderError(
-                    self.PROVIDER_NAME, f"LLM service unavailable: {detail}", status
-                ) from e
-            raise LLMProviderError(
-                self.PROVIDER_NAME, f"VecPipe error ({status}): {detail}", status
-            ) from e
+                raise LLMProviderError(self.PROVIDER_NAME, f"LLM service unavailable: {detail}", status) from e
+            raise LLMProviderError(self.PROVIDER_NAME, f"VecPipe error ({status}): {detail}", status) from e
         except httpx.RequestError as e:
-            raise LLMProviderError(
-                self.PROVIDER_NAME, f"Connection error to VecPipe: {e}"
-            ) from e
+            raise LLMProviderError(self.PROVIDER_NAME, f"Connection error to VecPipe: {e}") from e
 
         data = response.json()
         return LLMResponse(
