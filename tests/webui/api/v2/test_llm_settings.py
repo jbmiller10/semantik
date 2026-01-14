@@ -29,6 +29,7 @@ def mock_llm_config():
     config.low_quality_model = "claude-sonnet-4-5-20250929"
     config.default_temperature = 0.7
     config.default_max_tokens = None
+    config.provider_config = None  # JSON column for provider-specific settings
     config.created_at = "2024-01-15T10:30:00+00:00"
     config.updated_at = "2024-01-15T10:30:00+00:00"
     return config
@@ -222,6 +223,7 @@ class TestUpdateLLMSettings:
         cleared_config.low_quality_model = mock_llm_config.low_quality_model
         cleared_config.default_temperature = None
         cleared_config.default_max_tokens = mock_llm_config.default_max_tokens
+        cleared_config.provider_config = None
         cleared_config.created_at = mock_llm_config.created_at
         cleared_config.updated_at = mock_llm_config.updated_at
 
