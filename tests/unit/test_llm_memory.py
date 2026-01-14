@@ -1,8 +1,6 @@
 """Tests for LLM memory estimation utilities."""
 
-import pytest
-
-from vecpipe.llm_memory import get_llm_memory_requirement, _estimate_llm_weights_memory
+from vecpipe.llm_memory import _estimate_llm_weights_memory, get_llm_memory_requirement
 
 
 class TestLLMMemoryEstimation:

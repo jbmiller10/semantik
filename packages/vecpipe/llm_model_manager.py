@@ -63,9 +63,7 @@ class LLMModelManager:
         self._inflight_loads: dict[str, asyncio.Task[tuple[Any, Any]]] = {}
         self._global_lock = asyncio.Lock()
         self._model_locks: dict[str, asyncio.Lock] = {}
-        self._executor = executor or ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="llm-gen-"
-        )
+        self._executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm-gen-")
         self._owns_executor = executor is None
 
         # Register callbacks with governor
@@ -173,13 +171,9 @@ class LLMModelManager:
         messages.append({"role": "user", "content": prompt})
 
         if not hasattr(tokenizer, "apply_chat_template"):
-            raise RuntimeError(
-                "Tokenizer has no chat template; use curated chat models only in Phase 1"
-            )
+            raise RuntimeError("Tokenizer has no chat template; use curated chat models only in Phase 1")
 
-        input_ids = tokenizer.apply_chat_template(
-            messages, return_tensors="pt", add_generation_prompt=True
-        )
+        input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True)
         prompt_tokens = int(input_ids.shape[-1])
         input_ids = input_ids.to(model.device)
 
@@ -199,9 +193,7 @@ class LLMModelManager:
 
         return content, prompt_tokens, completion_tokens
 
-    async def _ensure_model_loaded(
-        self, model_name: str, quantization: str
-    ) -> tuple[Any, Any]:
+    async def _ensure_model_loaded(self, model_name: str, quantization: str) -> tuple[Any, Any]:
         """Load model with governor memory management.
 
         Uses an in-flight task map so concurrent requests don't double-load.
@@ -221,9 +213,7 @@ class LLMModelManager:
 
             inflight = self._inflight_loads.get(key)
             if inflight is None:
-                inflight = asyncio.create_task(
-                    self._load_and_register_model(model_name, quantization)
-                )
+                inflight = asyncio.create_task(self._load_and_register_model(model_name, quantization))
                 self._inflight_loads[key] = inflight
 
         try:
@@ -234,9 +224,7 @@ class LLMModelManager:
                 # Ensure we don't leak tasks in the in-flight map
                 self._inflight_loads.pop(key, None)
 
-    async def _load_and_register_model(
-        self, model_name: str, quantization: str
-    ) -> tuple[Any, Any]:
+    async def _load_and_register_model(self, model_name: str, quantization: str) -> tuple[Any, Any]:
         """Load model, then register it with the governor and local cache.
 
         Args:
@@ -291,9 +279,7 @@ class LLMModelManager:
 
         return model, tokenizer
 
-    async def _load_model(
-        self, model_name: str, quantization: str
-    ) -> tuple[Any, Any]:
+    async def _load_model(self, model_name: str, quantization: str) -> tuple[Any, Any]:
         """Load HuggingFace model with bitsandbytes quantization.
 
         Runs in executor since model loading is blocking.
@@ -313,9 +299,7 @@ class LLMModelManager:
             quantization,
         )
 
-    def _load_model_sync(
-        self, model_name: str, quantization: str
-    ) -> tuple[Any, Any]:
+    def _load_model_sync(self, model_name: str, quantization: str) -> tuple[Any, Any]:
         """Synchronous model loading helper (runs in executor).
 
         Args:
@@ -367,9 +351,7 @@ class LLMModelManager:
         logger.info("Successfully loaded %s", model_name)
         return model, tokenizer
 
-    async def _governor_unload_callback(
-        self, model_name: str, quantization: str
-    ) -> None:
+    async def _governor_unload_callback(self, model_name: str, quantization: str) -> None:
         """Fully unload model from memory (governor callback).
 
         Args:
@@ -392,9 +374,7 @@ class LLMModelManager:
                     torch.cuda.empty_cache()
                 logger.info("Governor-initiated unload of LLM '%s'", key)
             else:
-                logger.warning(
-                    "Governor requested unload of '%s' but not loaded", key
-                )
+                logger.warning("Governor requested unload of '%s' but not loaded", key)
 
     async def shutdown(self) -> None:
         """Shutdown the manager and cleanup resources."""

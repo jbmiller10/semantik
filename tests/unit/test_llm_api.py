@@ -20,7 +20,6 @@ from fastapi.testclient import TestClient
 from vecpipe.search import state as search_state
 from vecpipe.search.llm_api import router
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -34,7 +33,7 @@ def mock_llm_manager() -> Mock:
     manager._governor = Mock()
 
     # Mock generate method
-    async def mock_generate(**kwargs: Any) -> dict[str, Any]:
+    async def mock_generate(**_kwargs: Any) -> dict[str, Any]:
         return {
             "content": "Generated response",
             "prompt_tokens": 10,
@@ -44,7 +43,7 @@ def mock_llm_manager() -> Mock:
     manager.generate = AsyncMock(side_effect=mock_generate)
 
     # Mock _ensure_model_loaded
-    async def mock_ensure_loaded(model_name: str, quantization: str) -> tuple[Mock, Mock]:
+    async def mock_ensure_loaded(_model_name: str, _quantization: str) -> tuple[Mock, Mock]:
         return Mock(), Mock()
 
     manager._ensure_model_loaded = AsyncMock(side_effect=mock_ensure_loaded)
@@ -106,15 +105,13 @@ class TestLLMGenerateEndpoint:
     """Tests for POST /llm/generate endpoint."""
 
     @pytest.fixture(autouse=True)
-    def setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
+    def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
         with patch("vecpipe.search.router.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
-    def test_generate_success(
-        self, client_with_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_generate_success(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test successful generation."""
         response = client_with_manager.post(
             "/llm/generate",
@@ -132,9 +129,7 @@ class TestLLMGenerateEndpoint:
         assert "completion_tokens" in data
         assert data["model_name"] == "Qwen/Qwen2.5-1.5B-Instruct"
 
-    def test_generate_batch(
-        self, client_with_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_generate_batch(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test batch generation with multiple prompts."""
         response = client_with_manager.post(
             "/llm/generate",
@@ -173,9 +168,7 @@ class TestLLMGenerateEndpoint:
         )
         assert response.status_code == 401
 
-    def test_generate_llm_disabled(
-        self, client_without_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_generate_llm_disabled(self, client_without_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test generate returns 503 when LLM is disabled."""
         response = client_without_manager.post(
             "/llm/generate",
@@ -239,15 +232,13 @@ class TestLLMPreloadEndpoint:
     """Tests for POST /llm/models/load endpoint."""
 
     @pytest.fixture(autouse=True)
-    def setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
+    def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
         with patch("vecpipe.search.router.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
-    def test_preload_success(
-        self, client_with_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_preload_success(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test successful model preload."""
         response = client_with_manager.post(
             "/llm/models/load",
@@ -274,9 +265,7 @@ class TestLLMPreloadEndpoint:
         self, client_with_manager: TestClient, auth_headers: dict[str, str], mock_llm_manager: Mock
     ) -> None:
         """Test preload returns 507 on OOM."""
-        mock_llm_manager._ensure_model_loaded.side_effect = RuntimeError(
-            "Insufficient GPU memory"
-        )
+        mock_llm_manager._ensure_model_loaded.side_effect = RuntimeError("Insufficient GPU memory")
 
         with patch.object(search_state, "llm_manager", mock_llm_manager):
             response = client_with_manager.post(
@@ -313,15 +302,13 @@ class TestLLMStreamingPlaceholders:
     """Tests for streaming placeholder endpoints."""
 
     @pytest.fixture(autouse=True)
-    def setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
+    def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
         with patch("vecpipe.search.router.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
-    def test_stream_not_implemented(
-        self, client_with_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_stream_not_implemented(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test streaming returns 501."""
         response = client_with_manager.post(
             "/llm/generate/stream",
@@ -333,9 +320,7 @@ class TestLLMStreamingPlaceholders:
         )
         assert response.status_code == 501
 
-    def test_cancel_not_implemented(
-        self, client_with_manager: TestClient, auth_headers: dict[str, str]
-    ) -> None:
+    def test_cancel_not_implemented(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
         """Test cancel returns 501."""
         response = client_with_manager.post(
             "/llm/requests/12345678-1234-1234-1234-123456789012/cancel",
