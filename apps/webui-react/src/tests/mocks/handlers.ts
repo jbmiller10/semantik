@@ -173,11 +173,35 @@ export const handlers = [
   }),
 
   // V2 API endpoints
+  // System info
+  http.get('/api/v2/system/info', () => {
+    return HttpResponse.json({
+      version: '0.8.0',
+      environment: 'development',
+      python_version: '3.11.0',
+      rate_limits: {
+        chunking_preview: '10/minute',
+        plugin_install: '5/minute',
+        llm_test: '3/minute',
+      },
+    })
+  }),
+
+  // System health
+  http.get('/api/v2/system/health', () => {
+    return HttpResponse.json({
+      postgres: { status: 'healthy', message: 'Connected' },
+      redis: { status: 'healthy', message: 'Connected' },
+      qdrant: { status: 'healthy', message: 'Connected' },
+      vecpipe: { status: 'healthy', message: 'Connected' },
+    })
+  }),
+
   // System status
   http.get('/api/v2/system/status', () => {
     return HttpResponse.json({
       healthy: true,
-      version: '0.7.7',
+      version: '0.8.0',
       services: {
         database: 'healthy',
         redis: 'healthy',
@@ -186,6 +210,9 @@ export const handlers = [
       reranking_available: true,
       gpu_available: true,
       gpu_memory_mb: 8192,
+      cuda_device_name: 'NVIDIA GeForce RTX 4090',
+      cuda_device_count: 1,
+      available_reranking_models: ['Qwen/Qwen3-Reranker-0.6B'],
     })
   }),
 
@@ -789,9 +816,23 @@ export const handlers = [
   http.get('/api/v2/system-settings/effective', () => {
     return HttpResponse.json({
       settings: {
+        // GPU & Memory settings
+        gpu_memory_max_percent: 0.9,
+        cpu_memory_max_percent: 0.5,
+        enable_cpu_offload: true,
+        eviction_idle_threshold_seconds: 120,
+        // Search & Rerank settings
+        rerank_candidate_multiplier: 5,
+        rerank_min_candidates: 20,
+        rerank_max_candidates: 200,
+        rerank_hybrid_weight: 0.3,
+        // Resource limits
         max_collections_per_user: 10,
         max_storage_gb_per_user: 50,
         max_document_size_mb: 100,
+        // Performance settings
+        cache_ttl_seconds: 300,
+        model_unload_timeout_seconds: 300,
       },
     })
   }),
@@ -799,9 +840,23 @@ export const handlers = [
   http.get('/api/v2/system-settings/defaults', () => {
     return HttpResponse.json({
       defaults: {
+        // GPU & Memory settings
+        gpu_memory_max_percent: 0.9,
+        cpu_memory_max_percent: 0.5,
+        enable_cpu_offload: true,
+        eviction_idle_threshold_seconds: 120,
+        // Search & Rerank settings
+        rerank_candidate_multiplier: 5,
+        rerank_min_candidates: 20,
+        rerank_max_candidates: 200,
+        rerank_hybrid_weight: 0.3,
+        // Resource limits
         max_collections_per_user: 10,
         max_storage_gb_per_user: 50,
         max_document_size_mb: 100,
+        // Performance settings
+        cache_ttl_seconds: 300,
+        model_unload_timeout_seconds: 300,
       },
     })
   }),
