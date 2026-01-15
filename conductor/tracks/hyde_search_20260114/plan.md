@@ -9,13 +9,13 @@
     - [x] [5aacab0]
 - [x] Task: Conductor - User Manual Verification 'Backend Implementation' (Protocol in workflow.md)
 
-## Phase 2: Configuration & Settings
-- [ ] Task: Add User Settings for HyDE
-    - [ ] Update `UserSettings` model (or equivalent) to include:
+## Phase 2: Configuration & Settings [checkpoint: b8d9aa6]
+- [x] Task: Add User Settings for HyDE
+    - [x] Update `UserSettings` model (or equivalent) to include:
         - `hyde_enabled_default`: bool
         - `hyde_llm_tier`: LLMQualityTier (default: LOW)
-    - [ ] Update MCP Server configuration endpoints/schema to include `hyde_enabled_default` for MCP clients.
-- [ ] Task: Conductor - User Manual Verification 'Configuration & Settings' (Protocol in workflow.md)
+    - [x] Update MCP Server configuration endpoints/schema to include `hyde_enabled_default` for MCP clients.
+- [x] Task: Conductor - User Manual Verification 'Configuration & Settings' (Protocol in workflow.md)
 
 ## Phase 3: Frontend Integration
 - [ ] Task: Update Search UI
