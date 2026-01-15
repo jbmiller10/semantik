@@ -841,9 +841,7 @@ class TestSearchServiceIntegration:
     @pytest.mark.asyncio()
     @patch("webui.services.search_service.UserPreferencesRepository")
     @patch("webui.services.search_service.httpx.AsyncClient")
-    async def test_concurrent_collection_searches(
-        self, mock_httpx_client, mock_prefs_repo_class
-    ) -> None:
+    async def test_concurrent_collection_searches(self, mock_httpx_client, mock_prefs_repo_class) -> None:
         """Test concurrent searches across multiple collections"""
         # Setup UserPreferencesRepository mock
         mock_prefs_repo = AsyncMock()
