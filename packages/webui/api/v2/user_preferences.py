@@ -45,6 +45,10 @@ def _to_response(prefs: UserPreferences) -> UserPreferencesResponse:
             use_reranker=prefs.search_use_reranker,
             rrf_k=prefs.search_rrf_k,
             similarity_threshold=prefs.search_similarity_threshold,
+            # HyDE fields
+            use_hyde=prefs.search_use_hyde,
+            hyde_quality_tier=prefs.search_hyde_quality_tier,
+            hyde_timeout_seconds=prefs.search_hyde_timeout_seconds,
         ),
         collection_defaults=CollectionDefaults(
             embedding_model=prefs.default_embedding_model,
@@ -118,6 +122,10 @@ async def update_preferences(
         update_kwargs["search_use_reranker"] = update.search.use_reranker
         update_kwargs["search_rrf_k"] = update.search.rrf_k
         update_kwargs["search_similarity_threshold"] = update.search.similarity_threshold
+        # HyDE fields
+        update_kwargs["search_use_hyde"] = update.search.use_hyde
+        update_kwargs["search_hyde_quality_tier"] = update.search.hyde_quality_tier
+        update_kwargs["search_hyde_timeout_seconds"] = update.search.hyde_timeout_seconds
 
     if update.collection_defaults is not None:
         update_kwargs["default_embedding_model"] = update.collection_defaults.embedding_model

@@ -944,6 +944,7 @@ class MCPProfile(Base):
     hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
     search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
     rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
+    use_hyde = Column(Boolean, nullable=False, default=False)  # HyDE query expansion
 
     # Metadata
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -1144,6 +1145,9 @@ class UserPreferences(Base):
     - search_use_reranker: Enable reranking (default false)
     - search_rrf_k: RRF constant for hybrid fusion (1-100, default 60)
     - search_similarity_threshold: Minimum similarity score (0-1, NULL for no threshold)
+    - search_use_hyde: Enable HyDE query expansion (default false)
+    - search_hyde_quality_tier: 'high' or 'low' LLM tier for HyDE (default 'low')
+    - search_hyde_timeout_seconds: Timeout for HyDE generation (3-60, default 10)
 
     Collection defaults:
     - default_embedding_model: Model ID or NULL for system default
@@ -1178,6 +1182,10 @@ class UserPreferences(Base):
     search_use_reranker = Column(Boolean, nullable=False, default=False)
     search_rrf_k = Column(Integer, nullable=False, default=60)
     search_similarity_threshold = Column(Float, nullable=True)
+    # HyDE settings
+    search_use_hyde = Column(Boolean, nullable=False, default=False)
+    search_hyde_quality_tier = Column(String(4), nullable=False, default="low")
+    search_hyde_timeout_seconds = Column(Integer, nullable=False, default=10)
 
     # Collection defaults
     default_embedding_model = Column(String(128), nullable=True)
@@ -1214,6 +1222,14 @@ class UserPreferences(Base):
         CheckConstraint(
             "search_similarity_threshold IS NULL OR (search_similarity_threshold >= 0.0 AND search_similarity_threshold <= 1.0)",
             name="ck_user_preferences_search_similarity_threshold",
+        ),
+        CheckConstraint(
+            "search_hyde_quality_tier IN ('high', 'low')",
+            name="ck_user_preferences_search_hyde_quality_tier",
+        ),
+        CheckConstraint(
+            "search_hyde_timeout_seconds >= 3 AND search_hyde_timeout_seconds <= 60",
+            name="ck_user_preferences_search_hyde_timeout",
         ),
         CheckConstraint(
             "default_quantization IN ('float32', 'float16', 'int8')",

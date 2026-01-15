@@ -18,6 +18,14 @@ class SearchPreferences(BaseModel):
     similarity_threshold: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Minimum similarity score (null for no threshold)"
     )
+    # HyDE settings
+    use_hyde: bool = Field(default=False, description="Enable HyDE query expansion by default")
+    hyde_quality_tier: Literal["high", "low"] = Field(
+        default="low", description="LLM quality tier for HyDE generation"
+    )
+    hyde_timeout_seconds: int = Field(
+        default=10, ge=3, le=60, description="Timeout for HyDE generation (3-60 seconds)"
+    )
 
     model_config = ConfigDict(
         extra="forbid",
@@ -28,6 +36,9 @@ class SearchPreferences(BaseModel):
                 "use_reranker": False,
                 "rrf_k": 60,
                 "similarity_threshold": None,
+                "use_hyde": False,
+                "hyde_quality_tier": "low",
+                "hyde_timeout_seconds": 10,
             }
         },
     )
@@ -127,6 +138,9 @@ class UserPreferencesResponse(BaseModel):
                     "use_reranker": False,
                     "rrf_k": 60,
                     "similarity_threshold": None,
+                    "use_hyde": False,
+                    "hyde_quality_tier": "low",
+                    "hyde_timeout_seconds": 10,
                 },
                 "collection_defaults": {
                     "embedding_model": None,

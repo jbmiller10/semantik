@@ -967,11 +967,14 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             embed_start = time.time()
             query_vector: list[float]
 
+            # Use dense_query for embedding if provided (HyDE), otherwise use query
+            embed_query = request.dense_query if request.dense_query is not None else request.query
+
             if not cfg.USE_MOCK_EMBEDDINGS:
                 generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
                 if test_mode:
                     try:
-                        query_vector = await generate_fn(request.query, model_name, quantization, instruction)
+                        query_vector = await generate_fn(embed_query, model_name, quantization, instruction)
                     except RuntimeError:
                         # Propagate runtime errors in tests to keep parity with production behavior
                         raise
@@ -981,12 +984,12 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                             exc,
                             exc_info=True,
                         )
-                        query_vector = generate_mock_embedding(request.query, vector_dim)
+                        query_vector = generate_mock_embedding(embed_query, vector_dim)
                 else:
-                    query_vector = await generate_fn(request.query, model_name, quantization, instruction)
+                    query_vector = await generate_fn(embed_query, model_name, quantization, instruction)
             else:
                 mock_fn = _get_patched_callable("generate_mock_embedding", generate_mock_embedding)
-                query_vector = mock_fn(request.query, vector_dim)
+                query_vector = mock_fn(embed_query, vector_dim)
 
             if test_mode:
                 model_mgr = _get_model_manager()
