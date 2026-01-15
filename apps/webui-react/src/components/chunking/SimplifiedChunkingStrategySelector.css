@@ -20,7 +20,7 @@
 /* Select dropdown styling */
 select:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
 }
 
 /* Smooth transitions for interactive elements */
@@ -41,12 +41,12 @@ button {
 /* Focus visible improvements */
 button:focus-visible,
 select:focus-visible {
-  outline: 2px solid #3B82F6;
+  outline: 2px solid #7c3aed;
   outline-offset: 2px;
 }
 
 /* Hover state for learn more link */
-.text-blue-600:hover {
+.text-signal-500:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }

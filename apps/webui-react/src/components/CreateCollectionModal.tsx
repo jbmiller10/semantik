@@ -453,13 +453,13 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       <div className="glass-panel w-full max-w-lg md:max-w-2xl lg:max-w-4xl max-h-[90vh] overflow-y-auto relative rounded-2xl shadow-2xl border border-white/10" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         {/* Loading overlay */}
         {isSubmitting && (
-          <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10 rounded-lg">
+          <div className="absolute inset-0 bg-void-950/90 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
             <div className="text-center">
-              <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-8 w-8 text-signal-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <p className="text-gray-700 font-medium">Creating collection...</p>
+              <p className="text-gray-300 font-medium">Creating collection...</p>
             </div>
           </div>
         )}
@@ -485,7 +485,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
           <div className="px-6 py-4 space-y-4">
             {/* Validation Summary */}
             {Object.keys(errors).length > 0 && !isSubmitting && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-md p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
                     <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -493,10 +493,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
+                    <h3 className="text-sm font-medium text-red-300">
                       Please fix the following errors:
                     </h3>
-                    <ul className="mt-2 text-sm text-red-700 list-disc list-inside">
+                    <ul className="mt-2 text-sm text-red-400 list-disc list-inside">
                       {Object.entries(errors).map(([field, error]) => (
                         <li key={field}>{error}</li>
                       ))}
@@ -773,10 +773,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                       checked={formData.is_public}
                       onChange={(e) => handleChange('is_public', e.target.checked)}
                       disabled={isSubmitting}
-                      className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded ${isSubmitting ? 'cursor-not-allowed' : ''
+                      className={`h-4 w-4 text-signal-600 focus:ring-signal-500 bg-void-800 border-white/20 rounded ${isSubmitting ? 'cursor-not-allowed' : ''
                         }`}
                     />
-                    <label htmlFor="is_public" className="ml-2 block text-sm text-gray-900">
+                    <label htmlFor="is_public" className="ml-2 block text-sm text-gray-200">
                       Make this collection public
                     </label>
                   </div>
@@ -790,10 +790,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         checked={sparseEnabled}
                         onChange={(e) => setSparseEnabled(e.target.checked)}
                         disabled={isSubmitting}
-                        className={`h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded ${isSubmitting ? 'cursor-not-allowed' : ''
+                        className={`h-4 w-4 text-signal-600 focus:ring-signal-500 bg-void-800 border-white/20 rounded ${isSubmitting ? 'cursor-not-allowed' : ''
                           }`}
                       />
-                      <label htmlFor="sparse_enabled" className="ml-2 block text-sm text-gray-900">
+                      <label htmlFor="sparse_enabled" className="ml-2 block text-sm text-gray-200">
                         Enable Sparse Indexing (BM25/SPLADE for hybrid search)
                       </label>
                     </div>
