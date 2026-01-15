@@ -248,6 +248,7 @@ class SemantikMCPServer:
             search_mode=search_mode,
             rrf_k=rrf_k,
             use_reranker=use_reranker,
+            use_hyde=use_hyde,
             score_threshold=score_threshold_value,
             include_content=True,
         )
