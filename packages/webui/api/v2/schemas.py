@@ -50,6 +50,7 @@ class CollectionSearchRequest(BaseModel):
         None,
         description="Reranker plugin ID (alternative to rerank_model). If both set, reranker_id takes precedence.",
     )
+    hyde_enabled: bool = Field(default=False, description="Enable HyDE (Hypothetical Document Embeddings)")
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
@@ -214,6 +215,7 @@ class SingleCollectionSearchRequest(BaseModel):
         None,
         description="Reranker plugin ID (alternative to rerank_model). If both set, reranker_id takes precedence.",
     )
+    hyde_enabled: bool = Field(default=False, description="Enable HyDE (Hypothetical Document Embeddings)")
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")

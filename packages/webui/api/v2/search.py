@@ -66,6 +66,7 @@ async def multi_collection_search(
         use_reranker=search_request.use_reranker,
         rerank_model=search_request.rerank_model,
         reranker_id=search_request.reranker_id,
+        hyde_enabled=search_request.hyde_enabled,
     )
 
     # Convert service result to API response format

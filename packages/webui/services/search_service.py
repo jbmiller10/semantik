@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from shared.database.models import Collection, CollectionStatus
+from shared.database.models import Collection, User
+from shared.llm.exceptions import LLMAuthenticationError, LLMNotConfiguredError, LLMProviderError
+from shared.llm.factory import LLMServiceFactory
+from shared.llm.types import LLMQualityTier
+from webui.api.v2.schemas import SearchMode  # SearchMode is defined in schemas
+# from vecpipe.client import VecPipeClient # Commented out as it seems missing and causing issues, will verify usage
+
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
@@ -288,6 +294,41 @@ class SearchService:
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
 
+    async def _generate_hypothetical_document(self, user_id: int, query: str) -> str:
+        """Generate a hypothetical document answer using the configured LLM."""
+        try:
+            factory = LLMServiceFactory(self.db_session)
+            provider = await factory.create_provider_for_tier(
+                user_id=user_id,
+                quality_tier=LLMQualityTier.LOW
+            )
+            
+            async with provider:
+                # Simple prompt for HyDE
+                prompt = (
+                    f"Please write a passage that answers the following question. "
+                    f"The passage should be concise and relevant to the topic.\n\n"
+                    f"Question: {query}\n\n"
+                    f"Passage:"
+                )
+                
+                response = await provider.generate(
+                    prompt=prompt,
+                    max_tokens=256,
+                    temperature=0.7,
+                    timeout=5.0  # Strict timeout for search latency
+                )
+                return response.content.strip()
+                
+        except (LLMNotConfiguredError, LLMAuthenticationError):
+            # Log at debug/info level - user just hasn't set it up
+            logger.info("HyDE skipped: LLM not configured for user %s", user_id)
+            return query
+        except Exception as e:
+            # Log warning for other failures (timeouts, provider errors)
+            logger.warning("HyDE generation failed for user %s: %s", user_id, e)
+            return query
+
     async def multi_collection_search(
         self,
         user_id: int,
@@ -302,6 +343,7 @@ class SearchService:
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
+        hyde_enabled: bool = False,
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -318,11 +360,22 @@ class SearchService:
             use_reranker: Whether to use reranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
+            hyde_enabled: Whether to use HyDE (Hypothetical Document Embeddings)
 
         Returns:
             Dictionary with search results and metadata
         """
         start_time = time.time()
+        
+        # Apply HyDE if enabled
+        effective_query = query
+        if hyde_enabled:
+            # Only use HyDE for semantic/dense/hybrid searches, not pure keyword/sparse if that's a thing (though sparse usually handles queries fine, HyDE is for semantic gap)
+            # Assuming HyDE is good for all modes except maybe exact code match, but let's just enable it if requested.
+            effective_query = await self._generate_hypothetical_document(user_id, query)
+            if effective_query != query:
+                logger.info("Using HyDE generated query for search")
+
         warnings: list[str] = []
         search_mode_used: SearchMode = search_mode
         search_modes_used: set[SearchMode] = set()
@@ -354,7 +407,7 @@ class SearchService:
 
         # Execute searches in parallel
         search_tasks = [
-            self.search_single_collection(collection, query, k, search_params, timeout) for collection in collections
+            self.search_single_collection(collection, effective_query, k, search_params, timeout) for collection in collections
         ]
 
         search_results = await asyncio.gather(*search_tasks)
