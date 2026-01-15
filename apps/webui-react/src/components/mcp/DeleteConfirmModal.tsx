@@ -77,21 +77,21 @@ export default function DeleteConfirmModal({
   return (
     <>
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-[60]"
+        className="fixed inset-0 bg-black/50 dark:bg-black/80 z-[60]"
         onClick={isDeleting ? undefined : onClose}
       />
       <div
         ref={modalRef}
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-[60] w-full max-w-md"
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel rounded-xl shadow-2xl z-[60] w-full max-w-md"
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-modal-title"
       >
         {/* Content */}
         <div className="p-6">
-          <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full">
+          <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-500/20 rounded-full">
             <svg
-              className="w-6 h-6 text-red-600"
+              className="w-6 h-6 text-red-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -107,41 +107,41 @@ export default function DeleteConfirmModal({
 
           <h3
             id="delete-modal-title"
-            className="mt-4 text-lg font-semibold text-gray-900 text-center"
+            className="mt-4 text-lg font-semibold text-[var(--text-primary)] text-center"
           >
             Delete Profile
           </h3>
 
-          <p className="mt-2 text-sm text-gray-500 text-center">
+          <p className="mt-2 text-sm text-[var(--text-muted)] text-center">
             Are you sure you want to delete the profile{' '}
-            <span className="font-medium text-gray-900">"{profile.name}"</span>?
+            <span className="font-medium text-[var(--text-primary)]">"{profile.name}"</span>?
             This action cannot be undone.
           </p>
 
-          <p className="mt-2 text-xs text-gray-400 text-center">
+          <p className="mt-2 text-xs text-[var(--text-muted)] text-center">
             This will remove the MCP tool{' '}
-            <code className="bg-gray-100 px-1 rounded">search_{profile.name}</code>{' '}
+            <code className="bg-[var(--bg-tertiary)] px-1 rounded text-[var(--text-secondary)]">search_{profile.name}</code>{' '}
             from connected clients.
           </p>
 
           {deleteError && (
-            <p className="mt-4 text-sm text-red-600 text-center">{deleteError}</p>
+            <p className="mt-4 text-sm text-red-500 text-center">{deleteError}</p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 rounded-b-lg">
+        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border)] flex justify-end gap-3 rounded-b-xl">
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isDeleting && (
               <svg

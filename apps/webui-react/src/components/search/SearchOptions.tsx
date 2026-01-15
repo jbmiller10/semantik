@@ -33,29 +33,29 @@ export default function SearchOptions() {
     };
 
     return (
-        <div className="border border-white/5 rounded-2xl bg-void-900/50 shadow-sm overflow-hidden backdrop-blur-md">
+        <div className="border border-[var(--border)] rounded-2xl bg-[var(--bg-secondary)] shadow-sm overflow-hidden">
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full flex items-center justify-between p-4 bg-transparent hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-between p-4 bg-transparent hover:bg-[var(--bg-tertiary)] transition-colors"
             >
-                <div className="flex items-center space-x-2 text-gray-200">
+                <div className="flex items-center space-x-2 text-[var(--text-primary)]">
                     <Settings className="w-4 h-4" />
                     <span className="font-bold uppercase tracking-wide text-xs">Advanced Options</span>
                 </div>
                 {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-gray-400" />
+                    <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
                 ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                    <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
                 )}
             </button>
 
             {isExpanded && (
-                <div className="p-6 space-y-6 border-t border-white/5 bg-void-950/30">
+                <div className="p-6 space-y-6 border-t border-[var(--border)] bg-[var(--bg-tertiary)]">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Top K Results */}
                         <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                            <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
                                 Top K Results
                             </label>
                             <input
@@ -64,20 +64,20 @@ export default function SearchOptions() {
                                 onChange={(e) => handleParamChange('topK', parseInt(e.target.value))}
                                 min={1}
                                 max={250}
-                                className={`w-full px-3 py-2 border rounded-xl input-glass focus:ring-signal-500 focus:border-signal-500 ${getValidationError('topK') ? 'border-red-500/50 bg-red-500/10' : 'border-white/10'
+                                className={`w-full px-3 py-2 border rounded-xl input-field focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] ${getValidationError('topK') ? 'border-red-500/50 bg-red-500/10' : 'border-[var(--border)]'
                                     }`}
                             />
                             {getValidationError('topK') && (
-                                <p className="mt-1 text-xs text-red-600">{getValidationError('topK')}</p>
+                                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{getValidationError('topK')}</p>
                             )}
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-[var(--text-muted)]">
                                 Number of results to return (1-250)
                             </p>
                         </div>
 
                         {/* Score Threshold */}
                         <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                            <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
                                 Score Threshold
                             </label>
                             <input
@@ -87,20 +87,20 @@ export default function SearchOptions() {
                                 min={0}
                                 max={1}
                                 step={0.05}
-                                className={`w-full px-3 py-2 border rounded-xl input-glass focus:ring-signal-500 focus:border-signal-500 ${getValidationError('scoreThreshold') ? 'border-red-500/50 bg-red-500/10' : 'border-white/10'
+                                className={`w-full px-3 py-2 border rounded-xl input-field focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] ${getValidationError('scoreThreshold') ? 'border-red-500/50 bg-red-500/10' : 'border-[var(--border)]'
                                     }`}
                             />
                             {getValidationError('scoreThreshold') && (
-                                <p className="mt-1 text-xs text-red-600">{getValidationError('scoreThreshold')}</p>
+                                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{getValidationError('scoreThreshold')}</p>
                             )}
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-[var(--text-muted)]">
                                 Minimum similarity score (0.0-1.0)
                             </p>
                         </div>
                     </div>
 
                     {/* Reranking Configuration */}
-                    <div className="pt-4 border-t border-white/5">
+                    <div className="pt-4 border-t border-[var(--border)]">
                         <RerankingConfiguration
                             enabled={searchParams.useReranker}
                             model={searchParams.rerankModel}
@@ -110,12 +110,12 @@ export default function SearchOptions() {
                     </div>
 
                     {/* Save as Defaults */}
-                    <div className="pt-4 border-t border-white/5 flex justify-end">
+                    <div className="pt-4 border-t border-[var(--border)] flex justify-end">
                         <button
                             type="button"
                             onClick={handleSaveAsDefaults}
                             disabled={savingPrefs}
-                            className="text-xs font-bold uppercase tracking-wider text-signal-400 hover:text-signal-300 disabled:opacity-50 transition-colors"
+                            className="text-xs font-bold uppercase tracking-wider text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] disabled:opacity-50 transition-colors"
                         >
                             {savingPrefs ? 'Saving...' : 'Save as defaults'}
                         </button>

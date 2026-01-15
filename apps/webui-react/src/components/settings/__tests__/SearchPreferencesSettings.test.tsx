@@ -219,7 +219,7 @@ describe('SearchPreferencesSettings', () => {
       const sparseButton = screen.getByRole('button', { name: 'Sparse' });
       await user.click(sparseButton);
 
-      expect(sparseButton).toHaveClass('bg-blue-100');
+      expect(sparseButton).toHaveClass('bg-[var(--accent-primary)]/10');
     });
 
     it('toggles reranker checkbox', async () => {

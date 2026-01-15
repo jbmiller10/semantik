@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Info, ChevronDown, Settings2, Sparkles } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Info, ChevronDown, Settings2, Sparkles, Check } from 'lucide-react';
 import { useChunkingStore } from '../../stores/chunkingStore';
 import { CHUNKING_STRATEGIES } from '../../types/chunking';
 import { ChunkingParameterTuner } from './ChunkingParameterTuner';
@@ -26,58 +26,122 @@ export function SimplifiedChunkingStrategySelector({
 
   const [showGuide, setShowGuide] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const recommendedStrategy = fileType ? getRecommendedStrategy(fileType) : 'hybrid';
 
-  const handleStrategyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newStrategy = event.target.value as ChunkingStrategyType;
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleStrategySelect = (strategyType: ChunkingStrategyType) => {
     if (!disabled) {
-      setStrategy(newStrategy);
-      onStrategyChange?.(newStrategy);
+      setStrategy(strategyType);
+      onStrategyChange?.(strategyType);
+      setIsDropdownOpen(false);
     }
   };
 
   const getStrategyLabel = (strategyType: ChunkingStrategyType) => {
     const strategy = CHUNKING_STRATEGIES[strategyType];
     const isRecommended = strategyType === recommendedStrategy || strategy.isRecommended;
-    return `${strategy.name}${isRecommended ? ' ✨ Recommended' : ''}`;
+    return { name: strategy.name, isRecommended };
   };
 
   const selectedStrategyInfo = CHUNKING_STRATEGIES[selectedStrategy];
+  const selectedLabel = getStrategyLabel(selectedStrategy);
 
   return (
     <div className="space-y-4">
       {/* Strategy Selector */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label htmlFor="chunking-strategy" className="block text-sm font-medium text-gray-700">
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
             Chunking Strategy
           </label>
           <button
             type="button"
             onClick={() => setShowGuide(true)}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+            className="text-sm text-signal-500 hover:text-signal-400 flex items-center gap-1 transition-colors"
           >
             <Info className="h-3 w-3" />
             Learn more
           </button>
         </div>
 
-        <div className="relative">
-          <select
-            id="chunking-strategy"
-            value={selectedStrategy}
-            onChange={handleStrategyChange}
+        {/* Custom Dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={() => !disabled && setIsDropdownOpen(!isDropdownOpen)}
             disabled={disabled}
-            className="w-full pl-4 pr-10 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 appearance-none cursor-pointer"
+            className={`
+              w-full pl-4 pr-10 py-2.5 text-sm text-left border rounded-xl flex items-center justify-between
+              transition-all
+              ${disabled
+                ? 'bg-void-900 text-gray-500 cursor-not-allowed border-white/10'
+                : 'bg-void-800/50 text-white hover:bg-void-700/50 cursor-pointer border-white/10'
+              }
+              ${isDropdownOpen ? 'ring-2 ring-signal-500/50 border-signal-500' : ''}
+            `}
+            aria-expanded={isDropdownOpen}
+            aria-haspopup="listbox"
           >
-            {(Object.keys(CHUNKING_STRATEGIES) as ChunkingStrategyType[]).map((strategyType) => (
-              <option key={strategyType} value={strategyType}>
-                {getStrategyLabel(strategyType)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <span className="flex items-center gap-2">
+              {selectedLabel.name}
+              {selectedLabel.isRecommended && (
+                <span className="text-amber-400">✨ Recommended</span>
+              )}
+            </span>
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Dropdown Options */}
+          {isDropdownOpen && (
+            <div
+              className="absolute z-50 w-full mt-1 bg-void-900 border border-white/10 rounded-xl shadow-xl overflow-hidden"
+              role="listbox"
+            >
+              {(Object.keys(CHUNKING_STRATEGIES) as ChunkingStrategyType[]).map((strategyType) => {
+                const label = getStrategyLabel(strategyType);
+                const isSelected = strategyType === selectedStrategy;
+                return (
+                  <button
+                    key={strategyType}
+                    type="button"
+                    onClick={() => handleStrategySelect(strategyType)}
+                    className={`
+                      w-full px-4 py-2.5 text-sm text-left flex items-center justify-between
+                      transition-colors
+                      ${isSelected
+                        ? 'bg-signal-500/20 text-white'
+                        : 'text-gray-300 hover:bg-void-800 hover:text-white'
+                      }
+                    `}
+                    role="option"
+                    aria-selected={isSelected}
+                  >
+                    <span className="flex items-center gap-2">
+                      {label.name}
+                      {label.isRecommended && (
+                        <span className="text-amber-400 text-xs">✨ Recommended</span>
+                      )}
+                    </span>
+                    {isSelected && <Check className="h-4 w-4 text-signal-400" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Strategy Description */}
@@ -87,8 +151,8 @@ export function SimplifiedChunkingStrategySelector({
 
         {/* File Type Recommendation */}
         {fileType && selectedStrategy !== recommendedStrategy && (
-          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-            <p className="text-xs text-blue-700 flex items-center gap-1">
+          <div className="mt-2 p-2 bg-signal-500/10 border border-signal-500/20 rounded-lg">
+            <p className="text-xs text-signal-400 flex items-center gap-1">
               <Sparkles className="h-3 w-3" />
               For {fileType} files, we recommend using {CHUNKING_STRATEGIES[recommendedStrategy].name}
             </p>
@@ -97,12 +161,12 @@ export function SimplifiedChunkingStrategySelector({
       </div>
 
       {/* Advanced Options Toggle */}
-      <div className="border-t pt-4">
+      <div className="border-t border-white/10 pt-4">
         <button
           type="button"
           onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
           disabled={disabled}
-          className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-white transition-colors disabled:opacity-50"
         >
           <Settings2 className="h-4 w-4" />
           Advanced Options

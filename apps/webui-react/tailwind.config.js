@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,52 +8,55 @@ export default {
   theme: {
     extend: {
       colors: {
-        // The Void: Deep, warm blacks for backgrounds
-        void: {
-          950: '#0a0a0b', // Main background
-          900: '#18181b', // Secondary / Cards
-          800: '#27272a', // Borders / Accents
-          700: '#3f3f46',
-          50: '#fafafa', // Text on dark (inverted logic if needed, but standardizing on surface mainly)
+        // Ink: Primary actions and headings (replaces "signal")
+        ink: {
+          900: '#1a1a2e',
+          800: '#2d2d44',
+          700: '#3f3f5c',
+          600: '#525274',
+          500: '#6b6b8c',
         },
-        // The Signal: Electric Violet for primary actions
-        signal: {
-          400: '#a78bfa',
-          500: '#8b5cf6',
-          600: '#7c3aed', // Primary Brand
-          700: '#6d28d9',
+        // Paper: Surface colors (replaces "void")
+        paper: {
+          50: '#fefdfb',
+          100: '#f8f6f0',
+          200: '#f0ece0',
+          300: '#e4dfd0',
+          400: '#d4cfc0',
         },
-        // Data/Success (Legacy preserved but sharpened)
-        data: {
-          teal: '#14b8a6',
-          cyan: '#06b6d4',
+        // Accent: Scholar's gold for highlights
+        accent: {
+          600: '#b8860b',
+          500: '#daa520',
+          400: '#f4c430',
         },
-        // Destructive
-        alert: {
-          DEFAULT: '#f43f5e',
+        // Semantic status colors (muted, academic)
+        success: {
+          DEFAULT: '#059669',
+          light: '#10b981',
         },
-        // Keeping surface for compatibility but pushing towards void
-        surface: {
-          50: '#f9fafb',
-          100: '#f3f4f6',
-          200: '#e5e7eb',
-          900: '#111827',
-        }
+        warning: {
+          DEFAULT: '#d97706',
+          light: '#f59e0b',
+        },
+        error: {
+          DEFAULT: '#dc2626',
+          light: '#ef4444',
+        },
+        info: {
+          DEFAULT: '#2563eb',
+          light: '#3b82f6',
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'Geist Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-      },
-      backgroundImage: {
-        'void-gradient': 'radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.08) 0%, rgba(10, 10, 11, 0) 50%)',
-      },
-      fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['"Source Serif 4"', 'Georgia', 'Cambria', 'serif'],
+        sans: ['"Source Sans 3"', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-out',
-        'slide-up': 'slideUp 0.5s ease-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'slide-up': 'slideUp 0.3s ease-out',
+        'spin-slow': 'spin 2s linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -60,13 +64,15 @@ export default {
           '100%': { opacity: '1' },
         },
         slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
       },
-      backdropBlur: {
-        xs: '2px',
-      }
+      boxShadow: {
+        'card': '0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05)',
+        'card-hover': '0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
+        'panel': '0 1px 2px 0 rgb(0 0 0 / 0.03)',
+      },
     },
   },
   plugins: [],

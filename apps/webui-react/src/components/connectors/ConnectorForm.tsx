@@ -42,7 +42,7 @@ export function ConnectorForm({
 
   if (!definition) {
     return (
-      <div className="text-sm text-red-600">
+      <div className="text-sm text-red-400">
         Unknown connector type: {connectorType}
       </div>
     );

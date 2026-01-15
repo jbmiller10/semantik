@@ -210,34 +210,34 @@ function CollectionDetailsModal() {
 
   return (
     <>
-      <div className="fixed inset-0 bg-void-950/80 backdrop-blur-sm z-50 transition-opacity" onClick={handleClose} />
-      <div className="fixed inset-4 md:inset-[5%] glass-panel rounded-2xl shadow-2xl border border-white/10 z-50 flex flex-col max-w-6xl mx-auto overflow-hidden">
+      <div className="fixed inset-0 bg-[var(--bg-primary)]/80 backdrop-blur-sm z-50 transition-opacity" onClick={handleClose} />
+      <div className="fixed inset-4 md:inset-[5%] panel rounded-2xl shadow-2xl border border-[var(--border)] z-50 flex flex-col max-w-6xl mx-auto overflow-hidden">
 
         {/* Header */}
-        <div className="px-6 py-5 border-b border-white/10 bg-void-900/50 flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
+            <h2 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
               {collection?.name || 'Loading...'}
             </h2>
             {collection && (
-              <p className="text-sm text-gray-400 mt-1 font-mono">
+              <p className="text-sm text-[var(--text-secondary)] mt-1 font-mono">
                 {operationsData?.length || 0} operations • {formatNumber(collection.document_count)} docs • {formatNumber(collection.vector_count)} vectors
               </p>
             )}
           </div>
           <button
             onClick={handleClose}
-            className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-lg"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-2 hover:bg-[var(--bg-tertiary)] rounded-lg"
           >
             <XCircle className="h-6 w-6" />
           </button>
         </div>
 
         {/* Action Buttons */}
-        <div className="px-6 py-3 border-b border-white/10 bg-void-900/30 flex gap-2">
+        <div className="px-6 py-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 flex gap-2">
           <button
             onClick={() => setShowAddDataModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-signal-600 text-white text-sm font-bold rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 transition-all transform active:scale-95"
+            className="btn-primary flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl shadow-lg transition-all transform active:scale-95"
             disabled={!collection}
           >
             <Plus className="h-4 w-4" />
@@ -245,7 +245,7 @@ function CollectionDetailsModal() {
           </button>
           <button
             onClick={() => setShowRenameModal(true)}
-            className="flex items-center gap-2 px-4 py-2 border border-white/10 text-gray-300 text-sm font-medium rounded-xl hover:bg-white/5 hover:text-white transition-colors"
+            className="btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
             disabled={!collection}
           >
             <Edit2 className="h-4 w-4" />
@@ -253,7 +253,7 @@ function CollectionDetailsModal() {
           </button>
           <button
             onClick={() => setShowDeleteModal(true)}
-            className="flex items-center gap-2 px-4 py-2 border border-red-500/30 text-red-400 text-sm font-medium rounded-xl hover:bg-red-500/10 hover:border-red-500/50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 border border-red-500/30 text-red-500 dark:text-red-400 text-sm font-medium rounded-xl hover:bg-red-500/10 hover:border-red-500/50 transition-colors"
             disabled={!collection}
           >
             <Trash2 className="h-4 w-4" />
@@ -262,7 +262,7 @@ function CollectionDetailsModal() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-white/10 bg-void-900/20">
+        <div className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/30">
           <nav className="flex space-x-8 px-6 overflow-x-auto" aria-label="Tabs">
             {[
               { id: 'overview', label: 'Overview', icon: Brain },
@@ -275,8 +275,8 @@ function CollectionDetailsModal() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'overview' | 'jobs' | 'files' | 'visualize' | 'settings')}
                 className={`py-3 px-1 border-b-2 font-bold text-sm uppercase tracking-wide transition-colors flex items-center gap-2 ${activeTab === tab.id
-                    ? 'border-signal-500 text-signal-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-700'
+                    ? 'border-[var(--accent-primary)] text-[var(--text-primary)]'
+                    : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:border-[var(--border)]'
                   }`}
               >
                 {tab.label}
@@ -286,10 +286,10 @@ function CollectionDetailsModal() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-transparent to-void-950/30">
+        <div className="flex-1 overflow-y-auto p-6 bg-[var(--bg-primary)]">
           {isLoading && (
             <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-signal-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent-primary)]"></div>
             </div>
           )}
 
@@ -301,29 +301,29 @@ function CollectionDetailsModal() {
                 <div className="space-y-6">
                   {/* Stats Grid */}
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4 tracking-tight">Statistics</h3>
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 tracking-tight">Statistics</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-void-900/50 p-5 rounded-xl border border-white/5 backdrop-blur-sm">
-                        <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">Documents</dt>
-                        <dd className="mt-1 text-3xl font-bold text-white tracking-tight">
+                      <div className="bg-[var(--bg-secondary)] p-5 rounded-xl border border-[var(--border)]">
+                        <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Documents</dt>
+                        <dd className="mt-1 text-3xl font-bold text-[var(--text-primary)] tracking-tight">
                           {formatNumber(collection.document_count)}
                         </dd>
                       </div>
-                      <div className="bg-void-900/50 p-5 rounded-xl border border-white/5 backdrop-blur-sm">
-                        <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">Vectors</dt>
-                        <dd className="mt-1 text-3xl font-bold text-white tracking-tight">
+                      <div className="bg-[var(--bg-secondary)] p-5 rounded-xl border border-[var(--border)]">
+                        <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Vectors</dt>
+                        <dd className="mt-1 text-3xl font-bold text-[var(--text-primary)] tracking-tight">
                           {formatNumber(collection.vector_count)}
                         </dd>
                       </div>
-                      <div className="bg-void-900/50 p-5 rounded-xl border border-white/5 backdrop-blur-sm">
-                        <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Size</dt>
-                        <dd className="mt-1 text-3xl font-bold text-white tracking-tight">
+                      <div className="bg-[var(--bg-secondary)] p-5 rounded-xl border border-[var(--border)]">
+                        <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Total Size</dt>
+                        <dd className="mt-1 text-3xl font-bold text-[var(--text-primary)] tracking-tight">
                           {formatBytes(collection.total_size_bytes || 0)}
                         </dd>
                       </div>
-                      <div className="bg-void-900/50 p-5 rounded-xl border border-white/5 backdrop-blur-sm">
-                        <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">Operations</dt>
-                        <dd className="mt-1 text-3xl font-bold text-white tracking-tight">
+                      <div className="bg-[var(--bg-secondary)] p-5 rounded-xl border border-[var(--border)]">
+                        <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Operations</dt>
+                        <dd className="mt-1 text-3xl font-bold text-[var(--text-primary)] tracking-tight">
                           {operationsData?.length || 0}
                         </dd>
                       </div>
@@ -340,34 +340,34 @@ function CollectionDetailsModal() {
               {/* --- JOBS TAB --- */}
               {activeTab === 'jobs' && (
                 <div className="space-y-8">
-                  <div className="glass-panel border border-white/5 rounded-xl overflow-hidden">
-                    <table className="min-w-full divide-y divide-white/5">
-                      <thead className="bg-void-900/50">
+                  <div className="panel border border-[var(--border)] rounded-xl overflow-hidden">
+                    <table className="min-w-full divide-y divide-[var(--border)]">
+                      <thead className="bg-[var(--bg-secondary)]">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Started</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Duration</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Type</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Started</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Duration</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-transparent divide-y divide-white/5">
+                      <tbody className="bg-transparent divide-y divide-[var(--border)]">
                         {!operationsData || operationsData.length === 0 ? (
-                          <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">No jobs found</td></tr>
+                          <tr><td colSpan={4} className="px-6 py-8 text-center text-[var(--text-muted)]">No jobs found</td></tr>
                         ) : (
                           operationsData.map((job) => (
-                            <tr key={job.id} className="hover:bg-white/5 transition-colors">
-                              <td className="px-6 py-4 text-sm text-white capitalize">{job.type.replace(/_/g, ' ')}</td>
+                            <tr key={job.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                              <td className="px-6 py-4 text-sm text-[var(--text-primary)] capitalize">{job.type.replace(/_/g, ' ')}</td>
                               <td className="px-6 py-4">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${job.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                                    job.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                      job.status === 'processing' ? 'bg-signal-500/10 text-signal-400 border-signal-500/20' :
-                                        'bg-white/5 text-gray-400 border-white/10'
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${job.status === 'completed' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' :
+                                    job.status === 'failed' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
+                                      job.status === 'processing' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                                        'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border)]'
                                   }`}>
                                   {job.status}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-400">{formatDate(job.created_at)}</td>
-                              <td className="px-6 py-4 text-sm text-gray-400">
+                              <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">{formatDate(job.created_at)}</td>
+                              <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">
                                 {job.started_at && job.completed_at ? formatDuration(job.started_at, job.completed_at) : '-'}
                               </td>
                             </tr>
@@ -383,12 +383,12 @@ function CollectionDetailsModal() {
               {activeTab === 'files' && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-bold text-white tracking-tight">Files ({documentsData?.total || 0})</h3>
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Files ({documentsData?.total || 0})</h3>
                     {retryableCount > 0 && (
                       <button
                         onClick={() => retryAllFailedMutation.mutate()}
                         disabled={retryAllFailedMutation.isPending}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-signal-600/20 text-signal-400 text-xs font-bold uppercase tracking-wider border border-signal-500/30 rounded-lg hover:bg-signal-600/30 transition-colors"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 text-blue-600 dark:text-blue-400 text-xs font-bold uppercase tracking-wider border border-blue-500/30 rounded-lg hover:bg-blue-600/30 transition-colors"
                       >
                         <RefreshCw className={`h-3 w-3 ${retryAllFailedMutation.isPending ? 'animate-spin' : ''}`} />
                         Retry All Failed
@@ -396,42 +396,42 @@ function CollectionDetailsModal() {
                     )}
                   </div>
 
-                  <div className="glass-panel border border-white/5 rounded-xl overflow-hidden">
-                    <table className="min-w-full divide-y divide-white/5">
-                      <thead className="bg-void-900/50">
+                  <div className="panel border border-[var(--border)] rounded-xl overflow-hidden">
+                    <table className="min-w-full divide-y divide-[var(--border)]">
+                      <thead className="bg-[var(--bg-secondary)]">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Created</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Name</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Size</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Created</th>
                           <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                         </tr>
                       </thead>
-                      <tbody className="bg-transparent divide-y divide-white/5">
+                      <tbody className="bg-transparent divide-y divide-[var(--border)]">
                         {!documentsData?.documents || documentsData.documents.length === 0 ? (
-                          <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No files found</td></tr>
+                          <tr><td colSpan={5} className="px-6 py-8 text-center text-[var(--text-muted)]">No files found</td></tr>
                         ) : (
                           documentsData.documents.map((doc: DocumentResponse) => (
-                            <tr key={doc.id} className="hover:bg-white/5 transition-colors">
-                              <td className="px-6 py-4 text-sm font-medium text-white flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-gray-500" />
+                            <tr key={doc.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                              <td className="px-6 py-4 text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-[var(--text-muted)]" />
                                 <span className="truncate max-w-xs" title={doc.file_name}>{doc.file_name}</span>
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-400">{formatBytes(doc.file_size)}</td>
+                              <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">{formatBytes(doc.file_size)}</td>
                               <td className="px-6 py-4">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${doc.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                                    doc.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                      'bg-white/5 text-gray-400 border-white/10'
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${doc.status === 'completed' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' :
+                                    doc.status === 'failed' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
+                                      'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border)]'
                                   }`}>
                                   {doc.status}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-400">{formatDate(doc.created_at)}</td>
+                              <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">{formatDate(doc.created_at)}</td>
                               <td className="px-6 py-4 text-right">
                                 {doc.status === 'failed' && (
                                   <button
                                     onClick={() => retryDocumentMutation.mutate(doc.id)}
-                                    className="text-signal-400 hover:text-signal-300"
+                                    className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300"
                                     title="Retry"
                                   >
                                     <RefreshCw className="h-4 w-4" />
@@ -446,19 +446,19 @@ function CollectionDetailsModal() {
 
                     {/* Pagination */}
                     {(documentsData?.total ?? 0) > filesLimit && (
-                      <div className="px-6 py-3 border-t border-white/5 flex items-center justify-between bg-void-900/30">
+                      <div className="px-6 py-3 border-t border-[var(--border)] flex items-center justify-between bg-[var(--bg-secondary)]">
                         <button
                           onClick={() => setFilesPage(p => Math.max(1, p - 1))}
                           disabled={filesPage === 1}
-                          className="text-sm font-bold text-gray-400 hover:text-white disabled:opacity-50"
+                          className="text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                         >
                           Previous
                         </button>
-                        <span className="text-sm text-gray-500">Page {filesPage}</span>
+                        <span className="text-sm text-[var(--text-muted)]">Page {filesPage}</span>
                         <button
                           onClick={() => setFilesPage(p => p + 1)}
                           disabled={filesPage * filesLimit >= (documentsData?.total ?? 0)}
-                          className="text-sm font-bold text-gray-400 hover:text-white disabled:opacity-50"
+                          className="text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                         >
                           Next
                         </button>
@@ -482,27 +482,27 @@ function CollectionDetailsModal() {
               {activeTab === 'settings' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4 tracking-tight">Configuration</h3>
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 tracking-tight">Configuration</h3>
 
                     <div className="space-y-4">
                       {/* Read Only Model */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Embedding Model</label>
-                        <div className="input-glass px-4 py-2 text-white opacity-70">
+                        <label className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Embedding Model</label>
+                        <div className="input-field px-4 py-2 opacity-70">
                           {collection.embedding_model}
                         </div>
                       </div>
 
                       {/* Chunking Config Display */}
                       {collection.chunking_strategy ? (
-                        <div className="glass-panel p-4 border border-white/5 rounded-xl">
+                        <div className="panel p-4 border border-[var(--border)] rounded-xl">
                           <div className="flex items-center gap-3 mb-4">
-                            <div className="text-signal-400"><Brain className="h-5 w-5" /></div>
+                            <div className="text-[var(--accent-primary)]"><Brain className="h-5 w-5" /></div>
                             <div>
-                              <div className="font-bold text-white">
+                              <div className="font-bold text-[var(--text-primary)]">
                                 {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || collection.chunking_strategy}
                               </div>
-                              <div className="text-xs text-gray-400">
+                              <div className="text-xs text-[var(--text-secondary)]">
                                 {CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.description}
                               </div>
                             </div>
@@ -510,8 +510,8 @@ function CollectionDetailsModal() {
                           <dl className="grid grid-cols-2 gap-4">
                             {formatChunkingConfig(collection.chunking_config ?? {}).map(item => (
                               <div key={item.label}>
-                                <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">{item.label}</dt>
-                                <dd className="text-sm text-white font-mono">{item.value}</dd>
+                                <dt className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{item.label}</dt>
+                                <dd className="text-sm text-[var(--text-primary)] font-mono">{item.value}</dd>
                               </div>
                             ))}
                           </dl>
@@ -519,10 +519,10 @@ function CollectionDetailsModal() {
                       ) : (
                         <div className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/20">
                           <div className="flex items-center gap-3">
-                            <Type className="h-5 w-5 text-amber-500" />
+                            <Type className="h-5 w-5 text-amber-600 dark:text-amber-500" />
                             <div className="flex-1">
-                              <div className="font-bold text-amber-400">Legacy Chunking</div>
-                              <div className="text-xs text-amber-300/70">Deprecated character-based chunking</div>
+                              <div className="font-bold text-amber-700 dark:text-amber-400">Legacy Chunking</div>
+                              <div className="text-xs text-amber-600/70 dark:text-amber-300/70">Deprecated character-based chunking</div>
                             </div>
                           </div>
                         </div>
@@ -531,28 +531,28 @@ function CollectionDetailsModal() {
                   </div>
 
                   {/* Re-index Section */}
-                  <div className="border-t border-white/10 pt-6">
-                    <h3 className="text-lg font-bold text-white mb-4 tracking-tight">Re-index Collection</h3>
+                  <div className="border-t border-[var(--border)] pt-6">
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 tracking-tight">Re-index Collection</h3>
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-4">
                       <div className="flex gap-3">
-                        <div className="text-amber-500"><GitBranch className="h-5 w-5" /></div>
+                        <div className="text-amber-600 dark:text-amber-500"><GitBranch className="h-5 w-5" /></div>
                         <div>
-                          <h4 className="font-bold text-amber-400 text-sm">Action Required</h4>
-                          <p className="text-xs text-amber-300/80 mt-1">Re-indexing will delete all vectors and re-process documents.</p>
+                          <h4 className="font-bold text-amber-700 dark:text-amber-400 text-sm">Action Required</h4>
+                          <p className="text-xs text-amber-600/80 dark:text-amber-300/80 mt-1">Re-indexing will delete all vectors and re-process documents.</p>
                         </div>
                       </div>
                     </div>
                     <button
                       onClick={() => setShowReindexModal(true)}
-                      className="px-4 py-2 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-bold hover:bg-amber-600/30 transition-colors"
+                      className="px-4 py-2 bg-amber-600/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded-xl text-sm font-bold hover:bg-amber-600/30 transition-colors"
                     >
                       Re-index Collection
                     </button>
                   </div>
 
                   {/* Sparse Index Section */}
-                  <div className="border-t border-white/10 pt-6">
-                    <h3 className="text-lg font-bold text-white mb-4 tracking-tight">Sparse Indexing</h3>
+                  <div className="border-t border-[var(--border)] pt-6">
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 tracking-tight">Sparse Indexing</h3>
                     <SparseIndexPanel collection={collection} />
                   </div>
                 </div>

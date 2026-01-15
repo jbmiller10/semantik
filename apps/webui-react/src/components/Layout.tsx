@@ -6,6 +6,7 @@ import { useOperationsSocket } from '../hooks/useOperationsSocket';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
+import ThemeToggle from './ThemeToggle';
 import { registerNavigationHandler } from '../services/navigation';
 
 function Layout() {
@@ -39,48 +40,50 @@ function Layout() {
 
   return (
     <div className="min-h-screen">
-      {/* Glass Header */}
-      <header className="sticky top-0 z-50 glass-panel border-x-0 border-t-0 border-b border-white/5 rounded-none backdrop-blur-xl bg-void-950/80">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-[var(--bg-secondary)] border-b border-[var(--border)] shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 bg-signal-600 rounded-lg shadow-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xl">S</span>
+              <div className="h-8 w-8 bg-ink-900 dark:bg-paper-100 rounded-lg flex items-center justify-center">
+                <span className="text-paper-100 dark:text-ink-900 font-serif font-bold text-xl">S</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">SEMANTIK</h1>
-                <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold -mt-1 pl-0.5">Intelligence Pipeline</p>
+                <h1 className="text-xl font-serif font-semibold text-[var(--text-primary)] tracking-tight">Semantik</h1>
+                <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-medium -mt-0.5">Semantic Search</p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-6">
-              <div className="hidden sm:flex items-center space-x-2 text-sm font-medium">
-                <span className="text-gray-500">Operator:</span>
-                <span className="text-gray-200">{user?.username}</span>
+            <div className="flex items-center space-x-4">
+              <div className="hidden sm:flex items-center space-x-2 text-sm">
+                <span className="text-[var(--text-muted)]">Signed in as</span>
+                <span className="text-[var(--text-primary)] font-medium">{user?.username}</span>
               </div>
 
-              <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+              <div className="h-4 w-px bg-[var(--border)] hidden sm:block"></div>
 
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <ThemeToggle />
+
                 {import.meta.env.DEV && (
                   <Link
                     to="/verification"
-                    className="text-sm font-medium text-signal-400 hover:text-signal-300 transition-colors"
+                    className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-2 py-1"
                   >
-                    Verification
+                    Verify
                   </Link>
                 )}
                 <Link
                   to={isSettingsPage ? "/" : "/settings"}
-                  className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
+                  className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-2 py-1"
                 >
-                  {isSettingsPage ? "← Back" : "Settings"}
+                  {isSettingsPage ? "Back" : "Settings"}
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white bg-void-800 hover:bg-void-700 border border-white/10 rounded-md transition-all duration-200"
+                  className="btn-secondary text-xs px-3 py-1.5"
                 >
-                  Logout
+                  Sign out
                 </button>
               </div>
             </div>
@@ -90,21 +93,15 @@ function Layout() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Modern Tabs - Only show on home page */}
+        {/* Tab Navigation - Only show on home page */}
         {!isSettingsPage && (
           <div className="mb-8">
-            <nav className="flex space-x-1 p-1 bg-void-900/50 backdrop-blur-sm rounded-lg border border-white/5 w-fit">
+            <nav className="tab-nav">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    px-5 py-2 text-sm font-medium rounded-md transition-all duration-200
-                    ${activeTab === tab.id
-                      ? 'bg-signal-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                    }
-                  `}
+                  className={`tab-item ${activeTab === tab.id ? 'tab-item-active' : ''}`}
                 >
                   {tab.label}
                 </button>

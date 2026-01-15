@@ -20,7 +20,7 @@ export default function MCPProfilesSettings() {
     return (
       <div className="flex items-center justify-center py-12">
         <svg
-          className="animate-spin h-8 w-8 text-gray-400"
+          className="animate-spin h-8 w-8 text-[var(--text-muted)]"
           fill="none"
           viewBox="0 0 24 24"
         >
@@ -38,7 +38,7 @@ export default function MCPProfilesSettings() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading MCP profiles...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading MCP profiles...</span>
       </div>
     );
   }
@@ -85,14 +85,14 @@ export default function MCPProfilesSettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">MCP Profiles</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <h3 className="text-lg font-medium text-[var(--text-primary)]">MCP Profiles</h3>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Configure search profiles for MCP clients like Claude Desktop
           </p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[var(--accent-primary)] border border-transparent rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2"
         >
           <svg
             className="w-4 h-4 mr-2"
@@ -143,9 +143,9 @@ export default function MCPProfilesSettings() {
 
       {/* Empty State */}
       {(!profiles || profiles.length === 0) && (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+        <div className="text-center py-12 bg-[var(--bg-tertiary)] rounded-lg border-2 border-dashed border-[var(--border)]">
           <svg
-            className="mx-auto h-12 w-12 text-gray-400"
+            className="mx-auto h-12 w-12 text-[var(--text-muted)]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -157,16 +157,16 @@ export default function MCPProfilesSettings() {
               d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">
+          <h3 className="mt-2 text-sm font-medium text-[var(--text-primary)]">
             No MCP profiles
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Get started by creating a new profile to expose your collections to
             AI assistants.
           </p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[var(--accent-primary)] border border-transparent rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2"
           >
             <svg
               className="w-4 h-4 mr-2"

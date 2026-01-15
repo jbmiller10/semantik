@@ -55,14 +55,14 @@ function SettingsPage() {
       {/* Page Header with Back Button */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Manage your preferences, plugins, and system settings
           </p>
         </div>
         <button
           onClick={() => navigate('/')}
-          className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="inline-flex items-center px-3 py-2 border border-[var(--border)] shadow-sm text-sm leading-4 font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)]"
         >
           <ArrowLeft className="mr-2 -ml-0.5 h-4 w-4" />
           Back to Home
@@ -70,7 +70,7 @@ function SettingsPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-[var(--border)]">
         <nav className="-mb-px flex space-x-8" aria-label="Settings tabs">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
@@ -83,14 +83,14 @@ function SettingsPage() {
                   whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
                   ${
                     isActive
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                   }
                 `}
               >
                 <Icon
                   className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
-                    isActive ? 'text-blue-500' : 'text-gray-400'
+                    isActive ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'
                   }`}
                 />
                 {tab.label}

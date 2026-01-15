@@ -147,7 +147,7 @@ function PluginsSettings() {
     if (isLoading) {
       return (
         <div className="flex items-center justify-center py-12">
-          <svg className="animate-spin h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
             <circle
               className="opacity-25"
               cx="12"
@@ -162,7 +162,7 @@ function PluginsSettings() {
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             />
           </svg>
-          <span className="ml-3 text-gray-500">Loading plugins...</span>
+          <span className="ml-3 text-[var(--text-secondary)]">Loading plugins...</span>
         </div>
       );
     }
@@ -205,7 +205,7 @@ function PluginsSettings() {
       return (
         <div className="text-center py-12">
           <svg
-            className="mx-auto h-12 w-12 text-gray-400"
+            className="mx-auto h-12 w-12 text-[var(--text-muted)]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -217,8 +217,8 @@ function PluginsSettings() {
               d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No plugins installed</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <h3 className="mt-2 text-sm font-medium text-[var(--text-primary)]">No plugins installed</h3>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Check the Available tab for plugins you can install.
           </p>
         </div>
@@ -229,12 +229,12 @@ function PluginsSettings() {
       <div className="space-y-6">
         {/* Header with refresh button */}
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-[var(--text-secondary)]">
             Manage installed plugins. Changes require a service restart to take effect.
           </p>
           <button
             onClick={() => refetch()}
-            className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="inline-flex items-center px-3 py-1.5 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)]"
           >
             <svg
               className="h-4 w-4 mr-1.5"
@@ -260,17 +260,17 @@ function PluginsSettings() {
             if (typePlugins.length === 0) return null;
 
             return (
-              <div key={type} className="bg-white shadow rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <div key={type} className="bg-[var(--bg-secondary)] shadow rounded-lg overflow-hidden border border-[var(--border)]">
+                <div className="px-4 py-3 bg-[var(--bg-tertiary)] border-b border-[var(--border)]">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400">{getPluginTypeIcon(type)}</span>
-                    <h3 className="text-sm font-medium text-gray-900">
+                    <span className="text-[var(--text-muted)]">{getPluginTypeIcon(type)}</span>
+                    <h3 className="text-sm font-medium text-[var(--text-primary)]">
                       {PLUGIN_TYPE_LABELS[type]}
                     </h3>
-                    <span className="text-xs text-gray-400">({typePlugins.length})</span>
+                    <span className="text-xs text-[var(--text-muted)]">({typePlugins.length})</span>
                   </div>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-[var(--border)]">
                   {typePlugins.map((plugin) => (
                     <div key={plugin.id} className="p-4">
                       <PluginCard
@@ -296,7 +296,7 @@ function PluginsSettings() {
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-[var(--border)]">
         <nav className="-mb-px flex space-x-8" aria-label="Plugins tabs">
           <button
             onClick={() => setActiveTab('installed')}
@@ -304,14 +304,14 @@ function PluginsSettings() {
               whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
               ${
                 activeTab === 'installed'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)]'
               }
             `}
           >
             Installed
             {plugins && plugins.length > 0 && (
-              <span className="ml-2 text-xs text-gray-400">({plugins.length})</span>
+              <span className="ml-2 text-xs text-[var(--text-muted)]">({plugins.length})</span>
             )}
           </button>
           <button
@@ -320,8 +320,8 @@ function PluginsSettings() {
               whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
               ${
                 activeTab === 'available'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)]'
               }
             `}
           >

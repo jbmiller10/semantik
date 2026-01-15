@@ -63,8 +63,8 @@ describe('Layout', () => {
   it('renders header with app title and user info', () => {
     render(<Layout />)
 
-    expect(screen.getByText('SEMANTIK')).toBeInTheDocument()
-    expect(screen.getByText('Intelligence Pipeline')).toBeInTheDocument()
+    expect(screen.getByText('Semantik')).toBeInTheDocument()
+    expect(screen.getByText('Semantic Search')).toBeInTheDocument()
     expect(screen.getByText('testuser')).toBeInTheDocument()
   })
 
@@ -83,7 +83,7 @@ describe('Layout', () => {
     render(<Layout />)
 
     const searchTab = screen.getByRole('button', { name: 'Search' })
-    expect(searchTab).toHaveClass('text-white', 'bg-signal-600')
+    expect(searchTab).toHaveClass('tab-item-active')
   })
 
   it('handles tab switching', async () => {
@@ -102,7 +102,7 @@ describe('Layout', () => {
 
     render(<Layout />)
 
-    const logoutButton = screen.getByRole('button', { name: /logout/i })
+    const logoutButton = screen.getByRole('button', { name: /sign out/i })
     await user.click(logoutButton)
 
     expect(mockLogout).toHaveBeenCalled()
@@ -140,7 +140,7 @@ describe('Layout', () => {
 
     render(<Layout />)
 
-    const backLink = screen.getByText('← Back')
+    const backLink = screen.getByText('Back')
     expect(backLink).toBeInTheDocument()
     expect(backLink).toHaveAttribute('href', '/')
   })

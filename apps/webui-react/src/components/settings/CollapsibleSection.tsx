@@ -30,10 +30,10 @@ interface CollapsibleSectionProps {
 function CollapsibleSectionSkeleton() {
   return (
     <div className="animate-pulse space-y-4">
-      <div className="h-4 bg-gray-200 rounded w-3/4" />
-      <div className="h-4 bg-gray-200 rounded w-1/2" />
-      <div className="h-10 bg-gray-200 rounded" />
-      <div className="h-4 bg-gray-200 rounded w-2/3" />
+      <div className="h-4 bg-[var(--bg-tertiary)] rounded w-3/4" />
+      <div className="h-4 bg-[var(--bg-tertiary)] rounded w-1/2" />
+      <div className="h-10 bg-[var(--bg-tertiary)] rounded" />
+      <div className="h-4 bg-[var(--bg-tertiary)] rounded w-2/3" />
     </div>
   );
 }
@@ -63,26 +63,26 @@ export function CollapsibleSection({
   };
 
   return (
-    <div className={`bg-white shadow rounded-lg overflow-hidden ${className}`}>
+    <div className={`bg-[var(--bg-secondary)] shadow rounded-lg overflow-hidden border border-[var(--border)] ${className}`}>
       {/* Header - clickable toggle */}
       <button
         type="button"
         onClick={handleToggle}
-        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full flex items-center justify-between p-4 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-primary)] transition-colors"
         aria-expanded={isOpen}
         aria-controls={`section-content-${name}`}
       >
         <div className="flex items-center space-x-3">
           {Icon && (
             <Icon
-              className={`w-5 h-5 ${isOpen ? 'text-blue-500' : 'text-gray-400'}`}
+              className={`w-5 h-5 ${isOpen ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'}`}
             />
           )}
-          <span className="font-medium text-gray-900">{title}</span>
+          <span className="font-medium text-[var(--text-primary)]">{title}</span>
           {badge && <span className="ml-2">{badge}</span>}
           {isLoading && (
             <svg
-              className="animate-spin h-4 w-4 text-gray-400 ml-2"
+              className="animate-spin h-4 w-4 text-[var(--text-muted)] ml-2"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -103,7 +103,7 @@ export function CollapsibleSection({
           )}
         </div>
         <ChevronDown
-          className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${
+          className={`w-5 h-5 text-[var(--text-muted)] transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`}
         />
@@ -113,7 +113,7 @@ export function CollapsibleSection({
       {isOpen && (
         <div
           id={`section-content-${name}`}
-          className="p-4 border-t border-gray-200"
+          className="p-4 border-t border-[var(--border)]"
         >
           {isLoading ? <CollapsibleSectionSkeleton /> : children}
         </div>

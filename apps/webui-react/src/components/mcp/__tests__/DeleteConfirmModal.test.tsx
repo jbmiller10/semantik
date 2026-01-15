@@ -228,7 +228,7 @@ describe('DeleteConfirmModal', () => {
       const user = userEvent.setup();
       const { container } = renderComponent();
 
-      const backdrop = container.querySelector('.fixed.inset-0.bg-black');
+      const backdrop = container.querySelector('.fixed.inset-0.bg-black\\/50');
       await user.click(backdrop!);
 
       expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
@@ -246,7 +246,7 @@ describe('DeleteConfirmModal', () => {
       const deleteButton = screen.getByRole('button', { name: 'Delete Profile' });
       await user.click(deleteButton);
 
-      const backdrop = container.querySelector('.fixed.inset-0.bg-black');
+      const backdrop = container.querySelector('.fixed.inset-0.bg-black\\/50');
       await user.click(backdrop!);
 
       // onClose should not have been called (except possibly from successful deletion)

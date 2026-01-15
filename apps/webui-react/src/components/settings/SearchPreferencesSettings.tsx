@@ -97,7 +97,7 @@ export default function SearchPreferencesSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <svg className="animate-spin h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"
@@ -112,7 +112,7 @@ export default function SearchPreferencesSettings() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading search preferences...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading search preferences...</span>
       </div>
     );
   }
@@ -143,8 +143,8 @@ export default function SearchPreferencesSettings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h3 className="text-lg leading-6 font-medium text-gray-900">Search Preferences</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">Search Preferences</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Configure default search behavior. These settings apply when performing semantic searches.
         </p>
       </div>
@@ -175,12 +175,12 @@ export default function SearchPreferencesSettings() {
       </div>
 
       {/* Search Settings Form */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
           <div className="space-y-6">
             {/* Results Count */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Default Results Count
               </label>
               <input
@@ -191,14 +191,14 @@ export default function SearchPreferencesSettings() {
                 onChange={(e) => handleChange('top_k', parseInt(e.target.value, 10) || 10)}
                 className={getInputClassName(false, false)}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Number of results to return (1-250)
               </p>
             </div>
 
             {/* Search Mode */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 Search Mode
               </label>
               <div className="flex space-x-2">
@@ -207,8 +207,8 @@ export default function SearchPreferencesSettings() {
                   onClick={() => handleChange('mode', 'dense')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.mode === 'dense'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   Dense
@@ -218,8 +218,8 @@ export default function SearchPreferencesSettings() {
                   onClick={() => handleChange('mode', 'sparse')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.mode === 'sparse'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   Sparse
@@ -229,14 +229,14 @@ export default function SearchPreferencesSettings() {
                   onClick={() => handleChange('mode', 'hybrid')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.mode === 'hybrid'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   Hybrid
                 </button>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Dense uses vector embeddings, Sparse uses keyword matching, Hybrid combines both
               </p>
             </div>
@@ -244,7 +244,7 @@ export default function SearchPreferencesSettings() {
             {/* RRF Constant - only shown when mode is hybrid */}
             {formState.mode === 'hybrid' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
                   RRF Constant (k)
                 </label>
                 <input
@@ -255,7 +255,7 @@ export default function SearchPreferencesSettings() {
                   onChange={(e) => handleChange('rrf_k', parseInt(e.target.value, 10) || 60)}
                   className={getInputClassName(false, false)}
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Reciprocal Rank Fusion constant for combining dense and sparse results (1-100)
                 </p>
               </div>
@@ -269,17 +269,17 @@ export default function SearchPreferencesSettings() {
                   checked={formState.use_reranker}
                   onChange={(e) => handleChange('use_reranker', e.target.checked)}
                   disabled={!systemStatus?.reranking_available}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
+                  className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)] disabled:opacity-50"
                 />
               </div>
               <div className="ml-3 text-sm">
-                <label className="font-medium text-gray-700">
+                <label className="font-medium text-[var(--text-primary)]">
                   Use Reranker
                   {!systemStatus?.reranking_available && (
-                    <span className="ml-2 text-gray-400 text-xs">(not available)</span>
+                    <span className="ml-2 text-[var(--text-muted)] text-xs">(not available)</span>
                   )}
                 </label>
-                <p className="text-gray-500">
+                <p className="text-[var(--text-secondary)]">
                   Apply neural reranking to improve result quality (requires GPU)
                 </p>
               </div>
@@ -287,7 +287,7 @@ export default function SearchPreferencesSettings() {
 
             {/* Similarity Threshold */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Similarity Threshold
               </label>
               <input
@@ -300,14 +300,14 @@ export default function SearchPreferencesSettings() {
                 placeholder="No threshold"
                 className={getInputClassName(false, false)}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Minimum similarity score (0.0-1.0). Leave empty for no threshold.
               </p>
             </div>
 
             {/* HyDE Query Expansion */}
-            <div className="space-y-4 pt-4 border-t border-gray-200">
-              <h4 className="text-sm font-medium text-gray-900">HyDE Query Expansion</h4>
+            <div className="space-y-4 pt-4 border-t border-[var(--border)]">
+              <h4 className="text-sm font-medium text-[var(--text-primary)]">HyDE Query Expansion</h4>
 
               {/* Enable HyDE Toggle */}
               <div className="flex items-start">
@@ -316,12 +316,12 @@ export default function SearchPreferencesSettings() {
                     type="checkbox"
                     checked={formState.use_hyde}
                     onChange={(e) => handleChange('use_hyde', e.target.checked)}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)]"
                   />
                 </div>
                 <div className="ml-3 text-sm">
-                  <label className="font-medium text-gray-700">Enable HyDE by default</label>
-                  <p className="text-gray-500">
+                  <label className="font-medium text-[var(--text-primary)]">Enable HyDE by default</label>
+                  <p className="text-[var(--text-secondary)]">
                     Generate hypothetical documents for improved search quality
                   </p>
                 </div>
@@ -331,7 +331,7 @@ export default function SearchPreferencesSettings() {
                 <>
                   {/* Quality Tier */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                       Quality Tier
                     </label>
                     <div className="flex space-x-2">
@@ -340,8 +340,8 @@ export default function SearchPreferencesSettings() {
                         onClick={() => handleChange('hyde_quality_tier', 'low')}
                         className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                           formState.hyde_quality_tier === 'low'
-                            ? 'bg-blue-100 border-blue-500 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                            ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                         }`}
                       >
                         Low (Faster)
@@ -351,21 +351,21 @@ export default function SearchPreferencesSettings() {
                         onClick={() => handleChange('hyde_quality_tier', 'high')}
                         className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                           formState.hyde_quality_tier === 'high'
-                            ? 'bg-blue-100 border-blue-500 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                            ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                            : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                         }`}
                       >
                         High (Better)
                       </button>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
                       Low tier recommended for faster responses
                     </p>
                   </div>
 
                   {/* Timeout */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-[var(--text-primary)]">
                       Timeout
                     </label>
                     <div className="flex items-center space-x-3">
@@ -377,11 +377,11 @@ export default function SearchPreferencesSettings() {
                         onChange={(e) => handleChange('hyde_timeout_seconds', parseInt(e.target.value, 10))}
                         className="flex-1"
                       />
-                      <span className="text-sm text-gray-600 w-12">
+                      <span className="text-sm text-[var(--text-secondary)] w-12">
                         {formState.hyde_timeout_seconds}s
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
                       Max time for HyDE generation (3-60s)
                     </p>
                   </div>
@@ -398,7 +398,7 @@ export default function SearchPreferencesSettings() {
           type="button"
           onClick={handleReset}
           disabled={resetMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {resetMutation.isPending ? 'Resetting...' : 'Reset to Defaults'}
         </button>
@@ -406,7 +406,7 @@ export default function SearchPreferencesSettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>

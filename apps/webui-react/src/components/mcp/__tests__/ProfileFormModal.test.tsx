@@ -474,7 +474,7 @@ describe('ProfileFormModal', () => {
       const user = userEvent.setup();
       const { container } = renderComponent();
 
-      const backdrop = container.querySelector('.fixed.inset-0.bg-black');
+      const backdrop = container.querySelector('.fixed.inset-0.bg-black\\/50');
       await user.click(backdrop!);
 
       expect(defaultProps.onClose).toHaveBeenCalledTimes(1);

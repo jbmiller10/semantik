@@ -14,18 +14,22 @@ export const getInputClassName = (
   isDisabled: boolean,
   additionalClasses = ''
 ): string => {
-  const baseClasses = 'mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none bg-void-950/50 text-gray-100';
-  const stateClasses = hasError
-    ? 'border-red-500/50 focus:ring-red-500/50 focus:border-red-500'
-    : 'border-void-700 focus:ring-signal-500/50 focus:border-signal-500';
-  const disabledClasses = isDisabled ? 'bg-void-800 cursor-not-allowed opacity-60' : '';
+  const baseClasses = 'mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ' +
+    'bg-[var(--input-bg)] text-[var(--text-primary)] border-[var(--input-border)] ' +
+    'focus:border-[var(--input-focus)] focus:ring-1 focus:ring-[var(--input-focus)] ' +
+    'placeholder:text-[var(--text-muted)] transition-colors duration-150 outline-none';
+
+  const errorClasses = hasError
+    ? 'border-error focus:ring-error/50 focus:border-error'
+    : '';
+  const disabledClasses = isDisabled ? 'opacity-60 cursor-not-allowed' : '';
 
   // If additionalClasses are provided, they can override base classes
   if (additionalClasses) {
-    return `${additionalClasses} ${stateClasses} ${disabledClasses}`.trim();
+    return `${additionalClasses} ${errorClasses} ${disabledClasses}`.trim();
   }
 
-  return `${baseClasses} ${stateClasses} ${disabledClasses}`.trim();
+  return `${baseClasses} ${errorClasses} ${disabledClasses}`.trim();
 };
 
 /**
@@ -41,10 +45,50 @@ export const getInputClassNameWithBase = (
   isDisabled: boolean,
   customBaseClasses: string
 ): string => {
-  const stateClasses = hasError
-    ? 'border-red-500/50 focus:ring-red-500/50 focus:border-red-500'
-    : 'border-void-700 focus:ring-signal-500/50 focus:border-signal-500';
-  const disabledClasses = isDisabled ? 'bg-void-800 cursor-not-allowed opacity-60' : '';
+  const errorClasses = hasError
+    ? 'border-error focus:ring-error/50 focus:border-error'
+    : 'border-[var(--input-border)] focus:ring-[var(--input-focus)]/50 focus:border-[var(--input-focus)]';
+  const disabledClasses = isDisabled ? 'opacity-60 cursor-not-allowed' : '';
 
-  return `${customBaseClasses} ${stateClasses} ${disabledClasses}`.trim();
+  return `${customBaseClasses} ${errorClasses} ${disabledClasses}`.trim();
+};
+
+/**
+ * Returns Tailwind CSS classes for select elements
+ */
+export const getSelectClassName = (
+  hasError: boolean,
+  isDisabled: boolean
+): string => {
+  const baseClasses = 'mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ' +
+    'bg-[var(--input-bg)] text-[var(--text-primary)] border-[var(--input-border)] ' +
+    'focus:border-[var(--input-focus)] focus:ring-1 focus:ring-[var(--input-focus)] ' +
+    'transition-colors duration-150 outline-none';
+
+  const errorClasses = hasError
+    ? 'border-error focus:ring-error/50 focus:border-error'
+    : '';
+  const disabledClasses = isDisabled ? 'opacity-60 cursor-not-allowed' : '';
+
+  return `${baseClasses} ${errorClasses} ${disabledClasses}`.trim();
+};
+
+/**
+ * Returns Tailwind CSS classes for textarea elements
+ */
+export const getTextareaClassName = (
+  hasError: boolean,
+  isDisabled: boolean
+): string => {
+  const baseClasses = 'mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border appearance-none ' +
+    'bg-[var(--input-bg)] text-[var(--text-primary)] border-[var(--input-border)] ' +
+    'focus:border-[var(--input-focus)] focus:ring-1 focus:ring-[var(--input-focus)] ' +
+    'placeholder:text-[var(--text-muted)] transition-colors duration-150 outline-none resize-y';
+
+  const errorClasses = hasError
+    ? 'border-error focus:ring-error/50 focus:border-error'
+    : '';
+  const disabledClasses = isDisabled ? 'opacity-60 cursor-not-allowed' : '';
+
+  return `${baseClasses} ${errorClasses} ${disabledClasses}`.trim();
 };

@@ -23,11 +23,11 @@ export default function AdminTab() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+        <h3 className="text-lg font-medium text-[var(--text-primary)] flex items-center gap-2">
           <Shield className="h-5 w-5 text-amber-500" />
           Admin Settings
         </h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Administrative operations and system configuration. These settings affect all users.
         </p>
       </div>

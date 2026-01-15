@@ -60,9 +60,9 @@ export default function DangerZoneSettings() {
       </div>
 
       {/* Reset Database */}
-      <div className="bg-white border border-red-200 rounded-lg p-4">
-        <h4 className="font-medium text-gray-900 mb-2">Reset Database</h4>
-        <p className="text-sm text-gray-600 mb-3">
+      <div className="bg-[var(--bg-secondary)] border border-red-200 dark:border-red-900 rounded-lg p-4">
+        <h4 className="font-medium text-[var(--text-primary)] mb-2">Reset Database</h4>
+        <p className="text-sm text-[var(--text-secondary)] mb-3">
           This will permanently delete all collections, files, and associated data from the database.
           All Qdrant collections and parquet files will also be removed.
         </p>
@@ -79,28 +79,28 @@ export default function DangerZoneSettings() {
 
       {/* Confirmation Dialog */}
       {showConfirmDialog && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-black/50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="relative mx-auto p-5 border border-[var(--border)] w-96 shadow-lg rounded-md bg-[var(--bg-primary)]">
             <div className="mt-3 text-center">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30">
+                <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mt-4">
+              <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)] mt-4">
                 Confirm Database Reset
               </h3>
               <div className="mt-2 px-7 py-3">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-[var(--text-secondary)]">
                   Are you sure you want to reset the database? This will permanently delete all
                   collections, files, and embeddings.
                 </p>
-                <p className="text-sm text-red-600 font-semibold mt-2">
+                <p className="text-sm text-red-600 dark:text-red-400 font-semibold mt-2">
                   Type "{CONFIRMATION_TEXT}" to confirm:
                 </p>
                 <input
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
-                  className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="mt-2 w-full px-3 py-2 border border-[var(--border)] rounded-md bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder={`Type ${CONFIRMATION_TEXT}`}
                   autoFocus
                 />
@@ -128,7 +128,7 @@ export default function DangerZoneSettings() {
                     setShowConfirmDialog(false);
                     setConfirmText('');
                   }}
-                  className="mt-3 px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  className="mt-3 px-4 py-2 bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-base font-medium rounded-md w-full shadow-sm hover:bg-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]"
                 >
                   Cancel
                 </button>

@@ -5,36 +5,51 @@ function Toast() {
 
   if (!toasts || toasts.length === 0) return null;
 
+  const getBorderColor = (type: string) => {
+    switch (type) {
+      case 'error':
+        return 'border-l-error';
+      case 'success':
+        return 'border-l-success';
+      case 'warning':
+        return 'border-l-warning';
+      default:
+        return 'border-l-info';
+    }
+  };
+
+  const getTitle = (type: string) => {
+    switch (type) {
+      case 'error':
+        return 'Error';
+      case 'success':
+        return 'Success';
+      case 'warning':
+        return 'Warning';
+      default:
+        return 'Info';
+    }
+  };
+
   return (
     <div className="fixed bottom-0 right-0 p-6 space-y-4 z-50">
       {toasts.map((toast) => (
         <div
           key={toast.id}
           data-testid="toast"
-          className={`max-w-sm w-full bg-void-900 shadow-lg rounded-lg pointer-events-auto ring-1 ring-void-700 overflow-hidden toast-${toast.type} ${
-            toast.type === 'error'
-              ? 'border-l-4 border-red-500'
-              : toast.type === 'success'
-              ? 'border-l-4 border-green-500'
-              : toast.type === 'warning'
-              ? 'border-l-4 border-yellow-500'
-              : 'border-l-4 border-signal-500'
-          }`}
+          className={`max-w-sm w-full bg-[var(--bg-elevated)] shadow-lg rounded-lg pointer-events-auto border border-[var(--border)] overflow-hidden animate-slide-up border-l-4 ${getBorderColor(toast.type)}`}
         >
           <div className="p-4">
             <div className="flex items-start">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-100">
-                  {toast.type === 'error' && 'Error'}
-                  {toast.type === 'success' && 'Success'}
-                  {toast.type === 'warning' && 'Warning'}
-                  {toast.type === 'info' && 'Info'}
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  {getTitle(toast.type)}
                 </p>
-                <p className="mt-1 text-sm text-gray-400">{toast.message}</p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">{toast.message}</p>
               </div>
               <button
                 onClick={() => removeToast(toast.id)}
-                className="ml-4 text-gray-500 hover:text-gray-300 focus:outline-none transition-colors"
+                className="ml-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none transition-colors"
               >
                 <svg
                   className="h-5 w-5"

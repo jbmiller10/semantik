@@ -60,11 +60,11 @@ export default function SearchRerankSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <svg className="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-6 w-6 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
-        <span className="ml-2 text-gray-500">Loading search settings...</span>
+        <span className="ml-2 text-[var(--text-secondary)]">Loading search settings...</span>
       </div>
     );
   }
@@ -107,7 +107,7 @@ export default function SearchRerankSettings() {
       <div className="space-y-4">
         {/* Candidate Multiplier */}
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-[var(--text-primary)]">
             Rerank Candidate Multiplier
           </label>
           <input
@@ -118,7 +118,7 @@ export default function SearchRerankSettings() {
             onChange={(e) => handleChange('rerank_candidate_multiplier', parseInt(e.target.value, 10) || 5)}
             className={getInputClassName(false, false)}
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Multiplier applied to requested results to get initial candidates (1-20).
             E.g., requesting 10 results with multiplier 5 fetches 50 candidates for reranking.
           </p>
@@ -126,7 +126,7 @@ export default function SearchRerankSettings() {
 
         {/* Min Candidates */}
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-[var(--text-primary)]">
             Minimum Candidates
           </label>
           <input
@@ -137,14 +137,14 @@ export default function SearchRerankSettings() {
             onChange={(e) => handleChange('rerank_min_candidates', parseInt(e.target.value, 10) || 20)}
             className={getInputClassName(false, false)}
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Minimum number of candidates to fetch for reranking (5-100)
           </p>
         </div>
 
         {/* Max Candidates */}
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-[var(--text-primary)]">
             Maximum Candidates
           </label>
           <input
@@ -155,14 +155,14 @@ export default function SearchRerankSettings() {
             onChange={(e) => handleChange('rerank_max_candidates', parseInt(e.target.value, 10) || 200)}
             className={getInputClassName(false, false)}
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Maximum number of candidates to rerank (50-500). Higher values use more GPU memory.
           </p>
         </div>
 
         {/* Hybrid Weight */}
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-[var(--text-primary)]">
             Hybrid Weight ({formState.rerank_hybrid_weight.toFixed(2)})
           </label>
           <input
@@ -172,26 +172,26 @@ export default function SearchRerankSettings() {
             step={0.05}
             value={formState.rerank_hybrid_weight}
             onChange={(e) => handleChange('rerank_hybrid_weight', parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer"
           />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
+          <div className="flex justify-between text-xs text-[var(--text-secondary)] mt-1">
             <span>Dense only (0.0)</span>
             <span>Balanced (0.5)</span>
             <span>Sparse only (1.0)</span>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Weight given to sparse (keyword) scores vs dense (semantic) scores in hybrid mode
           </p>
         </div>
       </div>
 
       {/* Action Buttons */}
-      <div className="flex justify-between pt-4 border-t border-gray-200">
+      <div className="flex justify-between pt-4 border-t border-[var(--border)]">
         <button
           type="button"
           onClick={handleReset}
           disabled={resetMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {resetMutation.isPending ? 'Resetting...' : 'Reset to Defaults'}
         </button>
@@ -199,7 +199,7 @@ export default function SearchRerankSettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>

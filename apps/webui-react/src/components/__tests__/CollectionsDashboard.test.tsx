@@ -436,7 +436,7 @@ describe('CollectionsDashboard', () => {
       // Check for the spinner by its classes instead of role
       const spinner = document.querySelector('.animate-spin');
       expect(spinner).toBeInTheDocument();
-      expect(spinner).toHaveClass('rounded-full', 'h-8', 'w-8', 'border-b-2', 'border-signal-500');
+      expect(spinner).toHaveClass('rounded-full', 'h-8', 'w-8', 'border-b-2');
     });
 
     it('should not show loading spinner when data exists and reloading', () => {
