@@ -9,5 +9,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [~] **Track: Implement HyDE (Hypothetical Document Embeddings) for Search**
+
+
+- [x] **Track: Implement HyDE (Hypothetical Document Embeddings) for Search**
+
   *Link: [./tracks/hyde_search_20260114/](./tracks/hyde_search_20260114/)*
