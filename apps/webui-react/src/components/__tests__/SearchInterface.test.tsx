@@ -158,7 +158,7 @@ describe('SearchInterface', () => {
 
     // Check main elements
     // Check main elements
-    expect(screen.getByText('Search Collections')).toBeInTheDocument()
+    expect(screen.getByText('Search Knowledge Base')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Enter your search query...')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
 

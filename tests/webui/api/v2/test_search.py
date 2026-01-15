@@ -1773,9 +1773,7 @@ class TestSearchHyDEAPI:
         )
 
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            response = await multi_collection_search(
-                mock_request, search_request, mock_user, mock_search_service
-            )
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify use_hyde is passed to service
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
@@ -1855,9 +1853,7 @@ class TestSearchHyDEAPI:
         )
 
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            response = await single_collection_search(
-                mock_request, search_request, mock_user, mock_search_service
-            )
+            response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         call_kwargs = mock_search_service.single_collection_search.call_args.kwargs
         assert call_kwargs["use_hyde"] is True
@@ -1897,9 +1893,7 @@ class TestSearchHyDEAPI:
         )
 
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
-            response = await multi_collection_search(
-                mock_request, search_request, mock_user, mock_search_service
-            )
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.hyde_used is False
         assert response.hyde_info is None

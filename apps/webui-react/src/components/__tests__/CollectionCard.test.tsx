@@ -156,9 +156,9 @@ describe('CollectionCard', () => {
     expect(screen.getByText('Indexing documents...')).toBeInTheDocument()
 
     // Check that the card has the processing styles
-    const card = screen.getByText('test-collection').closest('div[class*="ring-2"]')
+    const card = screen.getByText('test-collection').closest('div[class*="ring-1"]')
     expect(card).toBeTruthy()
-    expect(card).toHaveClass('ring-signal-400')
+    expect(card).toHaveClass('ring-signal-500/50')
   })
 
   it('disables manage button during processing', () => {

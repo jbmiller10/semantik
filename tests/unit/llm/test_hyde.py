@@ -26,7 +26,7 @@ class TestHyDEConfig:
     def test_default_values(self) -> None:
         """Default configuration has sensible values."""
         config = HyDEConfig()
-        assert config.timeout_seconds == 10
+        assert config.timeout_seconds == 30
         assert config.max_tokens == 256
         assert config.temperature == 0.7
 
@@ -162,7 +162,7 @@ class TestGenerateHyDEExpansion:
         call_kwargs = mock_provider.generate.call_args.kwargs
         assert call_kwargs["temperature"] == 0.7  # Default
         assert call_kwargs["max_tokens"] == 256  # Default
-        assert call_kwargs["timeout"] == 10.0  # Default
+        assert call_kwargs["timeout"] == 30.0  # Default
 
     @pytest.mark.asyncio()
     async def test_uses_hyde_system_prompt(self, mock_provider: AsyncMock, mock_llm_response: LLMResponse) -> None:

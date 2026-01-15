@@ -19,7 +19,7 @@ def _create_mock_user_prefs() -> MagicMock:
     prefs = MagicMock()
     prefs.search_use_hyde = False
     prefs.search_hyde_quality_tier = "LOW"
-    prefs.search_hyde_timeout_seconds = 10
+    prefs.search_hyde_timeout_seconds = 30
     return prefs
 
 

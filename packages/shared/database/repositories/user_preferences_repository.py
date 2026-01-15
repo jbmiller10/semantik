@@ -73,7 +73,7 @@ class UserPreferencesRepository:
         # HyDE settings
         "search_use_hyde": False,
         "search_hyde_quality_tier": "low",
-        "search_hyde_timeout_seconds": 10,
+        "search_hyde_timeout_seconds": 30,
     }
 
     COLLECTION_DEFAULTS: dict[str, int | str | bool | None] = {

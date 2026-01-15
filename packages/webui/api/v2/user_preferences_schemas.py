@@ -21,7 +21,7 @@ class SearchPreferences(BaseModel):
     # HyDE settings
     use_hyde: bool = Field(default=False, description="Enable HyDE query expansion by default")
     hyde_quality_tier: Literal["high", "low"] = Field(default="low", description="LLM quality tier for HyDE generation")
-    hyde_timeout_seconds: int = Field(default=10, ge=3, le=60, description="Timeout for HyDE generation (3-60 seconds)")
+    hyde_timeout_seconds: int = Field(default=30, ge=3, le=180, description="Timeout for HyDE generation (3-180 seconds, higher for local models)")
 
     model_config = ConfigDict(
         extra="forbid",
@@ -34,7 +34,7 @@ class SearchPreferences(BaseModel):
                 "similarity_threshold": None,
                 "use_hyde": False,
                 "hyde_quality_tier": "low",
-                "hyde_timeout_seconds": 10,
+                "hyde_timeout_seconds": 30,
             }
         },
     )
@@ -136,7 +136,7 @@ class UserPreferencesResponse(BaseModel):
                     "similarity_threshold": None,
                     "use_hyde": False,
                     "hyde_quality_tier": "low",
-                    "hyde_timeout_seconds": 10,
+                    "hyde_timeout_seconds": 30,
                 },
                 "collection_defaults": {
                     "embedding_model": None,

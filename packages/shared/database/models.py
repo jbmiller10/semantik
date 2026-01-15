@@ -1147,7 +1147,7 @@ class UserPreferences(Base):
     - search_similarity_threshold: Minimum similarity score (0-1, NULL for no threshold)
     - search_use_hyde: Enable HyDE query expansion (default false)
     - search_hyde_quality_tier: 'high' or 'low' LLM tier for HyDE (default 'low')
-    - search_hyde_timeout_seconds: Timeout for HyDE generation (3-60, default 10)
+    - search_hyde_timeout_seconds: Timeout for HyDE generation (3-180, default 30)
 
     Collection defaults:
     - default_embedding_model: Model ID or NULL for system default
@@ -1185,7 +1185,7 @@ class UserPreferences(Base):
     # HyDE settings
     search_use_hyde = Column(Boolean, nullable=False, default=False)
     search_hyde_quality_tier = Column(String(4), nullable=False, default="low")
-    search_hyde_timeout_seconds = Column(Integer, nullable=False, default=10)
+    search_hyde_timeout_seconds = Column(Integer, nullable=False, default=30)
 
     # Collection defaults
     default_embedding_model = Column(String(128), nullable=True)
@@ -1228,7 +1228,7 @@ class UserPreferences(Base):
             name="ck_user_preferences_search_hyde_quality_tier",
         ),
         CheckConstraint(
-            "search_hyde_timeout_seconds >= 3 AND search_hyde_timeout_seconds <= 60",
+            "search_hyde_timeout_seconds >= 3 AND search_hyde_timeout_seconds <= 180",
             name="ck_user_preferences_search_hyde_timeout",
         ),
         CheckConstraint(

@@ -33,14 +33,10 @@ class TestMCPSearchToolHyDESchema:
     def test_search_tool_hyde_description_includes_profile_default(self) -> None:
         """Search tool use_hyde description shows profile default value."""
         profile_hyde_enabled = {"name": "test", "use_hyde": True}
-        tool_enabled = build_search_tool(
-            name="search_test", description="Test", profile=profile_hyde_enabled
-        )
+        tool_enabled = build_search_tool(name="search_test", description="Test", profile=profile_hyde_enabled)
 
         profile_hyde_disabled = {"name": "test", "use_hyde": False}
-        tool_disabled = build_search_tool(
-            name="search_test", description="Test", profile=profile_hyde_disabled
-        )
+        tool_disabled = build_search_tool(name="search_test", description="Test", profile=profile_hyde_disabled)
 
         assert "True" in tool_enabled.inputSchema["properties"]["use_hyde"]["description"]
         assert "False" in tool_disabled.inputSchema["properties"]["use_hyde"]["description"]
@@ -61,9 +57,7 @@ class TestMCPServerHyDEExecution:
     @pytest.fixture()
     def server_with_profile(self) -> SemantikMCPServer:
         """Create MCP server with a test profile."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {
@@ -122,9 +116,7 @@ class TestMCPServerHyDEExecution:
         """Explicit use_hyde=False argument overrides profile's True default."""
         server_with_profile.api_client.search = AsyncMock(return_value=mock_search_response)
 
-        await server_with_profile.call_tool(
-            "search_coding", {"query": "test", "use_hyde": False}
-        )
+        await server_with_profile.call_tool("search_coding", {"query": "test", "use_hyde": False})
 
         call_kwargs = server_with_profile.api_client.search.call_args.kwargs
         assert call_kwargs["use_hyde"] is False
@@ -133,9 +125,7 @@ class TestMCPServerHyDEExecution:
 
     async def test_search_argument_overrides_profile_hyde_false(self) -> None:
         """Explicit use_hyde=True argument overrides profile's False default."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {
@@ -191,9 +181,7 @@ class TestMCPServerHyDEExecution:
 
     async def test_search_response_formatting_with_hyde_info(self) -> None:
         """Search response includes HyDE-related information if present."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {
@@ -242,9 +230,7 @@ class TestMCPServerHyDEEdgeCases:
 
     async def test_profile_without_use_hyde_defaults_to_false(self) -> None:
         """Profile missing use_hyde field defaults to False."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {
@@ -273,9 +259,7 @@ class TestMCPServerHyDEEdgeCases:
 
     async def test_use_hyde_boolean_coercion(self) -> None:
         """Truthy/falsy values are coerced to boolean for use_hyde."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {
@@ -287,9 +271,7 @@ class TestMCPServerHyDEEdgeCases:
                 }
             ]
         )
-        server.api_client.search = AsyncMock(
-            return_value={"query": "q", "total_results": 0, "results": []}
-        )
+        server.api_client.search = AsyncMock(return_value={"query": "q", "total_results": 0, "results": []})
 
         # Test truthy value (1 should be coerced to True)
         await server.call_tool("search_test", {"query": "test", "use_hyde": 1})
@@ -300,9 +282,7 @@ class TestMCPServerHyDEEdgeCases:
 
     async def test_list_tools_includes_hyde_in_schema(self) -> None:
         """list_tools returns tools with use_hyde in their schema."""
-        server = SemantikMCPServer(
-            webui_url="http://example.invalid", auth_token="token"
-        )
+        server = SemantikMCPServer(webui_url="http://example.invalid", auth_token="token")
         server.api_client.get_profiles = AsyncMock(
             return_value=[
                 {

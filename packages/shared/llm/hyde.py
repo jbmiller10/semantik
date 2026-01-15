@@ -17,7 +17,7 @@ Example:
     provider = await factory.create_provider_for_tier(user_id, LLMQualityTier.LOW)
 
     async with provider:
-        config = HyDEConfig(timeout_seconds=10)
+        config = HyDEConfig(timeout_seconds=30)
         result, response = await generate_hyde_expansion(provider, "machine learning", config=config)
         print(result.expanded_query)  # Hypothetical document
     ```
@@ -79,7 +79,7 @@ class HyDEConfig:
         temperature: Sampling temperature (default 0.7 for creativity)
     """
 
-    timeout_seconds: int = 10
+    timeout_seconds: int = 30
     max_tokens: int = 256
     temperature: float = 0.7
 
