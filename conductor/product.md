@@ -10,7 +10,7 @@ The primary users of Semantik are individual developers and researchers who mana
 The fundamental goal of Semantik is to provide a highly extensible plugin system. This allows users to experiment with and implement custom retrieval, chunking, and reranking strategies tailored to their specific data and needs.
 
 ## Key Features
-- **Unified Search Interface:** A comprehensive search experience supporting semantic, keyword, and hybrid search modes to ensure relevant results.
+- **Unified Search Interface:** A comprehensive search experience supporting semantic, keyword, and hybrid search modes. Includes **Smart Search (HyDE)** to improve retrieval quality by generating hypothetical document embeddings.
 - **Embedding Visualization:** Real-time, interactive 2D projections of document embeddings to help users understand relationships and clusters within their data.
 - **MCP Integration:** Seamless connectivity with AI assistants like Claude and Cursor through the Model Context Protocol, allowing external tools to leverage Semantik's search capabilities.
 
