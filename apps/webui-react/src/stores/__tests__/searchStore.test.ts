@@ -41,6 +41,7 @@ describe('searchStore', () => {
         scoreThreshold: 0.0,
         searchType: 'semantic',
         useReranker: false,
+        hydeEnabled: false,
         hybridMode: 'weighted',
         keywordMode: 'any',
         hybridAlpha: 0.7,
@@ -149,6 +150,7 @@ describe('searchStore', () => {
         scoreThreshold: 0.0,
         searchType: 'semantic',
         useReranker: false,
+        hydeEnabled: false,
         hybridMode: 'weighted',
         keywordMode: 'any',
         // New sparse/hybrid search params

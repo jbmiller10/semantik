@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchStore, type SearchResult } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
-import { AlertTriangle, ChevronRight, FileText, Layers } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileText, Layers, Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { GPUMemoryError } from './GPUMemoryError';
 
 interface SearchResultsProps {
@@ -15,12 +15,14 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
     error,
     rerankingMetrics,
     failedCollections,
-    partialFailure
+    partialFailure,
+    hydeHypotheticalDoc
   } = useSearchStore();
   const gpuMemoryError = useSearchStore((state) => state.gpuMemoryError);
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
+  const [showHydeDoc, setShowHydeDoc] = useState(false);
 
   // Group results first by collection, then by document
   // Note: Results without a collection_id are grouped under 'unknown' for consistency
@@ -154,6 +156,35 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* HyDE Mental Model */}
+      {hydeHypotheticalDoc && (
+        <div className="bg-brand-50/50 border border-brand-100 rounded-lg overflow-hidden transition-all duration-200 shadow-sm">
+          <button
+            onClick={() => setShowHydeDoc(!showHydeDoc)}
+            className="w-full flex items-center justify-between p-4 hover:bg-brand-100/50 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-brand-100 rounded-lg">
+                <Brain className="w-5 h-5 text-brand-600" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-sm font-semibold text-brand-900">Search Mental Model</h3>
+                <p className="text-xs text-brand-600">HyDE generated passage used for semantic matching</p>
+              </div>
+            </div>
+            {showHydeDoc ? <ChevronUp className="w-5 h-5 text-brand-400" /> : <ChevronDown className="w-5 h-5 text-brand-400" />}
+          </button>
+          
+          {showHydeDoc && (
+            <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="bg-white/80 rounded-lg p-4 border border-brand-100/50 italic text-sm text-gray-700 leading-relaxed shadow-inner">
+                "{hydeHypotheticalDoc}"
+              </div>
+            </div>
+          )}
         </div>
       )}
 

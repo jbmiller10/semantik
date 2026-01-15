@@ -191,7 +191,7 @@ describe('SearchPreferencesSettings', () => {
 
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
+      const checkbox = screen.getByLabelText(/Use Reranker/);
       expect(checkbox).toBeDisabled();
       expect(screen.getByText('(not available)')).toBeInTheDocument();
     });
@@ -199,7 +199,7 @@ describe('SearchPreferencesSettings', () => {
     it('enables reranker checkbox when available', () => {
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
+      const checkbox = screen.getByLabelText(/Use Reranker/);
       expect(checkbox).not.toBeDisabled();
     });
   });
@@ -219,7 +219,7 @@ describe('SearchPreferencesSettings', () => {
       const user = userEvent.setup();
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
+      const checkbox = screen.getByLabelText(/Use Reranker/);
       expect(checkbox).not.toBeChecked();
 
       await user.click(checkbox);

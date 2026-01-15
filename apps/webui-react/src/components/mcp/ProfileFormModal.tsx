@@ -55,9 +55,10 @@ export default function ProfileFormModal({
         hybrid_alpha: profile.hybrid_alpha,
         search_mode: profile.search_mode,
         rrf_k: profile.rrf_k,
+        hyde_enabled: profile.hyde_enabled,
       });
       // Show advanced if any advanced fields have values
-      if (profile.score_threshold !== null || profile.hybrid_alpha !== null || profile.rrf_k !== null) {
+      if (profile.score_threshold !== null || profile.hybrid_alpha !== null || profile.rrf_k !== null || profile.hyde_enabled) {
         setShowAdvanced(true);
       }
     }
@@ -203,6 +204,7 @@ export default function ProfileFormModal({
             hybrid_alpha: formData.hybrid_alpha,
             search_mode: formData.search_mode,
             rrf_k: formData.rrf_k,
+            hyde_enabled: formData.hyde_enabled,
           },
         });
       } else {
@@ -218,6 +220,7 @@ export default function ProfileFormModal({
           hybrid_alpha: formData.hybrid_alpha,
           search_mode: formData.search_mode,
           rrf_k: formData.rrf_k,
+          hyde_enabled: formData.hyde_enabled,
         });
       }
       onClose();
@@ -529,6 +532,35 @@ export default function ProfileFormModal({
                 <span
                   className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                     formData.use_reranker ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* HyDE Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-medium text-gray-700">
+                  Enable HyDE
+                </span>
+                <p className="text-xs text-gray-500">
+                  Use Hypothetical Document Embeddings to enhance search relevance
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleChange('hyde_enabled', !formData.hyde_enabled)}
+                disabled={isSubmitting}
+                aria-label={formData.hyde_enabled ? 'Disable HyDE' : 'Enable HyDE'}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  formData.hyde_enabled ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+                role="switch"
+                aria-checked={formData.hyde_enabled}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    formData.hyde_enabled ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>

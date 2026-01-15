@@ -146,9 +146,10 @@ describe('ProfileFormModal', () => {
       renderComponent();
 
       const switches = screen.getAllByRole('switch');
-      expect(switches).toHaveLength(2);
+      expect(switches).toHaveLength(3);
       expect(switches[0]).toHaveAttribute('aria-label', 'Disable reranker');
-      expect(switches[1]).toHaveAttribute('aria-label', 'Disable profile');
+      expect(switches[1]).toHaveAttribute('aria-label', 'Enable HyDE');
+      expect(switches[2]).toHaveAttribute('aria-label', 'Disable profile');
     });
 
     it('should render Create Profile button', () => {
@@ -425,7 +426,7 @@ describe('ProfileFormModal', () => {
       renderComponent();
 
       const switches = screen.getAllByRole('switch');
-      const enabledSwitch = switches[1];
+      const enabledSwitch = switches[2];
 
       expect(enabledSwitch).toHaveAttribute('aria-checked', 'true');
 

@@ -36,6 +36,7 @@ export interface SearchParams {
   rerankModel?: string;
   rerankQuantization?: string;
   useReranker: boolean;
+  hydeEnabled: boolean;
 
   // New sparse/hybrid search parameters
   /** Search mode: dense (vector), sparse (BM25/SPLADE), or hybrid (RRF fusion) */
@@ -74,6 +75,7 @@ interface SearchState {
     original_count?: number;
     reranked_count?: number;
   } | null;
+  hydeHypotheticalDoc: string | null;
   gpuMemoryError: {
     message: string;
     suggestion: string;
@@ -102,6 +104,7 @@ interface SearchState {
   setRerankingAvailable: (available: boolean) => void;
   setRerankingModelsLoading: (loading: boolean) => void;
   setAbortController: (controller: AbortController | null) => void;
+  setHydeHypotheticalDoc: (doc: string | null) => void;
 }
 
 export const useSearchStore = create<SearchState>((set, get) => ({
@@ -115,6 +118,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     scoreThreshold: 0.0,
     searchType: 'semantic',
     useReranker: false,
+    hydeEnabled: false,
     // New sparse/hybrid search parameters
     searchMode: 'dense',
     rrfK: RRF_DEFAULTS.k,
@@ -127,6 +131,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   failedCollections: [],
   partialFailure: false,
   rerankingMetrics: null,
+  hydeHypotheticalDoc: null,
   gpuMemoryError: null,
   validationErrors: [],
   touched: {},
@@ -143,8 +148,9 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   setCollections: (collections) => set({ collections }),
   setFailedCollections: (failedCollections) => set({ failedCollections }),
   setPartialFailure: (partialFailure) => set({ partialFailure }),
-  clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false }),
+  clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false, hydeHypotheticalDoc: null }),
   setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
+  setHydeHypotheticalDoc: (hydeHypotheticalDoc) => set({ hydeHypotheticalDoc }),
   setGpuMemoryError: (gpuMemoryError) => set({ gpuMemoryError }),
 
   validateAndUpdateSearchParams: (params) => {
@@ -196,6 +202,9 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }
     if (params.useReranker !== undefined) {
       updatedParams.useReranker = params.useReranker;
+    }
+    if (params.hydeEnabled !== undefined) {
+      updatedParams.hydeEnabled = params.hydeEnabled;
     }
     if (params.hybridMode !== undefined) {
       updatedParams.hybridMode = params.hybridMode;

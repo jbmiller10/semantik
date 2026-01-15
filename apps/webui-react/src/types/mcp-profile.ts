@@ -39,6 +39,7 @@ export interface MCPProfile {
   hybrid_alpha: number | null;
   search_mode: MCPSearchMode;
   rrf_k: number | null;
+  hyde_enabled: boolean;
   collections: CollectionSummary[];
   created_at: string;
   updated_at: string;
@@ -59,6 +60,7 @@ export interface MCPProfileCreate {
   hybrid_alpha?: number | null;
   search_mode?: MCPSearchMode;
   rrf_k?: number | null;
+  hyde_enabled?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ export interface MCPProfileUpdate {
   hybrid_alpha?: number | null;
   search_mode?: MCPSearchMode;
   rrf_k?: number | null;
+  hyde_enabled?: boolean;
 }
 
 /**
@@ -111,6 +114,7 @@ export interface MCPProfileFormData {
   hybrid_alpha: number | null;
   search_mode: MCPSearchMode;
   rrf_k: number | null;
+  hyde_enabled: boolean;
 }
 
 /**
@@ -168,4 +172,5 @@ export const DEFAULT_PROFILE_FORM_DATA: MCPProfileFormData = {
   hybrid_alpha: null,
   search_mode: 'dense',
   rrf_k: null,
+  hyde_enabled: false,
 };

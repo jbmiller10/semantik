@@ -49,7 +49,8 @@ export default function SearchForm({ collections }: SearchFormProps) {
         getValidationError,
         abortController,
         setAbortController,
-        setRerankingMetrics
+        setRerankingMetrics,
+        setHydeHypotheticalDoc
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
@@ -65,6 +66,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 topK: prefs.search.top_k,
                 searchMode: prefs.search.mode,
                 useReranker: prefs.search.use_reranker,
+                hydeEnabled: prefs.search.hyde_enabled_default,
                 rrfK: prefs.search.rrf_k,
                 scoreThreshold: prefs.search.similarity_threshold ?? 0.0,
             });
@@ -122,6 +124,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
         setGpuMemoryError(null);
         setResults([]); // Clear previous results
         setRerankingMetrics(null);
+        setHydeHypotheticalDoc(null);
 
         try {
             const response = await searchV2Api.search(
@@ -133,6 +136,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     search_type: searchParams.searchType,
                     use_reranker: searchParams.useReranker,
                     rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+                    hyde_enabled: searchParams.hydeEnabled,
                     // New sparse/hybrid search parameters
                     search_mode: searchParams.searchMode,
                     rrf_k: searchParams.searchMode === 'hybrid' ? searchParams.rrfK : undefined,
@@ -164,6 +168,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 }));
 
                 setResults(mappedResults);
+                setHydeHypotheticalDoc(response.data.hyde_hypothetical_doc || null);
 
                 if (response.data.partial_failure) {
                     setPartialFailure(true);

@@ -29,6 +29,10 @@ export interface SearchPreferences {
   rrf_k: number;
   /** Similarity threshold for filtering results (0.0-1.0, null = no threshold) */
   similarity_threshold: number | null;
+  /** Whether HyDE is enabled by default */
+  hyde_enabled_default: boolean;
+  /** LLM tier for HyDE generation */
+  hyde_llm_tier: 'high' | 'low';
 }
 
 /**

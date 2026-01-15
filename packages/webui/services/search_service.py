@@ -513,6 +513,7 @@ class SearchService:
                 "errors": errors if errors else None,
                 "search_mode_used": search_mode_used,
                 "warnings": warnings,
+                "hyde_hypothetical_doc": effective_query if effective_query != query else None,
             },
         }
 
@@ -617,6 +618,7 @@ class SearchService:
             # Add search_mode metadata to result
             result["search_mode_used"] = result.get("search_mode_used", search_mode_used)
             result["warnings"] = result.get("warnings", warnings)
+            result["hyde_hypothetical_doc"] = effective_query if effective_query != query else None
             return result
 
         except httpx.HTTPStatusError as e:

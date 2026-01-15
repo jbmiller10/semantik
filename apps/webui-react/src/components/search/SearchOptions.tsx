@@ -28,6 +28,7 @@ export default function SearchOptions() {
                 use_reranker: searchParams.useReranker,
                 rrf_k: searchParams.rrfK,
                 similarity_threshold: searchParams.scoreThreshold || null,
+                hyde_enabled_default: searchParams.hydeEnabled,
             },
         });
     };
@@ -96,6 +97,26 @@ export default function SearchOptions() {
                             <p className="mt-1 text-xs text-gray-500">
                                 Minimum similarity score (0.0-1.0)
                             </p>
+                        </div>
+                    </div>
+
+                    {/* HyDE Toggle */}
+                    <div className="pt-4 border-t border-gray-200">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Smart Search (HyDE)
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Uses an LLM to generate a hypothetical answer to improve retrieval.
+                                </p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={searchParams.hydeEnabled}
+                                onChange={(e) => handleParamChange('hydeEnabled', e.target.checked)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
                         </div>
                     </div>
 

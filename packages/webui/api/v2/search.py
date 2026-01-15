@@ -132,6 +132,7 @@ async def multi_collection_search(
             if metadata.get("errors")
             else None
         ),
+        hyde_hypothetical_doc=metadata.get("hyde_hypothetical_doc"),
     )
 
 
@@ -210,4 +211,5 @@ async def single_collection_search(
         total_time_ms=result.get("processing_time_ms", 0),
         partial_failure=False,
         failed_collections=None,
+        hyde_hypothetical_doc=result.get("hyde_hypothetical_doc"),
     )
