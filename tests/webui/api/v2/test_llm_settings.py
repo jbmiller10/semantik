@@ -29,6 +29,7 @@ def mock_llm_config():
     config.low_quality_model = "claude-sonnet-4-5-20250929"
     config.default_temperature = 0.7
     config.default_max_tokens = None
+    config.provider_config = None  # JSON column for provider-specific settings
     config.created_at = "2024-01-15T10:30:00+00:00"
     config.updated_at = "2024-01-15T10:30:00+00:00"
     return config
@@ -222,6 +223,7 @@ class TestUpdateLLMSettings:
         cleared_config.low_quality_model = mock_llm_config.low_quality_model
         cleared_config.default_temperature = None
         cleared_config.default_max_tokens = mock_llm_config.default_max_tokens
+        cleared_config.provider_config = None
         cleared_config.created_at = mock_llm_config.created_at
         cleared_config.updated_at = mock_llm_config.updated_at
 
@@ -330,6 +332,38 @@ class TestTestApiKey:
         data = response.json()
         assert data["success"] is False
         assert "Authentication failed" in data["message"]
+
+    @pytest.mark.asyncio()
+    async def test_test_endpoint_local_provider_no_key(self, llm_api_client):
+        """Test that local provider does not require an API key."""
+        client, _, _ = llm_api_client
+
+        response = await client.post(
+            "/api/v2/llm/test",
+            json={
+                "provider": "local",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "does not require an API key" in data["message"]
+        assert data["model_tested"] is None
+
+    @pytest.mark.asyncio()
+    async def test_test_endpoint_requires_key_for_non_local(self, llm_api_client):
+        """Test that non-local providers require an API key."""
+        client, _, _ = llm_api_client
+
+        response = await client.post(
+            "/api/v2/llm/test",
+            json={
+                "provider": "anthropic",
+            },
+        )
+
+        assert response.status_code == 422
 
 
 class TestGetUsage:

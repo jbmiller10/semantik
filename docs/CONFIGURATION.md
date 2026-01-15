@@ -126,6 +126,23 @@ DEFAULT_QUANTIZATION=float16  # Options: float32, float16, int8
 MODEL_UNLOAD_AFTER_SECONDS=300  # Auto-unload models after inactivity
 ```
 
+#### Local LLM
+Local LLMs are GPU-intensive and require CUDA for practical performance. If you do not have a compatible
+NVIDIA GPU, set `ENABLE_LOCAL_LLM=false` (the `/llm/health` endpoint will report `disabled`).
+
+```bash
+# Enable local LLM inference in VecPipe
+ENABLE_LOCAL_LLM=true
+# Default quantization for local LLMs (int4, int8, float16)
+DEFAULT_LLM_QUANTIZATION=int8
+# Idle timeout before unloading local LLM models (seconds)
+LLM_UNLOAD_AFTER_SECONDS=300
+# KV cache + runtime buffer per loaded LLM (MB)
+LLM_KV_CACHE_BUFFER_MB=1024
+# Allow models that require remote code (HuggingFace trust_remote_code)
+LLM_TRUST_REMOTE_CODE=false
+```
+
 #### GPU Configuration
 ```bash
 # GPU Selection

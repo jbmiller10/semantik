@@ -47,6 +47,7 @@ class ModelType(Enum):
     EMBEDDING = auto()
     RERANKER = auto()
     SPARSE = auto()  # SPLADE sparse indexer models
+    LLM = auto()  # Local LLM models
 
 
 class PressureLevel(Enum):
@@ -271,6 +272,8 @@ class GPUMemoryGovernor:
         self._callbacks: dict[ModelType, dict[str, Callable[..., Awaitable[None]]]] = {
             ModelType.EMBEDDING: {},
             ModelType.RERANKER: {},
+            ModelType.SPARSE: {},
+            ModelType.LLM: {},
         }
 
         # Async coordination - prevents concurrent coroutine access to shared state
@@ -443,15 +446,24 @@ class GPUMemoryGovernor:
         model_type: ModelType,
         quantization: str,
         model_ref: Any = None,
+        memory_mb: int | None = None,
     ) -> None:
         """
         Mark a model as loaded on GPU.
 
         Called after successful model load to register with governor.
+
+        Args:
+            model_name: Model identifier
+            model_type: Type of model (EMBEDDING, RERANKER, SPARSE, LLM)
+            quantization: Quantization type
+            model_ref: Reference to actual model for offloading
+            memory_mb: Optional explicit memory size (used for LLMs where memory_utils
+                       doesn't have size data). If None, uses _get_model_memory().
         """
         async with self._lock:
             model_key = self._make_key(model_name, model_type, quantization)
-            required_mb = self._get_model_memory(model_name, quantization)
+            required_mb = memory_mb if memory_mb is not None else self._get_model_memory(model_name, quantization)
 
             tracked = TrackedModel(
                 model_name=model_name,
@@ -545,9 +557,12 @@ class GPUMemoryGovernor:
                     tracked.idle_seconds,
                 )
 
-            # Try CPU offload first if enabled and there's room
+            # Try CPU offload first if enabled, there's room, and the model type has an offload callback
+            # (LLM models with bitsandbytes quantization don't support CPU offload in Phase 1)
+            offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
             if (
-                self._enable_cpu_offload
+                offload_cb is not None
+                and self._enable_cpu_offload
                 and tracked.location == ModelLocation.GPU
                 and self._can_offload_to_cpu(tracked.memory_mb)
             ):
@@ -928,7 +943,9 @@ class GPUMemoryGovernor:
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 30:
                     try:
-                        if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
+                        # Check if offload callback exists before attempting offload
+                        offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
+                        if offload_cb and self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
                             result = await self._offload_model(tracked)
                         else:
                             result = await self._unload_model(tracked)
@@ -957,7 +974,9 @@ class GPUMemoryGovernor:
                 is_idle_on_gpu = (
                     tracked.location == ModelLocation.GPU and tracked.idle_seconds >= self._eviction_idle_threshold
                 )
-                can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
+                # Check if offload callback exists before attempting offload
+                offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
+                can_offload = offload_cb and self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
                 if is_idle_on_gpu and can_offload:
                     try:
                         result = await self._offload_model(tracked)

@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from shared.config import settings
 from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
 from shared.llm.exceptions import LLMAuthenticationError, LLMNotConfiguredError
 from shared.llm.model_registry import get_default_model
 from shared.llm.providers.anthropic_provider import AnthropicLLMProvider
+from shared.llm.providers.local_provider import LocalLLMProvider
 from shared.llm.providers.openai_provider import OpenAILLMProvider
 from shared.llm.types import LLMQualityTier
 
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_CLASSES: dict[str, type[BaseLLMService]] = {
     "anthropic": AnthropicLLMProvider,
     "openai": OpenAILLMProvider,
+    "local": LocalLLMProvider,
 }
 
 # Default provider when user has no preference
@@ -153,21 +156,31 @@ class LLMServiceFactory:
         if model is None:
             model = get_default_model(provider_type, quality_tier.value)
 
-        # Get API key for the provider
-        api_key = await self._config_repo.get_api_key(config.id, provider_type)
-        if api_key is None:
-            logger.warning(f"No API key for {provider_type} (user {user_id})")
-            raise LLMAuthenticationError(
-                provider_type,
-                f"No API key configured for {provider_type}. Please add your API key in settings.",
-            )
-
-        # Update last_used timestamp
-        await self._config_repo.update_key_last_used(config.id, provider_type)
+        # Get API key for the provider (skip for local)
+        if provider_type == "local":
+            api_key = ""  # Local models don't need authentication
+            # Get quantization from provider_config JSON
+            local_cfg = (config.provider_config or {}).get("local", {})
+            default_quantization = settings.DEFAULT_LLM_QUANTIZATION or "int8"
+            quantization = local_cfg.get(f"{quality_tier.value}_quantization") or default_quantization
+        else:
+            api_key = await self._config_repo.get_api_key(config.id, provider_type)
+            if api_key is None:
+                logger.warning(f"No API key for {provider_type} (user {user_id})")
+                raise LLMAuthenticationError(
+                    provider_type,
+                    f"No API key configured for {provider_type}. Please add your API key in settings.",
+                )
+            # Update last_used timestamp (only for providers with API keys)
+            await self._config_repo.update_key_last_used(config.id, provider_type)
+            quantization = None
 
         # Create and initialize provider
         provider = _create_provider_instance(provider_type)
-        await provider.initialize(api_key=api_key, model=model, **kwargs)
+        if quantization is not None:
+            await provider.initialize(api_key=api_key, model=model, quantization=quantization, **kwargs)
+        else:
+            await provider.initialize(api_key=api_key, model=model, **kwargs)
 
         logger.info(f"Created {provider_type} provider for user {user_id}, tier={quality_tier.value}, model={model}")
 
@@ -198,15 +211,24 @@ class LLMServiceFactory:
             return False
 
         if quality_tier is None:
-            # Check if any provider has a key
+            # Check if any provider has a key OR if local is configured
             providers = await self._config_repo.get_configured_providers(config.id)
-            return len(providers) > 0
+            if len(providers) > 0:
+                return True
+            # Also check if either tier is configured for local (no API key needed)
+            if config.high_quality_provider == "local" or config.low_quality_provider == "local":
+                return True
+            return False
 
         # Check specific tier
         if quality_tier == LLMQualityTier.HIGH:
             provider_type = config.high_quality_provider or DEFAULT_PROVIDER
         else:
             provider_type = config.low_quality_provider or DEFAULT_PROVIDER
+
+        # Local provider doesn't need an API key
+        if provider_type == "local":
+            return True
 
         has_key = await self._config_repo.has_api_key(config.id, provider_type)
         return bool(has_key)

@@ -149,6 +149,40 @@
     <purpose>Memory estimation and model suggestions</purpose>
     <key-data>MODEL_MEMORY_REQUIREMENTS dict with conservative MB estimates</key-data>
   </module>
+
+  <module path="llm_model_manager.py">
+    <purpose>Local LLM lifecycle with GPU memory governance</purpose>
+    <class>LLMModelManager</class>
+    <features>
+      - Governor callbacks (unload-only, no CPU offload for bitsandbytes int4/int8)
+      - Per-model locks for serialized generation (one in-flight per model key)
+      - ThreadPoolExecutor for blocking HuggingFace tokenization/generation
+      - Inflight load deduplication prevents concurrent double-loads
+    </features>
+    <key-pattern>Generate acquires model lock first, ensuring governor eviction waits for completion</key-pattern>
+    <model-key-format>"{model_name}:{quantization}" (e.g., "Qwen/Qwen2.5-1.5B-Instruct:int8")</model-key-format>
+  </module>
+
+  <module path="llm_memory.py">
+    <purpose>LLM memory estimation from registry with fallback heuristics</purpose>
+    <key-function>get_llm_memory_requirement(model_name, quantization) -> int (MB)</key-function>
+    <lookup-order>
+      1. Check model_registry.yaml memory_mb for curated models
+      2. Fall back to parameter-count-based estimation for unknown models
+    </lookup-order>
+  </module>
+
+  <module path="search/llm_api.py">
+    <purpose>FastAPI endpoints for local LLM inference</purpose>
+    <endpoints>
+      - POST /llm/generate: Batch text generation (protected)
+      - GET /llm/models: List models with VRAM requirements (public)
+      - POST /llm/models/load: Pre-warm model into GPU memory (protected)
+      - GET /llm/health: LLM subsystem health check (public)
+    </endpoints>
+    <security>POST endpoints require X-Internal-Api-Key header</security>
+    <batch-note>prompts is a list; Phase 1 processes sequentially (no true batching)</batch-note>
+  </module>
 </modules>
 
 <api-endpoints>
@@ -192,10 +226,37 @@
     <endpoint>GET /models/suggest</endpoint>
     <description>Model listing, loading, and auto-suggestion based on GPU memory</description>
   </models>
+
+  <llm>
+    <endpoint>POST /llm/generate</endpoint>
+    <endpoint>GET /llm/models</endpoint>
+    <endpoint>POST /llm/models/load</endpoint>
+    <endpoint>GET /llm/health</endpoint>
+    <description>Local LLM inference endpoints</description>
+    <security>POST endpoints require X-Internal-Api-Key</security>
+    <request-shape>
+      {
+        "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+        "quantization": "int8",
+        "prompts": ["text"],
+        "system_prompt": "optional",
+        "temperature": 0.7,
+        "max_tokens": 256
+      }
+    </request-shape>
+    <error-codes>
+      - 507: Insufficient GPU memory
+      - 503: LLM service disabled (ENABLE_LOCAL_LLM=false)
+    </error-codes>
+  </llm>
 </api-endpoints>
 
 <memory-management>
   <strategy>GPUMemoryGovernor with LRU eviction and CPU offloading</strategy>
+  <model-types>
+    Governor manages three model types: EMBEDDING, RERANKER, LLM
+    All types share the same GPU memory budget and LRU eviction queue.
+  </model-types>
 
   <pressure-levels>
     | Level    | Threshold | Action                                |
@@ -214,6 +275,14 @@
     5. Fail only if model won't fit even with empty GPU
   </eviction-strategy>
 
+  <llm-specific-behavior>
+    LLMs are UNLOAD-ONLY (no CPU warm pool):
+    - bitsandbytes int4/int8 models don't support .to("cpu")/.to("cuda") reliably
+    - Governor only registers unload callback, not offload callback
+    - "Fast reload" comes from HuggingFace disk cache, not CPU warm pool
+    - Per-model locks ensure eviction waits for in-flight generation
+  </llm-specific-behavior>
+
   <configuration>
     Memory limits:
       - GPU_MEMORY_MAX_PERCENT=0.90 (max GPU memory usage)
@@ -226,9 +295,15 @@
   </configuration>
 
   <vram-recommendations>
+    Embeddings + Rerankers:
     - 24GB+ VRAM: Both 8B embedding + 8B reranker in float16
     - 16GB VRAM: Both 4B models in float16, occasional eviction
     - 8GB VRAM: 8B embedding int8 + 0.6B reranker, more aggressive eviction
+
+    With Local LLMs (shared budget):
+    - 24GB+ VRAM: 4B embedding + Qwen 2.5 7B (int8: 8.5GB)
+    - 16GB VRAM: 0.6B embedding + Qwen 2.5 3B (int8: 4GB)
+    - 8GB VRAM: 0.6B embedding + Qwen 2.5 1.5B (int8: 2GB), more eviction
   </vram-recommendations>
 </memory-management>
 

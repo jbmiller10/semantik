@@ -22,6 +22,11 @@ class TestCreateProviderInstance:
         provider = _create_provider_instance("openai")
         assert provider.__class__.__name__ == "OpenAILLMProvider"
 
+    def test_creates_local_provider(self):
+        """Creates LocalLLMProvider for 'local'."""
+        provider = _create_provider_instance("local")
+        assert provider.__class__.__name__ == "LocalLLMProvider"
+
     def test_raises_for_unknown_provider(self):
         """Raises ValueError for unknown provider type."""
         with pytest.raises(ValueError, match="Unknown provider type"):
@@ -259,6 +264,37 @@ class TestHasProviderConfigured:
                 user_id=123,
                 quality_tier=LLMQualityTier.LOW,
             )
+            assert result is True
+
+    async def test_local_provider_returns_true_without_key(self, factory):
+        """Returns True for local provider without API key."""
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.low_quality_provider = "local"
+        mock_config.high_quality_provider = None
+
+        with (patch.object(factory._config_repo, "get_by_user_id", return_value=mock_config),):
+            result = await factory.has_provider_configured(
+                user_id=123,
+                quality_tier=LLMQualityTier.LOW,
+            )
+            # Local provider doesn't need API key
+            assert result is True
+
+    async def test_local_provider_counted_in_any_check(self, factory):
+        """Returns True when local is configured even without API keys."""
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.low_quality_provider = "local"
+        mock_config.high_quality_provider = None
+
+        with (
+            patch.object(factory._config_repo, "get_by_user_id", return_value=mock_config),
+            patch.object(factory._config_repo, "get_configured_providers", return_value=[]),
+        ):
+            # No tier specified, should check for any configured provider
+            result = await factory.has_provider_configured(user_id=123)
+            # Local provider counts as configured
             assert result is True
 
 

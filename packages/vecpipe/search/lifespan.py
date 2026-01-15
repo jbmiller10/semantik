@@ -21,6 +21,7 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
 from shared.plugins.state import get_disabled_plugin_ids
 from vecpipe.governed_model_manager import GovernedModelManager
+from vecpipe.llm_model_manager import LLMModelManager
 from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
@@ -154,6 +155,17 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     else:
         logger.info("Initialized SparseModelManager without memory governor")
 
+    # Initialize LLM model manager (optional, controlled by ENABLE_LOCAL_LLM)
+    llm_mgr: LLMModelManager | None = None
+    if settings.ENABLE_LOCAL_LLM:
+        llm_mgr = LLMModelManager(governor=governor)
+        if governor:
+            logger.info("Initialized LLMModelManager with shared memory governor")
+        else:
+            logger.info("Initialized LLMModelManager without memory governor")
+    else:
+        logger.info("Local LLM support disabled (ENABLE_LOCAL_LLM=false)")
+
     # embed_service is None - ModelManager now manages providers internally
     set_resources(
         qdrant=qdrant,
@@ -162,6 +174,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         pool=pool,
         qdrant_sdk=qdrant_sdk,
         sparse_mgr=sparse_mgr,
+        llm_mgr=llm_mgr,
     )
 
     # Touch metrics to ensure registered
@@ -172,7 +185,10 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     finally:
         await qdrant.aclose()
         await qdrant_sdk.close()
-        # Shutdown sparse model manager first (it may hold references to models)
+        # Shutdown LLM model manager first (it may hold references to models)
+        if llm_mgr is not None:
+            await llm_mgr.shutdown()
+        # Shutdown sparse model manager (it may hold references to models)
         await sparse_mgr.shutdown()
         # Use async shutdown for GovernedModelManager to avoid deadlock
         if hasattr(model_mgr, "shutdown_async"):

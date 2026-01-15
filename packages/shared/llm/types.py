@@ -22,6 +22,7 @@ class LLMProviderType(str, Enum):
 
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
+    LOCAL = "local"
 
 
 @dataclass(frozen=True)

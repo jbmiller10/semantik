@@ -2,7 +2,14 @@
 
 import pytest
 
-from shared.llm.model_registry import ModelInfo, get_all_models, get_default_model, get_model_by_id, load_model_registry
+from shared.llm.model_registry import (
+    ModelInfo,
+    get_all_models,
+    get_default_model,
+    get_model_by_id,
+    get_models_by_provider,
+    load_model_registry,
+)
 
 
 class TestLoadModelRegistry:
@@ -53,6 +60,25 @@ class TestLoadModelRegistry:
         registry1 = load_model_registry()
         registry2 = load_model_registry()
         assert registry1 is registry2
+
+    def test_has_local_provider(self):
+        """Registry contains local provider."""
+        registry = load_model_registry()
+        assert "local" in registry
+
+    def test_local_models_are_model_info(self):
+        """Local models are ModelInfo instances."""
+        registry = load_model_registry()
+        for model in registry["local"]:
+            assert isinstance(model, ModelInfo)
+
+    def test_local_models_have_memory_mb(self):
+        """Local models have memory_mb field populated."""
+        registry = load_model_registry()
+        for model in registry["local"]:
+            assert model.memory_mb is not None
+            assert "int8" in model.memory_mb
+            assert "int4" in model.memory_mb
 
 
 class TestGetDefaultModel:
@@ -131,6 +157,53 @@ class TestGetAllModels:
         for model in models:
             assert not isinstance(model, list)
 
+    def test_includes_local_models(self):
+        """Includes models from local provider."""
+        models = get_all_models()
+        local_models = [m for m in models if m.provider == "local"]
+        assert len(local_models) > 0
+
+
+class TestGetModelsByProvider:
+    """Tests for get_models_by_provider function."""
+
+    def test_returns_list(self):
+        """Returns a list for valid provider."""
+        models = get_models_by_provider("anthropic")
+        assert isinstance(models, list)
+
+    def test_returns_model_info_instances(self):
+        """All items are ModelInfo instances."""
+        models = get_models_by_provider("anthropic")
+        for model in models:
+            assert isinstance(model, ModelInfo)
+
+    def test_returns_empty_for_unknown_provider(self):
+        """Returns empty list for unknown provider."""
+        models = get_models_by_provider("unknown_provider")
+        assert models == []
+
+    def test_returns_local_models(self):
+        """Returns local models with memory_mb."""
+        models = get_models_by_provider("local")
+        assert len(models) > 0
+        for model in models:
+            assert model.provider == "local"
+            assert model.memory_mb is not None
+
+    def test_only_returns_specified_provider(self):
+        """Returns only models from specified provider."""
+        models = get_models_by_provider("openai")
+        for model in models:
+            assert model.provider == "openai"
+
+    def test_anthropic_provider_has_models(self):
+        """Anthropic provider returns models."""
+        models = get_models_by_provider("anthropic")
+        assert len(models) > 0
+        for model in models:
+            assert model.provider == "anthropic"
+
 
 class TestGetModelById:
     """Tests for get_model_by_id function."""
@@ -161,6 +234,34 @@ class TestGetModelById:
             assert found.id == model.id
             assert found.provider == model.provider
             assert found.context_window == model.context_window
+
+    def test_finds_model_with_provider_filter(self):
+        """Can find model when filtering by provider."""
+        local_models = get_models_by_provider("local")
+        assert len(local_models) > 0
+        first_local = local_models[0]
+        found = get_model_by_id(first_local.id, provider="local")
+        assert found is not None
+        assert found.id == first_local.id
+        assert found.provider == "local"
+
+    def test_returns_none_for_wrong_provider(self):
+        """Returns None when model exists but provider doesn't match."""
+        anthropic_models = get_models_by_provider("anthropic")
+        assert len(anthropic_models) > 0
+        first_anthropic = anthropic_models[0]
+        # Try to find it with wrong provider
+        found = get_model_by_id(first_anthropic.id, provider="openai")
+        assert found is None
+
+    def test_backward_compatible_without_provider(self):
+        """Works without provider parameter (backward compatible)."""
+        all_models = get_all_models()
+        first_model = all_models[0]
+        # Should find without provider
+        found = get_model_by_id(first_model.id)
+        assert found is not None
+        assert found.id == first_model.id
 
 
 class TestModelInfo:
@@ -220,3 +321,80 @@ class TestModelInfo:
         hash(model)
         model_set = {model}
         assert len(model_set) == 1
+
+    def test_to_dict_returns_expected_keys(self):
+        """to_dict() returns all required keys."""
+        model = ModelInfo(
+            id="test-model",
+            name="Test",
+            display_name="Test Model",
+            provider="test",
+            tier_recommendation="high",
+            context_window=4096,
+            description="Test description",
+        )
+        result = model.to_dict()
+
+        assert "id" in result
+        assert "name" in result
+        assert "display_name" in result
+        assert "provider" in result
+        assert "tier_recommendation" in result
+        assert "context_window" in result
+        assert "description" in result
+        # memory_mb should be excluded when None
+        assert "memory_mb" not in result
+
+    def test_to_dict_includes_memory_mb_when_present(self):
+        """to_dict() includes memory_mb when populated."""
+        model = ModelInfo(
+            id="test-model",
+            name="Test",
+            display_name="Test Model",
+            provider="local",
+            tier_recommendation="high",
+            context_window=4096,
+            description="Test description",
+            memory_mb={"int8": 2000, "int4": 1200},
+        )
+        result = model.to_dict()
+
+        assert "memory_mb" in result
+        assert result["memory_mb"]["int8"] == 2000
+        assert result["memory_mb"]["int4"] == 1200
+
+    def test_memory_mb_default_is_none(self):
+        """memory_mb defaults to None."""
+        model = ModelInfo(
+            id="test",
+            name="Test",
+            display_name="Test",
+            provider="test",
+            tier_recommendation="high",
+            context_window=4096,
+            description="Test",
+        )
+        assert model.memory_mb is None
+
+    def test_to_dict_values_match_original(self):
+        """to_dict() values match original ModelInfo values."""
+        model = ModelInfo(
+            id="test-id",
+            name="Test Name",
+            display_name="Test Display Name",
+            provider="local",
+            tier_recommendation="low",
+            context_window=8192,
+            description="Test description text",
+            memory_mb={"int8": 3000, "int4": 1500, "float16": 5000},
+        )
+        result = model.to_dict()
+
+        assert result["id"] == "test-id"
+        assert result["name"] == "Test Name"
+        assert result["display_name"] == "Test Display Name"
+        assert result["provider"] == "local"
+        assert result["tier_recommendation"] == "low"
+        assert result["context_window"] == 8192
+        assert result["description"] == "Test description text"
+        assert result["memory_mb"]["float16"] == 5000

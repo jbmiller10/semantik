@@ -1210,6 +1210,11 @@ class DockerSetupTUI:
         # Set hardcoded defaults
         self.config["DEFAULT_EMBEDDING_MODEL"] = "Qwen/Qwen3-Embedding-0.6B"
         self.config["DEFAULT_QUANTIZATION"] = "float16"
+        self.config["ENABLE_LOCAL_LLM"] = "true"
+        self.config["DEFAULT_LLM_QUANTIZATION"] = "int8"
+        self.config["LLM_UNLOAD_AFTER_SECONDS"] = "300"
+        self.config["LLM_KV_CACHE_BUFFER_MB"] = "1024"
+        self.config["LLM_TRUST_REMOTE_CODE"] = "false"
         self.config["WEBUI_WORKERS"] = "auto"
         self.config["HF_CACHE_DIR"] = "./models"
         self.config["HF_HUB_OFFLINE"] = "false"
@@ -1251,6 +1256,10 @@ class DockerSetupTUI:
         if self.config["USE_GPU"] == "true":
             table.add_row("GPU Device", self.config["CUDA_VISIBLE_DEVICES"])
             table.add_row("GPU Memory Limit", f"{self.config['MODEL_MAX_MEMORY_GB']} GB")
+        table.add_row(
+            "Local LLM",
+            "enabled" if self.config.get("ENABLE_LOCAL_LLM") == "true" else "disabled",
+        )
 
         # Database settings
         table.add_row("Database", "PostgreSQL")
@@ -1275,6 +1284,11 @@ class DockerSetupTUI:
 
         console.print(table)
         console.print()
+
+        if self.config.get("ENABLE_LOCAL_LLM") == "true" and self.config["USE_GPU"] != "true":
+            console.print("[bold yellow]Local LLM is enabled but GPU mode is off.[/bold yellow]")
+            console.print("Local LLMs are GPU-intensive and may fail or be very slow without CUDA support.")
+            console.print("Set ENABLE_LOCAL_LLM=false in .env if you don't have a compatible NVIDIA GPU.\n")
 
         # Confirm
         confirm = questionary.confirm("Proceed with this configuration?", default=True).ask()
@@ -1339,6 +1353,11 @@ class DockerSetupTUI:
             "ACCESS_TOKEN_EXPIRE_MINUTES=1440": f"ACCESS_TOKEN_EXPIRE_MINUTES={self.config['ACCESS_TOKEN_EXPIRE_MINUTES']}",
             "DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B": f"DEFAULT_EMBEDDING_MODEL={self.config['DEFAULT_EMBEDDING_MODEL']}",
             "DEFAULT_QUANTIZATION=float16": f"DEFAULT_QUANTIZATION={self.config['DEFAULT_QUANTIZATION']}",
+            "ENABLE_LOCAL_LLM=true": f"ENABLE_LOCAL_LLM={self.config['ENABLE_LOCAL_LLM']}",
+            "DEFAULT_LLM_QUANTIZATION=int8": f"DEFAULT_LLM_QUANTIZATION={self.config['DEFAULT_LLM_QUANTIZATION']}",
+            "LLM_UNLOAD_AFTER_SECONDS=300": f"LLM_UNLOAD_AFTER_SECONDS={self.config['LLM_UNLOAD_AFTER_SECONDS']}",
+            "LLM_KV_CACHE_BUFFER_MB=1024": f"LLM_KV_CACHE_BUFFER_MB={self.config['LLM_KV_CACHE_BUFFER_MB']}",
+            "LLM_TRUST_REMOTE_CODE=false": f"LLM_TRUST_REMOTE_CODE={self.config['LLM_TRUST_REMOTE_CODE']}",
             "DOCUMENT_PATH=./documents": f"DOCUMENT_PATH={self.config['DOCUMENT_PATH']}",
             "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
             "POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"POSTGRES_PASSWORD={self.config['POSTGRES_PASSWORD']}",
