@@ -16,6 +16,15 @@ from shared.database.models import Collection, CollectionStatus
 from webui.services.search_service import SearchService
 
 
+def _create_mock_user_prefs() -> Mock:
+    """Create a mock UserPreferences with HyDE settings."""
+    prefs = Mock()
+    prefs.search_use_hyde = False
+    prefs.search_hyde_quality_tier = "LOW"
+    prefs.search_hyde_timeout_seconds = 10
+    return prefs
+
+
 class TestSearchService:
     """Test SearchService implementation"""
 
@@ -30,6 +39,15 @@ class TestSearchService:
     def mock_collection_repo(self) -> None:
         """Create a mock CollectionRepository"""
         return AsyncMock()
+
+    @pytest.fixture(autouse=True)
+    def mock_user_prefs_repo(self) -> None:
+        """Mock UserPreferencesRepository.get_or_create to return proper prefs object."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=_create_mock_user_prefs())
+            mock_repo_class.return_value = mock_repo
+            yield mock_repo_class
 
     @pytest.fixture()
     def search_service(self, mock_session, mock_collection_repo) -> None:
@@ -821,9 +839,17 @@ class TestSearchServiceIntegration:
     """Test search service integration scenarios"""
 
     @pytest.mark.asyncio()
+    @patch("webui.services.search_service.UserPreferencesRepository")
     @patch("webui.services.search_service.httpx.AsyncClient")
-    async def test_concurrent_collection_searches(self, mock_httpx_client) -> None:
+    async def test_concurrent_collection_searches(
+        self, mock_httpx_client, mock_prefs_repo_class
+    ) -> None:
         """Test concurrent searches across multiple collections"""
+        # Setup UserPreferencesRepository mock
+        mock_prefs_repo = AsyncMock()
+        mock_prefs_repo.get_or_create = AsyncMock(return_value=_create_mock_user_prefs())
+        mock_prefs_repo_class.return_value = mock_prefs_repo
+
         # Setup service
         mock_session = AsyncMock()
         mock_collection_repo = AsyncMock()
