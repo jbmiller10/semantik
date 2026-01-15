@@ -62,6 +62,7 @@ class MCPProfileService:
             hybrid_alpha=data.hybrid_alpha,
             search_mode=data.search_mode,
             rrf_k=data.rrf_k,
+            hyde_enabled=data.hyde_enabled,
         )
         self.db_session.add(profile)
 

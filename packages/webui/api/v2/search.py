@@ -172,6 +172,7 @@ async def single_collection_search(
         rerank_model=search_request.rerank_model,
         reranker_id=search_request.reranker_id,
         include_content=search_request.include_content,
+        hyde_enabled=search_request.hyde_enabled,
     )
 
     # Convert service result to API response format

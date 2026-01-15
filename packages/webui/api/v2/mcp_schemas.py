@@ -78,6 +78,7 @@ class MCPProfileCreate(BaseModel):
         le=1000,
         description="RRF constant k for hybrid search mode (default: 60 if not specified)",
     )
+    hyde_enabled: bool = Field(default=False, description="Whether to enable HyDE by default for this profile")
 
     model_config = ConfigDict(
         extra="forbid",
@@ -170,6 +171,7 @@ class MCPProfileUpdate(BaseModel):
         le=1000,
         description="RRF constant k for hybrid mode",
     )
+    hyde_enabled: bool | None = Field(default=None, description="Enable HyDE for this profile")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -208,6 +210,7 @@ class MCPProfileResponse(BaseModel):
     hybrid_alpha: float | None
     search_mode: Literal["dense", "sparse", "hybrid"]
     rrf_k: int | None
+    hyde_enabled: bool
     collections: list[CollectionSummary]
     created_at: datetime
     updated_at: datetime

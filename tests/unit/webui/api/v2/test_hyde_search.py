@@ -48,6 +48,16 @@ def mock_llm_provider():
     return provider
 
 @pytest.fixture
+def mock_prefs_repo():
+    repo = AsyncMock()
+    # Mock get_or_create to return a mock prefs object
+    mock_prefs = MagicMock()
+    mock_prefs.hyde_enabled_default = False
+    mock_prefs.hyde_llm_tier = "low"
+    repo.get_or_create.return_value = mock_prefs
+    return repo
+
+@pytest.fixture
 def search_service(mock_db_session, mock_collection_repo):
     service = SearchService(mock_db_session, mock_collection_repo)
     # Mock internal methods to avoid real HTTP calls
@@ -62,13 +72,15 @@ def search_service(mock_db_session, mock_collection_repo):
 async def test_hyde_search_enabled_success(
     search_service, 
     mock_llm_factory, 
-    mock_llm_provider
+    mock_llm_provider,
+    mock_prefs_repo
 ):
     """Test that HyDE generates a hypothetical doc and uses it for search."""
     
     mock_llm_factory.create_provider_for_tier.return_value = mock_llm_provider
     
-    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory):
+    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory), \
+         patch("webui.services.search_service.UserPreferencesRepository", return_value=mock_prefs_repo):
         
         await search_service.multi_collection_search(
             user_id=1,
@@ -94,11 +106,13 @@ async def test_hyde_search_enabled_success(
 @pytest.mark.asyncio
 async def test_hyde_search_disabled(
     search_service, 
-    mock_llm_factory
+    mock_llm_factory,
+    mock_prefs_repo
 ):
     """Test that disabled HyDE uses the original query."""
     
-    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory):
+    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory), \
+         patch("webui.services.search_service.UserPreferencesRepository", return_value=mock_prefs_repo):
         
         await search_service.multi_collection_search(
             user_id=1,
@@ -118,14 +132,16 @@ async def test_hyde_search_disabled(
 @pytest.mark.asyncio
 async def test_hyde_search_fallback_on_error(
     search_service, 
-    mock_llm_factory
+    mock_llm_factory,
+    mock_prefs_repo
 ):
     """Test fallback to original query if LLM is not configured."""
     
     # Mock factory to raise error
     mock_llm_factory.create_provider_for_tier.side_effect = LLMNotConfiguredError(1)
     
-    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory):
+    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory), \
+         patch("webui.services.search_service.UserPreferencesRepository", return_value=mock_prefs_repo):
         
         await search_service.multi_collection_search(
             user_id=1,
@@ -137,7 +153,44 @@ async def test_hyde_search_fallback_on_error(
         # Verify LLM was attempted
         mock_llm_factory.create_provider_for_tier.assert_called_once()
         
-        # Verify search called with ORIGINAL query (fallback)
         search_service.search_single_collection.assert_called()
         call_args = search_service.search_single_collection.call_args
         assert call_args[0][1] == "original query"
+
+@pytest.mark.asyncio
+async def test_hyde_single_search_enabled_success(
+    search_service, 
+    mock_llm_factory, 
+    mock_llm_provider,
+    mock_prefs_repo
+):
+    """Test HyDE for single collection search."""
+    
+    mock_llm_factory.create_provider_for_tier.return_value = mock_llm_provider
+    
+    with patch("webui.services.search_service.LLMServiceFactory", return_value=mock_llm_factory), \
+         patch("webui.services.search_service.UserPreferencesRepository", return_value=mock_prefs_repo), \
+         patch("webui.services.search_service.httpx.AsyncClient") as mock_client:
+        
+        # Mock httpx response for service.single_collection_search
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"results": [], "warnings": []}
+        mock_response.status_code = 200
+        mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+        
+        # We need to un-mock search_single_collection to test the real implementation
+        search_service.search_single_collection = SearchService.single_collection_search.__get__(search_service, SearchService)
+        
+        await search_service.single_collection_search(
+            user_id=1,
+            collection_uuid="123e4567-e89b-12d3-a456-426614174000",
+            query="original query",
+            hyde_enabled=True
+        )
+        
+        # Verify LLM was called
+        mock_llm_factory.create_provider_for_tier.assert_called_once()
+        
+        # Verify httpx was called with HYPOTHETICAL query
+        call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+        assert call_args.kwargs["json"]["query"] == "Hypothetical answer"

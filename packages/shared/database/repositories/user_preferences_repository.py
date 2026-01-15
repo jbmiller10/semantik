@@ -69,6 +69,8 @@ class UserPreferencesRepository:
         "search_use_reranker": False,
         "search_rrf_k": 60,
         "search_similarity_threshold": None,
+        "hyde_enabled_default": False,
+        "hyde_llm_tier": "low",
     }
 
     COLLECTION_DEFAULTS: dict[str, int | str | bool | None] = {
@@ -233,6 +235,8 @@ class UserPreferencesRepository:
         search_use_reranker: bool | _UnsetType = UNSET,
         search_rrf_k: int | _UnsetType = UNSET,
         search_similarity_threshold: float | None | _UnsetType = UNSET,
+        hyde_enabled_default: bool | _UnsetType = UNSET,
+        hyde_llm_tier: str | _UnsetType = UNSET,
         # Collection defaults
         default_embedding_model: str | None | _UnsetType = UNSET,
         default_quantization: str | _UnsetType = UNSET,
@@ -323,6 +327,12 @@ class UserPreferencesRepository:
                 prefs.search_rrf_k = search_rrf_k
             if search_similarity_threshold is not UNSET:
                 prefs.search_similarity_threshold = search_similarity_threshold
+            if hyde_enabled_default is not UNSET:
+                prefs.hyde_enabled_default = hyde_enabled_default
+            if hyde_llm_tier is not UNSET:
+                if hyde_llm_tier not in ("high", "low"):
+                    raise ValidationError(f"Invalid hyde_llm_tier '{hyde_llm_tier}'. Must be 'high' or 'low'", field="hyde_llm_tier")
+                prefs.hyde_llm_tier = hyde_llm_tier
 
             # Update only provided fields - Collection defaults
             if default_embedding_model is not UNSET:
@@ -390,6 +400,8 @@ class UserPreferencesRepository:
             prefs.search_use_reranker = self.SEARCH_DEFAULTS["search_use_reranker"]
             prefs.search_rrf_k = self.SEARCH_DEFAULTS["search_rrf_k"]
             prefs.search_similarity_threshold = self.SEARCH_DEFAULTS["search_similarity_threshold"]
+            prefs.hyde_enabled_default = self.SEARCH_DEFAULTS["hyde_enabled_default"]
+            prefs.hyde_llm_tier = self.SEARCH_DEFAULTS["hyde_llm_tier"]
 
             prefs.updated_at = datetime.now(UTC)
 

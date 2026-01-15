@@ -19,6 +19,7 @@ from webui.api.v2.schemas import SearchMode  # SearchMode is defined in schemas
 # from vecpipe.client import VecPipeClient # Commented out as it seems missing and causing issues, will verify usage
 
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.user_preferences_repository import UserPreferencesRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
@@ -297,10 +298,18 @@ class SearchService:
     async def _generate_hypothetical_document(self, user_id: int, query: str) -> str:
         """Generate a hypothetical document answer using the configured LLM."""
         try:
+            prefs_repo = UserPreferencesRepository(self.db_session)
+            prefs = await prefs_repo.get_or_create(user_id)
+            
+            # Map string to Enum
+            quality_tier = LLMQualityTier.LOW
+            if prefs.hyde_llm_tier == "high":
+                quality_tier = LLMQualityTier.HIGH
+            
             factory = LLMServiceFactory(self.db_session)
             provider = await factory.create_provider_for_tier(
                 user_id=user_id,
-                quality_tier=LLMQualityTier.LOW
+                quality_tier=quality_tier
             )
             
             async with provider:
@@ -343,7 +352,7 @@ class SearchService:
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
-        hyde_enabled: bool = False,
+        hyde_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -369,6 +378,13 @@ class SearchService:
         
         # Apply HyDE if enabled
         effective_query = query
+        
+        # Resolve hyde_enabled from preferences if not specified
+        if hyde_enabled is None:
+            prefs_repo = UserPreferencesRepository(self.db_session)
+            prefs = await prefs_repo.get_or_create(user_id)
+            hyde_enabled = prefs.hyde_enabled_default
+
         if hyde_enabled:
             # Only use HyDE for semantic/dense/hybrid searches, not pure keyword/sparse if that's a thing (though sparse usually handles queries fine, HyDE is for semantic gap)
             # Assuming HyDE is good for all modes except maybe exact code match, but let's just enable it if requested.
@@ -515,6 +531,7 @@ class SearchService:
         rerank_model: str | None = None,
         reranker_id: str | None = None,
         include_content: bool = True,
+        hyde_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
 
@@ -532,10 +549,25 @@ class SearchService:
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
             include_content: Whether to include document content
+            hyde_enabled: Whether to use HyDE (Hypothetical Document Embeddings)
 
         Returns:
             Dictionary with search results
         """
+        # Apply HyDE if enabled
+        effective_query = query
+        
+        # Resolve hyde_enabled from preferences if not specified
+        if hyde_enabled is None:
+            prefs_repo = UserPreferencesRepository(self.db_session)
+            prefs = await prefs_repo.get_or_create(user_id)
+            hyde_enabled = prefs.hyde_enabled_default
+
+        if hyde_enabled:
+            effective_query = await self._generate_hypothetical_document(user_id, query)
+            if effective_query != query:
+                logger.info("Using HyDE generated query for single collection search")
+
         warnings: list[str] = []
         search_mode_used: SearchMode = search_mode
 
@@ -551,7 +583,7 @@ class SearchService:
                 effective_rerank_model = resolved_model
 
         search_params = {
-            "query": query,
+            "query": effective_query,
             "k": k,
             "collection": collection.vector_store_name,
             "model_name": collection.embedding_model,

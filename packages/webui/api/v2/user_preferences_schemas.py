@@ -18,6 +18,8 @@ class SearchPreferences(BaseModel):
     similarity_threshold: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Minimum similarity score (null for no threshold)"
     )
+    hyde_enabled_default: bool = Field(default=False, description="Enable HyDE by default")
+    hyde_llm_tier: Literal["high", "low"] = Field(default="low", description="LLM tier for HyDE generation")
 
     model_config = ConfigDict(
         extra="forbid",

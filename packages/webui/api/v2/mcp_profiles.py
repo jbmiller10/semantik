@@ -46,6 +46,7 @@ def _profile_to_response(profile: Any) -> MCPProfileResponse:
         hybrid_alpha=profile.hybrid_alpha,
         search_mode=profile.search_mode,
         rrf_k=profile.rrf_k,
+        hyde_enabled=profile.hyde_enabled,
         collections=[CollectionSummary(id=c.id, name=c.name) for c in profile.collections],
         created_at=profile.created_at,
         updated_at=profile.updated_at,

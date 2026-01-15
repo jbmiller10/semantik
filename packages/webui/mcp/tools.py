@@ -54,6 +54,10 @@ def build_search_tool(*, name: str, description: str, profile: dict[str, Any]) -
                     "maximum": 1,
                     "description": "Minimum score threshold (overrides profile default if set).",
                 },
+                "hyde_enabled": {
+                    "type": "boolean",
+                    "description": f"Enable HyDE (default: {profile.get('hyde_enabled', False)}).",
+                },
             },
             "required": ["query"],
         },

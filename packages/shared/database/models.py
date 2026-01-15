@@ -944,6 +944,7 @@ class MCPProfile(Base):
     hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
     search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
     rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
+    hyde_enabled = Column(Boolean, nullable=False, default=False)  # New field for HyDE
 
     # Metadata
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -1193,6 +1194,8 @@ class UserPreferences(Base):
     data_refresh_interval_ms = Column(Integer, nullable=False, default=30000)
     visualization_sample_limit = Column(Integer, nullable=False, default=200000)
     animation_enabled = Column(Boolean, nullable=False, default=True)
+    hyde_enabled_default = Column(Boolean, nullable=False, default=False)
+    hyde_llm_tier = Column(String(16), nullable=False, default="low")
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
