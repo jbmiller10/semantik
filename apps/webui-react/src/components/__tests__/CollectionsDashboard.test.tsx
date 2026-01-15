@@ -98,20 +98,20 @@ describe('CollectionsDashboard', () => {
 
     it('should sort collections by updated_at (most recent first)', () => {
       const mockCollections = [
-        createTestCollection({ 
-          id: 'col-1', 
+        createTestCollection({
+          id: 'col-1',
           name: 'Oldest Collection',
-          updated_at: '2024-01-01T00:00:00Z' 
+          updated_at: '2024-01-01T00:00:00Z'
         }),
-        createTestCollection({ 
-          id: 'col-2', 
+        createTestCollection({
+          id: 'col-2',
           name: 'Newest Collection',
-          updated_at: '2024-01-03T00:00:00Z' 
+          updated_at: '2024-01-03T00:00:00Z'
         }),
-        createTestCollection({ 
-          id: 'col-3', 
+        createTestCollection({
+          id: 'col-3',
           name: 'Middle Collection',
-          updated_at: '2024-01-02T00:00:00Z' 
+          updated_at: '2024-01-02T00:00:00Z'
         }),
       ];
 
@@ -267,7 +267,7 @@ describe('CollectionsDashboard', () => {
       renderWithQueryClient(<CollectionsDashboard />);
 
       const statusFilter = screen.getByLabelText('Filter collections by status');
-      
+
       // Filter by ready status
       fireEvent.change(statusFilter, { target: { value: 'ready' } });
       expect(screen.getByTestId('collection-card-col-1')).toBeInTheDocument();
@@ -373,7 +373,7 @@ describe('CollectionsDashboard', () => {
 
       expect(screen.getByText('No collections yet')).toBeInTheDocument();
       expect(screen.getByText('Get started by creating your first collection to begin embedding your documents.')).toBeInTheDocument();
-      
+
       // Should show the create button in empty state
       const createButtons = screen.getAllByText('Create Collection');
       expect(createButtons.length).toBeGreaterThan(1); // Header and empty state
@@ -436,7 +436,7 @@ describe('CollectionsDashboard', () => {
       // Check for the spinner by its classes instead of role
       const spinner = document.querySelector('.animate-spin');
       expect(spinner).toBeInTheDocument();
-      expect(spinner).toHaveClass('rounded-full', 'h-8', 'w-8', 'border-b-2', 'border-blue-600');
+      expect(spinner).toHaveClass('rounded-full', 'h-8', 'w-8', 'border-b-2', 'border-signal-500');
     });
 
     it('should not show loading spinner when data exists and reloading', () => {
@@ -475,10 +475,10 @@ describe('CollectionsDashboard', () => {
       renderWithQueryClient(<CollectionsDashboard />);
 
       expect(screen.getByText('Failed to load collections')).toBeInTheDocument();
-      
+
       const retryButton = screen.getByText('Retry');
       expect(retryButton).toBeInTheDocument();
-      
+
       fireEvent.click(retryButton);
       expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
