@@ -28,6 +28,10 @@ def mock_user_preferences():
     prefs.search_use_reranker = False
     prefs.search_rrf_k = 60
     prefs.search_similarity_threshold = None
+    # HyDE settings
+    prefs.search_use_hyde = False
+    prefs.search_hyde_quality_tier = "low"
+    prefs.search_hyde_timeout_seconds = 10
     # Collection defaults
     prefs.default_embedding_model = None
     prefs.default_quantization = "float16"
