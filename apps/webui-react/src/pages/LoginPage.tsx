@@ -85,23 +85,31 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-cover bg-center">
-      <div className="max-w-md w-full space-y-8 glass-panel p-10 rounded-2xl animate-fade-in shadow-2xl shadow-brand-500/10">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* Ambient background glow for login */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-signal-600/10 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-data-teal/5 blur-[120px]" />
+      </div>
+
+      <div className="max-w-md w-full space-y-8 glass-panel p-10 rounded-none border-l-0 border-r-0 sm:border sm:rounded-2xl animate-fade-in relative z-10">
         <div>
-          <div className="mx-auto h-16 w-16 bg-gradient-to-br from-brand-500 to-accent-500 rounded-2xl shadow-lg flex items-center justify-center transform -rotate-6 transition-transform hover:rotate-0 duration-300">
-            <span className="text-white font-bold text-3xl">S</span>
+          <div className="flex flex-col items-center">
+            {/* Text Logo for Swiss Style */}
+            <h1 className="text-4xl font-bold tracking-tight text-white mb-2">SEMANTIK</h1>
+            <div className="h-1 w-12 bg-signal-600 rounded-full"></div>
           </div>
-          <h2 className="mt-8 text-center text-3xl font-bold heading-gradient">
-            {isLogin ? 'Welcome Back' : 'Join Semantik'}
+          <h2 className="mt-8 text-center text-xl font-medium text-gray-200">
+            {isLogin ? 'Welcome back' : 'Initialize account'}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-500">
-            {isLogin ? 'Sign in to access your document pipeline' : 'Create your account to get started'}
+            {isLogin ? 'Enter your credentials to access the void' : 'Create your secure identity'}
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-1">
+              <label htmlFor="username" className="block text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">
                 Username
               </label>
               <input
@@ -115,15 +123,15 @@ function LoginPage() {
                 title="Use at least 3 characters. Letters, numbers, and underscores only."
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all sm:text-sm bg-white/50 focus:bg-white"
-                placeholder="Enter your username"
+                className="block w-full px-4 py-3 input-glass rounded-lg text-sm"
+                placeholder="username"
                 aria-describedby={!isLogin ? 'username-help' : undefined}
               />
             </div>
             {!isLogin && (
               <>
                 <div>
-                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label htmlFor="email" className="block text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">
                     Email address
                   </label>
                   <input
@@ -134,12 +142,12 @@ function LoginPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all sm:text-sm bg-white/50 focus:bg-white"
-                    placeholder="Enter your email"
+                    className="block w-full px-4 py-3 input-glass rounded-lg text-sm"
+                    placeholder="name@example.com"
                   />
                 </div>
                 <div>
-                  <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label htmlFor="fullName" className="block text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">
                     Full Name
                   </label>
                   <input
@@ -149,14 +157,14 @@ function LoginPage() {
                     autoComplete="name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all sm:text-sm bg-white/50 focus:bg-white"
-                    placeholder="Enter your full name (optional)"
+                    className="block w-full px-4 py-3 input-glass rounded-lg text-sm"
+                    placeholder="John Doe (Optional)"
                   />
                 </div>
               </>
             )}
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">
+              <label htmlFor="password" className="block text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">
                 Password
               </label>
               <input
@@ -169,15 +177,15 @@ function LoginPage() {
                 title={isLogin ? undefined : 'Use at least 8 characters.'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all sm:text-sm bg-white/50 focus:bg-white"
-                placeholder="Enter your password"
+                className="block w-full px-4 py-3 input-glass rounded-lg text-sm"
+                placeholder="••••••••"
                 aria-describedby={!isLogin ? 'password-help' : undefined}
               />
             </div>
           </div>
 
           {!isLogin && (
-            <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
+            <div className="text-xs text-gray-500 bg-void-900/50 p-3 rounded-lg border border-white/5">
               <p id="username-help" className="mb-1">• Usernames: letters, numbers, underscores (3+ chars)</p>
               <p id="password-help">• Passwords: 8+ characters required</p>
             </div>
@@ -187,7 +195,7 @@ function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 hover:shadow-lg hover:shadow-brand-500/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold uppercase tracking-wide rounded-lg text-white bg-signal-600 hover:bg-signal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-void-900 focus:ring-signal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-signal-600/20"
             >
               {loading ? (
                 <span className="flex items-center">
@@ -195,10 +203,10 @@ function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Processing...
+                  Authenticating...
                 </span>
               ) : (
-                isLogin ? 'Sign in' : 'Create Account'
+                isLogin ? 'Sign In' : 'Create Account'
               )}
             </button>
           </div>
@@ -207,11 +215,11 @@ function LoginPage() {
             <button
               type="button"
               onClick={() => setIsLogin(!isLogin)}
-              className="text-sm font-semibold text-brand-600 hover:text-brand-500 transition-colors"
+              className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
             >
               {isLogin
-                ? "Don't have an account? Create one"
-                : 'Already have an account? Sign in'}
+                ? "First time? Create access credentials"
+                : 'Already verified? Sign in'}
             </button>
           </div>
         </form>

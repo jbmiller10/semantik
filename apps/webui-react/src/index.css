@@ -5,25 +5,31 @@
 @tailwind utilities;
 
 /* Base Styles */
+/* Base Styles */
 body {
-  @apply bg-surface-50 text-surface-900 font-sans antialiased;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.15) 0px, transparent 50%);
+  @apply bg-void-950 text-white font-sans antialiased selection:bg-signal-600 selection:text-white;
+  background-image: radial-gradient(circle at 50% -20%, rgba(124, 58, 237, 0.15), rgba(10, 10, 11, 0) 50%);
   background-attachment: fixed;
 }
 
-/* Glassmorphism Utilities */
+/* Premium Glassmorphism Utilities */
 .glass-panel {
-  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+  @apply bg-void-900/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
 
 .glass-card {
-  @apply bg-white/80 backdrop-blur-sm border border-white/50 shadow-sm transition-all duration-300;
+  @apply bg-void-900/40 backdrop-blur-md border border-white/5 transition-all duration-300 hover:bg-void-900/60 hover:border-signal-600/30 hover:shadow-lg hover:shadow-signal-600/10;
 }
 
 .heading-gradient {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-accent-600;
+  @apply text-white;
+  /* Simplified for stark Swiss look, or use slight gradient */
+  text-shadow: 0 0 40px rgba(124, 58, 237, 0.5);
+}
+
+.input-glass {
+  @apply bg-void-950/50 border border-void-800 text-white placeholder-gray-500 focus:border-signal-600 focus:ring-1 focus:ring-signal-600 transition-all duration-200 outline-none;
 }
 
 /* Progress bar shimmer effect */
@@ -31,25 +37,26 @@ body {
   0% {
     background-position: -200% center;
   }
+
   100% {
     background-position: 200% center;
   }
 }
 
 .progress-shimmer {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.3) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.3) 50%,
+      transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
 
 /* Status dot ping animation */
 @keyframes ping {
-  75%, 100% {
+
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }

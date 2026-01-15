@@ -270,8 +270,8 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         placeholder="Enter your search query..."
                         className={`w-full pl-5 pr-12 py-4 text-lg border rounded-xl shadow-sm transition-all duration-200 outline-none
                             ${getValidationError('query')
-                                ? 'border-red-300 bg-red-50 focus:ring-2 focus:ring-red-200'
-                                : 'border-gray-200 bg-white/50 focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10'
+                                ? 'border-red-500/50 bg-red-500/10 focus:ring-2 focus:ring-red-500/20 text-red-200'
+                                : 'input-glass text-white focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500'
                             }`}
                         disabled={loading}
                     />
@@ -286,18 +286,18 @@ export default function SearchForm({ collections }: SearchFormProps) {
                                 <X className="w-5 h-5" />
                             </button>
                         ) : (
-                            <Search className="w-6 h-6 text-brand-400 group-focus-within:text-brand-600 transition-colors" />
+                            <Search className="w-6 h-6 text-signal-400 group-focus-within:text-signal-300 transition-colors" />
                         )}
                     </div>
                 </div>
                 {getValidationError('query') && (
-                    <p className="text-sm text-red-600 font-medium ml-1">{getValidationError('query')}</p>
+                    <p className="text-sm text-red-400 font-medium ml-1">{getValidationError('query')}</p>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Collection Selector */}
                     <div className="lg:col-span-2 space-y-1.5">
-                        <label className="block text-sm font-semibold text-gray-700 ml-1">
+                        <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">
                             Collections
                         </label>
                         <CollectionMultiSelect
@@ -315,7 +315,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
 
                     {/* Embedding Mode Selector */}
                     <div className="space-y-1.5">
-                        <label htmlFor="search-type" className="block text-sm font-semibold text-gray-700 ml-1">
+                        <label htmlFor="search-type" className="block text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">
                             Embedding Mode
                         </label>
                         <select
@@ -325,7 +325,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                                 setFieldTouched('searchType', true);
                                 validateAndUpdateSearchParams({ searchType: e.target.value as 'semantic' | 'hybrid' | 'question' | 'code' });
                             }}
-                            className="w-full px-4 py-2.5 bg-white/50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all duration-200"
+                            className="w-full px-4 py-2.5 input-glass rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500 transition-all duration-200"
                             disabled={loading}
                         >
                             <option value="semantic">General</option>
@@ -339,7 +339,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 </div>
             </div>
 
-            <div className="border-t border-gray-100 pt-6">
+            <div className="border-t border-white/5 pt-6">
                 {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
                 <SearchModeSelector
                     searchMode={searchParams.searchMode}
@@ -358,9 +358,9 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         checked={searchParams.useHyde}
                         onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
                         disabled={loading}
-                        className="h-4 w-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                        className="h-4 w-4 bg-void-800 border-white/20 text-signal-600 rounded focus:ring-signal-500 focus:ring-offset-void-900"
                     />
-                    <label htmlFor="use-hyde" className="text-sm text-gray-700">
+                    <label htmlFor="use-hyde" className="text-sm text-gray-300 font-medium">
                         Use HyDE query expansion
                     </label>
                     <span className="text-xs text-gray-500" title="Generates a hypothetical document to improve search quality">
@@ -370,7 +370,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
             </div>
 
             {/* Advanced Options */}
-            <div className="glass-card bg-brand-50/30 rounded-xl p-4 border border-brand-100/50">
+            <div className="glass-card bg-void-800/30 rounded-xl p-4 border border-white/5">
                 <SearchOptions />
             </div>
 
@@ -380,11 +380,11 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     type="submit"
                     disabled={loading}
                     className={`
-            px-8 py-3.5 rounded-xl font-bold text-white shadow-lg shadow-brand-500/25 transition-all duration-200
+            px-8 py-3.5 rounded-xl font-bold text-white shadow-lg shadow-signal-600/20 transition-all duration-200
             flex items-center space-x-2.5 transform hover:-translate-y-0.5
             ${loading
-                            ? 'bg-brand-400 cursor-not-allowed shadow-none translate-y-0'
-                            : 'bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 hover:shadow-brand-500/40 active:translate-y-0'
+                            ? 'bg-signal-800 cursor-not-allowed shadow-none translate-y-0 opacity-50'
+                            : 'bg-signal-600 hover:bg-signal-500 hover:shadow-signal-600/40 active:translate-y-0'
                         }
           `}
                 >

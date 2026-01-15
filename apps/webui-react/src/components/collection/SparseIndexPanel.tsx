@@ -64,10 +64,10 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
   // Loading state
   if (isLoading) {
     return (
-      <div className="p-4 bg-gray-50 rounded-lg">
+      <div className="p-6 bg-void-900/30 rounded-2xl border border-white/5">
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-          <span className="ml-2 text-sm text-gray-500">Loading sparse index status...</span>
+          <Loader2 className="h-6 w-6 animate-spin text-signal-500" />
+          <span className="ml-2 text-sm text-gray-400">Loading sparse index status...</span>
         </div>
       </div>
     );
@@ -76,8 +76,8 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
   // Error state
   if (isError) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <div className="flex items-center gap-2 text-red-700">
+      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+        <div className="flex items-center gap-2 text-red-300">
           <AlertCircle className="h-5 w-5" />
           <span className="text-sm">Failed to load sparse index status</span>
         </div>
@@ -99,16 +99,16 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-purple-600" />
-          <h4 className="text-sm font-medium text-gray-900">Sparse Indexing</h4>
+          <Zap className="h-5 w-5 text-signal-500" />
+          <h4 className="text-sm font-bold text-gray-200 uppercase tracking-wide">Sparse Indexing</h4>
         </div>
         {status?.enabled ? (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/10 text-teal-400 border border-teal-500/20">
             <CheckCircle className="h-3 w-3 mr-1" />
             Enabled
           </span>
         ) : (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/5 text-gray-400 border border-white/10">
             <XCircle className="h-3 w-3 mr-1" />
             Disabled
           </span>
@@ -117,18 +117,18 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
 
       {status?.enabled ? (
         /* Enabled State */
-        <div className="p-4 bg-purple-50 border border-purple-100 rounded-lg space-y-4">
+        <div className="p-6 bg-signal-500/5 border border-signal-500/20 rounded-2xl space-y-5">
           {/* Status Info */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <dt className="text-xs text-purple-600 uppercase tracking-wide">Plugin</dt>
-              <dd className="mt-1 text-sm font-medium text-purple-900">
+              <dt className="text-xs text-signal-400 font-bold uppercase tracking-wider">Plugin</dt>
+              <dd className="mt-1 text-sm font-medium text-white">
                 {pluginInfo?.name || status.plugin_id}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-purple-600 uppercase tracking-wide">Vectors</dt>
-              <dd className="mt-1 text-sm font-medium text-purple-900">
+              <dt className="text-xs text-signal-400 font-bold uppercase tracking-wider">Vectors</dt>
+              <dd className="mt-1 text-sm font-medium text-white">
                 {status.document_count?.toLocaleString() || '0'}
               </dd>
             </div>
@@ -136,20 +136,20 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
 
           {/* BM25 Parameters (if applicable) */}
           {status.plugin_id === 'bm25-local' && status.model_config_data && (
-            <div className="pt-3 border-t border-purple-200">
-              <dt className="text-xs text-purple-600 uppercase tracking-wide mb-2">
+            <div className="pt-4 border-t border-signal-500/10">
+              <dt className="text-xs text-signal-400 font-bold uppercase tracking-wider mb-2">
                 BM25 Parameters
               </dt>
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-sm">
-                  <span className="text-purple-600">k1:</span>{' '}
-                  <span className="font-mono text-purple-900">
+                  <span className="text-gray-400">k1:</span>{' '}
+                  <span className="font-mono text-white">
                     {(status.model_config_data as { k1?: number }).k1 ?? 1.5}
                   </span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-purple-600">b:</span>{' '}
-                  <span className="font-mono text-purple-900">
+                  <span className="text-gray-400">b:</span>{' '}
+                  <span className="font-mono text-white">
                     {(status.model_config_data as { b?: number }).b ?? 0.75}
                   </span>
                 </div>
@@ -159,23 +159,23 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
 
           {/* Reindex Progress */}
           {isReindexInProgress && reindexProgress && (
-            <div className="pt-3 border-t border-purple-200">
+            <div className="pt-4 border-t border-signal-500/10">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-purple-900">
+                <span className="text-sm font-medium text-white">
                   Reindexing in progress
                 </span>
-                <span className="text-sm text-purple-700">
+                <span className="text-sm text-signal-400 font-mono">
                   {Math.round(reindexProgress.progress || 0)}%
                 </span>
               </div>
-              <div className="w-full bg-purple-200 rounded-full h-2">
+              <div className="w-full bg-void-900 rounded-full h-2 overflow-hidden">
                 <div
-                  className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-signal-500 h-2 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(124,58,237,0.5)]"
                   style={{ width: `${reindexProgress.progress || 0}%` }}
                 />
               </div>
               {reindexProgress.current_step && (
-                <p className="mt-2 text-xs text-purple-600">
+                <p className="mt-2 text-xs text-signal-400">
                   {reindexProgress.current_step}
                 </p>
               )}
@@ -183,11 +183,11 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3 pt-2">
             <button
               onClick={handleReindex}
               disabled={isReindexing || !!isReindexInProgress}
-              className="flex-1 px-3 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 text-sm font-bold text-signal-400 bg-transparent border border-signal-500/30 rounded-xl hover:bg-signal-500/10 hover:border-signal-500/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
             >
               {isReindexing || isReindexInProgress ? (
                 <>
@@ -204,7 +204,7 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
             <button
               onClick={handleDisable}
               disabled={isDisabling}
-              className="px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-4 py-2 text-sm font-bold text-red-400 bg-transparent border border-red-500/30 rounded-xl hover:bg-red-500/10 hover:border-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
             >
               {isDisabling ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -217,15 +217,15 @@ export function SparseIndexPanel({ collection }: SparseIndexPanelProps) {
         </div>
       ) : (
         /* Disabled State */
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="p-6 bg-void-900/30 border border-white/5 rounded-2xl group">
+          <p className="text-sm text-gray-400 mb-5 leading-relaxed">
             Enable sparse indexing to use hybrid search (BM25 + semantic) for this collection.
             This creates keyword-based indexes alongside your existing vector embeddings.
           </p>
           <button
             onClick={() => setShowConfigModal(true)}
             disabled={isEnabling}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full px-4 py-2 text-sm font-bold text-white bg-signal-600 rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 disabled:opacity-50 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98]"
           >
             {isEnabling ? (
               <>

@@ -48,7 +48,7 @@ function RenameCollectionModal({
       setError('Collection name cannot be empty');
       return false;
     }
-    
+
     const invalidChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
     for (const char of invalidChars) {
       if (name.includes(char)) {
@@ -56,7 +56,7 @@ function RenameCollectionModal({
         return false;
       }
     }
-    
+
     setError('');
     return true;
   };
@@ -76,29 +76,29 @@ function RenameCollectionModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-[60] w-full max-w-md">
-        <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-medium text-gray-900">Rename Collection</h3>
+      <div className="fixed inset-0 bg-void-950/80 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border border-white/10 rounded-2xl shadow-2xl z-[60] w-full max-w-md">
+        <div className="px-6 py-4 border-b border-white/10 bg-void-900/50">
+          <h3 className="text-xl font-bold text-white tracking-tight">Rename Collection</h3>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 space-y-4">
             <div>
-              <label htmlFor="current-name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="current-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                 Current Name
               </label>
               <input
                 type="text"
                 id="current-name"
                 value={currentName}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm bg-gray-50 sm:text-sm"
+                className="mt-1 block w-full border border-white/5 rounded-xl bg-white/5 text-gray-400 sm:text-sm px-4 py-2"
                 disabled
               />
             </div>
 
             <div>
-              <label htmlFor="new-name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="new-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                 New Name
               </label>
               <input
@@ -106,28 +106,28 @@ function RenameCollectionModal({
                 id="new-name"
                 value={newName}
                 onChange={handleNameChange}
-                className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                  error
-                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                }`}
+                className={`mt-1 block w-full rounded-xl shadow-sm sm:text-sm bg-void-950/50 px-4 py-2 text-white placeholder-gray-600 focus:outline-none focus:ring-2 ${error
+                    ? 'border border-red-500/50 focus:ring-red-500/50'
+                    : 'border border-white/10 focus:ring-signal-500/50'
+                  }`}
                 required
                 autoFocus
+                placeholder="Enter new name"
               />
               {error && (
-                <p className="mt-1 text-sm text-red-600">{error}</p>
+                <p className="mt-1 text-sm text-red-400">{error}</p>
               )}
             </div>
 
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
               <div className="flex">
                 <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-yellow-700">
+                  <p className="text-sm text-amber-300/80">
                     This will only change the display name. The underlying data and vector collections will remain unchanged.
                   </p>
                 </div>
@@ -135,18 +135,18 @@ function RenameCollectionModal({
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t flex justify-end space-x-3">
+          <div className="px-6 py-4 border-t border-white/10 flex justify-end space-x-3 bg-void-900/30">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="px-4 py-2 border border-white/10 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
               disabled={mutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-signal-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-signal-600/20 hover:bg-signal-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={mutation.isPending || !!error || newName === currentName}
             >
               {mutation.isPending ? 'Renaming...' : 'Rename'}
