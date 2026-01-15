@@ -15,6 +15,7 @@ from webui.api.v2.schemas import (
     CollectionSearchRequest,
     CollectionSearchResponse,
     CollectionSearchResult,
+    HyDEInfo,
     SingleCollectionSearchRequest,
 )
 from webui.auth import get_current_user
@@ -66,6 +67,7 @@ async def multi_collection_search(
         use_reranker=search_request.use_reranker,
         rerank_model=search_request.rerank_model,
         reranker_id=search_request.reranker_id,
+        use_hyde=search_request.use_hyde,
     )
 
     # Convert service result to API response format
@@ -95,6 +97,12 @@ async def multi_collection_search(
         )
 
     metadata = result["metadata"]
+
+    # Build HyDE info if available
+    hyde_info: HyDEInfo | None = None
+    if metadata.get("hyde_info"):
+        hyde_info = HyDEInfo(**metadata["hyde_info"])
+
     return CollectionSearchResponse(
         query=search_request.query,
         results=final_results,
@@ -116,6 +124,8 @@ async def multi_collection_search(
         search_time_ms=metadata["processing_time"] * 1000,
         reranking_time_ms=None,  # Not available in new format
         total_time_ms=metadata["processing_time"] * 1000,
+        hyde_used=metadata.get("hyde_used", False),
+        hyde_info=hyde_info,
         partial_failure=bool(metadata.get("errors")),
         failed_collections=(
             [
@@ -171,6 +181,7 @@ async def single_collection_search(
         rerank_model=search_request.rerank_model,
         reranker_id=search_request.reranker_id,
         include_content=search_request.include_content,
+        use_hyde=search_request.use_hyde,
     )
 
     # Convert service result to API response format
@@ -193,6 +204,11 @@ async def single_collection_search(
             )
         )
 
+    # Build HyDE info if available
+    single_hyde_info: HyDEInfo | None = None
+    if result.get("hyde_info"):
+        single_hyde_info = HyDEInfo(**result["hyde_info"])
+
     return CollectionSearchResponse(
         query=search_request.query,
         results=final_results,
@@ -206,6 +222,8 @@ async def single_collection_search(
         search_time_ms=result.get("processing_time_ms", 0),
         reranking_time_ms=None,
         total_time_ms=result.get("processing_time_ms", 0),
+        hyde_used=result.get("hyde_used", False),
+        hyde_info=single_hyde_info,
         partial_failure=False,
         failed_collections=None,
     )

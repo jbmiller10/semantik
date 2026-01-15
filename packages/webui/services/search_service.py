@@ -13,6 +13,12 @@ from shared.config.internal_api_key import ensure_internal_api_key
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.user_preferences_repository import UserPreferencesRepository
+from shared.llm.exceptions import LLMError, LLMNotConfiguredError
+from shared.llm.factory import LLMServiceFactory
+from shared.llm.hyde import HyDEConfig, HyDEResult, generate_hyde_expansion
+from shared.llm.types import LLMQualityTier, LLMResponse
+from shared.llm.usage_tracking import record_llm_usage
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
@@ -288,6 +294,106 @@ class SearchService:
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
 
+    async def _resolve_hyde_settings(
+        self,
+        user_id: int,
+        use_hyde_override: bool | None,
+    ) -> tuple[bool, LLMQualityTier, int]:
+        """Resolve HyDE settings from user preferences with optional override.
+
+        Args:
+            user_id: User ID for preferences lookup
+            use_hyde_override: Per-request override (None = use preference)
+
+        Returns:
+            Tuple of (should_use_hyde, quality_tier, timeout_seconds)
+        """
+        prefs_repo = UserPreferencesRepository(self.db_session)
+        prefs = await prefs_repo.get_or_create(user_id)
+
+        # Per-request override takes precedence
+        should_use = use_hyde_override if use_hyde_override is not None else prefs.search_use_hyde
+
+        tier = LLMQualityTier.HIGH if prefs.search_hyde_quality_tier == "high" else LLMQualityTier.LOW
+        timeout = prefs.search_hyde_timeout_seconds
+
+        return should_use, tier, timeout
+
+    async def _generate_hyde_if_enabled(
+        self,
+        user_id: int,
+        query: str,
+        use_hyde_override: bool | None,
+    ) -> tuple[HyDEResult | None, LLMResponse | None, float]:
+        """Generate HyDE expansion if enabled for user.
+
+        Args:
+            user_id: User ID for LLM provider and preferences
+            query: Original search query
+            use_hyde_override: Per-request override
+
+        Returns:
+            Tuple of (HyDEResult or None, LLMResponse or None, generation_time_ms)
+        """
+        should_use, tier, timeout = await self._resolve_hyde_settings(user_id, use_hyde_override)
+
+        if not should_use:
+            return None, None, 0.0
+
+        start_time = time.time()
+
+        try:
+            factory = LLMServiceFactory(self.db_session)
+            provider = await factory.create_provider_for_tier(user_id, tier)
+
+            async with provider:
+                config = HyDEConfig(
+                    timeout_seconds=timeout,
+                )
+                result, response = await generate_hyde_expansion(provider, query, config=config)
+
+                # Track usage if we got a response
+                if response is not None:
+                    await record_llm_usage(
+                        self.db_session,
+                        user_id,
+                        response,
+                        feature="hyde",
+                        quality_tier=tier.value,
+                    )
+
+                generation_time = (time.time() - start_time) * 1000
+                return result, response, generation_time
+
+        except LLMNotConfiguredError:
+            logger.debug("HyDE skipped: LLM not configured for user %s", user_id)
+            return HyDEResult(
+                expanded_query=query,
+                original_query=query,
+                success=False,
+                warning="HyDE skipped: LLM not configured",
+            ), None, 0.0
+
+        except LLMError as e:
+            logger.warning("HyDE generation failed for user %s: %s", user_id, e)
+            generation_time = (time.time() - start_time) * 1000
+            return HyDEResult(
+                expanded_query=query,
+                original_query=query,
+                success=False,
+                warning=f"HyDE generation failed: {type(e).__name__}",
+            ), None, generation_time
+
+        except Exception as e:
+            logger.warning("Unexpected error during HyDE generation for user %s: %s", user_id, e)
+            generation_time = (time.time() - start_time) * 1000
+            return HyDEResult(
+                expanded_query=query,
+                original_query=query,
+                success=False,
+                warning=f"HyDE generation failed: {type(e).__name__}",
+            ), None, generation_time
+
     async def multi_collection_search(
         self,
         user_id: int,
@@ -302,6 +408,7 @@ class SearchService:
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
+        use_hyde: bool | None = None,
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -318,6 +425,7 @@ class SearchService:
             use_reranker: Whether to use reranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
+            use_hyde: Enable HyDE query expansion (None = use user preference)
 
         Returns:
             Dictionary with search results and metadata
@@ -331,6 +439,20 @@ class SearchService:
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
+        # Generate HyDE expansion if enabled
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(
+            user_id, query, use_hyde
+        )
+
+        # Determine the query to use for dense embedding
+        dense_query: str | None = None
+        if hyde_result is not None:
+            if hyde_result.success:
+                dense_query = hyde_result.expanded_query
+            elif hyde_result.warning and hyde_result.warning not in warning_set:
+                warning_set.add(hyde_result.warning)
+                warnings.append(hyde_result.warning)
+
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
         if reranker_id:
@@ -339,7 +461,7 @@ class SearchService:
                 effective_rerank_model = resolved_model
 
         # Build common search parameters
-        search_params = {
+        search_params: dict[str, Any] = {
             "search_type": search_type,
             "search_mode": search_mode,
             "rrf_k": rrf_k,
@@ -347,6 +469,7 @@ class SearchService:
             "filters": metadata_filter,
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
+            "dense_query": dense_query,  # HyDE expanded query for embedding (None if HyDE disabled/failed)
         }
 
         # Create timeout for searches
@@ -434,6 +557,18 @@ class SearchService:
 
         processing_time = time.time() - start_time
 
+        # Build HyDE metadata for response
+        hyde_used = hyde_result is not None and hyde_result.success
+        hyde_info: dict[str, Any] | None = None
+        if hyde_used and hyde_result is not None:
+            hyde_info = {
+                "expanded_query": hyde_result.expanded_query,
+                "generation_time_ms": hyde_time_ms,
+                "tokens_used": hyde_response.total_tokens if hyde_response else None,
+                "provider": hyde_response.provider if hyde_response else None,
+                "model": hyde_response.model if hyde_response else None,
+            }
+
         return {
             "results": final_results,
             "metadata": {
@@ -444,6 +579,8 @@ class SearchService:
                 "errors": errors if errors else None,
                 "search_mode_used": search_mode_used,
                 "warnings": warnings,
+                "hyde_used": hyde_used,
+                "hyde_info": hyde_info,
             },
         }
 
@@ -462,6 +599,7 @@ class SearchService:
         rerank_model: str | None = None,
         reranker_id: str | None = None,
         include_content: bool = True,
+        use_hyde: bool | None = None,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
 
@@ -479,6 +617,7 @@ class SearchService:
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
             include_content: Whether to include document content
+            use_hyde: Enable HyDE query expansion (None = use user preference)
 
         Returns:
             Dictionary with search results
@@ -490,6 +629,19 @@ class SearchService:
         collections = await self.validate_collection_access([collection_uuid], user_id)
         collection = collections[0]
 
+        # Generate HyDE expansion if enabled
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(
+            user_id, query, use_hyde
+        )
+
+        # Determine the query to use for dense embedding
+        dense_query: str | None = None
+        if hyde_result is not None:
+            if hyde_result.success:
+                dense_query = hyde_result.expanded_query
+            elif hyde_result.warning:
+                warnings.append(hyde_result.warning)
+
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
         if reranker_id:
@@ -497,7 +649,7 @@ class SearchService:
             if resolved_model:
                 effective_rerank_model = resolved_model
 
-        search_params = {
+        search_params: dict[str, Any] = {
             "query": query,
             "k": k,
             "collection": collection.vector_store_name,
@@ -511,6 +663,7 @@ class SearchService:
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
             "include_content": include_content,
+            "dense_query": dense_query,  # HyDE expanded query for embedding
         }
 
         try:
@@ -531,7 +684,27 @@ class SearchService:
             result: dict[str, Any] = response.json()
             # Add search_mode metadata to result
             result["search_mode_used"] = result.get("search_mode_used", search_mode_used)
-            result["warnings"] = result.get("warnings", warnings)
+
+            # Merge warnings from HyDE and vecpipe
+            vecpipe_warnings = result.get("warnings", [])
+            if not isinstance(vecpipe_warnings, list):
+                vecpipe_warnings = []
+            result["warnings"] = warnings + vecpipe_warnings
+
+            # Add HyDE metadata to result
+            hyde_used = hyde_result is not None and hyde_result.success
+            result["hyde_used"] = hyde_used
+            if hyde_used and hyde_result is not None:
+                result["hyde_info"] = {
+                    "expanded_query": hyde_result.expanded_query,
+                    "generation_time_ms": hyde_time_ms,
+                    "tokens_used": hyde_response.total_tokens if hyde_response else None,
+                    "provider": hyde_response.provider if hyde_response else None,
+                    "model": hyde_response.model if hyde_response else None,
+                }
+            else:
+                result["hyde_info"] = None
+
             return result
 
         except httpx.HTTPStatusError as e:

@@ -57,6 +57,7 @@ from .exceptions import (
     LLMTimeoutError,
 )
 from .factory import LLMServiceFactory
+from .hyde import HyDEConfig, HyDEResult, generate_hyde_expansion
 from .model_registry import ModelInfo, get_all_models, get_default_model, get_model_by_id, load_model_registry
 from .providers import AnthropicLLMProvider, OpenAILLMProvider
 from .types import LLMProviderType, LLMQualityTier, LLMResponse
@@ -85,6 +86,10 @@ __all__ = [
     "get_model_by_id",
     # Factory
     "LLMServiceFactory",
+    # HyDE
+    "HyDEConfig",
+    "HyDEResult",
+    "generate_hyde_expansion",
     # Usage tracking
     "record_llm_usage",
     "record_usage_simple",
