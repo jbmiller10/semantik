@@ -6,7 +6,6 @@ Tests the core HyDE functionality in packages/shared/llm/hyde.py.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,9 +18,6 @@ from shared.llm.hyde import (
     generate_hyde_expansion,
 )
 from shared.llm.types import LLMResponse
-
-if TYPE_CHECKING:
-    pass
 
 
 class TestHyDEConfig:
@@ -98,14 +94,14 @@ class TestHyDEResult:
 class TestGenerateHyDEExpansion:
     """Test generate_hyde_expansion function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_provider(self) -> AsyncMock:
         """Create a mock LLM provider."""
         provider = AsyncMock()
         provider.generate = AsyncMock()
         return provider
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_llm_response(self) -> LLMResponse:
         """Create a mock successful LLM response."""
         return LLMResponse(
@@ -116,7 +112,7 @@ class TestGenerateHyDEExpansion:
             output_tokens=100,
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_generation(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -131,7 +127,7 @@ class TestGenerateHyDEExpansion:
         assert result.warning is None
         assert response == mock_llm_response
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_returns_both_result_and_response(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -143,7 +139,7 @@ class TestGenerateHyDEExpansion:
         assert isinstance(result, HyDEResult)
         assert isinstance(response, LLMResponse)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_uses_custom_config(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -158,7 +154,7 @@ class TestGenerateHyDEExpansion:
         assert call_kwargs["max_tokens"] == 512
         assert call_kwargs["timeout"] == 20.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_uses_default_config_when_none(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -172,7 +168,7 @@ class TestGenerateHyDEExpansion:
         assert call_kwargs["max_tokens"] == 256  # Default
         assert call_kwargs["timeout"] == 10.0  # Default
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_uses_hyde_system_prompt(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -184,7 +180,7 @@ class TestGenerateHyDEExpansion:
         call_kwargs = mock_provider.generate.call_args.kwargs
         assert call_kwargs["system_prompt"] == HYDE_SYSTEM_PROMPT
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_prompt_formatting(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
@@ -198,7 +194,7 @@ class TestGenerateHyDEExpansion:
         expected_prompt = HYDE_USER_PROMPT_TEMPLATE.format(query=query)
         assert call_kwargs["prompt"] == expected_prompt
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_empty_response_falls_back(self, mock_provider: AsyncMock) -> None:
         """Empty/whitespace response falls back to original query."""
         mock_provider.generate.return_value = LLMResponse(
@@ -217,7 +213,7 @@ class TestGenerateHyDEExpansion:
         assert "empty" in result.warning.lower()
         assert response is not None  # Response is still returned
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_exception_falls_back_gracefully(self, mock_provider: AsyncMock) -> None:
         """Exception during generation falls back to original query."""
         mock_provider.generate.side_effect = Exception("Network error")
@@ -230,7 +226,7 @@ class TestGenerateHyDEExpansion:
         assert "Exception" in result.warning
         assert response is None  # No response on exception
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_timeout_error_falls_back(self, mock_provider: AsyncMock) -> None:
         """Timeout error falls back to original query."""
         from shared.llm.exceptions import LLMTimeoutError
@@ -245,7 +241,7 @@ class TestGenerateHyDEExpansion:
         assert "LLMTimeoutError" in result.warning
         assert response is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_provider_error_falls_back(self, mock_provider: AsyncMock) -> None:
         """Provider error falls back to original query."""
         from shared.llm.exceptions import LLMProviderError
@@ -260,7 +256,7 @@ class TestGenerateHyDEExpansion:
         assert "LLMProviderError" in result.warning
         assert response is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_strips_whitespace_from_response(
         self, mock_provider: AsyncMock
     ) -> None:
@@ -278,7 +274,7 @@ class TestGenerateHyDEExpansion:
         assert result.success is True
         assert result.expanded_query == "Generated hypothetical document."
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preserves_original_query_always(
         self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
     ) -> None:
