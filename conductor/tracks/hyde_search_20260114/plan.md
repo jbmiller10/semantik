@@ -1,13 +1,13 @@
 # Implementation Plan: HyDE Search Integration
 
-## Phase 1: Backend Implementation
+## Phase 1: Backend Implementation [checkpoint: 8f1e627]
 - [x] Task: Update Search API with HyDE Logic
     - [x] Modify `CollectionSearchRequest` in `packages/webui/api/v2/schemas.py` to include `hyde_enabled: bool = False`.
     - [x] Modify `SearchService.multi_collection_search` in `packages/webui/services/search_service.py` to handle the HyDE logic.
     - [x] Implement `_generate_hypothetical_document` method in `SearchService` using `LLMServiceFactory`.
     - [x] Implement fallback logic (catch `LLMNotConfiguredError`, `LLMAuthenticationError`, timeouts) to revert to standard search.
     - [x] [5aacab0]
-- [ ] Task: Conductor - User Manual Verification 'Backend Implementation' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Backend Implementation' (Protocol in workflow.md)
 
 ## Phase 2: Configuration & Settings
 - [ ] Task: Add User Settings for HyDE
