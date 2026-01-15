@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
@@ -12,7 +11,7 @@ import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
 import { SparseIndexPanel } from './collection/SparseIndexPanel';
-import type { DocumentResponse, FailedDocumentCountResponse } from '../services/api/v2/types';
+import type { FailedDocumentCountResponse, RetryDocumentsResponse, DocumentResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
 import {
@@ -23,10 +22,7 @@ import {
   Network,
   Sparkles,
   RefreshCw,
-  CheckCircle,
-  Clock,
   XCircle,
-  Search,
   Trash2,
   Edit2,
   Plus
@@ -63,7 +59,7 @@ const formatDuration = (start: string, end?: string) => {
   return `${hours}h ${minutes % 60}m`;
 };
 
-const formatChunkingConfig = (config: Record<string, any>) => {
+const formatChunkingConfig = (config: Record<string, string | number | boolean>) => {
   if (!config) return [];
   return Object.entries(config).map(([key, value]) => ({
     label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -74,7 +70,6 @@ const formatChunkingConfig = (config: Record<string, any>) => {
 // --- Component ---
 
 function CollectionDetailsModal() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showCollectionDetailsModal, setShowCollectionDetailsModal, addToast } = useUIStore();
   const [showAddDataModal, setShowAddDataModal] = useState(false);
@@ -85,7 +80,8 @@ function CollectionDetailsModal() {
   const filesLimit = 50;
 
   // State for config changes (only instruction for now)
-  const [configChanges, setConfigChanges] = useState<{
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [configChanges, _setConfigChanges] = useState<{
     instruction?: string;
   }>({});
   const [showReindexModal, setShowReindexModal] = useState(false);
@@ -167,9 +163,9 @@ function CollectionDetailsModal() {
   });
 
   const retryAllFailedMutation = useMutation({
-    mutationFn: () => documentsV2Api.retryAllFailed(showCollectionDetailsModal!),
-    onSuccess: (data) => {
-      addToast({ message: `Queued retry for ${data.data.retried_count} documents`, type: 'success' });
+    mutationFn: () => documentsV2Api.retryFailed(showCollectionDetailsModal!),
+    onSuccess: (response: { data: RetryDocumentsResponse }) => {
+      addToast({ message: `Queued retry for ${response.data.reset_count} documents`, type: 'success' });
       refetchDocuments();
       queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'failed-counts'] });
     },
@@ -186,7 +182,8 @@ function CollectionDetailsModal() {
     addToast({ message: 'Files uploaded successfully', type: 'success' });
   };
 
-  const handleRenameSuccess = (newName: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleRenameSuccess = (_newName: string) => {
     setShowRenameModal(false);
     queryClient.invalidateQueries({ queryKey: collectionKeys.all });
     queryClient.invalidateQueries({ queryKey: collectionKeys.detail(showCollectionDetailsModal!) });
@@ -209,7 +206,7 @@ function CollectionDetailsModal() {
 
   if (!showCollectionDetailsModal) return null;
 
-  const retryableCount = failedCounts?.failed_countDisplay ?? 0;
+  const retryableCount = (failedCounts?.transient ?? 0) + (failedCounts?.unknown ?? 0);
 
   return (
     <>
@@ -276,7 +273,7 @@ function CollectionDetailsModal() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id asany)}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'jobs' | 'files' | 'visualize' | 'settings')}
                 className={`py-3 px-1 border-b-2 font-bold text-sm uppercase tracking-wide transition-colors flex items-center gap-2 ${activeTab === tab.id
                     ? 'border-signal-500 text-signal-400'
                     : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-700'
@@ -414,13 +411,13 @@ function CollectionDetailsModal() {
                         {!documentsData?.documents || documentsData.documents.length === 0 ? (
                           <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No files found</td></tr>
                         ) : (
-                          documentsData.documents.map((doc: any) => (
+                          documentsData.documents.map((doc: DocumentResponse) => (
                             <tr key={doc.id} className="hover:bg-white/5 transition-colors">
                               <td className="px-6 py-4 text-sm font-medium text-white flex items-center gap-2">
                                 <FileText className="h-4 w-4 text-gray-500" />
                                 <span className="truncate max-w-xs" title={doc.file_name}>{doc.file_name}</span>
                               </td>
-                              <td className="px-6 py-4 text-sm text-gray-400">{formatBytes(doc.size_bytes || doc.size)}</td>
+                              <td className="px-6 py-4 text-sm text-gray-400">{formatBytes(doc.file_size)}</td>
                               <td className="px-6 py-4">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${doc.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
                                     doc.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
@@ -448,7 +445,7 @@ function CollectionDetailsModal() {
                     </table>
 
                     {/* Pagination */}
-                    {documentsData?.total > filesLimit && (
+                    {(documentsData?.total ?? 0) > filesLimit && (
                       <div className="px-6 py-3 border-t border-white/5 flex items-center justify-between bg-void-900/30">
                         <button
                           onClick={() => setFilesPage(p => Math.max(1, p - 1))}
@@ -460,7 +457,7 @@ function CollectionDetailsModal() {
                         <span className="text-sm text-gray-500">Page {filesPage}</span>
                         <button
                           onClick={() => setFilesPage(p => p + 1)}
-                          disabled={filesPage * filesLimit >= documentsData.total}
+                          disabled={filesPage * filesLimit >= (documentsData?.total ?? 0)}
                           className="text-sm font-bold text-gray-400 hover:text-white disabled:opacity-50"
                         >
                           Next
@@ -511,7 +508,7 @@ function CollectionDetailsModal() {
                             </div>
                           </div>
                           <dl className="grid grid-cols-2 gap-4">
-                            {formatChunkingConfig(collection.chunking_config).map(item => (
+                            {formatChunkingConfig(collection.chunking_config ?? {}).map(item => (
                               <div key={item.label}>
                                 <dt className="text-xs font-bold text-gray-500 uppercase tracking-wider">{item.label}</dt>
                                 <dd className="text-sm text-white font-mono">{item.value}</dd>

@@ -113,9 +113,7 @@ class TestGenerateHyDEExpansion:
         )
 
     @pytest.mark.asyncio()
-    async def test_successful_generation(
-        self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
-    ) -> None:
+    async def test_successful_generation(self, mock_provider: AsyncMock, mock_llm_response: LLMResponse) -> None:
         """Successful HyDE generation returns expanded query."""
         mock_provider.generate.return_value = mock_llm_response
 
@@ -140,9 +138,7 @@ class TestGenerateHyDEExpansion:
         assert isinstance(response, LLMResponse)
 
     @pytest.mark.asyncio()
-    async def test_uses_custom_config(
-        self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
-    ) -> None:
+    async def test_uses_custom_config(self, mock_provider: AsyncMock, mock_llm_response: LLMResponse) -> None:
         """Custom config values are passed to provider."""
         mock_provider.generate.return_value = mock_llm_response
         config = HyDEConfig(timeout_seconds=20, max_tokens=512, temperature=0.5)
@@ -169,9 +165,7 @@ class TestGenerateHyDEExpansion:
         assert call_kwargs["timeout"] == 10.0  # Default
 
     @pytest.mark.asyncio()
-    async def test_uses_hyde_system_prompt(
-        self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
-    ) -> None:
+    async def test_uses_hyde_system_prompt(self, mock_provider: AsyncMock, mock_llm_response: LLMResponse) -> None:
         """HYDE_SYSTEM_PROMPT is passed to provider."""
         mock_provider.generate.return_value = mock_llm_response
 
@@ -181,9 +175,7 @@ class TestGenerateHyDEExpansion:
         assert call_kwargs["system_prompt"] == HYDE_SYSTEM_PROMPT
 
     @pytest.mark.asyncio()
-    async def test_prompt_formatting(
-        self, mock_provider: AsyncMock, mock_llm_response: LLMResponse
-    ) -> None:
+    async def test_prompt_formatting(self, mock_provider: AsyncMock, mock_llm_response: LLMResponse) -> None:
         """Query is inserted into HYDE_USER_PROMPT_TEMPLATE."""
         mock_provider.generate.return_value = mock_llm_response
         query = "how does semantic search work"
@@ -257,9 +249,7 @@ class TestGenerateHyDEExpansion:
         assert response is None
 
     @pytest.mark.asyncio()
-    async def test_strips_whitespace_from_response(
-        self, mock_provider: AsyncMock
-    ) -> None:
+    async def test_strips_whitespace_from_response(self, mock_provider: AsyncMock) -> None:
         """Response content is stripped of leading/trailing whitespace."""
         mock_provider.generate.return_value = LLMResponse(
             content="\n\n  Generated hypothetical document.  \n\n",
