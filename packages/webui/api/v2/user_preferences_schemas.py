@@ -20,12 +20,8 @@ class SearchPreferences(BaseModel):
     )
     # HyDE settings
     use_hyde: bool = Field(default=False, description="Enable HyDE query expansion by default")
-    hyde_quality_tier: Literal["high", "low"] = Field(
-        default="low", description="LLM quality tier for HyDE generation"
-    )
-    hyde_timeout_seconds: int = Field(
-        default=10, ge=3, le=60, description="Timeout for HyDE generation (3-60 seconds)"
-    )
+    hyde_quality_tier: Literal["high", "low"] = Field(default="low", description="LLM quality tier for HyDE generation")
+    hyde_timeout_seconds: int = Field(default=10, ge=3, le=60, description="Timeout for HyDE generation (3-60 seconds)")
 
     model_config = ConfigDict(
         extra="forbid",

@@ -71,12 +71,8 @@ def downgrade() -> None:
     op.drop_column("mcp_profiles", "use_hyde")
 
     # Remove constraints first
-    op.drop_constraint(
-        "ck_user_preferences_search_hyde_timeout", "user_preferences", type_="check"
-    )
-    op.drop_constraint(
-        "ck_user_preferences_search_hyde_quality_tier", "user_preferences", type_="check"
-    )
+    op.drop_constraint("ck_user_preferences_search_hyde_timeout", "user_preferences", type_="check")
+    op.drop_constraint("ck_user_preferences_search_hyde_quality_tier", "user_preferences", type_="check")
 
     # Remove columns from user_preferences
     op.drop_column("user_preferences", "search_hyde_timeout_seconds")
