@@ -237,6 +237,9 @@ class SemantikMCPServer:
         search_mode = str(arguments.get("search_mode") or profile.get("search_mode") or "dense")
         rrf_k = int(arguments.get("rrf_k") or profile.get("rrf_k") or 60)
 
+        # HyDE query expansion
+        use_hyde = bool(arguments.get("use_hyde") if "use_hyde" in arguments else profile.get("use_hyde", False))
+
         data = await self.api_client.search(
             collection_uuids=collection_uuids,
             query=query,
@@ -245,6 +248,7 @@ class SemantikMCPServer:
             search_mode=search_mode,
             rrf_k=rrf_k,
             use_reranker=use_reranker,
+            use_hyde=use_hyde,
             score_threshold=score_threshold_value,
             include_content=True,
         )

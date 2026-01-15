@@ -61,6 +61,7 @@ class UserPreferencesRepository:
     VALID_QUANTIZATION = frozenset({"float32", "float16", "int8"})
     VALID_CHUNKING_STRATEGIES = frozenset({"character", "recursive", "markdown", "semantic"})
     VALID_SPARSE_TYPES = frozenset({"bm25", "splade"})
+    VALID_HYDE_QUALITY_TIERS = frozenset({"high", "low"})
 
     # Default values for reset operations
     SEARCH_DEFAULTS: dict[str, int | str | bool | None] = {
@@ -69,6 +70,10 @@ class UserPreferencesRepository:
         "search_use_reranker": False,
         "search_rrf_k": 60,
         "search_similarity_threshold": None,
+        # HyDE settings
+        "search_use_hyde": False,
+        "search_hyde_quality_tier": "low",
+        "search_hyde_timeout_seconds": 30,
     }
 
     COLLECTION_DEFAULTS: dict[str, int | str | bool | None] = {
@@ -126,6 +131,14 @@ class UserPreferencesRepository:
             raise ValidationError(
                 f"Invalid sparse_type '{value}'. Must be one of: {', '.join(sorted(self.VALID_SPARSE_TYPES))}",
                 field="default_sparse_type",
+            )
+
+    def _validate_hyde_quality_tier(self, value: str) -> None:
+        """Validate HyDE quality tier value."""
+        if value not in self.VALID_HYDE_QUALITY_TIERS:
+            raise ValidationError(
+                f"Invalid hyde_quality_tier '{value}'. Must be one of: {', '.join(sorted(self.VALID_HYDE_QUALITY_TIERS))}",
+                field="search_hyde_quality_tier",
             )
 
     def _validate_range(
@@ -233,6 +246,10 @@ class UserPreferencesRepository:
         search_use_reranker: bool | _UnsetType = UNSET,
         search_rrf_k: int | _UnsetType = UNSET,
         search_similarity_threshold: float | None | _UnsetType = UNSET,
+        # HyDE settings
+        search_use_hyde: bool | _UnsetType = UNSET,
+        search_hyde_quality_tier: str | _UnsetType = UNSET,
+        search_hyde_timeout_seconds: int | _UnsetType = UNSET,
         # Collection defaults
         default_embedding_model: str | None | _UnsetType = UNSET,
         default_quantization: str | _UnsetType = UNSET,
@@ -259,6 +276,9 @@ class UserPreferencesRepository:
             search_use_reranker: Enable reranking
             search_rrf_k: RRF constant (1-100)
             search_similarity_threshold: Minimum similarity (0.0-1.0 or None)
+            search_use_hyde: Enable HyDE query expansion
+            search_hyde_quality_tier: LLM quality tier for HyDE ('high', 'low')
+            search_hyde_timeout_seconds: HyDE generation timeout (3-60)
             default_embedding_model: Default embedding model or None
             default_quantization: Model precision ('float32', 'float16', 'int8')
             default_chunking_strategy: Chunking strategy
@@ -287,6 +307,10 @@ class UserPreferencesRepository:
             self._validate_range(search_rrf_k, 1, 100, "search_rrf_k")
         if not isinstance(search_similarity_threshold, _UnsetType) and search_similarity_threshold is not None:
             self._validate_range(search_similarity_threshold, 0.0, 1.0, "search_similarity_threshold")
+        if not isinstance(search_hyde_quality_tier, _UnsetType):
+            self._validate_hyde_quality_tier(search_hyde_quality_tier)
+        if not isinstance(search_hyde_timeout_seconds, _UnsetType):
+            self._validate_range(search_hyde_timeout_seconds, 3, 60, "search_hyde_timeout_seconds")
         if not isinstance(default_quantization, _UnsetType):
             self._validate_quantization(default_quantization)
         if not isinstance(default_chunking_strategy, _UnsetType):
@@ -323,6 +347,13 @@ class UserPreferencesRepository:
                 prefs.search_rrf_k = search_rrf_k
             if search_similarity_threshold is not UNSET:
                 prefs.search_similarity_threshold = search_similarity_threshold
+            # HyDE settings
+            if search_use_hyde is not UNSET:
+                prefs.search_use_hyde = search_use_hyde
+            if search_hyde_quality_tier is not UNSET:
+                prefs.search_hyde_quality_tier = search_hyde_quality_tier
+            if search_hyde_timeout_seconds is not UNSET:
+                prefs.search_hyde_timeout_seconds = search_hyde_timeout_seconds
 
             # Update only provided fields - Collection defaults
             if default_embedding_model is not UNSET:
@@ -390,6 +421,10 @@ class UserPreferencesRepository:
             prefs.search_use_reranker = self.SEARCH_DEFAULTS["search_use_reranker"]
             prefs.search_rrf_k = self.SEARCH_DEFAULTS["search_rrf_k"]
             prefs.search_similarity_threshold = self.SEARCH_DEFAULTS["search_similarity_threshold"]
+            # HyDE settings
+            prefs.search_use_hyde = self.SEARCH_DEFAULTS["search_use_hyde"]
+            prefs.search_hyde_quality_tier = self.SEARCH_DEFAULTS["search_hyde_quality_tier"]
+            prefs.search_hyde_timeout_seconds = self.SEARCH_DEFAULTS["search_hyde_timeout_seconds"]
 
             prefs.updated_at = datetime.now(UTC)
 

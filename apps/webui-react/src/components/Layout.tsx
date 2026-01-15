@@ -40,45 +40,45 @@ function Layout() {
   return (
     <div className="min-h-screen">
       {/* Glass Header */}
-      <header className="sticky top-0 z-50 glass-panel border-b-0 rounded-b-xl mx-4 mt-2">
+      <header className="sticky top-0 z-50 glass-panel border-x-0 border-t-0 border-b border-white/5 rounded-none backdrop-blur-xl bg-void-950/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 bg-gradient-to-br from-brand-500 to-accent-500 rounded-lg shadow-lg flex items-center justify-center">
+              <div className="h-8 w-8 bg-signal-600 rounded-lg shadow-lg flex items-center justify-center">
                 <span className="text-white font-bold text-xl">S</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold heading-gradient">Semantik</h1>
-                <p className="text-xs text-brand-600/70 font-medium -mt-1">Document Pipeline</p>
+                <h1 className="text-xl font-bold text-white tracking-tight">SEMANTIK</h1>
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold -mt-1 pl-0.5">Intelligence Pipeline</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-2 text-sm font-medium">
-                <span className="text-brand-900/50">Welcome,</span>
-                <span className="text-brand-900">{user?.username}</span>
+              <div className="hidden sm:flex items-center space-x-2 text-sm font-medium">
+                <span className="text-gray-500">Operator:</span>
+                <span className="text-gray-200">{user?.username}</span>
               </div>
 
-              <div className="h-4 w-px bg-brand-200"></div>
+              <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
 
               <div className="flex items-center space-x-4">
                 {import.meta.env.DEV && (
                   <Link
                     to="/verification"
-                    className="text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+                    className="text-sm font-medium text-signal-400 hover:text-signal-300 transition-colors"
                   >
                     Verification
                   </Link>
                 )}
                 <Link
                   to={isSettingsPage ? "/" : "/settings"}
-                  className="text-sm font-medium text-brand-600 hover:text-brand-800 transition-colors"
+                  className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
                 >
                   {isSettingsPage ? "← Back" : "Settings"}
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                  className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white bg-void-800 hover:bg-void-700 border border-white/10 rounded-md transition-all duration-200"
                 >
                   Logout
                 </button>
@@ -93,16 +93,16 @@ function Layout() {
         {/* Modern Tabs - Only show on home page */}
         {!isSettingsPage && (
           <div className="mb-8">
-            <nav className="flex space-x-1 p-1 bg-white/50 backdrop-blur-sm rounded-xl border border-white/40 w-fit">
+            <nav className="flex space-x-1 p-1 bg-void-900/50 backdrop-blur-sm rounded-lg border border-white/5 w-fit">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    px-6 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
+                    px-5 py-2 text-sm font-medium rounded-md transition-all duration-200
                     ${activeTab === tab.id
-                      ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5'
-                      : 'text-brand-600/70 hover:text-brand-800 hover:bg-white/30'
+                      ? 'bg-signal-600 text-white shadow-sm'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }
                   `}
                 >

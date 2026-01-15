@@ -16,6 +16,15 @@ from shared.database.models import Collection, CollectionStatus
 from webui.services.search_service import SearchService
 
 
+def _create_mock_user_prefs() -> Mock:
+    """Create a mock UserPreferences with HyDE settings."""
+    prefs = Mock()
+    prefs.search_use_hyde = False
+    prefs.search_hyde_quality_tier = "LOW"
+    prefs.search_hyde_timeout_seconds = 30
+    return prefs
+
+
 class TestSearchService:
     """Test SearchService implementation"""
 
@@ -30,6 +39,15 @@ class TestSearchService:
     def mock_collection_repo(self) -> None:
         """Create a mock CollectionRepository"""
         return AsyncMock()
+
+    @pytest.fixture(autouse=True)
+    def mock_user_prefs_repo(self) -> None:
+        """Mock UserPreferencesRepository.get_or_create to return proper prefs object."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=_create_mock_user_prefs())
+            mock_repo_class.return_value = mock_repo
+            yield mock_repo_class
 
     @pytest.fixture()
     def search_service(self, mock_session, mock_collection_repo) -> None:
@@ -821,9 +839,15 @@ class TestSearchServiceIntegration:
     """Test search service integration scenarios"""
 
     @pytest.mark.asyncio()
+    @patch("webui.services.search_service.UserPreferencesRepository")
     @patch("webui.services.search_service.httpx.AsyncClient")
-    async def test_concurrent_collection_searches(self, mock_httpx_client) -> None:
+    async def test_concurrent_collection_searches(self, mock_httpx_client, mock_prefs_repo_class) -> None:
         """Test concurrent searches across multiple collections"""
+        # Setup UserPreferencesRepository mock
+        mock_prefs_repo = AsyncMock()
+        mock_prefs_repo.get_or_create = AsyncMock(return_value=_create_mock_user_prefs())
+        mock_prefs_repo_class.return_value = mock_prefs_repo
+
         # Setup service
         mock_session = AsyncMock()
         mock_collection_repo = AsyncMock()
@@ -908,3 +932,396 @@ class TestSearchServiceIntegration:
         assert final_results[0]["id"] == "d1"  # score 0.95
         assert final_results[1]["id"] == "d3"  # score 0.90
         assert final_results[2]["id"] == "d5"  # score 0.85
+
+
+class TestSearchServiceHyDE:
+    """Test HyDE (Hypothetical Document Embeddings) integration in SearchService."""
+
+    @pytest.fixture()
+    def mock_session(self) -> AsyncMock:
+        """Create a mock AsyncSession."""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture()
+    def mock_collection_repo(self) -> AsyncMock:
+        """Create a mock CollectionRepository."""
+        return AsyncMock()
+
+    @pytest.fixture()
+    def search_service(self, mock_session: AsyncMock, mock_collection_repo: AsyncMock) -> SearchService:
+        """Create SearchService with mocked dependencies."""
+        return SearchService(
+            db_session=mock_session,
+            collection_repo=mock_collection_repo,
+        )
+
+    def _make_mock_prefs(self, use_hyde: bool = True, tier: str = "low", timeout: int = 10) -> Mock:
+        """Create mock user preferences with configurable HyDE settings."""
+        prefs = Mock()
+        prefs.search_use_hyde = use_hyde
+        prefs.search_hyde_quality_tier = tier
+        prefs.search_hyde_timeout_seconds = timeout
+        return prefs
+
+    # Tests for _resolve_hyde_settings
+
+    @pytest.mark.asyncio()
+    async def test_resolve_hyde_settings_uses_prefs_default(self, search_service: SearchService) -> None:
+        """Returns user preference values when no override."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(
+                return_value=self._make_mock_prefs(use_hyde=True, tier="high", timeout=15)
+            )
+            mock_repo_class.return_value = mock_repo
+
+            should_use, tier, timeout = await search_service._resolve_hyde_settings(123, None)
+
+            from shared.llm.types import LLMQualityTier
+
+            assert should_use is True
+            assert tier == LLMQualityTier.HIGH
+            assert timeout == 15
+
+    @pytest.mark.asyncio()
+    async def test_resolve_hyde_settings_override_true(self, search_service: SearchService) -> None:
+        """Override True overrides preference False."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=False))
+            mock_repo_class.return_value = mock_repo
+
+            should_use, _, _ = await search_service._resolve_hyde_settings(123, True)
+
+            assert should_use is True
+
+    @pytest.mark.asyncio()
+    async def test_resolve_hyde_settings_override_false(self, search_service: SearchService) -> None:
+        """Override False overrides preference True."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            should_use, _, _ = await search_service._resolve_hyde_settings(123, False)
+
+            assert should_use is False
+
+    @pytest.mark.asyncio()
+    async def test_resolve_hyde_settings_low_tier_mapping(self, search_service: SearchService) -> None:
+        """Quality tier 'low' maps to LLMQualityTier.LOW."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(tier="low"))
+            mock_repo_class.return_value = mock_repo
+
+            _, tier, _ = await search_service._resolve_hyde_settings(123, None)
+
+            from shared.llm.types import LLMQualityTier
+
+            assert tier == LLMQualityTier.LOW
+
+    # Tests for _generate_hyde_if_enabled
+
+    @pytest.mark.asyncio()
+    async def test_generate_hyde_returns_none_when_disabled(self, search_service: SearchService) -> None:
+        """Returns (None, None, 0.0) when HyDE is disabled."""
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=False))
+            mock_repo_class.return_value = mock_repo
+
+            result, response, time_ms = await search_service._generate_hyde_if_enabled(123, "test query", None)
+
+            assert result is None
+            assert response is None
+            assert time_ms == 0.0
+
+    @pytest.mark.asyncio()
+    async def test_generate_hyde_when_enabled_success(self, search_service: SearchService) -> None:
+        """Returns HyDEResult when HyDE is enabled and succeeds."""
+        from shared.llm.types import LLMResponse
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_provider = AsyncMock()
+                mock_provider.__aenter__ = AsyncMock(return_value=mock_provider)
+                mock_provider.__aexit__ = AsyncMock(return_value=False)
+                mock_provider.generate = AsyncMock(
+                    return_value=LLMResponse(
+                        content="Hypothetical document about machine learning...",
+                        model="test-model",
+                        provider="mock",
+                        input_tokens=50,
+                        output_tokens=100,
+                    )
+                )
+                mock_factory.create_provider_for_tier = AsyncMock(return_value=mock_provider)
+                mock_factory_class.return_value = mock_factory
+
+                with patch("webui.services.search_service.record_llm_usage", new_callable=AsyncMock):
+                    result, response, time_ms = await search_service._generate_hyde_if_enabled(
+                        123, "machine learning", None
+                    )
+
+                assert result is not None
+                assert result.success is True
+                assert "Hypothetical document" in result.expanded_query
+                assert response is not None
+                assert time_ms > 0
+
+    @pytest.mark.asyncio()
+    async def test_generate_hyde_handles_not_configured_error(self, search_service: SearchService) -> None:
+        """Handles LLMNotConfiguredError with fallback."""
+        from shared.llm.exceptions import LLMNotConfiguredError
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_factory.create_provider_for_tier = AsyncMock(side_effect=LLMNotConfiguredError(123))
+                mock_factory_class.return_value = mock_factory
+
+                result, response, time_ms = await search_service._generate_hyde_if_enabled(123, "test query", None)
+
+                assert result is not None
+                assert result.success is False
+                assert result.expanded_query == "test query"  # Falls back
+                assert result.warning is not None
+                assert "not configured" in result.warning.lower()
+                assert response is None
+
+    @pytest.mark.asyncio()
+    async def test_generate_hyde_handles_llm_error(self, search_service: SearchService) -> None:
+        """Handles LLMError with fallback."""
+        from shared.llm.exceptions import LLMProviderError
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_factory.create_provider_for_tier = AsyncMock(
+                    side_effect=LLMProviderError("mock", "Connection failed")
+                )
+                mock_factory_class.return_value = mock_factory
+
+                result, response, time_ms = await search_service._generate_hyde_if_enabled(123, "test query", None)
+
+                assert result is not None
+                assert result.success is False
+                assert result.expanded_query == "test query"
+                assert result.warning is not None
+                assert "LLMProviderError" in result.warning
+
+    @pytest.mark.asyncio()
+    async def test_generate_hyde_records_usage_tracking(self, search_service: SearchService) -> None:
+        """Verifies record_llm_usage is called on success."""
+        from shared.llm.types import LLMResponse
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True, tier="low"))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_provider = AsyncMock()
+                mock_provider.__aenter__ = AsyncMock(return_value=mock_provider)
+                mock_provider.__aexit__ = AsyncMock(return_value=False)
+                mock_provider.generate = AsyncMock(
+                    return_value=LLMResponse(
+                        content="Generated text",
+                        model="test",
+                        provider="mock",
+                        input_tokens=50,
+                        output_tokens=100,
+                    )
+                )
+                mock_factory.create_provider_for_tier = AsyncMock(return_value=mock_provider)
+                mock_factory_class.return_value = mock_factory
+
+                with patch("webui.services.search_service.record_llm_usage", new_callable=AsyncMock) as mock_record:
+                    await search_service._generate_hyde_if_enabled(123, "test", None)
+
+                    mock_record.assert_called_once()
+                    call_kwargs = mock_record.call_args.kwargs
+                    assert call_kwargs["feature"] == "hyde"
+                    assert call_kwargs["quality_tier"] == "low"
+
+    # Tests for hybrid search HyDE separation
+
+    @pytest.mark.asyncio()
+    @patch("webui.services.search_service.httpx.AsyncClient")
+    async def test_multi_search_passes_dense_query_for_hyde(
+        self, mock_httpx: Mock, search_service: SearchService, mock_collection_repo: AsyncMock
+    ) -> None:
+        """multi_collection_search passes HyDE dense_query to VecPipe for embedding."""
+        from shared.llm.types import LLMResponse
+
+        # Mock collection
+        mock_collection = Mock(spec=Collection)
+        mock_collection.id = "col-1"
+        mock_collection.status = CollectionStatus.READY
+        mock_collection.vector_store_name = "test_collection"
+        mock_collection.embedding_model = "test-model"
+        mock_collection.quantization = "float16"
+        mock_collection.name = "Test Collection"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        # Mock HTTP response for search
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": [{"id": "doc1", "score": 0.9}]}
+        mock_response.raise_for_status = Mock()
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_client
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_provider = AsyncMock()
+                mock_provider.__aenter__ = AsyncMock(return_value=mock_provider)
+                mock_provider.__aexit__ = AsyncMock(return_value=False)
+                mock_provider.generate = AsyncMock(
+                    return_value=LLMResponse(
+                        content="Hypothetical document about the topic",
+                        model="test",
+                        provider="mock",
+                        input_tokens=50,
+                        output_tokens=100,
+                    )
+                )
+                mock_factory.create_provider_for_tier = AsyncMock(return_value=mock_provider)
+                mock_factory_class.return_value = mock_factory
+
+                with patch("webui.services.search_service.record_llm_usage", new_callable=AsyncMock):
+                    await search_service.multi_collection_search(
+                        user_id=123,
+                        collection_uuids=["col-1"],
+                        query="original query",
+                        use_hyde=True,
+                    )
+
+                # Verify VecPipe request includes dense_query
+                call_args = mock_client.post.call_args
+                request_data = call_args.kwargs["json"]
+                assert request_data["query"] == "original query"
+                assert request_data["dense_query"] == "Hypothetical document about the topic"
+
+    @pytest.mark.asyncio()
+    @patch("webui.services.search_service.httpx.AsyncClient")
+    async def test_multi_search_no_dense_query_when_hyde_disabled(
+        self, mock_httpx: Mock, search_service: SearchService, mock_collection_repo: AsyncMock
+    ) -> None:
+        """multi_collection_search omits dense_query when HyDE is disabled."""
+        # Mock collection
+        mock_collection = Mock(spec=Collection)
+        mock_collection.id = "col-1"
+        mock_collection.status = CollectionStatus.READY
+        mock_collection.vector_store_name = "test_collection"
+        mock_collection.embedding_model = "test-model"
+        mock_collection.quantization = "float16"
+        mock_collection.name = "Test Collection"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        # Mock HTTP response
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = Mock()
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_client
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=False))
+            mock_repo_class.return_value = mock_repo
+
+            await search_service.multi_collection_search(
+                user_id=123,
+                collection_uuids=["col-1"],
+                query="test query",
+                use_hyde=False,
+            )
+
+            # Verify no dense_query in request
+            call_args = mock_client.post.call_args
+            request_data = call_args.kwargs["json"]
+            assert request_data["query"] == "test query"
+            assert request_data.get("dense_query") is None
+
+    @pytest.mark.asyncio()
+    @patch("webui.services.search_service.httpx.AsyncClient")
+    async def test_multi_search_response_includes_hyde_metadata(
+        self, mock_httpx: Mock, search_service: SearchService, mock_collection_repo: AsyncMock
+    ) -> None:
+        """multi_collection_search response includes hyde_used and hyde_info."""
+        from shared.llm.types import LLMResponse
+
+        # Mock collection
+        mock_collection = Mock(spec=Collection)
+        mock_collection.id = "col-1"
+        mock_collection.status = CollectionStatus.READY
+        mock_collection.vector_store_name = "test"
+        mock_collection.embedding_model = "test-model"
+        mock_collection.quantization = "float16"
+        mock_collection.name = "Test"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = Mock()
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_client
+
+        with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_or_create = AsyncMock(return_value=self._make_mock_prefs(use_hyde=True))
+            mock_repo_class.return_value = mock_repo
+
+            with patch("webui.services.search_service.LLMServiceFactory") as mock_factory_class:
+                mock_factory = AsyncMock()
+                mock_provider = AsyncMock()
+                mock_provider.__aenter__ = AsyncMock(return_value=mock_provider)
+                mock_provider.__aexit__ = AsyncMock(return_value=False)
+                mock_provider.generate = AsyncMock(
+                    return_value=LLMResponse(
+                        content="Expanded query",
+                        model="test",
+                        provider="mock",
+                        input_tokens=50,
+                        output_tokens=100,
+                    )
+                )
+                mock_factory.create_provider_for_tier = AsyncMock(return_value=mock_provider)
+                mock_factory_class.return_value = mock_factory
+
+                with patch("webui.services.search_service.record_llm_usage", new_callable=AsyncMock):
+                    result = await search_service.multi_collection_search(
+                        user_id=123,
+                        collection_uuids=["col-1"],
+                        query="test",
+                        use_hyde=True,
+                    )
+
+                assert result["metadata"]["hyde_used"] is True
+                assert result["metadata"]["hyde_info"] is not None
+                assert result["metadata"]["hyde_info"]["expanded_query"] == "Expanded query"

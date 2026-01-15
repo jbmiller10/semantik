@@ -555,8 +555,8 @@ describe('AddDataToCollectionModal', () => {
     it('should call onClose when clicking backdrop', async () => {
       renderComponent();
 
-      // Find the backdrop (first div with fixed positioning and bg-opacity)
-      const backdrop = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+      // Find the backdrop (first div with fixed positioning - dark theme uses bg-void-950/80)
+      const backdrop = document.querySelector('.fixed.inset-0.bg-void-950\\/80');
       expect(backdrop).toBeInTheDocument();
 
       fireEvent.click(backdrop!);

@@ -53,6 +53,11 @@ class CollectionSearchRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
+    # HyDE (Hypothetical Document Embeddings) query expansion
+    use_hyde: bool | None = Field(
+        None,
+        description="Enable HyDE query expansion. If None, uses user preference default.",
+    )
     # Legacy hybrid search parameters (deprecated, use search_mode instead)
     hybrid_alpha: float | None = Field(
         None, ge=0.0, le=1.0, description="[DEPRECATED] Use search_mode='hybrid' instead"
@@ -125,6 +130,33 @@ class CollectionSearchResult(BaseSearchResult):
     )
 
 
+class HyDEInfo(BaseModel):
+    """HyDE generation metadata for search response."""
+
+    expanded_query: str | None = Field(
+        None,
+        description="The generated hypothetical document (if HyDE was used)",
+    )
+    generation_time_ms: float | None = Field(
+        None,
+        description="Time taken for HyDE generation in milliseconds",
+    )
+    tokens_used: int | None = Field(
+        None,
+        description="Total tokens consumed for HyDE generation",
+    )
+    provider: str | None = Field(
+        None,
+        description="LLM provider used for HyDE (anthropic, openai, local)",
+    )
+    model: str | None = Field(
+        None,
+        description="LLM model used for HyDE generation",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CollectionSearchResponse(BaseModel):
     """Multi-collection search response schema."""
 
@@ -146,6 +178,15 @@ class CollectionSearchResponse(BaseModel):
     search_time_ms: float
     reranking_time_ms: float | None = None
     total_time_ms: float
+    # HyDE metadata
+    hyde_used: bool = Field(
+        default=False,
+        description="Whether HyDE query expansion was used for this search",
+    )
+    hyde_info: HyDEInfo | None = Field(
+        default=None,
+        description="HyDE generation details (if hyde_used is True)",
+    )
     # Failure information
     partial_failure: bool = Field(default=False, description="Whether some collections failed to search")
     failed_collections: list[dict[str, str]] | None = Field(
@@ -217,6 +258,11 @@ class SingleCollectionSearchRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
+    # HyDE (Hypothetical Document Embeddings) query expansion
+    use_hyde: bool | None = Field(
+        None,
+        description="Enable HyDE query expansion. If None, uses user preference default.",
+    )
     # Legacy hybrid search parameters (deprecated, use search_mode instead)
     hybrid_alpha: float | None = Field(
         None, ge=0.0, le=1.0, description="[DEPRECATED] Use search_mode='hybrid' instead"

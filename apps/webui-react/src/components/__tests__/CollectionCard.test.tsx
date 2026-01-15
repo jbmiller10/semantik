@@ -32,33 +32,33 @@ const mockCollection: Collection = {
 
 describe('CollectionCard', () => {
   const mockSetShowCollectionDetailsModal = vi.fn()
-  
+
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useUIStore as MockedFunction<typeof useUIStore>).mockReturnValue({
-      setShowCollectionDetailsModal: mockSetShowCollectionDetailsModal,
-    })
+      ; (useUIStore as MockedFunction<typeof useUIStore>).mockReturnValue({
+        setShowCollectionDetailsModal: mockSetShowCollectionDetailsModal,
+      })
   })
 
   it('renders collection information correctly', () => {
     render(<CollectionCard collection={mockCollection} />)
-    
+
     // Check collection name
     expect(screen.getByText('test-collection')).toBeInTheDocument()
-    
+
     // Check description
     expect(screen.getByText('Test collection description')).toBeInTheDocument()
-    
+
     // Check model name (should extract last part)
     expect(screen.getByText('Qwen3-Embedding-0.6B')).toBeInTheDocument()
-    
+
     // Check status
     expect(screen.getByText('ready')).toBeInTheDocument()
-    
+
     // Check formatted numbers
     expect(screen.getByText('1,234')).toBeInTheDocument() // document_count
     expect(screen.getByText('5,678')).toBeInTheDocument() // vector_count
-    
+
     // Check labels
     expect(screen.getByText('Documents')).toBeInTheDocument()
     expect(screen.getByText('Vectors')).toBeInTheDocument()
@@ -68,14 +68,14 @@ describe('CollectionCard', () => {
 
   it('renders different status colors correctly', () => {
     const statuses: CollectionStatus[] = ['ready', 'processing', 'error', 'degraded', 'pending']
-    
+
     statuses.forEach(status => {
       const { rerender } = render(
         <CollectionCard collection={{ ...mockCollection, status }} />
       )
-      
+
       expect(screen.getByText(status)).toBeInTheDocument()
-      
+
       // Clean up for next iteration
       rerender(<div />)
     })
@@ -84,30 +84,30 @@ describe('CollectionCard', () => {
   it('handles simple model names without path', () => {
     const simpleModelCollection = { ...mockCollection, embedding_model: 'bert-base' }
     render(<CollectionCard collection={simpleModelCollection} />)
-    
+
     expect(screen.getByText('bert-base')).toBeInTheDocument()
   })
 
   it('shows status message for error state', () => {
-    const errorCollection = { 
-      ...mockCollection, 
+    const errorCollection = {
+      ...mockCollection,
       status: 'error' as CollectionStatus,
       status_message: 'Failed to connect to vector database'
     }
     render(<CollectionCard collection={errorCollection} />)
-    
+
     expect(screen.getByText('error')).toBeInTheDocument()
     expect(screen.getByText('Failed to connect to vector database')).toBeInTheDocument()
   })
 
   it('shows status message for degraded state', () => {
-    const degradedCollection = { 
-      ...mockCollection, 
+    const degradedCollection = {
+      ...mockCollection,
       status: 'degraded' as CollectionStatus,
       status_message: 'Some documents failed to index'
     }
     render(<CollectionCard collection={degradedCollection} />)
-    
+
     expect(screen.getByText('degraded')).toBeInTheDocument()
     expect(screen.getByText('Some documents failed to index')).toBeInTheDocument()
   })
@@ -118,7 +118,7 @@ describe('CollectionCard', () => {
       name: 'this-is-a-very-long-collection-name-that-should-be-truncated',
     }
     render(<CollectionCard collection={longNameCollection} />)
-    
+
     const nameElement = screen.getByText('this-is-a-very-long-collection-name-that-should-be-truncated')
     expect(nameElement).toHaveClass('truncate')
     expect(nameElement).toHaveAttribute('title', 'this-is-a-very-long-collection-name-that-should-be-truncated')
@@ -127,16 +127,16 @@ describe('CollectionCard', () => {
   it('opens collection details modal when Manage button is clicked', async () => {
     const user = userEvent.setup()
     render(<CollectionCard collection={mockCollection} />)
-    
+
     const manageButton = screen.getByRole('button', { name: /manage/i })
     await user.click(manageButton)
-    
+
     expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith('test-id-123')
   })
 
   it('shows processing state with animation', () => {
-    const processingCollection = { 
-      ...mockCollection, 
+    const processingCollection = {
+      ...mockCollection,
       status: 'processing' as CollectionStatus,
       isProcessing: true,
       activeOperation: {
@@ -150,25 +150,25 @@ describe('CollectionCard', () => {
       }
     }
     render(<CollectionCard collection={processingCollection} />)
-    
+
     // Check processing status
     expect(screen.getByText('processing')).toBeInTheDocument()
     expect(screen.getByText('Indexing documents...')).toBeInTheDocument()
-    
+
     // Check that the card has the processing styles
-    const card = screen.getByText('test-collection').closest('div[class*="ring-2"]')
+    const card = screen.getByText('test-collection').closest('div[class*="ring-1"]')
     expect(card).toBeTruthy()
-    expect(card).toHaveClass('ring-brand-400')
+    expect(card).toHaveClass('ring-signal-500/50')
   })
 
   it('disables manage button during processing', () => {
-    const processingCollection = { 
-      ...mockCollection, 
+    const processingCollection = {
+      ...mockCollection,
       status: 'processing' as CollectionStatus,
       isProcessing: true
     }
     render(<CollectionCard collection={processingCollection} />)
-    
+
     const manageButton = screen.getByRole('button', { name: /manage/i })
     expect(manageButton).toBeDisabled()
   })
@@ -180,7 +180,7 @@ describe('CollectionCard', () => {
       vector_count: 8901234,
     }
     render(<CollectionCard collection={largeNumberCollection} />)
-    
+
     expect(screen.getByText('1,234,567')).toBeInTheDocument()
     expect(screen.getByText('8,901,234')).toBeInTheDocument()
   })

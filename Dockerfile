@@ -91,6 +91,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
     python3-pip \
     # Required for git connector sources
     git \

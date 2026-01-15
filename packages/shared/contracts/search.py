@@ -18,6 +18,12 @@ class SearchRequest(BaseModel):
     """Unified search API request model."""
 
     query: str = Field(..., min_length=1, max_length=1000, description="Search query text")
+    dense_query: str | None = Field(
+        None,
+        min_length=1,
+        max_length=2000,
+        description="Alternative query for dense embedding only (HyDE expansion). If provided, used for dense search while 'query' is used for sparse/BM25.",
+    )
     # Use 'k' as the canonical field, but accept 'top_k' as an alias for backward compatibility
     k: int = Field(default=10, ge=1, le=100, description="Number of results", alias="top_k")
     search_type: str = Field(

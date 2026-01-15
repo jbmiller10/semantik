@@ -476,13 +476,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=False,
             rerank_model=None,
             reranker_id=None,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is False
@@ -566,13 +567,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             reranker_id=None,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -709,14 +711,15 @@ class TestSearchReranking:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=True,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -769,14 +772,15 @@ class TestSingleCollectionSearch:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert isinstance(response, CollectionSearchResponse)
@@ -1712,3 +1716,185 @@ class TestSearchResultFormatting:
         assert response.total_time_ms == 123.45
         assert response.reranking_time_ms is None
         assert response.embedding_time_ms is None
+
+
+class TestSearchHyDEAPI:
+    """Test HyDE (Hypothetical Document Embeddings) in search API endpoints."""
+
+    @pytest.fixture()
+    def mock_user(self) -> dict[str, Any]:
+        """Create a mock authenticated user."""
+        return {"id": 1, "username": "testuser", "email": "test@example.com"}
+
+    @pytest.fixture()
+    def mock_collections(self) -> list[MagicMock]:
+        """Create mock collection objects."""
+        collection = MagicMock(spec=Collection)
+        collection.id = str(uuid.uuid4())
+        collection.name = "Test Collection"
+        return [collection]
+
+    @pytest.mark.asyncio()
+    async def test_multi_search_accepts_use_hyde_parameter(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Multi-collection search endpoint accepts use_hyde parameter."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "hyde_used": True,
+                "hyde_info": {
+                    "expanded_query": "Hypothetical document about the topic",
+                    "generation_time_ms": 150.0,
+                    "tokens_used": 100,
+                    "provider": "mock",
+                    "model": "test-model",
+                },
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        # Verify use_hyde is passed to service
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is True
+
+        # Verify response includes HyDE metadata
+        assert response.hyde_used is True
+        assert response.hyde_info is not None
+        assert response.hyde_info.expanded_query == "Hypothetical document about the topic"
+
+    @pytest.mark.asyncio()
+    async def test_multi_search_use_hyde_defaults_to_none(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """use_hyde defaults to None (uses user preference)."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "hyde_used": False,
+                "hyde_info": None,
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            # use_hyde not specified
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is None
+
+    @pytest.mark.asyncio()
+    async def test_single_search_accepts_use_hyde_parameter(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Single collection search endpoint accepts use_hyde parameter."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search/single",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.single_collection_search.return_value = {
+            "results": [],
+            "processing_time_ms": 100,
+            "hyde_used": True,
+            "hyde_info": {
+                "expanded_query": "Generated hypothetical passage",
+                "generation_time_ms": 120.0,
+            },
+        }
+
+        search_request = SingleCollectionSearchRequest(
+            collection_id=str(uuid.uuid4()),
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.single_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is True
+        assert response.hyde_used is True
+
+    @pytest.mark.asyncio()
+    async def test_response_includes_hyde_warning_on_failure(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Response includes HyDE warning when generation failed."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "warnings": ["HyDE skipped: LLM not configured"],
+                "hyde_used": False,
+                "hyde_info": None,
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        assert response.hyde_used is False
+        assert response.hyde_info is None
+        assert "HyDE skipped" in response.warnings[0]

@@ -154,6 +154,8 @@ describe('searchStore', () => {
         // New sparse/hybrid search params
         searchMode: 'dense',
         rrfK: 60,
+        // HyDE query expansion
+        useHyde: false,
         // Legacy params (deprecated)
         hybridAlpha: 0.7,
       })

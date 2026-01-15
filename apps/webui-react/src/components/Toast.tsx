@@ -11,30 +11,30 @@ function Toast() {
         <div
           key={toast.id}
           data-testid="toast"
-          className={`max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden toast-${toast.type} ${
+          className={`max-w-sm w-full bg-void-900 shadow-lg rounded-lg pointer-events-auto ring-1 ring-void-700 overflow-hidden toast-${toast.type} ${
             toast.type === 'error'
               ? 'border-l-4 border-red-500'
               : toast.type === 'success'
               ? 'border-l-4 border-green-500'
               : toast.type === 'warning'
               ? 'border-l-4 border-yellow-500'
-              : 'border-l-4 border-blue-500'
+              : 'border-l-4 border-signal-500'
           }`}
         >
           <div className="p-4">
             <div className="flex items-start">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-gray-100">
                   {toast.type === 'error' && 'Error'}
                   {toast.type === 'success' && 'Success'}
                   {toast.type === 'warning' && 'Warning'}
                   {toast.type === 'info' && 'Info'}
                 </p>
-                <p className="mt-1 text-sm text-gray-500">{toast.message}</p>
+                <p className="mt-1 text-sm text-gray-400">{toast.message}</p>
               </div>
               <button
                 onClick={() => removeToast(toast.id)}
-                className="ml-4 text-gray-400 hover:text-gray-500 focus:outline-none"
+                className="ml-4 text-gray-500 hover:text-gray-300 focus:outline-none transition-colors"
               >
                 <svg
                   className="h-5 w-5"

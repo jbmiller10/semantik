@@ -332,8 +332,8 @@ describe('ReindexCollectionModal', () => {
     const user = userEvent.setup();
     renderComponent();
 
-    // Find the overlay by its class
-    const overlay = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+    // Find the overlay by its class (using backdrop-blur-sm as identifier)
+    const overlay = document.querySelector('.fixed.inset-0.backdrop-blur-sm');
     expect(overlay).toBeInTheDocument();
 
     await user.click(overlay!);
@@ -344,7 +344,7 @@ describe('ReindexCollectionModal', () => {
   it('closes modal when Escape key is pressed', () => {
     renderComponent();
 
-    const modalContent = document.querySelector('.relative.bg-white.rounded-lg');
+    const modalContent = document.querySelector('.glass-panel.rounded-2xl');
     expect(modalContent).toBeInTheDocument();
 
     fireEvent.keyDown(modalContent!, { key: 'Escape' });

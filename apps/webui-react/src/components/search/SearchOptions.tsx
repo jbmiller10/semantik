@@ -33,29 +33,29 @@ export default function SearchOptions() {
     };
 
     return (
-        <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
+        <div className="border border-white/5 rounded-2xl bg-void-900/50 shadow-sm overflow-hidden backdrop-blur-md">
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center justify-between p-4 bg-transparent hover:bg-white/5 transition-colors"
             >
-                <div className="flex items-center space-x-2 text-gray-700">
+                <div className="flex items-center space-x-2 text-gray-200">
                     <Settings className="w-4 h-4" />
-                    <span className="font-medium">Advanced Options</span>
+                    <span className="font-bold uppercase tracking-wide text-xs">Advanced Options</span>
                 </div>
                 {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                    <ChevronUp className="w-4 h-4 text-gray-400" />
                 ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
                 )}
             </button>
 
             {isExpanded && (
-                <div className="p-4 space-y-6 border-t border-gray-200">
+                <div className="p-6 space-y-6 border-t border-white/5 bg-void-950/30">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Top K Results */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
                                 Top K Results
                             </label>
                             <input
@@ -64,7 +64,7 @@ export default function SearchOptions() {
                                 onChange={(e) => handleParamChange('topK', parseInt(e.target.value))}
                                 min={1}
                                 max={250}
-                                className={`w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 ${getValidationError('topK') ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                className={`w-full px-3 py-2 border rounded-xl input-glass focus:ring-signal-500 focus:border-signal-500 ${getValidationError('topK') ? 'border-red-500/50 bg-red-500/10' : 'border-white/10'
                                     }`}
                             />
                             {getValidationError('topK') && (
@@ -77,7 +77,7 @@ export default function SearchOptions() {
 
                         {/* Score Threshold */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
                                 Score Threshold
                             </label>
                             <input
@@ -87,7 +87,7 @@ export default function SearchOptions() {
                                 min={0}
                                 max={1}
                                 step={0.05}
-                                className={`w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 ${getValidationError('scoreThreshold') ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                className={`w-full px-3 py-2 border rounded-xl input-glass focus:ring-signal-500 focus:border-signal-500 ${getValidationError('scoreThreshold') ? 'border-red-500/50 bg-red-500/10' : 'border-white/10'
                                     }`}
                             />
                             {getValidationError('scoreThreshold') && (
@@ -100,7 +100,7 @@ export default function SearchOptions() {
                     </div>
 
                     {/* Reranking Configuration */}
-                    <div className="pt-4 border-t border-gray-200">
+                    <div className="pt-4 border-t border-white/5">
                         <RerankingConfiguration
                             enabled={searchParams.useReranker}
                             model={searchParams.rerankModel}
@@ -110,12 +110,12 @@ export default function SearchOptions() {
                     </div>
 
                     {/* Save as Defaults */}
-                    <div className="pt-4 border-t border-gray-200 flex justify-end">
+                    <div className="pt-4 border-t border-white/5 flex justify-end">
                         <button
                             type="button"
                             onClick={handleSaveAsDefaults}
                             disabled={savingPrefs}
-                            className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            className="text-xs font-bold uppercase tracking-wider text-signal-400 hover:text-signal-300 disabled:opacity-50 transition-colors"
                         >
                             {savingPrefs ? 'Saving...' : 'Save as defaults'}
                         </button>

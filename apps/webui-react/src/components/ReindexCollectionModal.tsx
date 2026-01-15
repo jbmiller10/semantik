@@ -35,12 +35,12 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
 
   const expectedConfirmText = `reindex ${collection.name}`;
   const isConfirmValid = confirmText === expectedConfirmText;
-  
+
   // Calculate what's changing
   const hasModelChange = configChanges.embedding_model !== undefined && configChanges.embedding_model !== collection.embedding_model;
   const hasInstructionChange = configChanges.instruction !== undefined;
   const hasStrategyChange = selectedStrategy !== null && selectedStrategy !== collection.chunking_strategy;
-  
+
   const totalChanges = [hasModelChange, hasInstructionChange, hasStrategyChange].filter(Boolean).length;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,33 +54,33 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
       if (configChanges.embedding_model !== undefined) {
         request.embedding_model = configChanges.embedding_model;
       }
-      
+
       // Handle chunking strategy changes
       if (hasStrategyChange && selectedStrategy) {
         request.chunking_strategy = selectedStrategy;
         request.chunking_config = strategyConfig.parameters;
       }
-      
+
       // Call the mutation to start re-indexing
       await reindexCollectionMutation.mutateAsync({
         collectionId: collection.id,
         config: request
       });
-      
+
       // Navigate to collection detail page to show operation progress
       navigate(`/collections/${collection.id}`);
       // Toast is already shown by the mutation
-      
+
       onSuccess();
     } catch (error) {
       // Error handling is already done by the mutation
       // This catch block is for any unexpected errors
       if (!reindexCollectionMutation.isError) {
         console.error('Failed to start re-indexing:', error);
-        
+
         // Provide specific error messages based on error type
         let errorMessage = 'Failed to start re-indexing. Please try again.';
-        
+
         if (error instanceof AxiosError) {
           if (error.response?.status === 403) {
             errorMessage = 'You do not have permission to re-index this collection.';
@@ -96,7 +96,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
         } else if (error instanceof Error) {
           errorMessage = error.message;
         }
-        
+
         addToast({
           type: 'error',
           message: errorMessage,
@@ -122,40 +122,40 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
 
   return (
     <>
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50 z-[60]" 
+      <div
+        className="fixed inset-0 bg-void-950/80 backdrop-blur-sm z-[60]"
         onClick={handleCancel}
       />
       <div className="fixed inset-0 z-[60] overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
-          <div 
-            className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+          <div
+            className="relative glass-panel rounded-2xl shadow-2xl border border-white/10 max-w-md w-full p-6"
             onKeyDown={handleKeyDown}
           >
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            <h2 className="text-xl font-bold text-white mb-4 tracking-tight">
               Re-index Collection: {collection.name}
             </h2>
 
             <div className="mb-6">
-              <div className="bg-red-50 border border-red-200 rounded-md p-4" role="alert">
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4" role="alert">
                 <div className="flex">
                   <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
+                    <h3 className="text-sm font-bold text-red-400">
                       Warning: This action cannot be undone
                     </h3>
-                    <div className="mt-2 text-sm text-red-700">
+                    <div className="mt-2 text-sm text-red-300/80">
                       <p>Re-indexing will:</p>
                       <ul className="list-disc list-inside mt-1">
                         <li>Delete all existing vectors ({collection.vector_count} vectors)</li>
                         <li>Re-process all documents ({collection.document_count} documents) with new settings</li>
                         <li>Make the collection unavailable during processing</li>
                         {hasModelChange && (
-                          <li className="font-semibold">Change the embedding model (requires complete re-embedding)</li>
+                          <li className="font-bold text-red-300">Change the embedding model (requires complete re-embedding)</li>
                         )}
                       </ul>
                     </div>
@@ -168,18 +168,18 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="button"
                   onClick={() => setShowStrategySelector(!showStrategySelector)}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-sm text-signal-400 hover:text-signal-300 font-bold tracking-wide"
                 >
                   {showStrategySelector ? 'Hide' : 'Change'} Chunking Strategy
                 </button>
-                
+
                 {showStrategySelector && (
-                  <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <ErrorBoundary 
+                  <div className="mt-3 p-4 border border-white/10 rounded-xl bg-void-900/50">
+                    <ErrorBoundary
                       level="component"
                       fallback={(error, resetError) => (
-                        <ConfigurationErrorFallback 
-                          error={error} 
+                        <ConfigurationErrorFallback
+                          error={error}
                           resetError={resetError}
                           onResetConfiguration={() => {
                             const chunkingStore = useChunkingStore.getState();
@@ -202,25 +202,25 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
               </div>
 
               <div className="mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
-                <div className="space-y-2 bg-gray-50 rounded-lg p-3">
+                <h4 className="text-sm font-bold text-white mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
+                <div className="space-y-2 bg-void-900/50 border border-white/5 rounded-xl p-3">
                   {hasModelChange && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Embedding Model:</span>
+                      <span className="text-gray-400">Embedding Model:</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-red-600 line-through">{collection.embedding_model}</span>
-                        <span className="text-gray-400">→</span>
-                        <span className="text-green-600 font-medium">{configChanges.embedding_model}</span>
+                        <span className="text-red-400/70 line-through">{collection.embedding_model}</span>
+                        <span className="text-gray-500">→</span>
+                        <span className="text-green-400 font-bold">{configChanges.embedding_model}</span>
                       </div>
                     </div>
                   )}
                   {hasStrategyChange && selectedStrategy && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Chunking Strategy:</span>
+                      <span className="text-gray-400">Chunking Strategy:</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-red-600 line-through">{CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || 'None'}</span>
-                        <span className="text-gray-400">→</span>
-                        <span className="text-green-600 font-medium">
+                        <span className="text-red-400/70 line-through">{CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || 'None'}</span>
+                        <span className="text-gray-500">→</span>
+                        <span className="text-green-400 font-bold">
                           {CHUNKING_STRATEGIES[selectedStrategy]?.name}
                         </span>
                       </div>
@@ -228,21 +228,21 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                   )}
                   {hasInstructionChange && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Embedding Instruction:</span>
-                      <span className="text-green-600 font-medium">Updated</span>
+                      <span className="text-gray-400">Embedding Instruction:</span>
+                      <span className="text-green-400 font-bold">Updated</span>
                     </div>
                   )}
-                  
+
                 </div>
-                
+
                 {/* Impact summary */}
-                <div className="mt-3 text-sm text-gray-600">
-                  <p className="font-medium">Estimated impact:</p>
-                  <ul className="mt-1 list-disc list-inside text-xs">
+                <div className="mt-3 text-sm text-gray-400">
+                  <p className="font-bold text-white">Estimated impact:</p>
+                  <ul className="mt-1 list-disc list-inside text-xs text-gray-500">
                     <li>Processing time: ~{Math.ceil(collection.document_count / 100)} minutes (estimate)</li>
                     <li>Collection will be read-only during re-indexing</li>
                     {hasModelChange && (
-                      <li>Model change may significantly affect search results</li>
+                      <li className="text-amber-500">Model change may significantly affect search results</li>
                     )}
                   </ul>
                 </div>
@@ -251,15 +251,15 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
 
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label htmlFor="confirm-reindex" className="block text-sm font-medium text-gray-700 mb-2">
-                  To confirm, type <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">reindex {collection.name}</span>
+                <label htmlFor="confirm-reindex" className="block text-sm font-bold text-gray-400 mb-2 uppercase tracking-wide">
+                  To confirm, type <span className="font-mono bg-void-800 border border-white/10 px-1 py-0.5 rounded text-white">reindex {collection.name}</span>
                 </label>
                 <input
                   id="confirm-reindex"
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="w-full px-3 py-2 bg-void-950/50 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-transparent placeholder-gray-600"
                   placeholder="Type the confirmation text"
                   autoComplete="off"
                   autoFocus
@@ -276,14 +276,14 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                   type="button"
                   onClick={handleCancel}
                   disabled={isSubmitting || reindexCollectionMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 bg-transparent border border-white/10 rounded-xl hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!isConfirmValid || isSubmitting || reindexCollectionMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-bold text-white bg-signal-600 border border-transparent rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {isSubmitting || reindexCollectionMutation.isPending ? 'Starting Re-index...' : 'Re-index Collection'}
                 </button>

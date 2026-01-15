@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchStore, type SearchResult } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
-import { AlertTriangle, ChevronRight, FileText, Layers } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileText, Layers, Sparkles } from 'lucide-react';
 import { GPUMemoryError } from './GPUMemoryError';
 
 interface SearchResultsProps {
@@ -15,12 +15,15 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
     error,
     rerankingMetrics,
     failedCollections,
-    partialFailure
+    partialFailure,
+    hydeUsed,
+    hydeInfo
   } = useSearchStore();
   const gpuMemoryError = useSearchStore((state) => state.gpuMemoryError);
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
+  const [showHydeQuery, setShowHydeQuery] = useState(false);
 
   // Group results first by collection, then by document
   // Note: Results without a collection_id are grouped under 'unknown' for consistency
@@ -154,6 +157,43 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* HyDE Query Expansion Info */}
+      {hydeUsed && hydeInfo && (
+        <div className="bg-white rounded-lg shadow-md">
+          <button
+            type="button"
+            onClick={() => setShowHydeQuery(!showHydeQuery)}
+            className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors rounded-lg"
+          >
+            <div className="flex items-center space-x-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              <span className="font-medium text-gray-900">HyDE Query Expansion</span>
+              <span className="text-xs text-gray-500 bg-purple-100 px-2 py-0.5 rounded-full">Used</span>
+            </div>
+            <ChevronRight className={`h-5 w-5 text-gray-400 transform transition-transform ${showHydeQuery ? 'rotate-90' : ''}`} />
+          </button>
+          {showHydeQuery && hydeInfo.expanded_query && (
+            <div className="px-6 pb-4 border-t border-gray-200">
+              <div className="mt-3">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Generated Hypothetical Document</p>
+                <pre className="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap font-mono text-gray-700 border border-gray-200">
+                  {hydeInfo.expanded_query}
+                </pre>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                <span>
+                  {hydeInfo.provider && hydeInfo.model && `${hydeInfo.provider} / ${hydeInfo.model}`}
+                </span>
+                <span>
+                  {hydeInfo.tokens_used && `${hydeInfo.tokens_used} tokens`}
+                  {hydeInfo.generation_time_ms && ` • ${hydeInfo.generation_time_ms.toFixed(0)}ms`}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

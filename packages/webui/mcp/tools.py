@@ -48,6 +48,10 @@ def build_search_tool(*, name: str, description: str, profile: dict[str, Any]) -
                     "type": "boolean",
                     "description": f"Enable reranking (default: {profile.get('use_reranker', True)}).",
                 },
+                "use_hyde": {
+                    "type": "boolean",
+                    "description": f"Enable HyDE query expansion (default: {profile.get('use_hyde', False)}).",
+                },
                 "score_threshold": {
                     "type": "number",
                     "minimum": 0,

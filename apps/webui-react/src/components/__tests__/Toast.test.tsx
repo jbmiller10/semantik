@@ -142,14 +142,14 @@ describe('Toast', () => {
     })
 
     render(<Toast />)
-    
+
     expect(screen.getByText('Info')).toBeInTheDocument()
     expect(screen.getByText('Here is some information.')).toBeInTheDocument()
-    
-    // Check for info styling (blue border)
+
+    // Check for info styling (signal border for dark theme)
     const toastElement = screen.getByText('Info').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('border-l-4')
-    expect(toastElement).toHaveClass('border-blue-500')
+    expect(toastElement).toHaveClass('border-signal-500')
   })
 
   it('renders multiple toasts', () => {
@@ -306,17 +306,16 @@ describe('Toast', () => {
     })
 
     render(<Toast />)
-    
+
     const toastElement = screen.getByText('Info').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('max-w-sm')
     expect(toastElement).toHaveClass('w-full')
-    expect(toastElement).toHaveClass('bg-white')
+    expect(toastElement).toHaveClass('bg-void-900')
     expect(toastElement).toHaveClass('shadow-lg')
     expect(toastElement).toHaveClass('rounded-lg')
     expect(toastElement).toHaveClass('pointer-events-auto')
     expect(toastElement).toHaveClass('ring-1')
-    expect(toastElement).toHaveClass('ring-black')
-    expect(toastElement).toHaveClass('ring-opacity-5')
+    expect(toastElement).toHaveClass('ring-void-700')
     expect(toastElement).toHaveClass('overflow-hidden')
   })
 })

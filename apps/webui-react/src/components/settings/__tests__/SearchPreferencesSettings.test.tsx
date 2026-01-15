@@ -35,6 +35,9 @@ const mockPreferences: UserPreferencesResponse = {
     use_reranker: false,
     rrf_k: 60,
     similarity_threshold: null,
+    use_hyde: false,
+    hyde_quality_tier: 'low',
+    hyde_timeout_seconds: 10,
   },
   interface: {
     data_refresh_interval_ms: 30000,
@@ -191,16 +194,20 @@ describe('SearchPreferencesSettings', () => {
 
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).toBeDisabled();
+      // Get all checkboxes and find the reranker one (first checkbox in the form)
+      const checkboxes = screen.getAllByRole('checkbox');
+      const rerankerCheckbox = checkboxes[0]; // Reranker is the first checkbox
+      expect(rerankerCheckbox).toBeDisabled();
       expect(screen.getByText('(not available)')).toBeInTheDocument();
     });
 
     it('enables reranker checkbox when available', () => {
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeDisabled();
+      // Get all checkboxes and find the reranker one (first checkbox in the form)
+      const checkboxes = screen.getAllByRole('checkbox');
+      const rerankerCheckbox = checkboxes[0]; // Reranker is the first checkbox
+      expect(rerankerCheckbox).not.toBeDisabled();
     });
   });
 
@@ -219,11 +226,13 @@ describe('SearchPreferencesSettings', () => {
       const user = userEvent.setup();
       render(<SearchPreferencesSettings />);
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeChecked();
+      // Get all checkboxes and find the reranker one (first checkbox in the form)
+      const checkboxes = screen.getAllByRole('checkbox');
+      const rerankerCheckbox = checkboxes[0]; // Reranker is the first checkbox
+      expect(rerankerCheckbox).not.toBeChecked();
 
-      await user.click(checkbox);
-      expect(checkbox).toBeChecked();
+      await user.click(rerankerCheckbox);
+      expect(rerankerCheckbox).toBeChecked();
     });
 
     it('updates top_k value', async () => {

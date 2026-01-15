@@ -2,7 +2,7 @@
   appearance: none;
   width: 16px;
   height: 16px;
-  background: #3B82F6;
+  background: #7c3aed;
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
@@ -11,7 +11,7 @@
 .slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: #3B82F6;
+  background: #7c3aed;
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -62,11 +62,11 @@
 }
 
 .slider:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.2);
 }
 
 .slider:focus::-moz-range-thumb {
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.2);
 }
 
 /* Smooth hover transitions */

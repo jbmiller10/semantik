@@ -126,10 +126,10 @@ export function SearchModeSelector({
     <div className="space-y-4">
       {/* Search Mode Selector */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
           Search Mode
         </label>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           {MODE_OPTIONS.map((option) => {
             const isDisabled =
               disabled || (option.requiresSparse && !sparseAvailable);
@@ -142,24 +142,23 @@ export function SearchModeSelector({
                 onClick={() => !isDisabled && onSearchModeChange(option.value)}
                 disabled={isDisabled}
                 className={`
-                  relative flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all
-                  ${
-                    isSelected
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                  relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all duration-200
+                  ${isSelected
+                    ? 'border-signal-500 bg-signal-500/10 text-signal-300 shadow-lg shadow-signal-500/10'
+                    : 'border-white/10 bg-void-800/50 hover:bg-white/5 hover:border-white/20 text-gray-400'
                   }
-                  ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  ${isDisabled ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer'}
                 `}
                 title={option.description}
               >
                 <span
-                  className={`mb-1 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}
+                  className={`mb-2 ${isSelected ? 'text-signal-400' : 'text-gray-500'}`}
                 >
                   {option.icon}
                 </span>
-                <span className="text-sm font-medium">{option.label}</span>
+                <span className="text-xs font-bold uppercase tracking-wide">{option.label}</span>
                 {option.requiresSparse && !sparseAvailable && (
-                  <span className="absolute -top-1 -right-1">
+                  <span className="absolute -top-1.5 -right-1.5 bg-void-950 rounded-full p-0.5 border border-white/10">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
                   </span>
                 )}
@@ -247,9 +246,8 @@ export function SearchModeSelector({
               disabled={disabled}
             >
               <span
-                className={`transform transition-transform ${
-                  showAdvanced ? 'rotate-90' : ''
-                }`}
+                className={`transform transition-transform ${showAdvanced ? 'rotate-90' : ''
+                  }`}
               >
                 ▶
               </span>
