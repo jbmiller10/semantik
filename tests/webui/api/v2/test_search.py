@@ -476,13 +476,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=False,
             rerank_model=None,
             reranker_id=None,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is False
@@ -566,13 +567,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             reranker_id=None,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -709,14 +711,15 @@ class TestSearchReranking:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=True,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -769,14 +772,15 @@ class TestSingleCollectionSearch:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            search_mode="dense",
-            rrf_k=60,
+            use_hyde=None,
         )
 
         assert isinstance(response, CollectionSearchResponse)
