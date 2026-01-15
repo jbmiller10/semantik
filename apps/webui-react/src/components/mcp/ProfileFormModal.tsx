@@ -55,9 +55,10 @@ export default function ProfileFormModal({
         hybrid_alpha: profile.hybrid_alpha,
         search_mode: profile.search_mode,
         rrf_k: profile.rrf_k,
+        use_hyde: profile.use_hyde,
       });
       // Show advanced if any advanced fields have values
-      if (profile.score_threshold !== null || profile.hybrid_alpha !== null || profile.rrf_k !== null) {
+      if (profile.score_threshold !== null || profile.hybrid_alpha !== null || profile.rrf_k !== null || profile.use_hyde) {
         setShowAdvanced(true);
       }
     }
@@ -203,6 +204,7 @@ export default function ProfileFormModal({
             hybrid_alpha: formData.hybrid_alpha,
             search_mode: formData.search_mode,
             rrf_k: formData.rrf_k,
+            use_hyde: formData.use_hyde,
           },
         });
       } else {
@@ -218,6 +220,7 @@ export default function ProfileFormModal({
           hybrid_alpha: formData.hybrid_alpha,
           search_mode: formData.search_mode,
           rrf_k: formData.rrf_k,
+          use_hyde: formData.use_hyde,
         });
       }
       onClose();
@@ -669,6 +672,25 @@ export default function ProfileFormModal({
                       )}
                     </div>
                   )}
+
+                  {/* HyDE Query Expansion */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Use HyDE
+                      </label>
+                      <p className="text-sm text-gray-500">
+                        Enable HyDE query expansion for this profile
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.use_hyde}
+                      onChange={(e) => handleChange('use_hyde', e.target.checked)}
+                      disabled={isSubmitting}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
               )}
             </div>

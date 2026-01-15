@@ -116,6 +116,9 @@ export interface SearchRequest {
   hybrid_mode?: 'filter' | 'weighted';
   /** @deprecated Use search_mode='hybrid' instead */
   keyword_mode?: 'any' | 'all';
+
+  /** Enable HyDE query expansion (None = use user preference default) */
+  use_hyde?: boolean;
 }
 
 export interface SearchResult {
@@ -135,6 +138,20 @@ export interface SearchResult {
   embedding_model: string;
   metadata?: Record<string, unknown>;
   highlights?: string[];
+}
+
+/** HyDE generation metadata returned when HyDE query expansion was used */
+export interface HyDEInfo {
+  /** The generated hypothetical document (if HyDE was used) */
+  expanded_query: string | null;
+  /** Time taken for HyDE generation in milliseconds */
+  generation_time_ms: number | null;
+  /** Total tokens consumed for HyDE generation */
+  tokens_used: number | null;
+  /** LLM provider used for HyDE (anthropic, openai, local) */
+  provider: string | null;
+  /** LLM model used for HyDE generation */
+  model: string | null;
 }
 
 export interface SearchResponse {
@@ -163,6 +180,11 @@ export interface SearchResponse {
   rrf_fusion_time_ms?: number;
   /** Warnings about fallbacks (e.g., sparse not enabled, fell back to dense) */
   warnings?: string[];
+  // HyDE metadata
+  /** Whether HyDE query expansion was used for this search */
+  hyde_used: boolean;
+  /** HyDE generation details (if hyde_used is true) */
+  hyde_info?: HyDEInfo;
   // Failure information
   partial_failure: boolean;
   failed_collections?: Array<{

@@ -457,8 +457,13 @@ export const handlers = [
 
   // Search endpoint
   http.post('/api/v2/search', async ({ request }) => {
-    const body = await request.json() as { use_reranker?: boolean }
-    
+    const body = await request.json() as {
+      use_reranker?: boolean;
+      use_hyde?: boolean;
+      collection_uuids?: string[];
+      rerank_model?: string;
+    }
+
     return HttpResponse.json({
       results: [
         {
@@ -479,6 +484,14 @@ export const handlers = [
       search_time_ms: body.use_reranker ? 100 : 50,
       total_time_ms: body.use_reranker ? 150 : 50,
       partial_failure: false,
+      hyde_used: body.use_hyde || false,
+      hyde_info: body.use_hyde ? {
+        expanded_query: 'This is a hypothetical document generated for the query.',
+        generation_time_ms: 250,
+        tokens_used: 150,
+        provider: 'anthropic',
+        model: 'claude-3-5-haiku-20241022',
+      } : null,
     })
   }),
 
@@ -664,6 +677,9 @@ export const handlers = [
         use_reranker: false,
         rrf_k: 60,
         similarity_threshold: null,
+        use_hyde: false,
+        hyde_quality_tier: 'low',
+        hyde_timeout_seconds: 10,
       },
       collection_defaults: {
         embedding_model: null,
@@ -694,6 +710,9 @@ export const handlers = [
         use_reranker: (body.search as Record<string, unknown>)?.use_reranker ?? false,
         rrf_k: (body.search as Record<string, unknown>)?.rrf_k ?? 60,
         similarity_threshold: (body.search as Record<string, unknown>)?.similarity_threshold ?? null,
+        use_hyde: (body.search as Record<string, unknown>)?.use_hyde ?? false,
+        hyde_quality_tier: (body.search as Record<string, unknown>)?.hyde_quality_tier ?? 'low',
+        hyde_timeout_seconds: (body.search as Record<string, unknown>)?.hyde_timeout_seconds ?? 10,
       },
       collection_defaults: {
         embedding_model: (body.collection_defaults as Record<string, unknown>)?.embedding_model ?? null,
@@ -723,6 +742,9 @@ export const handlers = [
         use_reranker: false,
         rrf_k: 60,
         similarity_threshold: null,
+        use_hyde: false,
+        hyde_quality_tier: 'low',
+        hyde_timeout_seconds: 10,
       },
       collection_defaults: {
         embedding_model: null,
@@ -752,6 +774,9 @@ export const handlers = [
         use_reranker: false,
         rrf_k: 60,
         similarity_threshold: null,
+        use_hyde: false,
+        hyde_quality_tier: 'low',
+        hyde_timeout_seconds: 10,
       },
       collection_defaults: {
         embedding_model: null,
@@ -781,6 +806,9 @@ export const handlers = [
         use_reranker: false,
         rrf_k: 60,
         similarity_threshold: null,
+        use_hyde: false,
+        hyde_quality_tier: 'low',
+        hyde_timeout_seconds: 10,
       },
       collection_defaults: {
         embedding_model: null,

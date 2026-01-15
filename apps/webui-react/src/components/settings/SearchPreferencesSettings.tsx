@@ -12,12 +12,17 @@ import { useSystemStatus } from '../../hooks/useSystemInfo';
 import { getInputClassName } from '../../utils/formStyles';
 import type { SearchMode } from '../../types/preferences';
 
+import type { HyDEQualityTier } from '../../types/preferences';
+
 interface SearchFormState {
   top_k: number;
   mode: SearchMode;
   use_reranker: boolean;
   rrf_k: number;
   similarity_threshold: string; // String for form input, empty = null
+  use_hyde: boolean;
+  hyde_quality_tier: HyDEQualityTier;
+  hyde_timeout_seconds: number;
 }
 
 const DEFAULT_FORM_STATE: SearchFormState = {
@@ -26,6 +31,9 @@ const DEFAULT_FORM_STATE: SearchFormState = {
   use_reranker: false,
   rrf_k: 60,
   similarity_threshold: '',
+  use_hyde: false,
+  hyde_quality_tier: 'low',
+  hyde_timeout_seconds: 10,
 };
 
 export default function SearchPreferencesSettings() {
@@ -48,6 +56,9 @@ export default function SearchPreferencesSettings() {
           preferences.search.similarity_threshold !== null
             ? preferences.search.similarity_threshold.toString()
             : '',
+        use_hyde: preferences.search.use_hyde,
+        hyde_quality_tier: preferences.search.hyde_quality_tier,
+        hyde_timeout_seconds: preferences.search.hyde_timeout_seconds,
       });
     }
   }, [preferences]);
@@ -71,6 +82,9 @@ export default function SearchPreferencesSettings() {
         use_reranker: formState.use_reranker,
         rrf_k: formState.rrf_k,
         similarity_threshold: threshold,
+        use_hyde: formState.use_hyde,
+        hyde_quality_tier: formState.hyde_quality_tier,
+        hyde_timeout_seconds: formState.hyde_timeout_seconds,
       },
     });
   }, [formState, updateMutation]);
@@ -289,6 +303,90 @@ export default function SearchPreferencesSettings() {
               <p className="mt-1 text-xs text-gray-500">
                 Minimum similarity score (0.0-1.0). Leave empty for no threshold.
               </p>
+            </div>
+
+            {/* HyDE Query Expansion */}
+            <div className="space-y-4 pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-medium text-gray-900">HyDE Query Expansion</h4>
+
+              {/* Enable HyDE Toggle */}
+              <div className="flex items-start">
+                <div className="flex items-center h-5">
+                  <input
+                    type="checkbox"
+                    checked={formState.use_hyde}
+                    onChange={(e) => handleChange('use_hyde', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                </div>
+                <div className="ml-3 text-sm">
+                  <label className="font-medium text-gray-700">Enable HyDE by default</label>
+                  <p className="text-gray-500">
+                    Generate hypothetical documents for improved search quality
+                  </p>
+                </div>
+              </div>
+
+              {formState.use_hyde && (
+                <>
+                  {/* Quality Tier */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Quality Tier
+                    </label>
+                    <div className="flex space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('hyde_quality_tier', 'low')}
+                        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                          formState.hyde_quality_tier === 'low'
+                            ? 'bg-blue-100 border-blue-500 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Low (Faster)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleChange('hyde_quality_tier', 'high')}
+                        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                          formState.hyde_quality_tier === 'high'
+                            ? 'bg-blue-100 border-blue-500 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        High (Better)
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Low tier recommended for faster responses
+                    </p>
+                  </div>
+
+                  {/* Timeout */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Timeout
+                    </label>
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="range"
+                        min={3}
+                        max={60}
+                        value={formState.hyde_timeout_seconds}
+                        onChange={(e) => handleChange('hyde_timeout_seconds', parseInt(e.target.value, 10))}
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-gray-600 w-12">
+                        {formState.hyde_timeout_seconds}s
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Max time for HyDE generation (3-60s)
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

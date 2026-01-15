@@ -15,6 +15,9 @@ export type Quantization = 'float32' | 'float16' | 'int8';
 /** Sparse indexing type */
 export type SparseType = 'bm25' | 'splade';
 
+/** LLM quality tier for HyDE generation */
+export type HyDEQualityTier = 'high' | 'low';
+
 /**
  * Search preferences - controls default search behavior.
  */
@@ -29,6 +32,12 @@ export interface SearchPreferences {
   rrf_k: number;
   /** Similarity threshold for filtering results (0.0-1.0, null = no threshold) */
   similarity_threshold: number | null;
+  /** Enable HyDE query expansion by default */
+  use_hyde: boolean;
+  /** LLM quality tier for HyDE generation */
+  hyde_quality_tier: HyDEQualityTier;
+  /** Timeout for HyDE generation (3-60 seconds) */
+  hyde_timeout_seconds: number;
 }
 
 /**

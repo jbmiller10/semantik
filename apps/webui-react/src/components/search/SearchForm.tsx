@@ -49,7 +49,9 @@ export default function SearchForm({ collections }: SearchFormProps) {
         getValidationError,
         abortController,
         setAbortController,
-        setRerankingMetrics
+        setRerankingMetrics,
+        setHydeUsed,
+        setHydeInfo
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
@@ -67,6 +69,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 useReranker: prefs.search.use_reranker,
                 rrfK: prefs.search.rrf_k,
                 scoreThreshold: prefs.search.similarity_threshold ?? 0.0,
+                useHyde: prefs.search.use_hyde,
             });
             setPrefsInitialized(true);
         }
@@ -136,6 +139,8 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     // New sparse/hybrid search parameters
                     search_mode: searchParams.searchMode,
                     rrf_k: searchParams.searchMode === 'hybrid' ? searchParams.rrfK : undefined,
+                    // HyDE query expansion
+                    use_hyde: searchParams.useHyde,
                     // Legacy hybrid parameters (deprecated - kept for backward compatibility)
                     hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
                     hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
@@ -182,6 +187,10 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         reranked_count: mappedResults.length
                     });
                 }
+
+                // Handle HyDE metadata
+                setHydeUsed(response.data.hyde_used);
+                setHydeInfo(response.data.hyde_info ?? null);
 
                 // Show warnings from the backend (e.g., sparse fallback to dense)
                 if (response.data.warnings && response.data.warnings.length > 0) {
@@ -340,6 +349,24 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     disabled={loading}
                     sparseAvailable={true}
                 />
+
+                {/* HyDE Query Expansion Toggle */}
+                <div className="mt-4 flex items-center space-x-2">
+                    <input
+                        type="checkbox"
+                        id="use-hyde"
+                        checked={searchParams.useHyde}
+                        onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
+                        disabled={loading}
+                        className="h-4 w-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                    />
+                    <label htmlFor="use-hyde" className="text-sm text-gray-700">
+                        Use HyDE query expansion
+                    </label>
+                    <span className="text-xs text-gray-500" title="Generates a hypothetical document to improve search quality">
+                        (?)
+                    </span>
+                </div>
             </div>
 
             {/* Advanced Options */}
