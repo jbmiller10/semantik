@@ -17,9 +17,9 @@
     - [x] Update MCP Server configuration endpoints/schema to include `hyde_enabled_default` for MCP clients.
 - [x] Task: Conductor - User Manual Verification 'Configuration & Settings' (Protocol in workflow.md)
 
-## Phase 3: Frontend Integration
-- [ ] Task: Update Search UI
-    - [ ] Update `SearchBox` component to include the "Smart Search" (HyDE) toggle.
-    - [ ] Display the generated hypothetical document (collapsible "Show AI Thought" section) in the search results area if HyDE was used.
-    - [ ] Update `SettingsPage` to allow configuring the default LLM tier for HyDE.
-- [ ] Task: Conductor - User Manual Verification 'Frontend Integration' (Protocol in workflow.md)
+## Phase 3: Frontend Integration [checkpoint: 351fbbd]
+- [x] Task: Update Search UI
+    - [x] Update `SearchBox` component to include the "Smart Search" (HyDE) toggle.
+    - [x] Display the generated hypothetical document (collapsible "Show AI Thought" section) in the search results area if HyDE was used.
+    - [x] Update `SettingsPage` to allow configuring the default LLM tier for HyDE.
+- [x] Task: Conductor - User Manual Verification 'Frontend Integration' (Protocol in workflow.md)
