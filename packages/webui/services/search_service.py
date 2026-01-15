@@ -367,32 +367,44 @@ class SearchService:
 
         except LLMNotConfiguredError:
             logger.debug("HyDE skipped: LLM not configured for user %s", user_id)
-            return HyDEResult(
-                expanded_query=query,
-                original_query=query,
-                success=False,
-                warning="HyDE skipped: LLM not configured",
-            ), None, 0.0
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning="HyDE skipped: LLM not configured",
+                ),
+                None,
+                0.0,
+            )
 
         except LLMError as e:
             logger.warning("HyDE generation failed for user %s: %s", user_id, e)
             generation_time = (time.time() - start_time) * 1000
-            return HyDEResult(
-                expanded_query=query,
-                original_query=query,
-                success=False,
-                warning=f"HyDE generation failed: {type(e).__name__}",
-            ), None, generation_time
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning=f"HyDE generation failed: {type(e).__name__}",
+                ),
+                None,
+                generation_time,
+            )
 
         except Exception as e:
             logger.warning("Unexpected error during HyDE generation for user %s: %s", user_id, e)
             generation_time = (time.time() - start_time) * 1000
-            return HyDEResult(
-                expanded_query=query,
-                original_query=query,
-                success=False,
-                warning=f"HyDE generation failed: {type(e).__name__}",
-            ), None, generation_time
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning=f"HyDE generation failed: {type(e).__name__}",
+                ),
+                None,
+                generation_time,
+            )
 
     async def multi_collection_search(
         self,
@@ -440,9 +452,7 @@ class SearchService:
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
         # Generate HyDE expansion if enabled
-        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(
-            user_id, query, use_hyde
-        )
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(user_id, query, use_hyde)
 
         # Determine the query to use for dense embedding
         dense_query: str | None = None
@@ -630,9 +640,7 @@ class SearchService:
         collection = collections[0]
 
         # Generate HyDE expansion if enabled
-        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(
-            user_id, query, use_hyde
-        )
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(user_id, query, use_hyde)
 
         # Determine the query to use for dense embedding
         dense_query: str | None = None

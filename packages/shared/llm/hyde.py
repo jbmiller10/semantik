@@ -130,12 +130,15 @@ async def generate_hyde_expansion(
 
         if not expanded:
             logger.warning("HyDE generation returned empty content for query: %s", query[:50])
-            return HyDEResult(
-                expanded_query=query,  # Fallback to original
-                original_query=query,
-                success=False,
-                warning="HyDE generation returned empty content",
-            ), response
+            return (
+                HyDEResult(
+                    expanded_query=query,  # Fallback to original
+                    original_query=query,
+                    success=False,
+                    warning="HyDE generation returned empty content",
+                ),
+                response,
+            )
 
         logger.debug(
             "HyDE expansion generated: query=%s..., expansion=%s..., tokens=%d",
@@ -144,21 +147,27 @@ async def generate_hyde_expansion(
             response.total_tokens,
         )
 
-        return HyDEResult(
-            expanded_query=expanded,
-            original_query=query,
-            success=True,
-        ), response
+        return (
+            HyDEResult(
+                expanded_query=expanded,
+                original_query=query,
+                success=True,
+            ),
+            response,
+        )
 
     except Exception as e:
         # Log but don't fail the search - return original query
         logger.warning("HyDE generation failed for query '%s': %s", query[:50], e)
-        return HyDEResult(
-            expanded_query=query,  # Fallback to original
-            original_query=query,
-            success=False,
-            warning=f"HyDE generation failed: {type(e).__name__}",
-        ), None
+        return (
+            HyDEResult(
+                expanded_query=query,  # Fallback to original
+                original_query=query,
+                success=False,
+                warning=f"HyDE generation failed: {type(e).__name__}",
+            ),
+            None,
+        )
 
 
 __all__ = ["HyDEResult", "HyDEConfig", "generate_hyde_expansion", "HYDE_SYSTEM_PROMPT"]
