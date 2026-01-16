@@ -5,6 +5,7 @@ import DangerZoneSettings from '../DangerZoneSettings';
 import * as reactRouterDom from 'react-router-dom';
 import * as reactQuery from '@tanstack/react-query';
 import * as settingsApiModule from '@/services/api/v2';
+import * as uiStoreModule from '@/stores/uiStore';
 
 // Mock the modules
 vi.mock('react-router-dom', async () => {
@@ -29,13 +30,18 @@ vi.mock('@/services/api/v2', () => ({
   },
 }));
 
-// Mock window.alert
-const mockAlert = vi.fn();
-global.alert = mockAlert;
+vi.mock('@/stores/uiStore', async () => {
+  const actual = await vi.importActual('@/stores/uiStore');
+  return {
+    ...actual,
+    useUIStore: vi.fn(),
+  };
+});
 
 describe('DangerZoneSettings', () => {
   const mockNavigate = vi.fn();
   const mockClear = vi.fn();
+  const mockAddToast = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,6 +50,10 @@ describe('DangerZoneSettings', () => {
     vi.mocked(reactQuery.useQueryClient).mockReturnValue({
       clear: mockClear,
     } as unknown as ReturnType<typeof reactQuery.useQueryClient>);
+    vi.mocked(uiStoreModule.useUIStore).mockImplementation((selector) => {
+      const state = { addToast: mockAddToast };
+      return selector ? selector(state as never) : state;
+    });
   });
 
   describe('rendering', () => {
@@ -189,7 +199,7 @@ describe('DangerZoneSettings', () => {
       });
     });
 
-    it('shows success alert and navigates to home on success', async () => {
+    it('shows success toast and navigates to home on success', async () => {
       const user = userEvent.setup();
       vi.mocked(settingsApiModule.settingsApi.resetDatabase).mockResolvedValueOnce({
         data: { message: 'Database reset successfully' },
@@ -212,12 +222,12 @@ describe('DangerZoneSettings', () => {
       await user.click(confirmButton);
 
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalledWith('Database reset successfully!');
+        expect(mockAddToast).toHaveBeenCalledWith({ type: 'success', message: 'Database reset successfully' });
         expect(mockNavigate).toHaveBeenCalledWith('/');
       });
     });
 
-    it('shows error alert on failure', async () => {
+    it('shows error toast on failure', async () => {
       const user = userEvent.setup();
       vi.mocked(settingsApiModule.settingsApi.resetDatabase).mockRejectedValueOnce(
         new Error('Reset failed')
@@ -236,7 +246,10 @@ describe('DangerZoneSettings', () => {
       await user.click(confirmButton);
 
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalledWith(expect.stringContaining('Failed to reset database'));
+        expect(mockAddToast).toHaveBeenCalledWith({
+          type: 'error',
+          message: expect.stringContaining('Failed to reset database')
+        });
       });
     });
   });

@@ -344,7 +344,8 @@ describe('ReindexCollectionModal', () => {
   it('closes modal when Escape key is pressed', () => {
     renderComponent();
 
-    const modalContent = document.querySelector('.glass-panel.rounded-2xl');
+    // Modal uses bg-[var(--bg-primary)] rounded-2xl - find by test content
+    const modalContent = screen.getByText(`Re-index Collection: ${mockCollection.name}`).closest('div');
     expect(modalContent).toBeInTheDocument();
 
     fireEvent.keyDown(modalContent!, { key: 'Escape' });

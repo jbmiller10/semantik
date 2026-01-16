@@ -21,10 +21,13 @@ describe('ChunkingStrategyGuide', () => {
   describe('Rendering', () => {
     it('renders the modal with header and close button', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
-      
+
       expect(screen.getByText('Chunking Strategy Guide')).toBeInTheDocument();
-      // Close button has X icon but no text
-      const closeButton = document.querySelector('button.text-gray-400');
+      // Close button has X icon - uses CSS variable for muted text color
+      const closeButtons = document.querySelectorAll('button');
+      const closeButton = Array.from(closeButtons).find(btn =>
+        btn.querySelector('svg.lucide-x')
+      );
       expect(closeButton).toBeInTheDocument();
     });
 
@@ -95,19 +98,19 @@ describe('ChunkingStrategyGuide', () => {
 
     it('highlights the active tab', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
-      
+
       const comparisonTab = screen.getByRole('button', { name: /Strategy Comparison/i });
       const examplesTab = screen.getByRole('button', { name: /Visual Examples/i });
-      
-      // Initially comparison tab is active
-      expect(comparisonTab).toHaveClass('border-blue-500', 'text-blue-600');
-      expect(examplesTab).not.toHaveClass('border-blue-500', 'text-blue-600');
-      
+
+      // Initially comparison tab is active - now uses neutral colors
+      expect(comparisonTab).toHaveClass('border-gray-400');
+      expect(examplesTab).toHaveClass('border-transparent');
+
       // Click examples tab
       fireEvent.click(examplesTab);
-      
-      expect(examplesTab).toHaveClass('border-blue-500', 'text-blue-600');
-      expect(comparisonTab).not.toHaveClass('border-blue-500', 'text-blue-600');
+
+      expect(examplesTab).toHaveClass('border-gray-400');
+      expect(comparisonTab).toHaveClass('border-transparent');
     });
   });
 
@@ -152,25 +155,25 @@ describe('ChunkingStrategyGuide', () => {
 
     it('applies correct colors to performance labels', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
-      
-      // Find a specific strategy row and check colors
-      const fastSpeedLabels = screen.getAllByText('Fast').filter(el => 
-        el.classList.contains('text-green-600')
+
+      // Find a specific strategy row and check colors - now uses dark mode compatible colors
+      const fastSpeedLabels = screen.getAllByText('Fast').filter(el =>
+        el.classList.contains('text-green-500') || el.classList.contains('dark:text-green-400')
       );
       expect(fastSpeedLabels.length).toBeGreaterThan(0);
-      
+
       const excellentQualityLabels = screen.getAllByText('Excellent').filter(el =>
-        el.classList.contains('text-purple-600')
+        el.classList.contains('text-purple-500') || el.classList.contains('dark:text-purple-400')
       );
       expect(excellentQualityLabels.length).toBeGreaterThan(0);
     });
 
     it('highlights the current strategy', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} currentStrategy="semantic" />);
-      
-      // Find the semantic strategy row
+
+      // Find the semantic strategy row - now uses bg-blue-500/10 instead of bg-blue-50
       const semanticRow = screen.getByText('Semantic').closest('tr');
-      expect(semanticRow).toHaveClass('bg-blue-50');
+      expect(semanticRow).toHaveClass('bg-blue-500/10');
     });
 
     it('shows recommended checkmarks for recommended strategies', () => {
@@ -184,29 +187,26 @@ describe('ChunkingStrategyGuide', () => {
 
     it('shows file type recommendations when fileType is provided', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} fileType="md" />);
-      
-      expect(screen.getByText('Recommendations for MD files')).toBeInTheDocument();
-      // The text is split across elements, so we check for the container paragraph
-      const recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
-      expect(recommendationContainer?.textContent).toContain('Markdown-aware');
-      expect(recommendationContainer?.textContent).toContain('preserving document structure');
+
+      expect(screen.getByText(/Recommendations for MD files/i)).toBeInTheDocument();
+      // Check that markdown-specific recommendation text is present (may appear multiple times)
+      expect(screen.getAllByText(/Markdown-aware/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/preserving document structure/)).toBeInTheDocument();
     });
 
     it('shows correct recommendations for different file types', () => {
       const { rerender } = render(<ChunkingStrategyGuide onClose={mockOnClose} fileType="pdf" />);
-      
-      expect(screen.getByText('Recommendations for PDF files')).toBeInTheDocument();
-      // The text is split across elements, so we check for the container paragraph
-      let recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
-      expect(recommendationContainer?.textContent).toContain('Semantic');
-      expect(recommendationContainer?.textContent).toContain('complex PDFs');
-      
+
+      expect(screen.getByText(/Recommendations for PDF files/i)).toBeInTheDocument();
+      // Check that PDF-specific recommendation text is present (may appear multiple times)
+      expect(screen.getAllByText(/Semantic/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/complex PDFs/)).toBeInTheDocument();
+
       rerender(<ChunkingStrategyGuide onClose={mockOnClose} fileType="py" />);
-      
-      expect(screen.getByText('Recommendations for PY files')).toBeInTheDocument();
-      recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
-      expect(recommendationContainer?.textContent).toContain('Markdown-aware');
-      expect(recommendationContainer?.textContent).toContain('code files');
+
+      expect(screen.getByText(/Recommendations for PY files/i)).toBeInTheDocument();
+      // Check that Python-specific recommendation text is present
+      expect(screen.getByText(/code files/)).toBeInTheDocument();
     });
 
     it('marks strategies as recommended based on file type', () => {
@@ -324,11 +324,14 @@ describe('ChunkingStrategyGuide', () => {
   describe('Accessibility', () => {
     it('has accessible button labels', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
-      
-      // Close button exists (even without accessible label)
-      const closeButton = document.querySelector('button.text-gray-400');
+
+      // Close button exists - find by X icon
+      const closeButtons = document.querySelectorAll('button');
+      const closeButton = Array.from(closeButtons).find(btn =>
+        btn.querySelector('svg.lucide-x')
+      );
       expect(closeButton).toBeInTheDocument();
-      
+
       const gotItButton = screen.getByRole('button', { name: /Got it/i });
       expect(gotItButton).toBeInTheDocument();
     });
@@ -364,13 +367,11 @@ describe('ChunkingStrategyGuide', () => {
   describe('Quick Recommendation', () => {
     it('displays quick recommendation in comparison view', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
-      
+
       expect(screen.getByText('Quick Recommendation')).toBeInTheDocument();
-      // Check the paragraph content exists - the text is split across child elements
-      const recommendationParagraph = document.querySelector('.text-sm.text-blue-700');
-      expect(recommendationParagraph).toBeInTheDocument();
-      expect(recommendationParagraph?.textContent).toContain('Not sure which to choose?');
-      expect(recommendationParagraph?.textContent).toContain('Hybrid Auto-Select');
+      // Check the recommendation text is present (may appear multiple times due to table)
+      expect(screen.getAllByText(/Not sure which to choose/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Hybrid Auto-Select/).length).toBeGreaterThan(0);
     });
   });
 
