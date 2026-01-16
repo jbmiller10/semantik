@@ -13,10 +13,7 @@ from unittest.mock import patch
 import pytest
 from llama_index.core.embeddings import MockEmbedding
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 # Create SemanticChunker using the unified factory
@@ -90,7 +87,9 @@ Climate change affects global temperatures. Data science involves statistical an
             assert hasattr(result, "metadata")
             assert result.text in sample_texts["simple"]
 
-    def test_semantic_chunker_technical_text(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
+    def test_semantic_chunker_technical_text(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking on technical content."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -104,7 +103,9 @@ Climate change affects global temperatures. Data science involves statistical an
             # Check that chunks are from the original text
             assert result.text.strip() in sample_texts["technical"]
 
-    def test_semantic_chunker_coherent_topic(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
+    def test_semantic_chunker_coherent_topic(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking on coherent topic text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -146,7 +147,9 @@ Climate change affects global temperatures. Data science involves statistical an
 
         assert results == []
 
-    def test_semantic_chunker_single_sentence(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
+    def test_semantic_chunker_single_sentence(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking with single sentence."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -165,7 +168,9 @@ Climate change affects global temperatures. Data science involves statistical an
         assert isinstance(results, list)
         assert len(results) > 0
 
-    def test_semantic_chunker_metadata_propagation(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
+    def test_semantic_chunker_metadata_propagation(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test that metadata is properly propagated to chunks."""
         chunker = create_semantic_chunker(mock_embed_model)
 

@@ -26,10 +26,7 @@ try:
 except ImportError:
     HAS_REGEX = False
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
 
 # Define test constants and helpers
@@ -40,12 +37,12 @@ def safe_regex_findall(pattern: re.Pattern[str] | str, text: str, flags: int | N
     """Helper function for testing regex with timeout protection."""
     safe_regex = SafeRegex(timeout=REGEX_TIMEOUT)
     if isinstance(pattern, str):
-        if flags:
-            pattern = re.compile(pattern, flags)
-        else:
-            pattern = safe_regex.compile_safe(pattern)
+        compiled = re.compile(pattern, flags) if flags else safe_regex.compile_safe(pattern)
+        pattern_str = compiled.pattern if hasattr(compiled, "pattern") else str(compiled)
+    else:
+        pattern_str = pattern.pattern if hasattr(pattern, "pattern") else str(pattern)
     try:
-        return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, "pattern") else str(pattern), text)
+        return safe_regex.findall_safe(pattern_str, text)
     except RegexTimeout:
         return []
 

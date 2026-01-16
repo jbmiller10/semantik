@@ -8,10 +8,7 @@ from typing import Any
 import pytest
 from llama_index.core.embeddings import MockEmbedding
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import ChunkResult
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -135,9 +132,7 @@ async def test_hybrid_chunker_strategy_selection() -> None:
     md_chunks = await chunker.chunk_text_async(markdown_text, "hybrid_md", {"file_path": "doc.md"})
     assert md_chunks
     # Hybrid chunker should include metadata about which strategy was selected
-    assert any(
-        chunk.metadata.get("hybrid_strategy") or chunk.metadata.get("selected_strategy") for chunk in md_chunks
-    )
+    assert any(chunk.metadata.get("hybrid_strategy") or chunk.metadata.get("selected_strategy") for chunk in md_chunks)
 
     plain_chunks = await chunker.chunk_text_async(plain_text, "hybrid_plain")
     assert plain_chunks
