@@ -127,7 +127,7 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 rounded transition-colors"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white rounded transition-colors"
           >
             <svg
               className="w-6 h-6"
@@ -211,12 +211,12 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                   MCP Tool Name
                 </label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-sm bg-[var(--bg-tertiary)] border border-[var(--border)] px-4 py-2 rounded-lg font-mono text-signal-500">
+                  <code className="flex-1 text-sm bg-[var(--bg-tertiary)] border border-[var(--border)] px-4 py-2 rounded-lg font-mono text-[var(--text-primary)]">
                     {toolName}
                   </code>
                   <button
                     onClick={() => copyToClipboard(toolName, 'toolName')}
-                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 transition-colors"
+                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white transition-colors"
                   >
                     {copied === 'toolName-error' ? (
                       <>
@@ -406,10 +406,10 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
               </div>
 
               {/* Usage Note */}
-              <div className="bg-signal-500/10 border border-signal-500/20 rounded-lg p-4">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                 <div className="flex">
                   <svg
-                    className="h-5 w-5 text-signal-500 flex-shrink-0"
+                    className="h-5 w-5 text-blue-400 flex-shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -422,12 +422,12 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                     />
                   </svg>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-signal-600 dark:text-signal-400">
+                    <h3 className="text-sm font-medium text-blue-300">
                       How it works
                     </h3>
-                    <p className="mt-1 text-sm text-signal-700 dark:text-signal-300/80">
+                    <p className="mt-1 text-sm text-blue-400">
                       After configuration, Claude Desktop will have access to a{' '}
-                      <code className="bg-signal-500/20 px-1 rounded text-xs">
+                      <code className="bg-blue-500/20 px-1 rounded text-xs">
                         {toolName}
                       </code>{' '}
                       tool that searches your selected collections. Restart Claude
@@ -444,7 +444,7 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
         <div className="px-6 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border)] flex justify-end rounded-b-xl">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors"
           >
             Close
           </button>

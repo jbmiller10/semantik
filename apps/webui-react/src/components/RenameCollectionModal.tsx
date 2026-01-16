@@ -76,29 +76,29 @@ function RenameCollectionModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-void-950/80 backdrop-blur-sm z-[60]" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border border-white/10 rounded-2xl shadow-2xl z-[60] w-full max-w-md">
-        <div className="px-6 py-4 border-b border-white/10 bg-void-900/50">
-          <h3 className="text-xl font-bold text-white tracking-tight">Rename Collection</h3>
+      <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-2xl shadow-2xl z-[60] w-full max-w-md">
+        <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+          <h3 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Rename Collection</h3>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 space-y-4">
             <div>
-              <label htmlFor="current-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+              <label htmlFor="current-name" className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
                 Current Name
               </label>
               <input
                 type="text"
                 id="current-name"
                 value={currentName}
-                className="mt-1 block w-full border border-white/5 rounded-xl bg-white/5 text-gray-400 sm:text-sm px-4 py-2"
+                className="mt-1 block w-full border border-[var(--border)] rounded-xl bg-[var(--bg-secondary)] text-[var(--text-muted)] sm:text-sm px-4 py-2"
                 disabled
               />
             </div>
 
             <div>
-              <label htmlFor="new-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+              <label htmlFor="new-name" className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
                 New Name
               </label>
               <input
@@ -106,9 +106,9 @@ function RenameCollectionModal({
                 id="new-name"
                 value={newName}
                 onChange={handleNameChange}
-                className={`mt-1 block w-full rounded-xl shadow-sm sm:text-sm bg-void-950/50 px-4 py-2 text-white placeholder-gray-600 focus:outline-none focus:ring-2 ${error
+                className={`mt-1 block w-full rounded-xl shadow-sm sm:text-sm bg-[var(--bg-tertiary)] px-4 py-2 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 ${error
                     ? 'border border-red-500/50 focus:ring-red-500/50'
-                    : 'border border-white/10 focus:ring-signal-500/50'
+                    : 'border border-[var(--border)] focus:ring-signal-500/50'
                   }`}
                 required
                 autoFocus
@@ -135,11 +135,11 @@ function RenameCollectionModal({
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t border-white/10 flex justify-end space-x-3 bg-void-900/30">
+          <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end space-x-3 bg-[var(--bg-secondary)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-white/10 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+              className="px-4 py-2 border border-[var(--border)] rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               disabled={mutation.isPending}
             >
               Cancel

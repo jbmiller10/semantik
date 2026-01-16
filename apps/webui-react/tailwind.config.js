@@ -8,7 +8,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Ink: Primary actions and headings (replaces "signal")
+        // Signal: Primary accent color (buttons, toggles, highlights)
+        signal: {
+          700: '#4338ca',
+          600: '#4f46e5',
+          500: '#6366f1',
+          400: '#818cf8',
+          300: '#a5b4fc',
+        },
+        // Ink: Primary actions and headings
         ink: {
           900: '#1a1a2e',
           800: '#2d2d44',

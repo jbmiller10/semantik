@@ -253,7 +253,7 @@ export default function ProfileFormModal({
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 rounded transition-colors"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white rounded transition-colors"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -523,15 +523,15 @@ export default function ProfileFormModal({
                 onClick={() => handleChange('use_reranker', !formData.use_reranker)}
                 disabled={isSubmitting}
                 aria-label={formData.use_reranker ? 'Disable reranker' : 'Enable reranker'}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] ${
-                  formData.use_reranker ? 'bg-signal-600' : 'bg-[var(--border)]'
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] ${
+                  formData.use_reranker ? 'bg-gray-600 dark:bg-white' : 'bg-gray-300 dark:bg-gray-600'
                 }`}
                 role="switch"
                 aria-checked={formData.use_reranker}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    formData.use_reranker ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow ring-0 transition duration-200 ease-in-out ${
+                    formData.use_reranker ? 'translate-x-5 bg-white dark:bg-gray-800' : 'translate-x-0 bg-white'
                   }`}
                 />
               </button>
@@ -552,15 +552,15 @@ export default function ProfileFormModal({
                 onClick={() => handleChange('enabled', !formData.enabled)}
                 disabled={isSubmitting}
                 aria-label={formData.enabled ? 'Disable profile' : 'Enable profile'}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] ${
-                  formData.enabled ? 'bg-signal-600' : 'bg-[var(--border)]'
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] ${
+                  formData.enabled ? 'bg-gray-600 dark:bg-white' : 'bg-gray-300 dark:bg-gray-600'
                 }`}
                 role="switch"
                 aria-checked={formData.enabled}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    formData.enabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow ring-0 transition duration-200 ease-in-out ${
+                    formData.enabled ? 'translate-x-5 bg-white dark:bg-gray-800' : 'translate-x-0 bg-white'
                   }`}
                 />
               </button>

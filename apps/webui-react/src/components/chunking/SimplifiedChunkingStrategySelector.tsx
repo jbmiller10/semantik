@@ -65,7 +65,7 @@ export function SimplifiedChunkingStrategySelector({
       {/* Strategy Selector */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
+          <label className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
             Chunking Strategy
           </label>
           <button
@@ -88,8 +88,8 @@ export function SimplifiedChunkingStrategySelector({
               w-full pl-4 pr-10 py-2.5 text-sm text-left border rounded-xl flex items-center justify-between
               transition-all
               ${disabled
-                ? 'bg-void-900 text-gray-500 cursor-not-allowed border-white/10'
-                : 'bg-void-800/50 text-white hover:bg-void-700/50 cursor-pointer border-white/10'
+                ? 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] cursor-not-allowed border-[var(--border)]'
+                : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] cursor-pointer border-[var(--border)]'
               }
               ${isDropdownOpen ? 'ring-2 ring-signal-500/50 border-signal-500' : ''}
             `}
@@ -99,16 +99,16 @@ export function SimplifiedChunkingStrategySelector({
             <span className="flex items-center gap-2">
               {selectedLabel.name}
               {selectedLabel.isRecommended && (
-                <span className="text-amber-400">✨ Recommended</span>
+                <span className="text-amber-500 dark:text-amber-400">✨ Recommended</span>
               )}
             </span>
-            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-4 w-4 text-[var(--text-muted)] transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Dropdown Options */}
           {isDropdownOpen && (
             <div
-              className="absolute z-50 w-full mt-1 bg-void-900 border border-white/10 rounded-xl shadow-xl overflow-hidden"
+              className="absolute z-50 w-full mt-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden"
               role="listbox"
             >
               {(Object.keys(CHUNKING_STRATEGIES) as ChunkingStrategyType[]).map((strategyType) => {
@@ -123,8 +123,8 @@ export function SimplifiedChunkingStrategySelector({
                       w-full px-4 py-2.5 text-sm text-left flex items-center justify-between
                       transition-colors
                       ${isSelected
-                        ? 'bg-signal-500/20 text-white'
-                        : 'text-gray-300 hover:bg-void-800 hover:text-white'
+                        ? 'bg-gray-100 dark:bg-white/10 text-[var(--text-primary)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]'
                       }
                     `}
                     role="option"
@@ -133,10 +133,10 @@ export function SimplifiedChunkingStrategySelector({
                     <span className="flex items-center gap-2">
                       {label.name}
                       {label.isRecommended && (
-                        <span className="text-amber-400 text-xs">✨ Recommended</span>
+                        <span className="text-amber-500 dark:text-amber-400 text-xs">✨ Recommended</span>
                       )}
                     </span>
-                    {isSelected && <Check className="h-4 w-4 text-signal-400" />}
+                    {isSelected && <Check className="h-4 w-4 text-gray-700 dark:text-white" />}
                   </button>
                 );
               })}
@@ -145,7 +145,7 @@ export function SimplifiedChunkingStrategySelector({
         </div>
 
         {/* Strategy Description */}
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-[var(--text-secondary)]">
           {selectedStrategyInfo.description}
         </p>
 
@@ -161,12 +161,12 @@ export function SimplifiedChunkingStrategySelector({
       </div>
 
       {/* Advanced Options Toggle */}
-      <div className="border-t border-white/10 pt-4">
+      <div className="border-t border-[var(--border)] pt-4">
         <button
           type="button"
           onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
           disabled={disabled}
-          className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
         >
           <Settings2 className="h-4 w-4" />
           Advanced Options

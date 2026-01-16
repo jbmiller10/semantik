@@ -328,7 +328,7 @@ function MultiselectField({
               checked={currentValue.includes(option.value)}
               onChange={() => handleToggle(option.value)}
               disabled={disabled}
-              className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-void-800 border-white/20 rounded"
+              className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
             />
             <span className="ml-2 text-sm text-gray-300">{option.label}</span>
           </label>
@@ -397,7 +397,7 @@ function BooleanField({
           checked={currentValue}
           onChange={(e) => onChange(e.target.checked)}
           disabled={disabled}
-          className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-void-800 border-white/20 rounded"
+          className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
         />
         <span className="ml-2 text-sm font-medium text-gray-300">
           {field.label}

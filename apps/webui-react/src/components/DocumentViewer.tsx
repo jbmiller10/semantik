@@ -411,11 +411,11 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen p-4">
-        <div className="fixed inset-0 bg-void-950/80" onClick={onClose} />
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80" onClick={onClose} />
 
         <div className="relative glass-panel rounded-lg max-w-6xl w-full max-h-[90vh] flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-void-700">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
             <h3 className="text-lg font-medium text-gray-100">
               Document Viewer
             </h3>

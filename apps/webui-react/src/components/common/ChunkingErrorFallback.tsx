@@ -84,7 +84,7 @@ export function ChunkingErrorFallback({
   };
 
   return (
-    <div className="w-full p-6 bg-void-950/50 backdrop-blur rounded-xl border border-red-500/20">
+    <div className="w-full p-6 bg-[var(--bg-secondary)] backdrop-blur rounded-xl border border-red-500/20">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-start space-x-3">

@@ -8,12 +8,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '../../services/api/v2';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { AlertTriangle } from 'lucide-react';
+import { useUIStore } from '../../stores/uiStore';
 
 const CONFIRMATION_TEXT = 'RESET';
 
 export default function DangerZoneSettings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const addToast = useUIStore((state) => state.addToast);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -29,7 +31,7 @@ export default function DangerZoneSettings() {
       queryClient.clear();
 
       // Show success message and redirect
-      alert('Database reset successfully!');
+      addToast({ type: 'success', message: 'Database reset successfully' });
       setShowConfirmDialog(false);
       setConfirmText('');
 
@@ -38,7 +40,7 @@ export default function DangerZoneSettings() {
     } catch (error) {
       console.error('Failed to reset database:', error);
       const errorMessage = getErrorMessage(error);
-      alert(`Failed to reset database: ${errorMessage}`);
+      addToast({ type: 'error', message: `Failed to reset database: ${errorMessage}` });
     } finally {
       setResetting(false);
     }

@@ -96,15 +96,15 @@ function ActiveOperationsTab() {
   if (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
         <div className="flex">
           <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
           <div className="ml-3">
-            <p className="text-sm text-red-800">Failed to load active operations</p>
-            <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
+            <p className="text-sm text-red-300">Failed to load active operations</p>
+            <p className="text-xs text-red-400 mt-1">{errorMessage}</p>
             <button
               onClick={() => refetch()}
-              className="text-sm text-red-600 hover:text-red-500 mt-2 underline"
+              className="text-sm text-red-400 hover:text-red-300 mt-2 underline"
             >
               Try again
             </button>
@@ -119,20 +119,20 @@ function ActiveOperationsTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Activity className="h-6 w-6 text-blue-600" />
+            <Activity className="h-6 w-6 text-[var(--text-muted)]" />
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Active Operations</h2>
-              <p className="text-sm text-gray-500 mt-1">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)]">Active Operations</h2>
+              <p className="text-sm text-[var(--text-muted)] mt-1">
                 Monitor all ongoing operations across your collections
               </p>
             </div>
           </div>
           <button
             onClick={() => refetch()}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-3 py-2 border border-[var(--border)] text-sm font-medium rounded-md text-[var(--text-secondary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -142,18 +142,18 @@ function ActiveOperationsTab() {
 
       {/* Operations List */}
       {operations.length === 0 ? (
-        <div className="bg-white rounded-lg shadow">
+        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg">
           <div className="text-center py-12">
-            <Activity className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-4 text-sm font-medium text-gray-900">No active operations</h3>
-            <p className="mt-2 text-sm text-gray-500">
+            <Activity className="mx-auto h-12 w-12 text-[var(--text-muted)]" />
+            <h3 className="mt-4 text-sm font-medium text-[var(--text-primary)]">No active operations</h3>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">
               All operations have completed. Start a new operation from any collection.
             </p>
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <ul className="divide-y divide-gray-200">
+        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg overflow-hidden">
+          <ul className="divide-y divide-[var(--border)]">
             {operations.map((operation) => (
               <OperationListItem
                 key={operation.id}
@@ -191,12 +191,12 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'processing': return 'text-blue-600 bg-blue-50';
-      case 'pending': return 'text-yellow-600 bg-yellow-50';
-      case 'completed': return 'text-green-600 bg-green-50';
-      case 'failed': return 'text-red-600 bg-red-50';
-      case 'cancelled': return 'text-gray-600 bg-gray-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case 'processing': return 'text-blue-400 bg-blue-500/20';
+      case 'pending': return 'text-yellow-400 bg-yellow-500/20';
+      case 'completed': return 'text-green-400 bg-green-500/20';
+      case 'failed': return 'text-red-400 bg-red-500/20';
+      case 'cancelled': return 'text-gray-400 bg-gray-500/20';
+      default: return 'text-gray-400 bg-gray-500/20';
     }
   };
 
@@ -211,24 +211,24 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
   };
 
   return (
-    <li className="px-6 py-4 hover:bg-gray-50 transition-colors">
+    <li className="px-6 py-4 hover:bg-[var(--bg-tertiary)] transition-colors">
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-3">
             <span className="text-2xl">{getOperationIcon(operation.type)}</span>
             <div className="flex-1">
               <div className="flex items-center space-x-2">
-                <h4 className="text-sm font-medium text-gray-900">
+                <h4 className="text-sm font-medium text-[var(--text-primary)]">
                   {formatOperationType(operation.type)}
                 </h4>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(operation.status)}`}>
                   {operation.status}
                 </span>
               </div>
-              <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+              <div className="mt-1 flex items-center space-x-4 text-sm text-[var(--text-muted)]">
                 <button
                   onClick={onNavigateToCollection}
-                  className="hover:text-blue-600 hover:underline"
+                  className="hover:text-[var(--text-primary)] hover:underline"
                 >
                   {collectionName}
                 </button>
@@ -253,20 +253,20 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
           {/* Progress bar for processing operations */}
           {operation.status === 'processing' && operation.progress !== undefined && (
             <div className="mt-3">
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
+              <div className="flex justify-between text-sm text-[var(--text-secondary)] mb-1">
                 <span>Progress</span>
                 <span>{Math.round(operation.progress)}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-[var(--border)] rounded-full h-2 overflow-hidden">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 relative"
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300 relative"
                   style={{ width: `${operation.progress}%` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
                 </div>
               </div>
               {operation.eta && (
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
                   ETA: {Math.ceil(operation.eta / 60)} minutes remaining
                 </p>
               )}

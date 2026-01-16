@@ -1,4 +1,5 @@
 import { useSearchStore } from '../stores/searchStore';
+import { useUIStore } from '../stores/uiStore';
 import { useCallback } from 'react';
 import { systemApi } from '../services/api/v2/system';
 
@@ -43,12 +44,13 @@ export function RerankingConfiguration({
   quantization,
   onChange
 }: RerankingConfigurationProps) {
-  const { 
-    rerankingAvailable, 
+  const {
+    rerankingAvailable,
     rerankingModelsLoading,
     setRerankingAvailable,
     setRerankingModelsLoading
   } = useSearchStore();
+  const addToast = useUIStore((state) => state.addToast);
 
   const handleEnabledChange = (checked: boolean) => {
     onChange({ useReranker: checked });
@@ -61,7 +63,7 @@ export function RerankingConfiguration({
   const handleQuantizationChange = (value: string) => {
     onChange({ rerankQuantization: value === 'auto' ? undefined : value });
   };
-  
+
   const handleRefreshAvailability = useCallback(async () => {
     setRerankingModelsLoading(true);
     try {
@@ -69,10 +71,11 @@ export function RerankingConfiguration({
       setRerankingAvailable(status.reranking_available);
     } catch (error) {
       console.error('Failed to refresh reranking availability:', error);
+      addToast({ type: 'error', message: 'Failed to check reranking availability. Please try again.' });
     } finally {
       setRerankingModelsLoading(false);
     }
-  }, [setRerankingAvailable, setRerankingModelsLoading]);
+  }, [setRerankingAvailable, setRerankingModelsLoading, addToast]);
 
   return (
     <div className="mb-4">

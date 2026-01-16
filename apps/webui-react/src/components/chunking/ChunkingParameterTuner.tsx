@@ -118,30 +118,27 @@ export function ChunkingParameterTuner({
     switch (param.type) {
       case 'number':
         return (
-          <div key={param.key} className="bg-void-800/50 border border-white/10 rounded-xl p-4 space-y-3">
+          <div key={param.key} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 space-y-3">
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <label className="text-sm font-medium text-gray-200 flex items-center gap-2">
+                <label className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
                   {param.name}
                   {param.description && (
                     <div className="group relative">
-                      <HelpCircle className="h-3.5 w-3.5 text-gray-500 hover:text-gray-400 cursor-help" />
+                      <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-help" />
                       <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                        <div className="bg-void-900 text-gray-300 text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-white/10">
+                        <div className="bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-[var(--border)]">
                           {param.description}
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                            <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-void-900"></div>
-                          </div>
                         </div>
                       </div>
                     </div>
                   )}
                 </label>
                 {param.unit && (
-                  <p className="text-xs text-gray-500 mt-1">Measured in {param.unit}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Measured in {param.unit}</p>
                 )}
               </div>
-              <span className="text-sm font-mono font-medium text-signal-400 bg-void-900/50 px-3 py-1 rounded-lg border border-white/10">
+              <span className="text-sm font-mono font-medium text-signal-500 bg-[var(--bg-tertiary)] px-3 py-1 rounded-lg border border-[var(--border)]">
                 {value}
               </span>
             </div>
@@ -154,17 +151,17 @@ export function ChunkingParameterTuner({
                 value={value as number}
                 onChange={(e) => handleParameterChange(param.key, Number(e.target.value))}
                 disabled={disabled}
-                className={`w-full h-2 bg-void-700 rounded-lg appearance-none cursor-pointer slider accent-signal-500
-                  ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-void-600'}`}
+                className={`w-full h-2 rounded-lg appearance-none cursor-pointer slider accent-signal-500
+                  ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 style={{
-                  background: `linear-gradient(to right, #0ea5e9 0%, #0ea5e9 ${
+                  background: `linear-gradient(to right, var(--accent-primary) 0%, var(--accent-primary) ${
                     ((Number(value) - param.min!) / (param.max! - param.min!)) * 100
-                  }%, #374151 ${
+                  }%, var(--border) ${
                     ((Number(value) - param.min!) / (param.max! - param.min!)) * 100
-                  }%, #374151 100%)`
+                  }%, var(--border) 100%)`
                 }}
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
                 <span>{param.min}</span>
                 <span>{param.max}</span>
               </div>
@@ -174,26 +171,23 @@ export function ChunkingParameterTuner({
 
       case 'boolean':
         return (
-          <div key={param.key} className="bg-void-800/50 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+          <div key={param.key} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 flex items-center justify-between">
             <div className="flex-1">
-              <label className="text-sm font-medium text-gray-200 flex items-center gap-2">
+              <label className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
                 {param.name}
                 {param.description && (
                   <div className="group relative">
-                    <HelpCircle className="h-3.5 w-3.5 text-gray-500 hover:text-gray-400 cursor-help" />
+                    <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-help" />
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                      <div className="bg-void-900 text-gray-300 text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-white/10">
+                      <div className="bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-[var(--border)]">
                         {param.description}
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                          <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-void-900"></div>
-                        </div>
                       </div>
                     </div>
                   </div>
                 )}
               </label>
               {param.description && (
-                <p className="text-xs text-gray-500 mt-1 sm:hidden">{param.description}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1 sm:hidden">{param.description}</p>
               )}
             </div>
             <button
@@ -201,8 +195,8 @@ export function ChunkingParameterTuner({
               onClick={() => handleParameterChange(param.key, !value)}
               disabled={disabled}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent
-                transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 focus:ring-offset-void-900
-                ${value ? 'bg-signal-600' : 'bg-void-600'}
+                transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]
+                ${value ? 'bg-signal-600' : 'bg-gray-300 dark:bg-gray-600'}
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               role="switch"
               aria-checked={value as boolean}
@@ -218,18 +212,15 @@ export function ChunkingParameterTuner({
 
       case 'select':
         return (
-          <div key={param.key} className="bg-void-800/50 border border-white/10 rounded-xl p-4 space-y-2">
-            <label className="text-sm font-medium text-gray-200 flex items-center gap-2">
+          <div key={param.key} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 space-y-2">
+            <label className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
               {param.name}
               {param.description && (
                 <div className="group relative">
-                  <HelpCircle className="h-3.5 w-3.5 text-gray-500 hover:text-gray-400 cursor-help" />
+                  <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-help" />
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                    <div className="bg-void-900 text-gray-300 text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-white/10">
+                    <div className="bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs rounded-lg py-2 px-3 max-w-xs whitespace-normal shadow-lg border border-[var(--border)]">
                       {param.description}
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-void-900"></div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -239,7 +230,7 @@ export function ChunkingParameterTuner({
               value={value as string}
               onChange={(e) => handleParameterChange(param.key, e.target.value)}
               disabled={disabled}
-              className="block w-full pl-3 pr-10 py-2 text-sm bg-void-900/50 text-white border border-white/10 focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
+              className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
             >
               {param.options?.map(option => (
                 <option key={option.value} value={option.value}>
@@ -258,9 +249,9 @@ export function ChunkingParameterTuner({
   return (
     <div className="space-y-4">
       {/* Preset Configuration */}
-      <div className="bg-void-800/50 rounded-xl border border-white/10 p-4">
+      <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] p-4">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-medium text-gray-200 flex items-center gap-2">
+          <h4 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
             <Sliders className="h-4 w-4" />
             Configuration
           </h4>
@@ -269,7 +260,7 @@ export function ChunkingParameterTuner({
               type="button"
               onClick={handleResetToDefaults}
               disabled={disabled}
-              className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center gap-1 transition-colors"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -290,7 +281,7 @@ export function ChunkingParameterTuner({
           value={selectedPreset || 'custom'}
           onChange={(e) => handlePresetChange(e.target.value)}
           disabled={disabled}
-          className="block w-full pl-3 pr-10 py-2 text-sm bg-void-900/50 text-white border border-white/10 focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
+          className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
         >
           <option value="custom">Custom Configuration</option>
           {CHUNKING_PRESETS.filter(p => p.strategy === selectedStrategy).length > 0 && (
@@ -332,7 +323,7 @@ export function ChunkingParameterTuner({
                 setShowSavePreset(false);
                 setCustomPresetName('');
               }}
-              className="px-3 py-1 text-sm text-gray-400 hover:text-gray-300"
+              className="px-3 py-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             >
               Cancel
             </button>
@@ -351,7 +342,7 @@ export function ChunkingParameterTuner({
       {/* Parameters */}
       {basicParameters.length > 0 && (
         <div className="space-y-3">
-          <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Parameters</h5>
+          <h5 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Parameters</h5>
           {basicParameters.map(param => renderParameter(param))}
         </div>
       )}
@@ -362,11 +353,11 @@ export function ChunkingParameterTuner({
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-white transition-colors w-full justify-between p-2 -m-2 rounded-lg hover:bg-void-800/50"
+            className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors w-full justify-between p-2 -m-2 rounded-lg hover:bg-[var(--bg-secondary)]"
           >
             <span>Advanced Parameters</span>
             <ChevronDown
-              className={`h-4 w-4 text-gray-500 transition-transform ${
+              className={`h-4 w-4 text-[var(--text-muted)] transition-transform ${
                 showAdvanced ? 'rotate-180' : ''
               }`}
             />
@@ -382,9 +373,9 @@ export function ChunkingParameterTuner({
 
       {/* Preview Status */}
       {showPreview && previewDocument && (
-        <div className="border-t border-white/10 pt-4">
+        <div className="border-t border-[var(--border)] pt-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400 flex items-center">
+            <span className="text-[var(--text-secondary)] flex items-center">
               {previewLoading ? (
                 <>
                   <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">

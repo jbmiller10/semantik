@@ -953,8 +953,8 @@ export function EmbeddingVisualizationTab({
                   type="button"
                   onClick={() => setSelectedReducer(option.value)}
                   className={`border rounded-lg p-3 text-left transition-colors ${selectedReducer === option.value
-                    ? 'border-purple-500 bg-purple-500/10'
-                    : 'border-[var(--border)] hover:border-purple-300'
+                    ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10'
+                    : 'border-[var(--border)] hover:border-[var(--border-strong)]'
                     }`}
                 >
                   <div className="font-medium text-[var(--text-primary)]">{option.label}</div>
@@ -981,7 +981,7 @@ export function EmbeddingVisualizationTab({
             type="button"
             onClick={handleStartProjection}
             disabled={startProjection.isPending}
-            className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 disabled:opacity-50"
+            className="inline-flex items-center px-4 py-2 bg-gray-700 dark:bg-white text-white dark:text-gray-900 rounded-md shadow-sm hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50"
           >
             {startProjection.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

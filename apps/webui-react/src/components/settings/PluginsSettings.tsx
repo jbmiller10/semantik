@@ -11,6 +11,8 @@ import { PLUGIN_TYPE_LABELS, PLUGIN_TYPE_ORDER, groupPluginsByType } from '../..
 import PluginCard from '../plugins/PluginCard';
 import PluginConfigModal from '../plugins/PluginConfigModal';
 import AvailablePluginsTab from '../plugins/AvailablePluginsTab';
+import { useUIStore } from '../../stores/uiStore';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 type PluginsTab = 'installed' | 'available';
 
@@ -95,6 +97,8 @@ function PluginsSettings() {
   const [disablingPluginId, setDisablingPluginId] = useState<string | null>(null);
   const [refreshingHealthId, setRefreshingHealthId] = useState<string | null>(null);
 
+  const addToast = useUIStore((state) => state.addToast);
+
   // Fetch plugins with health status
   const { data: plugins, isLoading, error, refetch } = usePlugins({ include_health: true });
 
@@ -107,6 +111,9 @@ function PluginsSettings() {
     setEnablingPluginId(pluginId);
     try {
       await enableMutation.mutateAsync(pluginId);
+      addToast({ type: 'success', message: 'Plugin enabled successfully' });
+    } catch (error) {
+      addToast({ type: 'error', message: `Failed to enable plugin: ${getErrorMessage(error)}` });
     } finally {
       setEnablingPluginId(null);
     }
@@ -116,6 +123,9 @@ function PluginsSettings() {
     setDisablingPluginId(pluginId);
     try {
       await disableMutation.mutateAsync(pluginId);
+      addToast({ type: 'success', message: 'Plugin disabled successfully' });
+    } catch (error) {
+      addToast({ type: 'error', message: `Failed to disable plugin: ${getErrorMessage(error)}` });
     } finally {
       setDisablingPluginId(null);
     }
@@ -125,6 +135,8 @@ function PluginsSettings() {
     setRefreshingHealthId(pluginId);
     try {
       await refreshHealthMutation.mutateAsync(pluginId);
+    } catch (error) {
+      addToast({ type: 'error', message: `Failed to refresh plugin health: ${getErrorMessage(error)}` });
     } finally {
       setRefreshingHealthId(null);
     }

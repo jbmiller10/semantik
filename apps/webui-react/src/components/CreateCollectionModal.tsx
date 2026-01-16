@@ -455,7 +455,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         {isSubmitting && (
           <div className="absolute inset-0 bg-[var(--bg-secondary)]/95 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
             <div className="text-center">
-              <svg className="animate-spin h-8 w-8 text-signal-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-8 w-8 text-red-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -508,7 +508,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             {/* Collection Name */}
             <div>
               <label htmlFor="name" className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-                Collection Name <span className="text-signal-500">*</span>
+                Collection Name <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -516,7 +516,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
                 disabled={isSubmitting}
-                className={`w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 transition-all duration-200 ${errors.name ? 'border-red-500/50 bg-red-500/10' : ''}`}
+                className={`w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 transition-all duration-200 ${errors.name ? 'border-red-500/50 bg-red-500/10' : ''}`}
                 placeholder="My Documents"
                 autoFocus
               />
@@ -536,7 +536,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 onChange={(e) => handleChange('description', e.target.value)}
                 disabled={isSubmitting}
                 rows={3}
-                className={`w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 transition-all duration-200 ${errors.description ? 'border-red-500/50 bg-red-500/10' : ''}`}
+                className={`w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 transition-all duration-200 ${errors.description ? 'border-red-500/50 bg-red-500/10' : ''}`}
                 placeholder="A collection of technical documentation..."
               />
               {errors.description && (
@@ -553,7 +553,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
               {catalogLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-signal-500" />
+                  <Loader2 className="h-6 w-6 animate-spin text-red-400" />
                   <span className="ml-2 text-[var(--text-muted)]">Loading connectors...</span>
                 </div>
               ) : catalog ? (
@@ -601,7 +601,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 value={formData.embedding_model}
                 onChange={(e) => handleChange('embedding_model', e.target.value)}
                 disabled={modelsLoading}
-                className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 transition-all duration-200"
+                className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 transition-all duration-200"
               >
                 {modelsLoading ? (
                   <option value="">Loading models...</option>
@@ -638,7 +638,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                   id="quantization"
                   value={formData.quantization}
                   onChange={(e) => handleChange('quantization', e.target.value)}
-                  className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 transition-all duration-200"
+                  className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 transition-all duration-200"
                 >
                   <option value="float32">float32 (Highest Precision)</option>
                   <option value="float16">float16 (Balanced - Default)</option>
@@ -686,7 +686,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                     checked={formData.sync_mode === 'one_time'}
                     onChange={() => handleChange('sync_mode', 'one_time' as SyncMode)}
                     disabled={isSubmitting}
-                    className="h-4 w-4 bg-[var(--input-bg)] border-[var(--input-border)] text-signal-600 focus:ring-signal-500 mt-0.5"
+                    className="h-4 w-4 bg-[var(--input-bg)] border-[var(--input-border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white mt-0.5"
                   />
                   <label htmlFor="sync_mode_one_time" className="ml-3">
                     <span className="block text-sm font-medium text-[var(--text-primary)]">One-time Import</span>
@@ -705,7 +705,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                     checked={formData.sync_mode === 'continuous'}
                     onChange={() => handleChange('sync_mode', 'continuous' as SyncMode)}
                     disabled={isSubmitting}
-                    className="h-4 w-4 bg-[var(--input-bg)] border-[var(--input-border)] text-signal-600 focus:ring-signal-500 mt-0.5"
+                    className="h-4 w-4 bg-[var(--input-bg)] border-[var(--input-border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white mt-0.5"
                   />
                   <label htmlFor="sync_mode_continuous" className="ml-3">
                     <span className="block text-sm font-medium text-[var(--text-primary)]">Continuous Sync</span>
@@ -730,7 +730,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                       value={formData.sync_interval_minutes || 60}
                       onChange={(e) => handleChange('sync_interval_minutes', parseInt(e.target.value, 10) || 60)}
                       disabled={isSubmitting}
-                      className="w-24 px-3 py-2 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 transition-all duration-200"
+                      className="w-24 px-3 py-2 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 transition-all duration-200"
                     />
                     <span className="text-sm text-[var(--text-muted)]">Minimum: 15 minutes</span>
                   </div>
@@ -749,7 +749,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               <button
                 type="button"
                 onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                className="flex items-center justify-between w-full text-left focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] rounded-md p-2 -m-2 group"
+                className="flex items-center justify-between w-full text-left focus:outline-none focus:ring-2 focus:ring-gray-400/30 dark:focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] rounded-md p-2 -m-2 group"
               >
                 <h4 className="text-sm font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">Advanced Settings</h4>
                 <svg
@@ -773,7 +773,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                       checked={formData.is_public}
                       onChange={(e) => handleChange('is_public', e.target.checked)}
                       disabled={isSubmitting}
-                      className={`h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--input-bg)] border-[var(--input-border)] rounded ${isSubmitting ? 'cursor-not-allowed' : ''
+                      className={`h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--input-bg)] border-[var(--input-border)] rounded ${isSubmitting ? 'cursor-not-allowed' : ''
                         }`}
                     />
                     <label htmlFor="is_public" className="ml-2 block text-sm text-[var(--text-primary)]">
@@ -790,7 +790,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                         checked={sparseEnabled}
                         onChange={(e) => setSparseEnabled(e.target.checked)}
                         disabled={isSubmitting}
-                        className={`h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--input-bg)] border-[var(--input-border)] rounded ${isSubmitting ? 'cursor-not-allowed' : ''
+                        className={`h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--input-bg)] border-[var(--input-border)] rounded ${isSubmitting ? 'cursor-not-allowed' : ''
                           }`}
                       />
                       <label htmlFor="sparse_enabled" className="ml-2 block text-sm text-[var(--text-primary)]">
@@ -811,7 +811,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                               onClick={() => setSparsePlugin('bm25-local')}
                               disabled={isSubmitting}
                               className={`p-3 text-sm rounded-xl border transition-all text-left ${sparsePlugin === 'bm25-local'
-                                  ? 'border-signal-500 bg-signal-500/10 text-signal-600 dark:text-signal-300 shadow-lg shadow-signal-500/10'
+                                  ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-white'
                                   : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:border-[var(--border-strong)]'
                                 } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
@@ -823,7 +823,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                               onClick={() => setSparsePlugin('splade-local')}
                               disabled={isSubmitting}
                               className={`p-3 text-sm rounded-xl border transition-all text-left ${sparsePlugin === 'splade-local'
-                                  ? 'border-signal-500 bg-signal-500/10 text-signal-600 dark:text-signal-300 shadow-lg shadow-signal-500/10'
+                                  ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-white'
                                   : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:border-[var(--border-strong)]'
                                 } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
@@ -840,7 +840,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                             <div>
                               <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
                                 <span>k1 (term frequency saturation)</span>
-                                <span className="font-mono text-signal-500">{bm25Config.k1.toFixed(1)}</span>
+                                <span className="font-mono text-red-400">{bm25Config.k1.toFixed(1)}</span>
                               </div>
                               <input
                                 type="range"
@@ -850,13 +850,13 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                                 value={bm25Config.k1}
                                 onChange={(e) => setBm25Config({ ...bm25Config, k1: parseFloat(e.target.value) })}
                                 disabled={isSubmitting}
-                                className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-signal-500"
+                                className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-600 dark:accent-white"
                               />
                             </div>
                             <div>
                               <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
                                 <span>b (document length normalization)</span>
-                                <span className="font-mono text-signal-500">{bm25Config.b.toFixed(2)}</span>
+                                <span className="font-mono text-red-400">{bm25Config.b.toFixed(2)}</span>
                               </div>
                               <input
                                 type="range"
@@ -866,7 +866,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                                 value={bm25Config.b}
                                 onChange={(e) => setBm25Config({ ...bm25Config, b: parseFloat(e.target.value) })}
                                 disabled={isSubmitting}
-                                className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-signal-500"
+                                className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-600 dark:accent-white"
                               />
                             </div>
                           </div>
@@ -892,14 +892,14 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               type="button"
               onClick={onClose}
               disabled={isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending}
-              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500/50 focus:ring-offset-[var(--bg-primary)] disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending}
-              className="px-6 py-2 text-sm font-bold text-white bg-signal-600 border border-transparent rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500/50 focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
+              className="px-6 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
             >
               {isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending ? (
                 <>
