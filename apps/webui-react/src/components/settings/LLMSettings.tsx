@@ -237,7 +237,7 @@ export default function LLMSettings() {
   // Error state (except 404 which means not configured yet)
   if (error && !error.message.includes('404')) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
         <div className="flex">
           <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -248,8 +248,8 @@ export default function LLMSettings() {
             />
           </svg>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">Error loading settings</h3>
-            <p className="mt-1 text-sm text-red-700">{error.message}</p>
+            <h3 className="text-sm font-medium text-red-300">Error loading settings</h3>
+            <p className="mt-1 text-sm text-red-400">{error.message}</p>
           </div>
         </div>
       </div>
@@ -272,10 +272,10 @@ export default function LLMSettings() {
 
       {/* Info box for unconfigured state */}
       {!hasAnyConfig && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
           <div className="flex">
             <svg
-              className="h-5 w-5 text-yellow-400 flex-shrink-0"
+              className="h-5 w-5 text-amber-400 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -288,8 +288,8 @@ export default function LLMSettings() {
               />
             </svg>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">LLM Not Configured</h3>
-              <p className="mt-1 text-sm text-yellow-700">
+              <h3 className="text-sm font-medium text-amber-400">LLM Not Configured</h3>
+              <p className="mt-1 text-sm text-amber-300/80">
                 Add an API key below or select a Local (GPU) provider to enable AI features.
               </p>
             </div>
@@ -298,7 +298,7 @@ export default function LLMSettings() {
       )}
 
       {/* Quality Tiers Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
         <div className="flex">
           <svg
             className="h-5 w-5 text-blue-400 flex-shrink-0"
@@ -314,8 +314,8 @@ export default function LLMSettings() {
             />
           </svg>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Quality Tiers</h3>
-            <p className="mt-1 text-sm text-blue-700">
+            <h3 className="text-sm font-medium text-blue-300">Quality Tiers</h3>
+            <p className="mt-1 text-sm text-blue-400">
               <strong>High Quality:</strong> Used for complex tasks like document summarization.
               <br />
               <strong>Low Quality:</strong> Used for simple tasks like HyDE query expansion
@@ -327,10 +327,10 @@ export default function LLMSettings() {
 
       {/* Local LLM Info (shown when local provider is selected) */}
       {hasLocalProvider && (
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
           <div className="flex">
             <svg
-              className="h-5 w-5 text-purple-400 flex-shrink-0"
+              className="h-5 w-5 text-blue-400 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -343,8 +343,8 @@ export default function LLMSettings() {
               />
             </svg>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-purple-800">Local LLM (GPU)</h3>
-              <p className="mt-1 text-sm text-purple-700">
+              <h3 className="text-sm font-medium text-blue-300">Local LLM (GPU)</h3>
+              <p className="mt-1 text-sm text-blue-400">
                 Local models run entirely on your GPU. No API key required.
                 First-time model downloads may take several minutes.
               </p>
@@ -404,8 +404,8 @@ export default function LLMSettings() {
                 <div
                   className={`mt-2 p-2 rounded text-sm ${
                     testResult.success
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
                   }`}
                 >
                   {testResult.success ? '✓ ' : '✗ '}
@@ -459,8 +459,8 @@ export default function LLMSettings() {
                 <div
                   className={`mt-2 p-2 rounded text-sm ${
                     testResult.success
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
                   }`}
                 >
                   {testResult.success ? '✓ ' : '✗ '}
@@ -665,11 +665,11 @@ export default function LLMSettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white hover:bg-gray-300 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-900" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
@@ -743,7 +743,7 @@ function TierConfigCard({
                 onClick={() => onProviderChange('anthropic')}
                 className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                   provider === 'anthropic'
-                    ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
                     : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                 }`}
               >
@@ -754,7 +754,7 @@ function TierConfigCard({
                 onClick={() => onProviderChange('openai')}
                 className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                   provider === 'openai'
-                    ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
                     : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                 }`}
               >
@@ -765,7 +765,7 @@ function TierConfigCard({
                 onClick={() => onProviderChange('local')}
                 className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                   provider === 'local'
-                    ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
                     : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                 }`}
               >
@@ -783,7 +783,7 @@ function TierConfigCard({
                   type="button"
                   onClick={() => onRefreshModels(provider)}
                   disabled={!canRefresh || isRefreshing}
-                  className="text-xs text-[var(--accent-primary)] hover:opacity-80 disabled:text-[var(--text-muted)] disabled:cursor-not-allowed"
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-muted)] disabled:cursor-not-allowed"
                   title={canRefresh ? 'Refresh models from API' : 'Enter API key above to refresh'}
                 >
                   {isRefreshing ? 'Refreshing...' : 'Refresh from API'}
@@ -819,7 +819,7 @@ function TierConfigCard({
                   onClick={() => onQuantizationChange?.('int8')}
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
                     quantization === 'int8'
-                      ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400'
+                      ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
                       : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
@@ -830,7 +830,7 @@ function TierConfigCard({
                   onClick={() => onQuantizationChange?.('int4')}
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
                     quantization === 'int4'
-                      ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400'
+                      ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
                       : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
