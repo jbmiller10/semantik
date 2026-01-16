@@ -6,6 +6,7 @@ from pathlib import Path
 
 from shared.connectors import local as local_module
 from shared.connectors.local import MAX_FILE_SIZE, LocalFileConnector, _process_file_worker
+from shared.text_processing.parsers import ExtractionFailedError, ParseResult
 
 
 def test_is_safe_path_allows_within_base(tmp_path: Path) -> None:
@@ -46,7 +47,21 @@ def test_process_file_worker_success(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "doc.txt"
     file_path.write_text("hello")
 
-    monkeypatch.setattr(local_module, "extract_and_serialize", lambda _path: [("hello", {"foo": "bar"})])
+    def mock_parse_content(_bytes, **_kw):
+        return ParseResult(
+            text="hello",
+            elements=[],
+            metadata={
+                "filename": "doc.txt",
+                "file_extension": ".txt",
+                "file_type": "txt",
+                "mime_type": None,
+                "parser": "text",
+                "foo": "bar",
+            },
+        )
+
+    monkeypatch.setattr(local_module, "parse_content", mock_parse_content)
     monkeypatch.setattr(local_module, "compute_content_hash", lambda _content: "hash")
 
     result = _process_file_worker(str(file_path))
@@ -62,7 +77,14 @@ def test_process_file_worker_empty_content(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "empty.txt"
     file_path.write_text("ignored")
 
-    monkeypatch.setattr(local_module, "extract_and_serialize", lambda _path: [("   ", {})])
+    def mock_parse_content(_bytes, **_kw):
+        return ParseResult(
+            text="   ",
+            elements=[],
+            metadata={},
+        )
+
+    monkeypatch.setattr(local_module, "parse_content", mock_parse_content)
 
     result = _process_file_worker(str(file_path))
 
@@ -74,10 +96,10 @@ def test_process_file_worker_parse_error(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "bad.txt"
     file_path.write_text("ignored")
 
-    def _boom(_path: str):
-        raise RuntimeError("parse failed")
+    def _boom(_bytes, **_kw):
+        raise ExtractionFailedError("parse failed")
 
-    monkeypatch.setattr(local_module, "extract_and_serialize", _boom)
+    monkeypatch.setattr(local_module, "parse_content", _boom)
 
     result = _process_file_worker(str(file_path))
 
