@@ -288,19 +288,207 @@ describe('uiStore', () => {
     it('maintains separate state for different hooks', () => {
       const { result: hook1 } = renderHook(() => useUIStore())
       const { result: hook2 } = renderHook(() => useUIStore())
-      
+
       // Both hooks should see the same initial state
       expect(hook1.current.activeTab).toBe('collections')
       expect(hook2.current.activeTab).toBe('collections')
-      
+
       // Change state in hook1
       act(() => {
         hook1.current.setActiveTab('search')
       })
-      
+
       // Both hooks should see the updated state (zustand uses global state)
       expect(hook1.current.activeTab).toBe('search')
       expect(hook2.current.activeTab).toBe('search')
+    })
+  })
+
+  describe('theme', () => {
+    let localStorageMock: Record<string, string>
+    let classListMock: { add: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }
+    let matchMediaMock: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      // Setup localStorage mock
+      localStorageMock = {}
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => localStorageMock[key] || null)
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key, value) => {
+        localStorageMock[key] = value
+      })
+
+      // Setup classList mock
+      classListMock = {
+        add: vi.fn(),
+        remove: vi.fn(),
+      }
+      vi.spyOn(document.documentElement.classList, 'add').mockImplementation(classListMock.add)
+      vi.spyOn(document.documentElement.classList, 'remove').mockImplementation(classListMock.remove)
+
+      // Setup matchMedia mock (required by applyTheme function)
+      matchMediaMock = vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(prefers-color-scheme: dark)' ? false : false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+      vi.spyOn(window, 'matchMedia').mockImplementation(matchMediaMock)
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('has a theme property in state', () => {
+      const { result } = renderHook(() => useUIStore())
+      expect(result.current.theme).toBeDefined()
+    })
+
+    it('persists theme to localStorage when setTheme is called', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('dark')
+      })
+
+      expect(localStorage.setItem).toHaveBeenCalledWith('semantik-theme', 'dark')
+      expect(result.current.theme).toBe('dark')
+    })
+
+    it('updates store state when setTheme is called with light', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('light')
+      })
+
+      expect(localStorage.setItem).toHaveBeenCalledWith('semantik-theme', 'light')
+      expect(result.current.theme).toBe('light')
+    })
+
+    it('updates store state when setTheme is called with system', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('system')
+      })
+
+      expect(localStorage.setItem).toHaveBeenCalledWith('semantik-theme', 'system')
+      expect(result.current.theme).toBe('system')
+    })
+
+    it('applies dark class to document when theme is dark', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('dark')
+      })
+
+      expect(classListMock.add).toHaveBeenCalledWith('dark')
+    })
+
+    it('removes dark class from document when theme is light', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('light')
+      })
+
+      expect(classListMock.remove).toHaveBeenCalledWith('dark')
+    })
+
+    it('cycles through all theme values correctly', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      act(() => {
+        result.current.setTheme('light')
+      })
+      expect(result.current.theme).toBe('light')
+
+      act(() => {
+        result.current.setTheme('dark')
+      })
+      expect(result.current.theme).toBe('dark')
+
+      act(() => {
+        result.current.setTheme('system')
+      })
+      expect(result.current.theme).toBe('system')
+    })
+  })
+
+  describe('timer cleanup on toast removal', () => {
+    it('clears timer when toast is manually removed', () => {
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+      const { result } = renderHook(() => useUIStore())
+
+      // Add a toast with auto-removal (will have a timerId)
+      act(() => {
+        result.current.addToast({
+          message: 'Test',
+          type: 'info',
+          duration: 5000,
+        })
+      })
+
+      const toastId = result.current.toasts[0].id
+      const timerId = result.current.toasts[0].timerId
+
+      // Verify timerId was set
+      expect(timerId).toBeDefined()
+
+      // Remove the toast manually
+      act(() => {
+        result.current.removeToast(toastId)
+      })
+
+      // Verify clearTimeout was called with the timer ID
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(timerId)
+    })
+
+    it('handles removing non-existent toast gracefully', () => {
+      const { result } = renderHook(() => useUIStore())
+
+      // Try to remove a non-existent toast - should not throw
+      expect(() => {
+        act(() => {
+          result.current.removeToast('non-existent-id')
+        })
+      }).not.toThrow()
+    })
+
+    it('does not attempt clearTimeout for toast without timerId', () => {
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+      const { result } = renderHook(() => useUIStore())
+
+      // Add a toast with duration 0 (no timer)
+      act(() => {
+        result.current.addToast({
+          message: 'Persistent',
+          type: 'error',
+          duration: 0,
+        })
+      })
+
+      const toastId = result.current.toasts[0].id
+
+      // Verify timerId is undefined
+      expect(result.current.toasts[0].timerId).toBeUndefined()
+
+      // Clear any previous clearTimeout calls
+      clearTimeoutSpy.mockClear()
+
+      // Remove the toast
+      act(() => {
+        result.current.removeToast(toastId)
+      })
+
+      // clearTimeout should not be called since there was no timer
+      expect(clearTimeoutSpy).not.toHaveBeenCalled()
     })
   })
 })

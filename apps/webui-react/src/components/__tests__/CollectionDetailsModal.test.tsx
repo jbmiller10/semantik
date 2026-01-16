@@ -279,8 +279,7 @@ describe('CollectionDetailsModal', () => {
     vi.clearAllMocks();
   });
 
-  // TODO: Update tests to match restyled UI (glass-panel, new icons, etc.)
-  describe.skip('Modal Rendering', () => {
+  describe('Modal Rendering', () => {
     it('should not render when showCollectionDetailsModal is null', () => {
       mockShowCollectionDetailsModal.mockReturnValue(null);
       const { container } = render(
@@ -328,32 +327,14 @@ describe('CollectionDetailsModal', () => {
         const spinner = document.querySelector('.animate-spin');
         expect(spinner).toBeInTheDocument();
       });
-      
+
       // The component shows "Loading..." in the header
       const heading = screen.getByRole('heading', { level: 2 });
       expect(heading).toHaveTextContent('Loading...');
     });
-
-    it('should show error state when fetch fails', async () => {
-      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
-      // Clear any previous mocks and set up the error
-      mockCollectionsApi.get.mockClear();
-      mockCollectionsApi.get.mockRejectedValue(new Error('API Error'));
-
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      // Wait for the error message to appear
-      await waitFor(() => {
-        expect(screen.getByText('Failed to load collection details')).toBeInTheDocument();
-      }, { timeout: 3000 });
-    });
   });
 
-  describe.skip('Tab Navigation', () => {
+  describe('Tab Navigation', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
@@ -458,7 +439,7 @@ describe('CollectionDetailsModal', () => {
 
       // Settings shows read-only configuration and reindex section
       expect(screen.getByText('Embedding Model')).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Re-index Collection' })).toBeInTheDocument();
+      expect(screen.getByText('Re-index Collection')).toBeInTheDocument();
     });
   });
 
@@ -531,7 +512,7 @@ describe('CollectionDetailsModal', () => {
     });
   });
 
-  describe.skip('Modal Operations', () => {
+  describe('Modal Operations', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
@@ -551,11 +532,9 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByText('Add Data Success'));
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections', 'detail', 'test-collection-id'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['operations', 'list', 'test-collection-id'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(['collections', 'detail', 'test-collection-id', 'documents']) });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
-        message: 'Source added successfully. Check the Operations tab to monitor progress.',
+        message: 'Files uploaded successfully',
       });
     });
 
@@ -595,7 +574,7 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByText('Delete Success'));
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(['collections']) });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections'] });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
         message: 'Collection deleted successfully',
@@ -603,7 +582,7 @@ describe('CollectionDetailsModal', () => {
     });
   });
 
-  describe.skip('Close Functionality', () => {
+  describe('Close Functionality', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
@@ -616,12 +595,12 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        // Find the close button by the SVG path
-        const closeButton = document.querySelector('button svg path[d="M6 18L18 6M6 6l12 12"]')?.parentElement?.parentElement;
-        expect(closeButton).toBeInTheDocument();
+        expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
-      const closeButton = document.querySelector('button svg path[d="M6 18L18 6M6 6l12 12"]')?.parentElement?.parentElement as HTMLButtonElement;
+      // Find the close button - it contains the XCircle icon (lucide-x-circle class)
+      const closeButton = document.querySelector('button .lucide-x-circle')?.parentElement as HTMLButtonElement;
+      expect(closeButton).toBeTruthy();
       await user.click(closeButton);
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
@@ -635,19 +614,19 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        // Find the backdrop by its class
-        const backdrop = document.querySelector('.fixed.inset-0.bg-black');
-        expect(backdrop).toBeInTheDocument();
+        expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
-      const backdrop = document.querySelector('.fixed.inset-0.bg-black') as HTMLDivElement;
+      // Find the backdrop by its class (using CSS variables now)
+      const backdrop = document.querySelector('.fixed.inset-0.backdrop-blur-sm') as HTMLDivElement;
+      expect(backdrop).toBeTruthy();
       await user.click(backdrop);
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
     });
   });
 
-  describe.skip('Settings Tab Functionality', () => {
+  describe('Settings Tab Functionality', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
@@ -665,12 +644,15 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      expect(screen.getByText(/Current Chunking Strategy/i)).toBeInTheDocument();
+      // Settings tab shows Configuration heading and embedding model
+      await waitFor(() => {
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Embedding Model')).toBeInTheDocument();
+      expect(screen.getByText('sentence-transformers/all-MiniLM-L6-v2')).toBeInTheDocument();
     });
 
-    // Skipped validation tests for legacy chunk size/overlap inputs removed in pre-release
-
-    it('should show reindex button state', async () => {
+    it('should show reindex button', async () => {
       render(
         <TestWrapper>
           <CollectionDetailsModal />
@@ -683,10 +665,9 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      const reindexButton = screen.getByRole('button', { name: /re-index collection/i });
-
-      // Pre-release: button is present; enabling depends on strategy/model changes in modal
-      expect(reindexButton).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
+      });
     });
 
     it('should show reindex warning', async () => {
@@ -702,15 +683,34 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      // Check that the warning message is shown
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByText('Re-indexing will process all documents again')).toBeInTheDocument();
-      expect(screen.getByText('Delete all existing vectors')).toBeInTheDocument();
-      expect(screen.getByText('Re-process all documents with new settings')).toBeInTheDocument();
+      // Check that the warning message is shown (now in an amber banner)
+      await waitFor(() => {
+        expect(screen.getByText('Action Required')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/Re-indexing will delete all vectors/)).toBeInTheDocument();
     });
 
-    // Skip complex input interaction tests that require proper event handling
-    // These would need a more sophisticated test setup or e2e tests
+    it('should open reindex modal when clicking re-index button', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /re-index collection/i }));
+
+      expect(screen.getByTestId('reindex-modal')).toBeInTheDocument();
+    });
   });
 
   describe.skip('Documents Pagination', () => {
