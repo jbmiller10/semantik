@@ -196,6 +196,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -233,6 +235,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -273,15 +277,17 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
 
-    // Expand advanced options
+    // Expand advanced options to see model/quantization options
     const advancedButton = screen.getByText('Advanced Options')
     await user.click(advancedButton)
 
-    // Check that reranking options are shown
+    // Check that reranking model/quantization options are shown
     const selects = screen.getAllByRole('combobox')
     // We expect at least 2 selects for reranking (model and quantization)
     // There might be others (Search Type, Collections, etc.)
@@ -325,6 +331,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -350,6 +358,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -390,6 +400,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
