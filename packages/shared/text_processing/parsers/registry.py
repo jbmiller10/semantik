@@ -120,16 +120,24 @@ def get_parser(name: str, config: dict[str, Any] | None = None) -> BaseParser:
 
 # Extensions that should try unstructured first, then fall back.
 # Includes HTML by default (can change later).
-UNSTRUCTURED_FIRST_EXTENSIONS: frozenset[str] = frozenset({
-    ".pdf", ".docx", ".doc", ".pptx", ".ppt",
-    ".eml", ".msg",
-    ".html", ".htm",
-})
+UNSTRUCTURED_FIRST_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".pptx",
+        ".ppt",
+        ".eml",
+        ".msg",
+        ".html",
+        ".htm",
+    }
+)
 
 # Extensions that should try TextParser first, then fall back.
-TEXT_FIRST_EXTENSIONS: frozenset[str] = frozenset({
-    ext for ext, parser in DEFAULT_PARSER_MAP.items() if parser == "text"
-})
+TEXT_FIRST_EXTENSIONS: frozenset[str] = frozenset(
+    {ext for ext, parser in DEFAULT_PARSER_MAP.items() if parser == "text"}
+)
 
 
 def parser_candidates_for_extension(
@@ -179,7 +187,4 @@ def list_parsers_for_extension(ext: str) -> list[str]:
     """
     ensure_registered()
     ext = ext.lower() if ext.startswith(".") else f".{ext.lower()}"
-    return [
-        name for name, cls in PARSER_REGISTRY.items()
-        if ext in cls.supported_extensions()
-    ]
+    return [name for name, cls in PARSER_REGISTRY.items() if ext in cls.supported_extensions()]

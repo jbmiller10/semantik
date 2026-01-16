@@ -18,25 +18,56 @@ class TextParser(BaseParser):
         errors: str - Encoding error handling (default: "replace")
     """
 
-    SUPPORTED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({
-        # Plain text
-        ".txt", ".text",
-        # Markdown
-        ".md", ".markdown", ".mdown", ".mkd", ".mdx",
-        # Code
-        ".py", ".js", ".ts", ".tsx", ".jsx",
-        ".java", ".go", ".rs", ".rb", ".php",
-        ".c", ".cpp", ".h", ".hpp", ".cs",
-        ".sh", ".bash", ".zsh",
-        ".sql", ".graphql",
-        # Config/data
-        ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
-        ".xml", ".csv",
-        # Web
-        ".css", ".scss", ".less",
-        # Documentation
-        ".rst", ".adoc",
-    })
+    SUPPORTED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset(
+        {
+            # Plain text
+            ".txt",
+            ".text",
+            # Markdown
+            ".md",
+            ".markdown",
+            ".mdown",
+            ".mkd",
+            ".mdx",
+            # Code
+            ".py",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".rb",
+            ".php",
+            ".c",
+            ".cpp",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".sql",
+            ".graphql",
+            # Config/data
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".xml",
+            ".csv",
+            # Web
+            ".css",
+            ".scss",
+            ".less",
+            # Documentation
+            ".rst",
+            ".adoc",
+        }
+    )
 
     @classmethod
     def supported_extensions(cls) -> frozenset[str]:
@@ -86,6 +117,7 @@ class TextParser(BaseParser):
             raise ExtractionFailedError(f"Failed to read {path.name}: {e}", cause=e) from e
 
         import mimetypes
+
         mime_type, _ = mimetypes.guess_type(str(path))
 
         file_metadata = {
@@ -99,7 +131,9 @@ class TextParser(BaseParser):
 
         return ParseResult(
             text=content,
-            elements=[ParsedElement(text=content, metadata=file_metadata)] if include_elements and content.strip() else [],
+            elements=(
+                [ParsedElement(text=content, metadata=file_metadata)] if include_elements and content.strip() else []
+            ),
             metadata=file_metadata,
         )
 

@@ -18,12 +18,7 @@ Example:
 from typing import Any
 
 from .base import BaseParser, ParsedElement, ParseResult
-from .exceptions import (
-    ExtractionFailedError,
-    ParserConfigError,
-    ParserError,
-    UnsupportedFormatError,
-)
+from .exceptions import ExtractionFailedError, ParserConfigError, ParserError, UnsupportedFormatError
 from .registry import (
     DEFAULT_PARSER_MAP,
     PARSER_REGISTRY,

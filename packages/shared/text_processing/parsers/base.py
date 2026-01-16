@@ -95,9 +95,7 @@ class BaseParser(ABC):
         for key, value in config.items():
             if key not in options:
                 valid_keys = ", ".join(sorted(options.keys())) or "(none)"
-                raise ParserConfigError(
-                    f"Unknown config option '{key}'. Valid options: {valid_keys}"
-                )
+                raise ParserConfigError(f"Unknown config option '{key}'. Valid options: {valid_keys}")
             result[key] = value
 
         return result

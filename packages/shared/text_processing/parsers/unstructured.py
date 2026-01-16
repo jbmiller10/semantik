@@ -26,22 +26,35 @@ class UnstructuredParser(BaseParser):
         infer_table_structure: bool - Preserve tables (default: True)
     """
 
-    SUPPORTED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({
-        ".pdf", ".docx", ".doc", ".pptx", ".ppt",
-        ".html", ".htm", ".eml", ".msg",
-        ".txt", ".md", ".rst",
-    })
+    SUPPORTED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset(
+        {
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".pptx",
+            ".ppt",
+            ".html",
+            ".htm",
+            ".eml",
+            ".msg",
+            ".txt",
+            ".md",
+            ".rst",
+        }
+    )
 
-    SUPPORTED_MIME_TYPES: ClassVar[frozenset[str]] = frozenset({
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "text/html",
-        "message/rfc822",
-        "text/plain",
-        "text/markdown",
-    })
+    SUPPORTED_MIME_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "text/html",
+            "message/rfc822",
+            "text/plain",
+            "text/markdown",
+        }
+    )
 
     @classmethod
     def supported_extensions(cls) -> frozenset[str]:
@@ -97,6 +110,7 @@ class UnstructuredParser(BaseParser):
 
         # Detect MIME type
         import mimetypes
+
         mime_type, _ = mimetypes.guess_type(str(path))
         mime_type = mime_type or "application/octet-stream"
 

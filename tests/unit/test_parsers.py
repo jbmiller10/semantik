@@ -354,11 +354,13 @@ class TestUnstructuredParser:
         """UnstructuredParser accepts valid config options."""
         from shared.text_processing.parsers import UnstructuredParser
 
-        parser = UnstructuredParser({
-            "strategy": "fast",
-            "include_page_breaks": False,
-            "infer_table_structure": False,
-        })
+        parser = UnstructuredParser(
+            {
+                "strategy": "fast",
+                "include_page_breaks": False,
+                "infer_table_structure": False,
+            }
+        )
 
         assert parser.config["strategy"] == "fast"
         assert parser.config["include_page_breaks"] is False
