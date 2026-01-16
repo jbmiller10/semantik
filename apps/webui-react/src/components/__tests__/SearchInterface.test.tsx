@@ -220,7 +220,9 @@ describe('SearchInterface', () => {
     })
   })
 
-  it('shows hybrid search options when enabled', async () => {
+  it('shows RRF configuration in Advanced Options when hybrid mode is enabled', async () => {
+    const user = userEvent.setup()
+
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, searchMode: 'hybrid' as const },
       updateSearchParams: mockUpdateSearchParams,
@@ -241,9 +243,46 @@ describe('SearchInterface', () => {
 
     render(<SearchInterface />)
 
-    // New SearchModeSelector shows RRF config when in hybrid mode
-    expect(screen.getByText('Hybrid Search Configuration')).toBeInTheDocument()
-    expect(screen.getByText(/RRF Weighting/)).toBeInTheDocument()
+    // Expand Advanced Options to see RRF configuration
+    const advancedButton = screen.getByText('Advanced Options')
+    await user.click(advancedButton)
+
+    // RRF configuration is now in Advanced Options
+    expect(screen.getByText('RRF Weighting')).toBeInTheDocument()
+    // Should show the k value (appears in both display and slider labels)
+    expect(screen.getAllByText(/k=60/).length).toBeGreaterThan(0)
+  })
+
+  it('shows RRF configuration as disabled when not in hybrid mode', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(useSearchStore).mockReturnValue({
+      searchParams: { ...defaultSearchParams, searchMode: 'dense' as const },
+      updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
+      setResults: mockSetResults,
+      setLoading: mockSetLoading,
+      setError: mockSetError,
+      setCollections: mockSetCollections,
+      collections: [],
+      setRerankingMetrics: mockSetRerankingMetrics,
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
+    })
+
+    render(<SearchInterface />)
+
+    // Expand Advanced Options
+    const advancedButton = screen.getByText('Advanced Options')
+    await user.click(advancedButton)
+
+    // RRF section should be visible but show "requires Hybrid mode"
+    expect(screen.getByText('RRF Weighting')).toBeInTheDocument()
+    expect(screen.getByText('(requires Hybrid mode)')).toBeInTheDocument()
   })
 
   it('toggles reranking options', async () => {
@@ -252,7 +291,7 @@ describe('SearchInterface', () => {
     render(<SearchInterface />)
 
     // Reranking toggle is now at top level (not inside Advanced Options)
-    const rerankCheckbox = screen.getByLabelText(/enable cross-encoder reranking/i)
+    const rerankCheckbox = screen.getByLabelText(/cross-encoder reranking/i)
     expect(rerankCheckbox).not.toBeChecked()
 
     await user.click(rerankCheckbox)

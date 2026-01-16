@@ -5,70 +5,17 @@
  * - Dense: Traditional semantic vector search
  * - Sparse: BM25/SPLADE keyword search
  * - Hybrid: Combined search with RRF fusion
- *
- * When hybrid mode is selected, shows the RRF k parameter configuration.
  */
 
 import React from 'react';
-import { Zap, Search, Combine, AlertCircle, HelpCircle } from 'lucide-react';
+import { Zap, Search, Combine, AlertCircle } from 'lucide-react';
 import type { SearchMode } from '../../types/sparse-index';
-import { RRF_DEFAULTS } from '../../types/sparse-index';
-
-const RRF_SLIDER = {
-  min: 0,
-  max: 100,
-  step: 1,
-  // Log-scale "feel": lower values provide finer control near default k.
-  // Calibrated so ~50% maps near k≈60 when max=1000.
-  gamma: 0.75,
-} as const;
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function rrfKFromSlider(sliderValue: number): number {
-  const minK = RRF_DEFAULTS.min;
-  const maxK = RRF_DEFAULTS.max;
-
-  if (minK <= 0 || maxK <= minK) return RRF_DEFAULTS.k;
-
-  const slider = clampNumber(sliderValue, RRF_SLIDER.min, RRF_SLIDER.max);
-  const t = slider / RRF_SLIDER.max;
-
-  const logMin = Math.log(minK);
-  const logMax = Math.log(maxK);
-  const scaled = logMin + Math.pow(t, RRF_SLIDER.gamma) * (logMax - logMin);
-
-  return Math.round(Math.exp(scaled));
-}
-
-function sliderFromRrfK(k: number): number {
-  const minK = RRF_DEFAULTS.min;
-  const maxK = RRF_DEFAULTS.max;
-
-  if (minK <= 0 || maxK <= minK) return Math.round(RRF_SLIDER.max / 2);
-  if (!Number.isFinite(k)) return Math.round(RRF_SLIDER.max / 2);
-
-  const clampedK = clampNumber(k, minK, maxK);
-  const logMin = Math.log(minK);
-  const logMax = Math.log(maxK);
-
-  const tPowGamma = clampNumber((Math.log(clampedK) - logMin) / (logMax - logMin), 0, 1);
-  const t = Math.pow(tPowGamma, 1 / RRF_SLIDER.gamma);
-
-  return Math.round(t * RRF_SLIDER.max);
-}
 
 interface SearchModeSelectorProps {
   /** Currently selected search mode */
   searchMode: SearchMode;
-  /** RRF constant k for hybrid search */
-  rrfK: number;
   /** Callback when search mode changes */
   onSearchModeChange: (mode: SearchMode) => void;
-  /** Callback when RRF k changes */
-  onRrfKChange: (k: number) => void;
   /** Whether the selector is disabled */
   disabled?: boolean;
   /** Whether any selected collections support sparse indexing */
@@ -109,19 +56,10 @@ const MODE_OPTIONS: ModeOption[] = [
 
 export function SearchModeSelector({
   searchMode,
-  rrfK,
   onSearchModeChange,
-  onRrfKChange,
   disabled = false,
   sparseAvailable = true,
 }: SearchModeSelectorProps) {
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
-  const [rrfKInput, setRrfKInput] = React.useState(() => String(rrfK));
-
-  React.useEffect(() => {
-    setRrfKInput(String(rrfK));
-  }, [rrfK]);
-
   return (
     <div className="space-y-4">
       {/* Search Mode Selector */}
@@ -186,109 +124,6 @@ export function SearchModeSelector({
             </div>
           )}
       </div>
-
-      {/* Hybrid RRF Configuration */}
-      {searchMode === 'hybrid' && (
-        <div className="p-4 bg-blue-500/5 dark:bg-blue-500/10 rounded-lg border border-blue-500/20">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-1.5">
-              <Combine className="h-4 w-4 text-[var(--accent-primary)]" />
-              Hybrid Search Configuration
-            </h4>
-            <div className="group relative">
-              <HelpCircle className="h-4 w-4 text-[var(--text-muted)] cursor-help" />
-              <div className="absolute right-0 w-64 p-3 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                <p className="font-medium mb-1">RRF (Reciprocal Rank Fusion)</p>
-                <p className="text-[var(--text-secondary)]">
-                  Combines dense and sparse search results. Lower k values give
-                  more weight to top-ranked results. Higher values produce more
-                  uniform weighting.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-sm text-[var(--text-secondary)]">
-                RRF Weighting
-              </label>
-              <span className="text-sm font-mono text-[var(--accent-primary)] bg-[var(--accent-primary)]/10 px-2 py-0.5 rounded">
-                k={rrfK}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={RRF_SLIDER.min}
-              max={RRF_SLIDER.max}
-              step={RRF_SLIDER.step}
-              value={sliderFromRrfK(rrfK)}
-              onChange={(e) => onRrfKChange(rrfKFromSlider(parseInt(e.target.value, 10)))}
-              disabled={disabled}
-              className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-primary)]"
-            />
-            <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
-              <span>Top-heavy (k={RRF_DEFAULTS.min})</span>
-              <span>Balanced (k={RRF_DEFAULTS.k})</span>
-              <span>Uniform (k={RRF_DEFAULTS.max})</span>
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs text-[var(--text-muted)]">
-            Default value: {RRF_DEFAULTS.k}. Slider is logarithmic; use Advanced for an exact k.
-          </p>
-
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
-              disabled={disabled}
-            >
-              <span
-                className={`transform transition-transform ${showAdvanced ? 'rotate-90' : ''
-                  }`}
-              >
-                ▶
-              </span>
-              Advanced k
-              <span className="text-xs text-[var(--text-muted)]">(optional)</span>
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-3 p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
-                <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1" htmlFor="rrf-k-input">
-                  Exact RRF constant (k)
-                </label>
-                <input
-                  id="rrf-k-input"
-                  type="number"
-                  inputMode="numeric"
-                  min={RRF_DEFAULTS.min}
-                  max={RRF_DEFAULTS.max}
-                  step={1}
-                  value={rrfKInput}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setRrfKInput(next);
-                    const parsed = Number.parseInt(next, 10);
-                    if (Number.isFinite(parsed)) onRrfKChange(parsed);
-                  }}
-                  onBlur={() => {
-                    const parsed = Number.parseInt(rrfKInput, 10);
-                    if (!Number.isFinite(parsed)) setRrfKInput(String(rrfK));
-                  }}
-                  disabled={disabled}
-                  className="w-full px-3 py-2 border border-[var(--border)] rounded-md focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                />
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Valid range: {RRF_DEFAULTS.min}–{RRF_DEFAULTS.max}.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

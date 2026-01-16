@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, X, Loader2 } from 'lucide-react';
+import { Search, X, Loader2, HelpCircle } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
 import SearchOptions from './SearchOptions';
@@ -345,9 +345,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
                 <SearchModeSelector
                     searchMode={searchParams.searchMode}
-                    rrfK={searchParams.rrfK}
                     onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
-                    onRrfKChange={(k: number) => validateAndUpdateSearchParams({ rrfK: k })}
                     disabled={loading}
                     sparseAvailable={true}
                 />
@@ -365,11 +363,19 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
                         />
                         <label htmlFor="use-reranker" className={`text-sm font-medium ${!rerankingAvailable && !rerankingModelsLoading ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}>
-                            Enable Cross-Encoder Reranking
+                            Cross-Encoder Reranking
                         </label>
-                        <span className="text-xs text-[var(--text-muted)]" title="Re-scores top results using a more sophisticated model for improved accuracy">
-                            (?)
-                        </span>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Re-scores results using a model that reads query and document together for better ranking.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Increases VRAM and latency
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     {/* HyDE Query Expansion Toggle */}
                     <div className="flex items-center space-x-2">
@@ -382,11 +388,19 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
                         />
                         <label htmlFor="use-hyde" className="text-sm text-[var(--text-primary)] font-medium">
-                            Use HyDE query expansion
+                            HyDE Query Expansion
                         </label>
-                        <span className="text-xs text-[var(--text-muted)]" title="Generates a hypothetical document to improve search quality">
-                            (?)
-                        </span>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Uses an LLM to generate a hypothetical answer, then searches with that embedding. Helps when questions don't match document wording.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Requires LLM; increases VRAM and latency
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
