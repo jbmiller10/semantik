@@ -222,19 +222,13 @@ describe('SearchInterface Reranking Tests', () => {
   it('should show reranking options only when enabled', async () => {
     render(<SearchInterface />, { wrapper: createWrapper() });
 
-    // Initially, reranking options should not be visible
-    expect(screen.queryByLabelText(/Reranker Model/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Quantization/i)).not.toBeInTheDocument();
+    // Enable reranking by clicking the checkbox input (now outside Advanced Options)
+    const rerankingCheckbox = screen.getByRole('checkbox', { name: /cross-encoder reranking/i });
+    fireEvent.click(rerankingCheckbox);
 
-    // Enable reranking by clicking the checkbox input (not the label text)
-    // First expand advanced options
+    // Expand Advanced Options to see model/quantization dropdowns
     const advancedButton = screen.getByText('Advanced Options');
     fireEvent.click(advancedButton);
-
-    await waitFor(() => {
-      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
-      fireEvent.click(rerankingCheckbox);
-    });
 
     // Now reranking options should be visible
     await waitFor(() => {
@@ -272,14 +266,12 @@ describe('SearchInterface Reranking Tests', () => {
     });
 
     // Enable reranking with large model
-    // First expand advanced options
+    const rerankingCheckbox = screen.getByRole('checkbox', { name: /cross-encoder reranking/i });
+    fireEvent.click(rerankingCheckbox);
+
+    // Expand Advanced Options to access model selection
     const advancedButton = screen.getByText('Advanced Options');
     fireEvent.click(advancedButton);
-
-    await waitFor(() => {
-      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
-      fireEvent.click(rerankingCheckbox);
-    });
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/Reranker Model/i);
@@ -376,17 +368,15 @@ describe('SearchInterface Reranking Tests', () => {
     render(<SearchInterface />, { wrapper: createWrapper() });
 
     // Enable reranking - click the actual checkbox input, not the label text
-    // First expand advanced options
-    const advancedButton = screen.getByText('Advanced Options');
-    fireEvent.click(advancedButton);
-
-    await waitFor(() => {
-      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
-      fireEvent.click(rerankingCheckbox);
-    });
+    const rerankingCheckbox = screen.getByRole('checkbox', { name: /cross-encoder reranking/i });
+    fireEvent.click(rerankingCheckbox);
 
     // Verify search params are updated
     expect(useSearchStore.getState().searchParams.useReranker).toBe(true);
+
+    // Expand Advanced Options to access model/quantization dropdowns
+    const advancedButton = screen.getByText('Advanced Options');
+    fireEvent.click(advancedButton);
 
     // Change model
     await waitFor(() => {
@@ -406,7 +396,6 @@ describe('SearchInterface Reranking Tests', () => {
     expect(useSearchStore.getState().searchParams.rerankQuantization).toBe('int8');
 
     // Disable reranking
-    const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
     fireEvent.click(rerankingCheckbox);
     expect(useSearchStore.getState().searchParams.useReranker).toBe(false);
   });
