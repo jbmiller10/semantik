@@ -71,8 +71,10 @@ class BaseParser(ABC):
     def _validate_config(self, config: dict[str, Any]) -> dict[str, Any]:
         """Validate config against get_config_options().
 
-        Override for custom validation. Default implementation checks
-        that all keys are recognized options.
+        Override for custom validation. Default implementation checks:
+        - All keys are recognized options
+        - Values match expected types (boolean, select, text, number)
+        - Select values are in the allowed options
 
         Args:
             config: Raw config dict.
@@ -96,6 +98,40 @@ class BaseParser(ABC):
             if key not in options:
                 valid_keys = ", ".join(sorted(options.keys())) or "(none)"
                 raise ParserConfigError(f"Unknown config option '{key}'. Valid options: {valid_keys}")
+
+            opt = options[key]
+            opt_type = opt.get("type")
+
+            # Type validation
+            if opt_type == "boolean":
+                if not isinstance(value, bool):
+                    raise ParserConfigError(
+                        f"Config option '{key}' must be a boolean, got {type(value).__name__}"
+                    )
+
+            elif opt_type == "text":
+                if not isinstance(value, str):
+                    raise ParserConfigError(
+                        f"Config option '{key}' must be a string, got {type(value).__name__}"
+                    )
+
+            elif opt_type == "number":
+                if not isinstance(value, int | float) or isinstance(value, bool):
+                    raise ParserConfigError(
+                        f"Config option '{key}' must be a number, got {type(value).__name__}"
+                    )
+
+            elif opt_type == "select":
+                if not isinstance(value, str):
+                    raise ParserConfigError(
+                        f"Config option '{key}' must be a string, got {type(value).__name__}"
+                    )
+                allowed_values = [o["value"] for o in opt.get("options", [])]
+                if value not in allowed_values:
+                    raise ParserConfigError(
+                        f"Config option '{key}' must be one of {allowed_values}, got '{value}'"
+                    )
+
             result[key] = value
 
         return result

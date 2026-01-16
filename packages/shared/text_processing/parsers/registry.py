@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from .base import BaseParser
+
+from .normalization import normalize_extension
 
 # Registry of available parsers (self-initializing via ensure_registered()).
 PARSER_REGISTRY: dict[str, type[BaseParser]] = {}
@@ -85,6 +90,29 @@ def ensure_registered() -> None:
     _REGISTERED = True
 
 
+def get_parser_registry() -> Mapping[str, type[BaseParser]]:
+    """Return an immutable view of the parser registry.
+
+    This is the preferred way to access the registry from external code.
+    It ensures parsers are registered and returns a read-only view that
+    cannot be mutated or expose an uninitialized state.
+
+    Returns:
+        Immutable mapping of parser names to parser classes.
+    """
+    ensure_registered()
+    return MappingProxyType(PARSER_REGISTRY)
+
+
+def get_default_parser_map() -> Mapping[str, str]:
+    """Return an immutable view of the default extension-to-parser map.
+
+    Returns:
+        Immutable mapping of file extensions to default parser names.
+    """
+    return MappingProxyType(DEFAULT_PARSER_MAP)
+
+
 def register_parser(name: str, cls: type[BaseParser]) -> None:
     """Register a parser class.
 
@@ -153,7 +181,7 @@ def parser_candidates_for_extension(
     - Actual fallback occurs when a parser raises UnsupportedFormatError.
     """
     ensure_registered()
-    ext_norm = ext.lower() if ext.startswith(".") else (f".{ext.lower()}" if ext else "")
+    ext_norm = normalize_extension(ext)
 
     override = (overrides or {}).get(ext_norm)
     default = DEFAULT_PARSER_MAP.get(ext_norm)
@@ -186,5 +214,5 @@ def list_parsers_for_extension(ext: str) -> list[str]:
         List of parser names supporting this extension.
     """
     ensure_registered()
-    ext = ext.lower() if ext.startswith(".") else f".{ext.lower()}"
-    return [name for name, cls in PARSER_REGISTRY.items() if ext in cls.supported_extensions()]
+    ext_norm = normalize_extension(ext)
+    return [name for name, cls in PARSER_REGISTRY.items() if ext_norm in cls.supported_extensions()]

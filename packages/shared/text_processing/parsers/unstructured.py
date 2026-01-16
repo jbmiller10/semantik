@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 from .base import BaseParser, ParsedElement, ParseResult
 from .exceptions import ExtractionFailedError, UnsupportedFormatError
+from .normalization import build_parser_metadata, normalize_extension
 
 logger = logging.getLogger(__name__)
 
@@ -139,12 +140,13 @@ class UnstructuredParser(BaseParser):
             UnsupportedFormatError: If file extension/MIME type is not supported.
             ExtractionFailedError: If unstructured parsing fails.
         """
+        ext_norm = normalize_extension(file_extension)
         if (
-            file_extension
-            and file_extension not in self.supported_extensions()
+            ext_norm
+            and ext_norm not in self.supported_extensions()
             and (not mime_type or mime_type not in self.supported_mime_types())
         ):
-            raise UnsupportedFormatError(f"UnstructuredParser does not support {file_extension}")
+            raise UnsupportedFormatError(f"UnstructuredParser does not support {ext_norm}")
 
         # Lazy import to avoid loading heavy dependency until needed
         try:
@@ -156,34 +158,32 @@ class UnstructuredParser(BaseParser):
         include_page_breaks = bool(self.config.get("include_page_breaks", True))
         infer_table_structure = bool(self.config.get("infer_table_structure", True))
 
-        filename = filename or (metadata or {}).get("filename", "document")
+        resolved_filename = filename or (metadata or {}).get("filename", "document")
 
         try:
             file_obj = io.BytesIO(content)
             elements = partition(
                 file=file_obj,
-                metadata_filename=filename,
+                metadata_filename=resolved_filename,
                 content_type=mime_type or "application/octet-stream",
                 strategy=strategy,
                 include_page_breaks=include_page_breaks,
                 infer_table_structure=infer_table_structure,
             )
         except Exception as e:
-            logger.error(f"Unstructured parsing failed for {filename}: {e}")
-            raise ExtractionFailedError(f"Failed to parse {filename}: {e}", cause=e) from e
+            logger.error(f"Unstructured parsing failed for {resolved_filename}: {e}")
+            raise ExtractionFailedError(f"Failed to parse {resolved_filename}: {e}", cause=e) from e
 
         parsed_elements: list[ParsedElement] = []
         text_parts: list[str] = []
         current_page = 1
-        ext_norm = (file_extension or "").lower()
-        base_metadata = {
-            "filename": filename or (metadata or {}).get("filename", "document"),
-            "file_extension": ext_norm,
-            "file_type": ext_norm.lstrip("."),
-            "mime_type": mime_type,
-            "parser": "unstructured",
-            **(metadata or {}),
-        }
+        base_metadata = build_parser_metadata(
+            parser_name="unstructured",
+            filename=resolved_filename,
+            file_extension=ext_norm,
+            mime_type=mime_type,
+            caller_metadata=metadata,
+        )
 
         for element in elements:
             text = str(element)

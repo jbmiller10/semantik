@@ -1,16 +1,21 @@
-"""Unit tests for the parser system (Phases 1, 2 & 7).
+"""Unit tests for the parser system (Phases 1, 2, 7 & 8).
 
 Tests cover:
 1. parse_content() works for both bytes and str
 2. Registry functions work with direct import
 3. Selection rules and fallback behavior
-4. Config validation
+4. Config validation (including type/value validation - Phase 8)
 5. TextParser strictness (binary detection)
 6. UnstructuredParser (mocked partition, config)
 7. include_elements behavior
 8. Metadata normalization (required keys always present)
 9. Guardrails: selection rules stability, DEFAULT_PARSER_MAP validity,
    helper set consistency, and registry stability (Phase 7)
+10. Phase 8 Contract Hardening:
+    - Centralized normalization helpers
+    - Protected metadata keys enforcement
+    - Config validation tightened (types, values)
+    - Registry API hygiene (immutable views)
 """
 
 from __future__ import annotations
@@ -22,14 +27,21 @@ import pytest
 
 from shared.text_processing.parsers import (
     DEFAULT_PARSER_MAP,
+    PROTECTED_METADATA_KEYS,
     ExtractionFailedError,
     ParsedElement,
     ParserConfigError,
     ParseResult,
     TextParser,
     UnsupportedFormatError,
+    build_parser_metadata,
+    get_default_parser_map,
     get_parser,
+    get_parser_registry,
     list_parsers,
+    normalize_extension,
+    normalize_file_type,
+    normalize_mime_type,
     parse_content,
     parser_candidates_for_extension,
     registry as registry_module,
@@ -536,3 +548,281 @@ class TestGuardrails:
         assert len(list_parsers()) >= 2
         assert get_parser("text") is not None
         assert get_parser("unstructured") is not None
+
+
+# =============================================================================
+# Phase 8: Contract Hardening Tests
+# =============================================================================
+
+
+class TestNormalization:
+    """Tests for centralized normalization helpers (Phase 8)."""
+
+    # --- Extension Normalization ---
+
+    def test_normalize_extension_with_dot(self) -> None:
+        """Extension with dot is lowercased."""
+        assert normalize_extension(".TXT") == ".txt"
+        assert normalize_extension(".PDF") == ".pdf"
+        assert normalize_extension(".Md") == ".md"
+
+    def test_normalize_extension_without_dot(self) -> None:
+        """Extension without dot gets one added."""
+        assert normalize_extension("txt") == ".txt"
+        assert normalize_extension("PDF") == ".pdf"
+        assert normalize_extension("md") == ".md"
+
+    def test_normalize_extension_empty_and_none(self) -> None:
+        """Empty and None return empty string."""
+        assert normalize_extension(None) == ""
+        assert normalize_extension("") == ""
+        assert normalize_extension("   ") == ""
+
+    def test_normalize_extension_with_whitespace(self) -> None:
+        """Whitespace is stripped."""
+        assert normalize_extension("  .txt  ") == ".txt"
+        assert normalize_extension("  pdf  ") == ".pdf"
+
+    # --- File Type Normalization ---
+
+    def test_normalize_file_type_removes_dot(self) -> None:
+        """File type removes leading dot and lowercases."""
+        assert normalize_file_type(".txt") == "txt"
+        assert normalize_file_type(".PDF") == "pdf"
+        assert normalize_file_type("md") == "md"
+
+    def test_normalize_file_type_empty(self) -> None:
+        """Empty string returns empty."""
+        assert normalize_file_type("") == ""
+
+    # --- MIME Type Normalization ---
+
+    def test_normalize_mime_type_lowercase(self) -> None:
+        """MIME type is lowercased."""
+        assert normalize_mime_type("Application/PDF") == "application/pdf"
+        assert normalize_mime_type("TEXT/HTML") == "text/html"
+
+    def test_normalize_mime_type_strips_whitespace(self) -> None:
+        """Whitespace is stripped."""
+        assert normalize_mime_type("  text/plain  ") == "text/plain"
+
+    def test_normalize_mime_type_none_and_empty(self) -> None:
+        """None and empty return None."""
+        assert normalize_mime_type(None) is None
+        assert normalize_mime_type("") is None
+        assert normalize_mime_type("   ") is None
+
+
+class TestMetadataContract:
+    """Tests for protected metadata key enforcement (Phase 8)."""
+
+    def test_protected_keys_exist(self) -> None:
+        """PROTECTED_METADATA_KEYS contains expected keys."""
+        assert "parser" in PROTECTED_METADATA_KEYS
+        assert "file_extension" in PROTECTED_METADATA_KEYS
+        assert "file_type" in PROTECTED_METADATA_KEYS
+
+    def test_build_parser_metadata_sets_required_keys(self) -> None:
+        """build_parser_metadata sets all required keys."""
+        result = build_parser_metadata(
+            parser_name="text",
+            filename="test.txt",
+            file_extension=".txt",
+            mime_type="text/plain",
+        )
+
+        assert result["parser"] == "text"
+        assert result["filename"] == "test.txt"
+        assert result["file_extension"] == ".txt"
+        assert result["file_type"] == "txt"
+        assert result["mime_type"] == "text/plain"
+
+    def test_build_parser_metadata_cannot_override_parser(self) -> None:
+        """Caller cannot override 'parser' key."""
+        result = build_parser_metadata(
+            parser_name="text",
+            file_extension=".txt",
+            caller_metadata={"parser": "malicious"},
+        )
+
+        assert result["parser"] == "text"
+
+    def test_build_parser_metadata_cannot_override_file_extension(self) -> None:
+        """Caller cannot override 'file_extension' key."""
+        result = build_parser_metadata(
+            parser_name="text",
+            file_extension=".txt",
+            caller_metadata={"file_extension": ".exe"},
+        )
+
+        assert result["file_extension"] == ".txt"
+
+    def test_build_parser_metadata_cannot_override_file_type(self) -> None:
+        """Caller cannot override 'file_type' key."""
+        result = build_parser_metadata(
+            parser_name="text",
+            file_extension=".txt",
+            caller_metadata={"file_type": "exe"},
+        )
+
+        assert result["file_type"] == "txt"
+
+    def test_build_parser_metadata_preserves_custom_keys(self) -> None:
+        """Custom metadata keys are preserved."""
+        result = build_parser_metadata(
+            parser_name="text",
+            file_extension=".txt",
+            caller_metadata={"source_type": "git", "custom_key": "value"},
+        )
+
+        assert result["source_type"] == "git"
+        assert result["custom_key"] == "value"
+
+    def test_parse_content_str_respects_protected_keys(self) -> None:
+        """parse_content with str input cannot have protected keys overridden."""
+        result = parse_content(
+            "test content",
+            file_extension=".txt",
+            metadata={"parser": "malicious", "file_extension": ".exe"},
+        )
+
+        assert result.metadata["parser"] == "text"
+        assert result.metadata["file_extension"] == ".txt"
+
+    def test_text_parser_respects_protected_keys(self) -> None:
+        """TextParser cannot have protected keys overridden."""
+        parser = TextParser()
+        result = parser.parse_bytes(
+            b"test content",
+            file_extension=".txt",
+            metadata={"parser": "malicious", "file_extension": ".exe"},
+        )
+
+        assert result.metadata["parser"] == "text"
+        assert result.metadata["file_extension"] == ".txt"
+
+
+class TestConfigValidationTightened:
+    """Tests for tightened config validation (Phase 8)."""
+
+    def test_boolean_type_rejects_string_true(self) -> None:
+        """Boolean config rejects string 'true'."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        with pytest.raises(ParserConfigError, match="must be a boolean"):
+            UnstructuredParser({"include_page_breaks": "true"})
+
+    def test_boolean_type_rejects_int_one(self) -> None:
+        """Boolean config rejects integer 1."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        with pytest.raises(ParserConfigError, match="must be a boolean"):
+            UnstructuredParser({"include_page_breaks": 1})
+
+    def test_boolean_type_accepts_true_false(self) -> None:
+        """Boolean config accepts True/False."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        parser = UnstructuredParser({"include_page_breaks": True})
+        assert parser.config["include_page_breaks"] is True
+
+        parser = UnstructuredParser({"include_page_breaks": False})
+        assert parser.config["include_page_breaks"] is False
+
+    def test_select_type_rejects_invalid_value(self) -> None:
+        """Select config rejects values not in options."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        with pytest.raises(ParserConfigError, match="must be one of"):
+            UnstructuredParser({"strategy": "invalid_strategy"})
+
+    def test_select_type_rejects_non_string(self) -> None:
+        """Select config rejects non-string values."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        with pytest.raises(ParserConfigError, match="must be a string"):
+            UnstructuredParser({"strategy": 123})
+
+    def test_select_type_accepts_valid_value(self) -> None:
+        """Select config accepts valid option values."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        for strategy in ["auto", "fast", "hi_res", "ocr_only"]:
+            parser = UnstructuredParser({"strategy": strategy})
+            assert parser.config["strategy"] == strategy
+
+    def test_text_type_rejects_non_string(self) -> None:
+        """Text config rejects non-string values."""
+        with pytest.raises(ParserConfigError, match="must be a string"):
+            TextParser({"encoding": 123})
+
+    def test_text_type_accepts_string(self) -> None:
+        """Text config accepts string values."""
+        parser = TextParser({"encoding": "utf-8"})
+        assert parser.config["encoding"] == "utf-8"
+
+
+class TestRegistryHygiene:
+    """Tests for registry API hygiene (Phase 8)."""
+
+    def test_get_parser_registry_returns_immutable(self) -> None:
+        """get_parser_registry() returns immutable mapping."""
+        registry = get_parser_registry()
+
+        # Should not be able to modify
+        with pytest.raises(TypeError):
+            registry["new_parser"] = TextParser  # type: ignore[index]
+
+    def test_get_parser_registry_always_initialized(self) -> None:
+        """get_parser_registry() always returns initialized registry."""
+        registry = get_parser_registry()
+
+        assert "text" in registry
+        assert "unstructured" in registry
+        assert len(registry) >= 2
+
+    def test_get_default_parser_map_returns_immutable(self) -> None:
+        """get_default_parser_map() returns immutable mapping."""
+        parser_map = get_default_parser_map()
+
+        # Should not be able to modify
+        with pytest.raises(TypeError):
+            parser_map[".xyz"] = "text"  # type: ignore[index]
+
+    def test_get_default_parser_map_contains_expected_entries(self) -> None:
+        """get_default_parser_map() contains expected extensions."""
+        parser_map = get_default_parser_map()
+
+        assert parser_map[".txt"] == "text"
+        assert parser_map[".pdf"] == "unstructured"
+        assert parser_map[".md"] == "text"
+
+    def test_get_parser_registry_after_clearing_flag(self) -> None:
+        """get_parser_registry() works even after clearing _REGISTERED flag."""
+        # Save original state
+        original_registered = registry_module._REGISTERED
+        original_registry = registry_module.PARSER_REGISTRY.copy()
+
+        try:
+            registry_module._REGISTERED = False
+            registry_module.PARSER_REGISTRY.clear()
+
+            # Should trigger ensure_registered() and return populated registry
+            registry = get_parser_registry()
+            assert "text" in registry
+            assert "unstructured" in registry
+        finally:
+            # Restore original state
+            registry_module._REGISTERED = original_registered
+            registry_module.PARSER_REGISTRY.clear()
+            registry_module.PARSER_REGISTRY.update(original_registry)
+
+    def test_safe_accessors_match_raw_dicts(self) -> None:
+        """Safe accessors return same data as raw dicts (but immutable)."""
+        # Registry
+        safe_registry = get_parser_registry()
+        assert dict(safe_registry) == registry_module.PARSER_REGISTRY
+
+        # Default parser map
+        safe_map = get_default_parser_map()
+        assert dict(safe_map) == registry_module.DEFAULT_PARSER_MAP

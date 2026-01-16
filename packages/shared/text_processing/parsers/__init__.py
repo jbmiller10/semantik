@@ -19,11 +19,20 @@ from typing import Any
 
 from .base import BaseParser, ParsedElement, ParseResult
 from .exceptions import ExtractionFailedError, ParserConfigError, ParserError, UnsupportedFormatError
+from .normalization import (
+    PROTECTED_METADATA_KEYS,
+    build_parser_metadata,
+    normalize_extension,
+    normalize_file_type,
+    normalize_mime_type,
+)
 from .registry import (
     DEFAULT_PARSER_MAP,
     PARSER_REGISTRY,
     ensure_registered,
+    get_default_parser_map,
     get_parser,
+    get_parser_registry,
     list_parsers,
     list_parsers_for_extension,
     parser_candidates_for_extension,
@@ -72,22 +81,21 @@ def parse_content(
 
     # If it's already text, treat it as TextParser output.
     if isinstance(content, str):
-        ext_norm = (file_extension or "").lower()
-        base_meta = {
-            "filename": filename or (metadata or {}).get("filename", "document"),
-            "file_extension": ext_norm,
-            "file_type": ext_norm.lstrip("."),
-            "mime_type": mime_type,
-            "parser": "text",
-            **(metadata or {}),
-        }
+        ext_norm = normalize_extension(file_extension)
+        base_meta = build_parser_metadata(
+            parser_name="text",
+            filename=filename,
+            file_extension=ext_norm,
+            mime_type=mime_type,
+            caller_metadata=metadata,
+        )
         return ParseResult(
             text=content,
             elements=[ParsedElement(text=content, metadata=base_meta)] if include_elements and content.strip() else [],
             metadata=base_meta,
         )
 
-    ext_norm = (file_extension or "").lower()
+    ext_norm = normalize_extension(file_extension)
     candidates = parser_candidates_for_extension(ext_norm, overrides=parser_overrides)
     last_unsupported: UnsupportedFormatError | None = None
     for parser_name in candidates:
@@ -118,9 +126,15 @@ __all__ = [
     "ParserConfigError",
     "UnsupportedFormatError",
     "ExtractionFailedError",
-    # Registry
-    "PARSER_REGISTRY",
-    "DEFAULT_PARSER_MAP",
+    # Normalization helpers
+    "PROTECTED_METADATA_KEYS",
+    "build_parser_metadata",
+    "normalize_extension",
+    "normalize_file_type",
+    "normalize_mime_type",
+    # Registry (prefer safe accessors over raw dicts)
+    "get_parser_registry",
+    "get_default_parser_map",
     "ensure_registered",
     "get_parser",
     "list_parsers",
@@ -131,4 +145,7 @@ __all__ = [
     # Built-in parsers
     "TextParser",
     "UnstructuredParser",
+    # Legacy exports (prefer get_parser_registry/get_default_parser_map)
+    "PARSER_REGISTRY",
+    "DEFAULT_PARSER_MAP",
 ]

@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 
 from .base import BaseParser, ParsedElement, ParseResult
 from .exceptions import ExtractionFailedError, UnsupportedFormatError
+from .normalization import build_parser_metadata, normalize_extension
 
 
 class TextParser(BaseParser):
@@ -120,14 +121,13 @@ class TextParser(BaseParser):
 
         mime_type, _ = mimetypes.guess_type(str(path))
 
-        file_metadata = {
-            "filename": path.name,
-            "file_extension": path.suffix.lower(),
-            "file_type": path.suffix.lstrip(".").lower(),
-            "mime_type": mime_type,
-            "parser": "text",
-            **(metadata or {}),
-        }
+        file_metadata = build_parser_metadata(
+            parser_name="text",
+            filename=path.name,
+            file_extension=path.suffix,
+            mime_type=mime_type,
+            caller_metadata=metadata,
+        )
 
         return ParseResult(
             text=content,
@@ -177,15 +177,14 @@ class TextParser(BaseParser):
         except Exception as e:
             raise ExtractionFailedError(f"Failed to decode content: {e}", cause=e) from e
 
-        ext_norm = (file_extension or "").lower()
-        base_metadata = {
-            "filename": filename or (metadata or {}).get("filename", "document"),
-            "file_extension": ext_norm,
-            "file_type": ext_norm.lstrip("."),
-            "mime_type": mime_type,
-            "parser": "text",
-            **(metadata or {}),
-        }
+        ext_norm = normalize_extension(file_extension)
+        base_metadata = build_parser_metadata(
+            parser_name="text",
+            filename=filename,
+            file_extension=ext_norm,
+            mime_type=mime_type,
+            caller_metadata=metadata,
+        )
 
         return ParseResult(
             text=text,
