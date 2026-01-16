@@ -51,7 +51,9 @@ export default function SearchForm({ collections }: SearchFormProps) {
         setAbortController,
         setRerankingMetrics,
         setHydeUsed,
-        setHydeInfo
+        setHydeInfo,
+        rerankingAvailable,
+        rerankingModelsLoading
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
@@ -350,22 +352,42 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     sparseAvailable={true}
                 />
 
-                {/* HyDE Query Expansion Toggle */}
-                <div className="mt-4 flex items-center space-x-2">
-                    <input
-                        type="checkbox"
-                        id="use-hyde"
-                        checked={searchParams.useHyde}
-                        onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
-                        disabled={loading}
-                        className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
-                    />
-                    <label htmlFor="use-hyde" className="text-sm text-[var(--text-primary)] font-medium">
-                        Use HyDE query expansion
-                    </label>
-                    <span className="text-xs text-[var(--text-muted)]" title="Generates a hypothetical document to improve search quality">
-                        (?)
-                    </span>
+                {/* Reranking and HyDE Toggles */}
+                <div className="mt-4 grid grid-cols-2 gap-6">
+                    {/* Cross-Encoder Reranking Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-reranker"
+                            checked={searchParams.useReranker}
+                            onChange={(e) => validateAndUpdateSearchParams({ useReranker: e.target.checked })}
+                            disabled={loading || rerankingModelsLoading || !rerankingAvailable}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-reranker" className={`text-sm font-medium ${!rerankingAvailable && !rerankingModelsLoading ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}>
+                            Enable Cross-Encoder Reranking
+                        </label>
+                        <span className="text-xs text-[var(--text-muted)]" title="Re-scores top results using a more sophisticated model for improved accuracy">
+                            (?)
+                        </span>
+                    </div>
+                    {/* HyDE Query Expansion Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-hyde"
+                            checked={searchParams.useHyde}
+                            onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
+                            disabled={loading}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-hyde" className="text-sm text-[var(--text-primary)] font-medium">
+                            Use HyDE query expansion
+                        </label>
+                        <span className="text-xs text-[var(--text-muted)]" title="Generates a hypothetical document to improve search quality">
+                            (?)
+                        </span>
+                    </div>
                 </div>
             </div>
 

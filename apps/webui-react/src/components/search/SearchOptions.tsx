@@ -106,6 +106,7 @@ export default function SearchOptions() {
                             model={searchParams.rerankModel}
                             quantization={searchParams.rerankQuantization}
                             onChange={validateAndUpdateSearchParams}
+                            hideToggle={true}
                         />
                     </div>
 

@@ -56,7 +56,7 @@ vi.mock('../CollectionMultiSelect', () => ({
 
 // Mock RerankingConfiguration component
 vi.mock('../RerankingConfiguration', () => ({
-  RerankingConfiguration: ({ enabled, model, quantization, onChange }: {
+  RerankingConfiguration: ({ enabled, model, quantization, onChange, hideToggle }: {
     enabled: boolean;
     model?: string;
     quantization?: string;
@@ -64,36 +64,39 @@ vi.mock('../RerankingConfiguration', () => ({
       useReranker?: boolean;
       rerankModel?: string;
       rerankQuantization?: string;
-    }) => void
+    }) => void;
+    hideToggle?: boolean;
   }) => (
     <div data-testid="reranking-configuration">
-      <label>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onChange({ useReranker: e.target.checked })}
-          aria-label="Enable cross-encoder reranking"
-        />
-        Enable Cross-Encoder Reranking
-      </label>
-      {enabled && (
-        <div>
-          <select
-            value={model || 'BAAI/bge-reranker-v2-m3'}
-            onChange={(e) => onChange({ rerankModel: e.target.value })}
-          >
-            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
-            <option value="Qwen/Qwen3-Reranker-0.6B">Qwen/Qwen3-Reranker-0.6B</option>
-          </select>
-          <select
-            value={quantization || 'int8'}
-            onChange={(e) => onChange({ rerankQuantization: e.target.value })}
-          >
-            <option value="int8">int8</option>
-            <option value="float16">float16</option>
-          </select>
-        </div>
+      {!hideToggle && (
+        <label>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onChange({ useReranker: e.target.checked })}
+            aria-label="Enable cross-encoder reranking"
+          />
+          Enable Cross-Encoder Reranking
+        </label>
       )}
+      <div className={!enabled && hideToggle ? 'opacity-50' : ''}>
+        <select
+          value={model || 'BAAI/bge-reranker-v2-m3'}
+          onChange={(e) => onChange({ rerankModel: e.target.value })}
+          disabled={!enabled}
+        >
+          <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+          <option value="Qwen/Qwen3-Reranker-0.6B">Qwen/Qwen3-Reranker-0.6B</option>
+        </select>
+        <select
+          value={quantization || 'int8'}
+          onChange={(e) => onChange({ rerankQuantization: e.target.value })}
+          disabled={!enabled}
+        >
+          <option value="int8">int8</option>
+          <option value="float16">float16</option>
+        </select>
+      </div>
     </div>
   )
 }))
@@ -146,6 +149,8 @@ describe('SearchInterface', () => {
       abortController: null,
       setAbortController: vi.fn(),
       setGpuMemoryError: vi.fn(),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     vi.mocked(useUIStore).mockReturnValue({
@@ -242,10 +247,7 @@ describe('SearchInterface', () => {
 
     render(<SearchInterface />)
 
-    // Expand advanced options
-    const advancedButton = screen.getByText('Advanced Options')
-    await user.click(advancedButton)
-
+    // Reranking toggle is now at top level (not inside Advanced Options)
     const rerankCheckbox = screen.getByLabelText(/enable cross-encoder reranking/i)
     expect(rerankCheckbox).not.toBeChecked()
 
