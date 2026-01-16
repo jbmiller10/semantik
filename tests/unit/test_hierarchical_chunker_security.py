@@ -10,10 +10,7 @@ This module tests security-related features including:
 
 import pytest
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 def _create_hierarchical_chunker(**params: int) -> TextProcessingStrategyAdapter:

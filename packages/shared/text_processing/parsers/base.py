@@ -105,32 +105,22 @@ class BaseParser(ABC):
             # Type validation
             if opt_type == "boolean":
                 if not isinstance(value, bool):
-                    raise ParserConfigError(
-                        f"Config option '{key}' must be a boolean, got {type(value).__name__}"
-                    )
+                    raise ParserConfigError(f"Config option '{key}' must be a boolean, got {type(value).__name__}")
 
             elif opt_type == "text":
                 if not isinstance(value, str):
-                    raise ParserConfigError(
-                        f"Config option '{key}' must be a string, got {type(value).__name__}"
-                    )
+                    raise ParserConfigError(f"Config option '{key}' must be a string, got {type(value).__name__}")
 
             elif opt_type == "number":
                 if not isinstance(value, int | float) or isinstance(value, bool):
-                    raise ParserConfigError(
-                        f"Config option '{key}' must be a number, got {type(value).__name__}"
-                    )
+                    raise ParserConfigError(f"Config option '{key}' must be a number, got {type(value).__name__}")
 
             elif opt_type == "select":
                 if not isinstance(value, str):
-                    raise ParserConfigError(
-                        f"Config option '{key}' must be a string, got {type(value).__name__}"
-                    )
+                    raise ParserConfigError(f"Config option '{key}' must be a string, got {type(value).__name__}")
                 allowed_values = [o["value"] for o in opt.get("options", [])]
                 if value not in allowed_values:
-                    raise ParserConfigError(
-                        f"Config option '{key}' must be one of {allowed_values}, got '{value}'"
-                    )
+                    raise ParserConfigError(f"Config option '{key}' must be one of {allowed_values}, got '{value}'")
 
             result[key] = value
 

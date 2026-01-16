@@ -6,10 +6,7 @@ from typing import Any
 
 import pytest
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import ChunkResult
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]

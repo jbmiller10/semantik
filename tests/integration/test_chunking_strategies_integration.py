@@ -13,10 +13,7 @@ from typing import Any
 import pytest
 from llama_index.core.embeddings import MockEmbedding
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.chunking_metrics import ChunkingPerformanceMonitor
 
 

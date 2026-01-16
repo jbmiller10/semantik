@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import ChunkResult
 
 

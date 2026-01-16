@@ -486,9 +486,7 @@ class TestGuardrails:
         text_supported = TextParser.supported_extensions()
         for ext, parser_name in DEFAULT_PARSER_MAP.items():
             if parser_name == "text":
-                assert ext in text_supported, (
-                    f"{ext} mapped to text but not in TextParser.supported_extensions()"
-                )
+                assert ext in text_supported, f"{ext} mapped to text but not in TextParser.supported_extensions()"
 
     def test_default_parser_map_unstructured_entries_supported(self) -> None:
         """Extensions mapped to 'unstructured' must be in UnstructuredParser.supported_extensions() (guardrail)."""
@@ -497,9 +495,9 @@ class TestGuardrails:
         unstructured_supported = UnstructuredParser.supported_extensions()
         for ext, parser_name in DEFAULT_PARSER_MAP.items():
             if parser_name == "unstructured":
-                assert ext in unstructured_supported, (
-                    f"{ext} mapped to unstructured but not in UnstructuredParser.supported_extensions()"
-                )
+                assert (
+                    ext in unstructured_supported
+                ), f"{ext} mapped to unstructured but not in UnstructuredParser.supported_extensions()"
 
     # --- Selection Helper Set Consistency Tests ---
 
@@ -517,9 +515,7 @@ class TestGuardrails:
 
         supported = UnstructuredParser.supported_extensions()
         for ext in UNSTRUCTURED_FIRST_EXTENSIONS:
-            assert ext in supported, (
-                f"{ext} in UNSTRUCTURED_FIRST_EXTENSIONS but not supported by UnstructuredParser"
-            )
+            assert ext in supported, f"{ext} in UNSTRUCTURED_FIRST_EXTENSIONS but not supported by UnstructuredParser"
 
     # --- Registry Stability Tests ---
 
