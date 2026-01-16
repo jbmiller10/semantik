@@ -96,12 +96,20 @@ class TestLocalFileConnectorParallelWorker:
             yield Path(tmpdir)
 
     def test_worker_unsupported_format_returns_skipped(self, temp_dir: Path) -> None:
-        """Worker returns 'skipped' status for UnsupportedFormatError."""
-        # Create a binary file
-        test_file = temp_dir / "binary.txt"
-        test_file.write_bytes(b"\x00\x01\x02\x03binary content")
+        """Worker returns 'skipped' status for UnsupportedFormatError.
 
-        result = _process_file_worker(str(test_file))
+        Note: We mock parse_content because real binary content in .txt files
+        triggers TextParser's UnsupportedFormatError, but then falls back to
+        UnstructuredParser which may raise ExtractionFailedError. This test
+        verifies the worker correctly handles UnsupportedFormatError when raised.
+        """
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("Valid content")  # Content doesn't matter, we're mocking
+
+        with patch("shared.connectors.local.parse_content") as mock_parse:
+            mock_parse.side_effect = UnsupportedFormatError("Mock unsupported format")
+
+            result = _process_file_worker(str(test_file))
 
         assert result["status"] == "skipped"
         assert result["reason"] == "unsupported_format"
@@ -218,9 +226,14 @@ class TestErrorTypeDistinction:
             parser.parse_bytes(b"\x00\x01\x02", file_extension=".txt")
 
         # Decoding failure with strict mode raises ExtractionFailedError (unexpected)
+        # Note: b"\xff\xfe" is UTF-16-LE BOM, which is now auto-detected.
+        # Use mostly-printable content with invalid UTF-8 to pass binary detection
+        # but fail on strict decode.
         parser_strict = TextParser({"encoding": "utf-8", "errors": "strict"})
         with pytest.raises(ExtractionFailedError):
-            parser_strict.parse_bytes(b"\xff\xfe", file_extension=".txt")
+            # Mostly printable content with one invalid UTF-8 byte (0x80 without lead)
+            # This passes binary detection (<30% non-printable) but fails strict decode
+            parser_strict.parse_bytes(b"Hello\x80World", file_extension=".txt")
 
     def test_error_types_have_distinct_base_classes(self) -> None:
         """Error types are distinct exceptions for proper catching."""

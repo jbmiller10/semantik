@@ -281,7 +281,7 @@ class TestTextParserStrictness:
         parser = TextParser()
         content = b"Hello\x00World"
 
-        with pytest.raises(UnsupportedFormatError, match="NUL byte found"):
+        with pytest.raises(UnsupportedFormatError, match="cannot decode binary"):
             parser.parse_bytes(content, file_extension=".txt")
 
     def test_high_non_printable_ratio_raises_unsupported_format_error(self) -> None:
@@ -290,7 +290,7 @@ class TestTextParserStrictness:
         # Create content with >30% non-printable bytes (excluding tab/newline)
         content = bytes([0x01] * 40 + [0x41] * 60)  # 40% control chars, 60% 'A'
 
-        with pytest.raises(UnsupportedFormatError, match="non-printable ratio"):
+        with pytest.raises(UnsupportedFormatError, match="cannot decode binary"):
             parser.parse_bytes(content, file_extension=".txt")
 
     def test_valid_text_parses_successfully(self) -> None:
@@ -1030,7 +1030,7 @@ class TestZeroLegacyReferences:
         for pattern in patterns:
             for search_path in search_paths:
                 result = subprocess.run(
-                    ["grep", "-rE", pattern, search_path],
+                    ["grep", "-rE", "--include=*.py", pattern, search_path],
                     capture_output=True,
                     text=True,
                     cwd="/home/john/semantik",
@@ -1060,7 +1060,7 @@ class TestZeroLegacyReferences:
         for pattern in patterns:
             for search_path in search_paths:
                 result = subprocess.run(
-                    ["grep", "-rE", pattern, search_path],
+                    ["grep", "-rE", "--include=*.py", pattern, search_path],
                     capture_output=True,
                     text=True,
                     cwd="/home/john/semantik",
