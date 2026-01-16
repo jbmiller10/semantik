@@ -18,8 +18,17 @@ class UnstructuredParser(BaseParser):
     Supports PDF, DOCX, PPTX, HTML, EML, and more. Heavier dependency
     but handles complex document formats well.
 
-    Note: The unstructured library is imported lazily to avoid loading
-    heavy dependencies until actually needed.
+    Dependency Policy:
+        The unstructured library is imported lazily to avoid loading heavy
+        dependencies until actually needed. If the library is missing or
+        fails to import, ExtractionFailedError is raised (NOT UnsupportedFormatError).
+
+        This distinction is intentional:
+        - ExtractionFailedError: parse_content() will NOT fall back to TextParser
+        - UnsupportedFormatError: parse_content() WILL fall back to TextParser
+
+        Callers that want graceful fallback on missing dependencies should
+        catch ExtractionFailedError explicitly and handle accordingly.
 
     Config options:
         strategy: "auto" | "fast" | "hi_res" | "ocr_only" (default: "auto")

@@ -822,3 +822,250 @@ class TestRegistryHygiene:
         # Default parser map
         safe_map = get_default_parser_map()
         assert dict(safe_map) == registry_module.DEFAULT_PARSER_MAP
+
+
+# =============================================================================
+# Phase 9: BOM Encoding Support Tests
+# =============================================================================
+
+
+class TestBOMEncodingSupport:
+    """Tests for BOM-marked text encoding support (Phase 9)."""
+
+    def test_utf8_bom_detected_and_stripped(self) -> None:
+        """UTF-8 BOM is detected and stripped from output."""
+        # UTF-8 BOM: EF BB BF
+        content = b"\xef\xbb\xbfHello"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        assert result.text == "Hello"
+        assert "Hello" in result.text
+        # BOM should be stripped - no EF BB BF in output
+        assert "\ufeff" not in result.text
+
+    def test_utf16_le_bom_detected(self) -> None:
+        """UTF-16-LE BOM is detected and decoded correctly."""
+        # UTF-16-LE BOM: FF FE, then "Hello" in UTF-16-LE
+        content = b"\xff\xfeH\x00e\x00l\x00l\x00o\x00"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        assert result.text == "Hello"
+
+    def test_utf16_be_bom_detected(self) -> None:
+        """UTF-16-BE BOM is detected and decoded correctly."""
+        # UTF-16-BE BOM: FE FF, then "Hello" in UTF-16-BE
+        content = b"\xfe\xff\x00H\x00e\x00l\x00l\x00o"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        assert result.text == "Hello"
+
+    def test_utf32_le_bom_detected(self) -> None:
+        """UTF-32-LE BOM is detected and decoded correctly."""
+        # UTF-32-LE BOM: FF FE 00 00, then "Hi" in UTF-32-LE
+        content = b"\xff\xfe\x00\x00H\x00\x00\x00i\x00\x00\x00"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        assert result.text == "Hi"
+
+    def test_utf32_be_bom_detected(self) -> None:
+        """UTF-32-BE BOM is detected and decoded correctly."""
+        # UTF-32-BE BOM: 00 00 FE FF, then "Hi" in UTF-32-BE
+        content = b"\x00\x00\xfe\xff\x00\x00\x00H\x00\x00\x00i"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        assert result.text == "Hi"
+
+    def test_utf32_le_not_confused_with_utf16_le(self) -> None:
+        """UTF-32-LE BOM (FF FE 00 00) not confused with UTF-16-LE (FF FE)."""
+        # UTF-32-LE BOM starts with UTF-16-LE BOM, but we must detect UTF-32-LE
+        # Content: UTF-32-LE BOM + "A" in UTF-32-LE
+        content = b"\xff\xfe\x00\x00A\x00\x00\x00"
+        parser = TextParser()
+
+        result = parser.parse_bytes(content, file_extension=".txt")
+
+        # Should decode as UTF-32-LE, not UTF-16-LE
+        # If it wrongly used UTF-16-LE, we'd get garbage or error
+        assert result.text == "A"
+
+    def test_binary_without_bom_still_rejected(self) -> None:
+        """Binary content without BOM is still rejected."""
+        # Pure binary with NUL bytes (no BOM)
+        content = b"Some text\x00binary\x00data"
+        parser = TextParser()
+
+        with pytest.raises(UnsupportedFormatError, match="cannot decode binary"):
+            parser.parse_bytes(content, file_extension=".txt")
+
+    def test_high_non_printable_ratio_still_rejected(self) -> None:
+        """High non-printable ratio (no BOM) still rejected."""
+        # Create content with >30% non-printable bytes (excluding tab/newline)
+        content = bytes([0x01] * 40 + [0x41] * 60)  # 40% control chars, 60% 'A'
+        parser = TextParser()
+
+        with pytest.raises(UnsupportedFormatError, match="cannot decode binary"):
+            parser.parse_bytes(content, file_extension=".txt")
+
+    def test_parse_file_and_bytes_same_result(self, tmp_path: Any) -> None:
+        """parse_file() and parse_bytes() produce identical results."""
+        content = b"\xef\xbb\xbfHello World"  # UTF-8 BOM + text
+        test_file = tmp_path / "test.txt"
+        test_file.write_bytes(content)
+
+        parser = TextParser()
+        result_bytes = parser.parse_bytes(content, filename="test.txt", file_extension=".txt")
+        result_file = parser.parse_file(str(test_file))
+
+        assert result_bytes.text == result_file.text
+        assert result_bytes.text == "Hello World"
+
+    def test_parse_file_rejects_binary(self, tmp_path: Any) -> None:
+        """parse_file() rejects binary content just like parse_bytes()."""
+        content = b"Some\x00binary\x00content"
+        test_file = tmp_path / "test.bin"
+        test_file.write_bytes(content)
+
+        parser = TextParser()
+        with pytest.raises(UnsupportedFormatError, match="cannot decode binary"):
+            parser.parse_file(str(test_file))
+
+
+class TestBOMGuardrails:
+    """Guardrail tests for BOM handling stability (Phase 9)."""
+
+    def test_bom_detection_order_is_longest_first(self) -> None:
+        """BOM detection must check longer BOMs before shorter ones."""
+        from shared.text_processing.parsers.text import _BOM_ENCODINGS
+
+        # Verify UTF-32 comes before UTF-16 (4 bytes before 2 bytes)
+        encoding_order = [enc for _, enc in _BOM_ENCODINGS]
+
+        utf32_le_idx = encoding_order.index("utf-32-le")
+        utf32_be_idx = encoding_order.index("utf-32-be")
+        utf16_le_idx = encoding_order.index("utf-16-le")
+        utf16_be_idx = encoding_order.index("utf-16-be")
+
+        # UTF-32 variants must come before UTF-16 variants
+        assert utf32_le_idx < utf16_le_idx, "UTF-32-LE must be checked before UTF-16-LE"
+        assert utf32_be_idx < utf16_be_idx, "UTF-32-BE must be checked before UTF-16-BE"
+
+    def test_all_standard_boms_supported(self) -> None:
+        """All standard Unicode BOMs are in detection list."""
+        import codecs
+
+        from shared.text_processing.parsers.text import _BOM_ENCODINGS
+
+        boms_in_list = {bom for bom, _ in _BOM_ENCODINGS}
+
+        # All standard BOMs should be present
+        assert codecs.BOM_UTF8 in boms_in_list
+        assert codecs.BOM_UTF16_LE in boms_in_list
+        assert codecs.BOM_UTF16_BE in boms_in_list
+        assert codecs.BOM_UTF32_LE in boms_in_list
+        assert codecs.BOM_UTF32_BE in boms_in_list
+
+    def test_bom_detect_function_returns_correct_format(self) -> None:
+        """_detect_bom returns (encoding, length) tuple or None."""
+        from shared.text_processing.parsers.text import _detect_bom
+
+        # With BOM
+        result = _detect_bom(b"\xef\xbb\xbfHello")
+        assert result is not None
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert result[0] == "utf-8-sig"
+        assert result[1] == 3  # UTF-8 BOM is 3 bytes
+
+        # Without BOM
+        result = _detect_bom(b"Hello")
+        assert result is None
+
+    def test_binary_check_function_is_bom_aware(self) -> None:
+        """_is_binary_content correctly identifies BOM-marked files as text."""
+        from shared.text_processing.parsers.text import _is_binary_content
+
+        # UTF-16-LE with BOM - has NUL bytes but should NOT be binary
+        utf16_content = b"\xff\xfeH\x00e\x00l\x00l\x00o\x00"
+        assert _is_binary_content(utf16_content) is False
+
+        # True binary with NUL bytes - should be binary
+        binary_content = b"Hello\x00World"
+        assert _is_binary_content(binary_content) is True
+
+        # Pure text - should not be binary
+        text_content = b"Hello World"
+        assert _is_binary_content(text_content) is False
+
+
+class TestZeroLegacyReferences:
+    """Guardrail tests for verifying no legacy extraction API references (Phase 9)."""
+
+    def test_no_legacy_extraction_module_references(self) -> None:
+        """Verify no references to legacy extraction module in codebase.
+
+        The extraction module was removed in favor of the parser system.
+        This test ensures no code accidentally references the old APIs.
+        """
+        import subprocess
+
+        # Module-qualified patterns that would indicate legacy usage
+        patterns = [
+            r"shared\.text_processing\.extraction",
+            r"from\s+shared\.text_processing\.extraction",
+        ]
+
+        # Directories to search
+        search_paths = ["packages/", "tests/", "scripts/"]
+
+        for pattern in patterns:
+            for search_path in search_paths:
+                result = subprocess.run(
+                    ["grep", "-rE", pattern, search_path],
+                    capture_output=True,
+                    text=True,
+                    cwd="/home/john/semantik",
+                )
+                # grep returns 0 if matches found, 1 if no matches
+                assert result.returncode == 1, (
+                    f"Found legacy extraction references with pattern '{pattern}' in {search_path}:\n"
+                    f"{result.stdout}"
+                )
+
+    def test_no_legacy_function_references(self) -> None:
+        """Verify no references to removed legacy functions.
+
+        Functions like extract_and_serialize and parse_document_content
+        were removed. This test ensures no code calls them.
+        """
+        import subprocess
+
+        # Legacy function names that should not exist
+        patterns = [
+            r"extract_and_serialize",
+            r"parse_document_content",
+        ]
+
+        search_paths = ["packages/", "tests/", "scripts/"]
+
+        for pattern in patterns:
+            for search_path in search_paths:
+                result = subprocess.run(
+                    ["grep", "-rE", pattern, search_path],
+                    capture_output=True,
+                    text=True,
+                    cwd="/home/john/semantik",
+                )
+                # grep returns 0 if matches found, 1 if no matches
+                assert result.returncode == 1, (
+                    f"Found legacy function reference '{pattern}' in {search_path}:\n" f"{result.stdout}"
+                )
