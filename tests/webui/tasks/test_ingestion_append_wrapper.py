@@ -96,7 +96,9 @@ async def test_process_append_operation_uses_orchestrator(monkeypatch):
 
     tasks_ns = ingestion_module._tasks_namespace()
     monkeypatch.setattr(tasks_ns, "resolve_celery_chunking_orchestrator", fake_resolver, raising=False)
-    monkeypatch.setattr(tasks_ns, "parse_file_thread_safe", lambda path: ParseResult(text="hello", metadata={}), raising=False)
+    monkeypatch.setattr(
+        tasks_ns, "parse_file_thread_safe", lambda path: ParseResult(text="hello", metadata={}), raising=False
+    )
 
     class _AsyncClient:
         def __init__(self, *args, **kwargs):

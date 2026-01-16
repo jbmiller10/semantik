@@ -128,5 +128,3 @@ class TestTokenChunker:
         # Test with zero chunk_size (should raise error)
         with pytest.raises(ValueError, match="chunk_size must be positive"):
             TokenChunker(chunk_size=0, chunk_overlap=5)
-
-

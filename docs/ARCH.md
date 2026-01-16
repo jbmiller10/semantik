@@ -150,7 +150,7 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Other Utilities:**
 - **Metrics** (`packages/shared/metrics/`): Prometheus metrics collection
-- **Text Processing** (`packages/shared/text_processing/`): Document parsing and chunking
+- **Text Processing** (`packages/shared/text_processing/`): Document parsing via the parser system (`parse_content()`) and chunking strategies
 - **Plugins** (`packages/shared/plugins/`): Plugin system infrastructure for extensibility
 - **Connectors** (`packages/shared/connectors/`): Data source connectors (local files, git, IMAP)
 - **DTOs** (`packages/shared/dtos/`): Data transfer objects for cross-module communication
@@ -221,7 +221,7 @@ Each collection uses its own embedding model and quantization. Search across mul
    ↓
 6. Worker scans source and creates document records
    ↓
-7. Extract service chunks documents by tokens
+7. Parser system extracts text from documents, then chunking splits by tokens
    ↓
 8. Embed service generates vectors (with batching)
    ↓
@@ -476,3 +476,4 @@ make wizard
 - [API_ARCHITECTURE.md](./API_ARCHITECTURE.md) - API design
 - [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md) - Search implementation
 - [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) - Deployment
+- [PARSERS.md](./PARSERS.md) - Document parsing system
