@@ -1,11 +1,14 @@
-"""Unit tests for the parser plugin system (Phase 1).
+"""Unit tests for the parser system (Phases 1 & 2).
 
 Tests cover:
 1. parse_content() works for both bytes and str
 2. Registry functions work with direct import
 3. Selection rules and fallback behavior
 4. Config validation
-5. TextParser strictness
+5. TextParser strictness (binary detection)
+6. UnstructuredParser (mocked partition, config)
+7. include_elements behavior
+8. Metadata normalization (required keys always present)
 """
 
 from __future__ import annotations
