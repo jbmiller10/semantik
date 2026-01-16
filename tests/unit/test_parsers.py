@@ -1,4 +1,4 @@
-"""Unit tests for the parser system (Phases 1 & 2).
+"""Unit tests for the parser system (Phases 1, 2 & 7).
 
 Tests cover:
 1. parse_content() works for both bytes and str
@@ -9,6 +9,8 @@ Tests cover:
 6. UnstructuredParser (mocked partition, config)
 7. include_elements behavior
 8. Metadata normalization (required keys always present)
+9. Guardrails: selection rules stability, DEFAULT_PARSER_MAP validity,
+   helper set consistency, and registry stability (Phase 7)
 """
 
 from __future__ import annotations
@@ -423,3 +425,114 @@ class TestIncludeElements:
 
         result_with = parser.parse_bytes(b"Hello", file_extension=".txt", include_elements=True)
         assert len(result_with.elements) == 1
+
+
+class TestGuardrails:
+    """Guardrail tests to prevent drift in parser selection rules and defaults.
+
+    These tests lock down behavior that should NOT change without careful review.
+    If any of these tests fail, it indicates a potentially breaking change to
+    the parser system's selection logic or configuration.
+    """
+
+    # --- Selection Rules Stability Tests ---
+
+    def test_html_extensions_always_unstructured_first(self) -> None:
+        """HTML extensions must always prefer unstructured (guardrail)."""
+        for ext in [".html", ".htm"]:
+            candidates = parser_candidates_for_extension(ext)
+            assert candidates[0] == "unstructured", f"{ext} should be unstructured-first"
+
+    def test_unknown_extension_always_unstructured_first(self) -> None:
+        """Unknown extensions must default to unstructured-first (guardrail)."""
+        for ext in [".xyz", ".unknown123", ".foo"]:
+            candidates = parser_candidates_for_extension(ext)
+            assert candidates[0] == "unstructured", f"{ext} should default to unstructured"
+
+    def test_no_extension_always_unstructured_first(self) -> None:
+        """No extension must default to unstructured-first (guardrail)."""
+        candidates = parser_candidates_for_extension("")
+        assert candidates[0] == "unstructured"
+
+    def test_text_extensions_always_text_first(self) -> None:
+        """Known text extensions must always prefer text parser (guardrail)."""
+        text_exts = [".txt", ".md", ".py", ".js", ".json", ".yaml"]
+        for ext in text_exts:
+            candidates = parser_candidates_for_extension(ext)
+            assert candidates[0] == "text", f"{ext} should be text-first"
+
+    # --- DEFAULT_PARSER_MAP Validity Tests ---
+
+    def test_default_parser_map_references_registered_parsers(self) -> None:
+        """All parsers in DEFAULT_PARSER_MAP must be registered (guardrail)."""
+        registered = set(list_parsers())
+        for ext, parser_name in DEFAULT_PARSER_MAP.items():
+            assert parser_name in registered, f"{ext} maps to unregistered parser {parser_name}"
+
+    def test_default_parser_map_text_entries_supported_by_text_parser(self) -> None:
+        """Extensions mapped to 'text' must be in TextParser.supported_extensions() (guardrail)."""
+        text_supported = TextParser.supported_extensions()
+        for ext, parser_name in DEFAULT_PARSER_MAP.items():
+            if parser_name == "text":
+                assert ext in text_supported, (
+                    f"{ext} mapped to text but not in TextParser.supported_extensions()"
+                )
+
+    def test_default_parser_map_unstructured_entries_supported(self) -> None:
+        """Extensions mapped to 'unstructured' must be in UnstructuredParser.supported_extensions() (guardrail)."""
+        from shared.text_processing.parsers import UnstructuredParser
+
+        unstructured_supported = UnstructuredParser.supported_extensions()
+        for ext, parser_name in DEFAULT_PARSER_MAP.items():
+            if parser_name == "unstructured":
+                assert ext in unstructured_supported, (
+                    f"{ext} mapped to unstructured but not in UnstructuredParser.supported_extensions()"
+                )
+
+    # --- Selection Helper Set Consistency Tests ---
+
+    def test_text_first_extensions_derived_from_default_parser_map(self) -> None:
+        """TEXT_FIRST_EXTENSIONS must match extensions mapped to 'text' in DEFAULT_PARSER_MAP (guardrail)."""
+        from shared.text_processing.parsers.registry import TEXT_FIRST_EXTENSIONS
+
+        expected = frozenset(ext for ext, parser in DEFAULT_PARSER_MAP.items() if parser == "text")
+        assert expected == TEXT_FIRST_EXTENSIONS, "TEXT_FIRST_EXTENSIONS drifted from DEFAULT_PARSER_MAP"
+
+    def test_unstructured_first_extensions_supported_by_unstructured(self) -> None:
+        """All UNSTRUCTURED_FIRST_EXTENSIONS must be supported by UnstructuredParser (guardrail)."""
+        from shared.text_processing.parsers import UnstructuredParser
+        from shared.text_processing.parsers.registry import UNSTRUCTURED_FIRST_EXTENSIONS
+
+        supported = UnstructuredParser.supported_extensions()
+        for ext in UNSTRUCTURED_FIRST_EXTENSIONS:
+            assert ext in supported, (
+                f"{ext} in UNSTRUCTURED_FIRST_EXTENSIONS but not supported by UnstructuredParser"
+            )
+
+    # --- Registry Stability Tests ---
+
+    def test_ensure_registered_is_idempotent(self) -> None:
+        """Multiple calls to ensure_registered() must be idempotent (guardrail)."""
+        from shared.text_processing.parsers.registry import PARSER_REGISTRY, ensure_registered
+
+        ensure_registered()
+        first_state = set(PARSER_REGISTRY.keys())
+
+        ensure_registered()
+        ensure_registered()
+        second_state = set(PARSER_REGISTRY.keys())
+
+        assert first_state == second_state, "ensure_registered() is not idempotent"
+
+    def test_list_parsers_always_returns_builtins(self) -> None:
+        """list_parsers() must always include built-in parsers (guardrail)."""
+        parsers = list_parsers()
+        assert "text" in parsers, "text parser missing from list_parsers()"
+        assert "unstructured" in parsers, "unstructured parser missing from list_parsers()"
+
+    def test_public_api_never_exposes_empty_registry(self) -> None:
+        """Public registry APIs must never return empty results (guardrail)."""
+        # These all call ensure_registered() internally
+        assert len(list_parsers()) >= 2
+        assert get_parser("text") is not None
+        assert get_parser("unstructured") is not None
