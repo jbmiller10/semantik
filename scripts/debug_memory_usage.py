@@ -15,7 +15,7 @@ import psutil
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from shared.text_processing.chunking import TokenChunker
-from shared.text_processing.extraction import extract_text
+from shared.text_processing.parsers import parse_content
 
 # Configure detailed logging
 logging.basicConfig(
@@ -48,7 +48,10 @@ def test_file(filepath: str) -> bool:
         # Test text extraction
         logger.info("Starting text extraction...")
         start_time = time.time()
-        text = extract_text(filepath, timeout=60)  # 60 second timeout
+        path = Path(filepath)
+        content = path.read_bytes()
+        result = parse_content(content, filename=path.name, file_extension=path.suffix.lower())
+        text = result.text
         extract_time = time.time() - start_time
 
         logger.info(f"Extraction complete in {extract_time:.2f}s")

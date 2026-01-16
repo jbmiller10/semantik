@@ -413,7 +413,7 @@ async def extract_and_chunk_document(
             # Extract from file
             loop = asyncio.get_running_loop()
             try:
-                text_blocks = await asyncio.wait_for(
+                parse_result = await asyncio.wait_for(
                     loop.run_in_executor(executor_pool, extract_fn, doc.file_path),
                     timeout=300,
                 )
@@ -421,16 +421,12 @@ async def extract_and_chunk_document(
                 logger.error("Extraction failed for %s: %s", doc_identifier, exc)
                 return ExtractionResult(success=False, error=f"Extraction failed: {exc}")
 
-            if not text_blocks:
+            if not parse_result or not parse_result.text.strip():
                 logger.warning("No text extracted from %s", doc_identifier)
                 return ExtractionResult(success=True, skip_reason="no_text_extracted")
 
-            combined_text = ""
-            for text, metadata in text_blocks:
-                if text.strip():
-                    combined_text += text + "\n\n"
-                    if metadata:
-                        combined_metadata.update(metadata)
+            combined_text = parse_result.text
+            combined_metadata = parse_result.metadata
 
         if not combined_text.strip():
             logger.warning("No content for document %s", doc_identifier)

@@ -19,7 +19,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from shared.text_processing.parsers import ParseResult
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
@@ -232,12 +235,54 @@ def _build_internal_api_headers() -> dict[str, str]:
     }
 
 
-def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
-    """Thread-safe wrapper around extract_and_serialize that preserves metadata."""
-    from shared.text_processing.extraction import extract_and_serialize
+def parse_file_thread_safe(
+    file_path: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+    parser_configs: dict[str, dict[str, Any]] | None = None,
+    include_elements: bool = False,
+) -> ParseResult:
+    """Thread-safe file parsing using the new parser framework.
 
-    result: list[tuple[str, dict[str, Any]]] = extract_and_serialize(filepath)
-    return result
+    Replaces extract_and_serialize_thread_safe for Phase 3 migration.
+
+    Args:
+        file_path: Absolute path to the file to parse.
+        metadata: Optional base metadata to include in result.
+        parser_configs: Per-parser configs (e.g., {"unstructured": {"strategy": "fast"}}).
+        include_elements: Whether to populate ParseResult.elements.
+
+    Returns:
+        ParseResult with extracted text and metadata.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+        UnsupportedFormatError: If no parser can handle the content.
+        ExtractionFailedError: If extraction fails.
+    """
+    from pathlib import Path
+
+    from shared.text_processing.parsers import parse_content
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    content = path.read_bytes()
+    base_metadata = {
+        "filename": path.name,
+        "local_file_path": str(path.absolute()),
+        **(metadata or {}),
+    }
+
+    return parse_content(
+        content,
+        filename=path.name,
+        file_extension=path.suffix.lower(),
+        metadata=base_metadata,
+        include_elements=include_elements,
+        parser_configs=parser_configs,
+    )
 
 
 def calculate_cleanup_delay(vector_count: int) -> int:
@@ -505,7 +550,7 @@ __all__ = [
     "CLEANUP_DELAY_MIN_SECONDS",
     "CLEANUP_DELAY_SECONDS",
     "executor",
-    "extract_and_serialize_thread_safe",
+    "parse_file_thread_safe",
     "calculate_cleanup_delay",
     "_audit_log_operation",
     "_build_internal_api_headers",

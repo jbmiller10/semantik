@@ -2,6 +2,7 @@
 
 import pytest
 
+from shared.text_processing.parsers import ParseResult
 from webui.chunking_tasks import _process_document_chunking
 
 
@@ -46,8 +47,8 @@ async def test_process_document_chunking_builds_stats(monkeypatch):
 
     # Avoid file system access by patching extractor
     monkeypatch.setattr(
-        "webui.chunking_tasks.extract_and_serialize_thread_safe",
-        lambda _path: [("hello world", {"source": "test"})],
+        "webui.chunking_tasks.parse_file_thread_safe",
+        lambda _path: ParseResult(text="hello world", metadata={"source": "test"}),
     )
 
     created, stats = await _process_document_chunking(

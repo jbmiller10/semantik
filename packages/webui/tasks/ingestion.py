@@ -56,8 +56,8 @@ from .utils import (
     _update_collection_metrics,
     await_if_awaitable,
     celery_app,
-    extract_and_serialize_thread_safe,
     logger,
+    parse_file_thread_safe,
     resolve_qdrant_manager,
     resolve_qdrant_manager_class,
 )
@@ -486,7 +486,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             return getattr(obj, name, default)
 
     tasks_ns = _tasks_namespace()
-    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
     chunking_resolver = getattr(
         tasks_ns,
         "resolve_celery_chunking_orchestrator",
@@ -558,18 +558,15 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
         try:
             try:
-                blocks_result = extract_fn(_get(doc, "file_path", ""))
-                blocks = await await_if_awaitable(blocks_result)
+                parse_result = extract_fn(_get(doc, "file_path", ""))
+                parse_result = await await_if_awaitable(parse_result)
             except Exception:
-                blocks = []
+                parse_result = None
 
-            text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
-            metadata: dict[str, Any] = {}
-            for _t, m in blocks or []:
-                if isinstance(m, dict):
-                    metadata.update(m)
+            text = parse_result.text if parse_result else ""
+            metadata: dict[str, Any] = dict(parse_result.metadata) if parse_result else {}
 
-            if not text or not blocks:
+            if not text.strip() or not parse_result:
                 try:
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
@@ -1118,7 +1115,7 @@ async def _process_append_operation_impl(
     display_path = source_config.get("path") or source_config.get("url") or str(source_config)
 
     tasks_ns = _tasks_namespace()
-    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
 
     session = document_repo.session
 
@@ -1540,7 +1537,7 @@ async def _process_append_operation_impl(
                     else:
                         # Fallback for documents without pre-parsed content (legacy path)
                         try:
-                            text_blocks = await asyncio.wait_for(
+                            parse_result = await asyncio.wait_for(
                                 await_if_awaitable(
                                     loop.run_in_executor(
                                         executor_pool,
@@ -1557,12 +1554,12 @@ async def _process_append_operation_impl(
                                 "Executor returned a reusable coroutine for %s; falling back to direct call",
                                 doc.file_path,
                             )
-                            text_blocks = await asyncio.wait_for(
+                            parse_result = await asyncio.wait_for(
                                 await_if_awaitable(extract_fn(doc.file_path)),
                                 timeout=300,
                             )
 
-                        if not text_blocks:
+                        if not parse_result or not parse_result.text.strip():
                             logger.warning("No text extracted from %s", doc_identifier)
                             # Mark as completed but with 0 chunks so we don't fail the whole batch
                             await document_repo.update_status(
@@ -1574,12 +1571,8 @@ async def _process_append_operation_impl(
                             processed_count += 1
                             continue
 
-                        combined_text = ""
-                        for text, metadata in text_blocks:
-                            if text.strip():
-                                combined_text += text + "\n\n"
-                                if metadata:
-                                    combined_metadata.update(metadata)
+                        combined_text = parse_result.text
+                        combined_metadata = parse_result.metadata
 
                     # Skip if no content
                     if not combined_text.strip():
@@ -2129,7 +2122,7 @@ async def _process_retry_documents_operation(
     from shared.database.models import DocumentStatus
 
     tasks_ns = _tasks_namespace()
-    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
 
     collection_id = collection["id"]
     qdrant_collection_name = collection["vector_store_name"]

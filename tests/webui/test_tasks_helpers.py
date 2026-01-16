@@ -32,7 +32,6 @@ from webui.tasks import (
     _update_collection_metrics,
     calculate_cleanup_delay,
     cleanup_old_results,
-    extract_and_serialize_thread_safe,
 )
 
 
@@ -114,18 +113,6 @@ class TestTaskHelperFunctions:
     def test_sanitize_audit_details_none(self) -> None:
         """Test sanitization with None input."""
         assert _sanitize_audit_details(None) is None
-
-    @patch("shared.text_processing.extraction.extract_and_serialize")
-    def test_extract_and_serialize_thread_safe(self, mock_extract) -> None:
-        """Test thread-safe text extraction wrapper."""
-        # Mock the extraction function to avoid file access
-        mock_extract.return_value = [("Test content", {"page": 1})]
-
-        # Call the thread-safe wrapper
-        result = extract_and_serialize_thread_safe("/any/file.pdf")
-
-        assert result == [("Test content", {"page": 1})]
-        mock_extract.assert_called_once_with("/any/file.pdf")
 
 
 class TestAuditLogging:
