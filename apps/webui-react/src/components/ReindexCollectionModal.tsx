@@ -123,16 +123,16 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
   return (
     <>
       <div
-        className="fixed inset-0 bg-void-950/80 backdrop-blur-sm z-[60]"
+        className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60]"
         onClick={handleCancel}
       />
       <div className="fixed inset-0 z-[60] overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
           <div
-            className="relative glass-panel rounded-2xl shadow-2xl border border-white/10 max-w-md w-full p-6"
+            className="relative bg-[var(--bg-primary)] rounded-2xl shadow-2xl border border-[var(--border)] max-w-md w-full p-6"
             onKeyDown={handleKeyDown}
           >
-            <h2 className="text-xl font-bold text-white mb-4 tracking-tight">
+            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4 tracking-tight">
               Re-index Collection: {collection.name}
             </h2>
 
@@ -168,13 +168,13 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="button"
                   onClick={() => setShowStrategySelector(!showStrategySelector)}
-                  className="text-sm text-signal-400 hover:text-signal-300 font-bold tracking-wide"
+                  className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] font-bold tracking-wide"
                 >
                   {showStrategySelector ? 'Hide' : 'Change'} Chunking Strategy
                 </button>
 
                 {showStrategySelector && (
-                  <div className="mt-3 p-4 border border-white/10 rounded-xl bg-void-900/50">
+                  <div className="mt-3 p-4 border border-[var(--border)] rounded-xl bg-[var(--bg-secondary)]">
                     <ErrorBoundary
                       level="component"
                       fallback={(error, resetError) => (
@@ -202,11 +202,11 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
               </div>
 
               <div className="mt-4">
-                <h4 className="text-sm font-bold text-white mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
-                <div className="space-y-2 bg-void-900/50 border border-white/5 rounded-xl p-3">
+                <h4 className="text-sm font-bold text-[var(--text-primary)] mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
+                <div className="space-y-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-3">
                   {hasModelChange && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Embedding Model:</span>
+                      <span className="text-[var(--text-muted)]">Embedding Model:</span>
                       <div className="flex items-center gap-2">
                         <span className="text-red-400/70 line-through">{collection.embedding_model}</span>
                         <span className="text-gray-500">→</span>
@@ -216,7 +216,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                   )}
                   {hasStrategyChange && selectedStrategy && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Chunking Strategy:</span>
+                      <span className="text-[var(--text-muted)]">Chunking Strategy:</span>
                       <div className="flex items-center gap-2">
                         <span className="text-red-400/70 line-through">{CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || 'None'}</span>
                         <span className="text-gray-500">→</span>
@@ -228,7 +228,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                   )}
                   {hasInstructionChange && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Embedding Instruction:</span>
+                      <span className="text-[var(--text-muted)]">Embedding Instruction:</span>
                       <span className="text-green-400 font-bold">Updated</span>
                     </div>
                   )}
@@ -236,9 +236,9 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 </div>
 
                 {/* Impact summary */}
-                <div className="mt-3 text-sm text-gray-400">
-                  <p className="font-bold text-white">Estimated impact:</p>
-                  <ul className="mt-1 list-disc list-inside text-xs text-gray-500">
+                <div className="mt-3 text-sm text-[var(--text-secondary)]">
+                  <p className="font-bold text-[var(--text-primary)]">Estimated impact:</p>
+                  <ul className="mt-1 list-disc list-inside text-xs text-[var(--text-muted)]">
                     <li>Processing time: ~{Math.ceil(collection.document_count / 100)} minutes (estimate)</li>
                     <li>Collection will be read-only during re-indexing</li>
                     {hasModelChange && (
@@ -251,15 +251,15 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
 
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label htmlFor="confirm-reindex" className="block text-sm font-bold text-gray-400 mb-2 uppercase tracking-wide">
-                  To confirm, type <span className="font-mono bg-void-800 border border-white/10 px-1 py-0.5 rounded text-white">reindex {collection.name}</span>
+                <label htmlFor="confirm-reindex" className="block text-sm font-bold text-[var(--text-muted)] mb-2 uppercase tracking-wide">
+                  To confirm, type <span className="font-mono bg-[var(--bg-tertiary)] border border-[var(--border)] px-1 py-0.5 rounded text-[var(--text-primary)]">reindex {collection.name}</span>
                 </label>
                 <input
                   id="confirm-reindex"
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
-                  className="w-full px-3 py-2 bg-void-950/50 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-transparent placeholder-gray-600"
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400/50 dark:focus:ring-white/50 focus:border-transparent placeholder-[var(--text-muted)]"
                   placeholder="Type the confirmation text"
                   autoComplete="off"
                   autoFocus
@@ -283,7 +283,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="submit"
                   disabled={!isConfirmValid || isSubmitting || reindexCollectionMutation.isPending}
-                  className="px-4 py-2 text-sm font-bold text-white bg-signal-600 border border-transparent rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="px-4 py-2 text-sm font-bold text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {isSubmitting || reindexCollectionMutation.isPending ? 'Starting Re-index...' : 'Re-index Collection'}
                 </button>

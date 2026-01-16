@@ -5,70 +5,17 @@
  * - Dense: Traditional semantic vector search
  * - Sparse: BM25/SPLADE keyword search
  * - Hybrid: Combined search with RRF fusion
- *
- * When hybrid mode is selected, shows the RRF k parameter configuration.
  */
 
 import React from 'react';
-import { Zap, Search, Combine, AlertCircle, HelpCircle } from 'lucide-react';
+import { Zap, Search, Combine, AlertCircle } from 'lucide-react';
 import type { SearchMode } from '../../types/sparse-index';
-import { RRF_DEFAULTS } from '../../types/sparse-index';
-
-const RRF_SLIDER = {
-  min: 0,
-  max: 100,
-  step: 1,
-  // Log-scale "feel": lower values provide finer control near default k.
-  // Calibrated so ~50% maps near k≈60 when max=1000.
-  gamma: 0.75,
-} as const;
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function rrfKFromSlider(sliderValue: number): number {
-  const minK = RRF_DEFAULTS.min;
-  const maxK = RRF_DEFAULTS.max;
-
-  if (minK <= 0 || maxK <= minK) return RRF_DEFAULTS.k;
-
-  const slider = clampNumber(sliderValue, RRF_SLIDER.min, RRF_SLIDER.max);
-  const t = slider / RRF_SLIDER.max;
-
-  const logMin = Math.log(minK);
-  const logMax = Math.log(maxK);
-  const scaled = logMin + Math.pow(t, RRF_SLIDER.gamma) * (logMax - logMin);
-
-  return Math.round(Math.exp(scaled));
-}
-
-function sliderFromRrfK(k: number): number {
-  const minK = RRF_DEFAULTS.min;
-  const maxK = RRF_DEFAULTS.max;
-
-  if (minK <= 0 || maxK <= minK) return Math.round(RRF_SLIDER.max / 2);
-  if (!Number.isFinite(k)) return Math.round(RRF_SLIDER.max / 2);
-
-  const clampedK = clampNumber(k, minK, maxK);
-  const logMin = Math.log(minK);
-  const logMax = Math.log(maxK);
-
-  const tPowGamma = clampNumber((Math.log(clampedK) - logMin) / (logMax - logMin), 0, 1);
-  const t = Math.pow(tPowGamma, 1 / RRF_SLIDER.gamma);
-
-  return Math.round(t * RRF_SLIDER.max);
-}
 
 interface SearchModeSelectorProps {
   /** Currently selected search mode */
   searchMode: SearchMode;
-  /** RRF constant k for hybrid search */
-  rrfK: number;
   /** Callback when search mode changes */
   onSearchModeChange: (mode: SearchMode) => void;
-  /** Callback when RRF k changes */
-  onRrfKChange: (k: number) => void;
   /** Whether the selector is disabled */
   disabled?: boolean;
   /** Whether any selected collections support sparse indexing */
@@ -109,24 +56,15 @@ const MODE_OPTIONS: ModeOption[] = [
 
 export function SearchModeSelector({
   searchMode,
-  rrfK,
   onSearchModeChange,
-  onRrfKChange,
   disabled = false,
   sparseAvailable = true,
 }: SearchModeSelectorProps) {
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
-  const [rrfKInput, setRrfKInput] = React.useState(() => String(rrfK));
-
-  React.useEffect(() => {
-    setRrfKInput(String(rrfK));
-  }, [rrfK]);
-
   return (
     <div className="space-y-4">
       {/* Search Mode Selector */}
       <div>
-        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+        <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
           Search Mode
         </label>
         <div className="grid grid-cols-3 gap-3">
@@ -144,21 +82,21 @@ export function SearchModeSelector({
                 className={`
                   relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all duration-200
                   ${isSelected
-                    ? 'border-signal-500 bg-signal-500/10 text-signal-300 shadow-lg shadow-signal-500/10'
-                    : 'border-white/10 bg-void-800/50 hover:bg-white/5 hover:border-white/20 text-gray-400'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] shadow-lg shadow-[var(--accent-primary)]/10'
+                    : 'border-[var(--border)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
                   }
                   ${isDisabled ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer'}
                 `}
                 title={option.description}
               >
                 <span
-                  className={`mb-2 ${isSelected ? 'text-signal-400' : 'text-gray-500'}`}
+                  className={`mb-2 ${isSelected ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'}`}
                 >
                   {option.icon}
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wide">{option.label}</span>
                 {option.requiresSparse && !sparseAvailable && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-void-950 rounded-full p-0.5 border border-white/10">
+                  <span className="absolute -top-1.5 -right-1.5 bg-[var(--bg-primary)] rounded-full p-0.5 border border-[var(--border)]">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
                   </span>
                 )}
@@ -168,15 +106,15 @@ export function SearchModeSelector({
         </div>
 
         {/* Mode description */}
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-[var(--text-muted)]">
           {MODE_OPTIONS.find((o) => o.value === searchMode)?.description}
         </p>
 
         {/* Sparse not available warning */}
         {(searchMode === 'sparse' || searchMode === 'hybrid') &&
           !sparseAvailable && (
-            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-              <p className="text-xs text-yellow-800 flex items-start gap-1.5">
+            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md">
+              <p className="text-xs text-yellow-800 dark:text-yellow-400 flex items-start gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                 <span>
                   Sparse search requires collections with sparse indexing enabled.
@@ -186,109 +124,6 @@ export function SearchModeSelector({
             </div>
           )}
       </div>
-
-      {/* Hybrid RRF Configuration */}
-      {searchMode === 'hybrid' && (
-        <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-purple-900 flex items-center gap-1.5">
-              <Combine className="h-4 w-4" />
-              Hybrid Search Configuration
-            </h4>
-            <div className="group relative">
-              <HelpCircle className="h-4 w-4 text-purple-400 cursor-help" />
-              <div className="absolute right-0 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                <p className="font-medium mb-1">RRF (Reciprocal Rank Fusion)</p>
-                <p className="text-gray-300">
-                  Combines dense and sparse search results. Lower k values give
-                  more weight to top-ranked results. Higher values produce more
-                  uniform weighting.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-sm text-purple-800">
-                RRF Weighting
-              </label>
-              <span className="text-sm font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                k={rrfK}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={RRF_SLIDER.min}
-              max={RRF_SLIDER.max}
-              step={RRF_SLIDER.step}
-              value={sliderFromRrfK(rrfK)}
-              onChange={(e) => onRrfKChange(rrfKFromSlider(parseInt(e.target.value, 10)))}
-              disabled={disabled}
-              className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
-            />
-            <div className="flex justify-between text-xs text-purple-600 mt-1">
-              <span>Top-heavy (k={RRF_DEFAULTS.min})</span>
-              <span>Balanced (k={RRF_DEFAULTS.k})</span>
-              <span>Uniform (k={RRF_DEFAULTS.max})</span>
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs text-purple-600">
-            Default value: {RRF_DEFAULTS.k}. Slider is logarithmic; use Advanced for an exact k.
-          </p>
-
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-xs text-purple-700 hover:text-purple-900"
-              disabled={disabled}
-            >
-              <span
-                className={`transform transition-transform ${showAdvanced ? 'rotate-90' : ''
-                  }`}
-              >
-                ▶
-              </span>
-              Advanced k
-              <span className="text-xs text-purple-500">(optional)</span>
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-3 p-3 bg-white/60 rounded-lg border border-purple-100">
-                <label className="block text-xs font-medium text-purple-800 mb-1" htmlFor="rrf-k-input">
-                  Exact RRF constant (k)
-                </label>
-                <input
-                  id="rrf-k-input"
-                  type="number"
-                  inputMode="numeric"
-                  min={RRF_DEFAULTS.min}
-                  max={RRF_DEFAULTS.max}
-                  step={1}
-                  value={rrfKInput}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setRrfKInput(next);
-                    const parsed = Number.parseInt(next, 10);
-                    if (Number.isFinite(parsed)) onRrfKChange(parsed);
-                  }}
-                  onBlur={() => {
-                    const parsed = Number.parseInt(rrfKInput, 10);
-                    if (!Number.isFinite(parsed)) setRrfKInput(String(rrfK));
-                  }}
-                  disabled={disabled}
-                  className="w-full px-3 py-2 border border-purple-200 rounded-md focus:ring-purple-500 focus:border-purple-500 bg-white"
-                />
-                <p className="mt-1 text-xs text-purple-600">
-                  Valid range: {RRF_DEFAULTS.min}–{RRF_DEFAULTS.max}.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

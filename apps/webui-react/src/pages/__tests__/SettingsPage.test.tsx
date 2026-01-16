@@ -210,13 +210,13 @@ describe('SettingsPage', () => {
 
       // Preferences should be active by default
       const preferencesButton = screen.getByText('Preferences').closest('button');
-      expect(preferencesButton).toHaveClass('border-blue-500');
+      expect(preferencesButton).toHaveClass('border-[var(--accent-primary)]');
 
       // Switch to System
       await user.click(screen.getByText('System'));
       const systemButton = screen.getByText('System').closest('button');
-      expect(systemButton).toHaveClass('border-blue-500');
-      expect(preferencesButton).not.toHaveClass('border-blue-500');
+      expect(systemButton).toHaveClass('border-[var(--accent-primary)]');
+      expect(preferencesButton).not.toHaveClass('border-[var(--accent-primary)]');
     });
   });
 });

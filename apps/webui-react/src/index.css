@@ -1,68 +1,302 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Base Styles */
-/* Base Styles */
-body {
-  @apply bg-void-950 text-white font-sans antialiased selection:bg-signal-600 selection:text-white;
-  background-image: radial-gradient(circle at 50% -20%, rgba(124, 58, 237, 0.15), rgba(10, 10, 11, 0) 50%);
-  background-attachment: fixed;
+/* ============================================
+   CSS Custom Properties - Theme System
+   ============================================ */
+
+:root {
+  /* Light mode (default) */
+  --bg-primary: #fefdfb;
+  --bg-secondary: #f8f6f0;
+  --bg-tertiary: #f0ece0;
+  --bg-elevated: #ffffff;
+
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-inverted: #fefdfb;
+
+  --border: #e5e7eb;
+  --border-subtle: #f3f4f6;
+  --border-strong: #d1d5db;
+
+  --accent-primary: #1a1a2e;
+  --accent-primary-hover: #2d2d44;
+  --accent-highlight: #daa520;
+  --accent-highlight-subtle: rgba(218, 165, 32, 0.1);
+
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --input-focus: #1a1a2e;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
 }
 
-/* Premium Glassmorphism Utilities */
+.dark {
+  /* Dark mode */
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #232338;
+  --bg-tertiary: #2d2d44;
+  --bg-elevated: #2d2d44;
+
+  --text-primary: #f8f6f0;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-inverted: #1a1a2e;
+
+  --border: #3f3f5c;
+  --border-subtle: #2d2d44;
+  --border-strong: #525274;
+
+  --accent-primary: #f8f6f0;
+  --accent-primary-hover: #f0ece0;
+  --accent-highlight: #f4c430;
+  --accent-highlight-subtle: rgba(244, 196, 48, 0.1);
+
+  --input-bg: #232338;
+  --input-border: #3f3f5c;
+  --input-focus: #f8f6f0;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  @apply font-sans antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--accent-highlight);
+  color: var(--text-inverted);
+}
+
+/* ============================================
+   Component Utilities
+   ============================================ */
+
+/* Panel - for major sections, modals, headers */
+.panel {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  @apply rounded-lg;
+}
+
+/* Card - for collection cards, list items */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
+  @apply rounded-lg transition-all duration-200;
+}
+
+.card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Input field styling */
+.input-field {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  @apply rounded-md px-3 py-2 text-sm transition-colors duration-150 outline-none;
+}
+
+.input-field::placeholder {
+  color: var(--text-muted);
+}
+
+.input-field:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.input-field:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Primary button */
+.btn-primary {
+  background-color: var(--accent-primary);
+  color: var(--text-inverted);
+  @apply px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-primary-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Secondary button */
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  @apply px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-strong);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Danger button */
+.btn-danger {
+  @apply px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150;
+  background-color: #dc2626;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #b91c1c;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Tab navigation */
+.tab-nav {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  @apply p-1 rounded-lg inline-flex;
+}
+
+.tab-item {
+  color: var(--text-secondary);
+  @apply px-4 py-2 text-sm font-medium rounded-md transition-colors duration-150;
+}
+
+.tab-item:hover:not(.tab-item-active) {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.tab-item-active {
+  background-color: var(--accent-primary);
+  color: var(--text-inverted);
+}
+
+/* Badge/chip styling */
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+
+.badge-success {
+  background-color: rgba(5, 150, 105, 0.1);
+  color: #059669;
+}
+
+.dark .badge-success {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.badge-warning {
+  background-color: rgba(217, 119, 6, 0.1);
+  color: #d97706;
+}
+
+.dark .badge-warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.badge-error {
+  background-color: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.dark .badge-error {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.badge-info {
+  background-color: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.dark .badge-info {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.badge-neutral {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   Legacy Compatibility (to be migrated)
+   ============================================ */
+
+/* These maintain compatibility during migration */
 .glass-panel {
-  @apply bg-void-900/60 backdrop-blur-xl border border-white/10 shadow-2xl;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  @apply panel;
 }
 
 .glass-card {
-  @apply bg-void-900/40 backdrop-blur-md border border-white/5 transition-all duration-300 hover:bg-void-900/60 hover:border-signal-600/30 hover:shadow-lg hover:shadow-signal-600/10;
-}
-
-.heading-gradient {
-  @apply text-white;
-  /* Simplified for stark Swiss look, or use slight gradient */
-  text-shadow: 0 0 40px rgba(124, 58, 237, 0.5);
+  @apply card;
 }
 
 .input-glass {
-  @apply bg-void-950/50 border border-void-800 text-white placeholder-gray-500 focus:border-signal-600 focus:ring-1 focus:ring-signal-600 transition-all duration-200 outline-none;
+  @apply input-field;
 }
 
-/* Progress bar shimmer effect */
-@keyframes shimmer {
-  0% {
-    background-position: -200% center;
-  }
+/* ============================================
+   Progress & Status Indicators
+   ============================================ */
 
-  100% {
-    background-position: 200% center;
-  }
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
 }
 
 .progress-shimmer {
-  background: linear-gradient(90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.3) 50%,
-      transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
 
-/* Status dot ping animation */
 @keyframes ping {
-
-  75%,
-  100% {
+  75%, 100% {
     transform: scale(2);
     opacity: 0;
   }
 }
 
-/* PDF.js text layer styles */
+/* ============================================
+   PDF.js & Document Viewer
+   ============================================ */
+
 .textLayer {
   position: absolute;
   text-align: initial;
@@ -94,7 +328,7 @@ body {
 .textLayer .highlight {
   margin: -1px;
   padding: 1px;
-  background-color: rgba(180, 0, 170, 1);
+  background-color: var(--accent-highlight);
   border-radius: 4px;
 }
 
@@ -120,12 +354,16 @@ body {
 
 /* Mark.js highlight styles */
 mark {
-  background-color: #ffeb3b;
-  color: black;
-  padding: 0;
+  background-color: var(--accent-highlight);
+  color: var(--text-inverted);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
-/* Email viewer styles */
+/* ============================================
+   Email Viewer
+   ============================================ */
+
 .email-content {
   max-width: 800px;
   margin: 0 auto;
@@ -138,4 +376,44 @@ mark {
 .email-body {
   margin-top: 1rem;
   white-space: pre-wrap;
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================
+   Focus Visible Styling
+   ============================================ */
+
+:focus-visible {
+  outline: 2px solid var(--accent-highlight);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-highlight);
+  outline-offset: 2px;
 }

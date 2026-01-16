@@ -71,28 +71,28 @@ export function SparseIndexConfigModal({
       <div className="flex min-h-full items-center justify-center p-4">
         {/* Backdrop */}
         <div
-          className="fixed inset-0 bg-void-950/80 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
 
         {/* Modal */}
-        <div className="relative w-full max-w-lg glass-panel rounded-2xl shadow-2xl border border-white/10">
+        <div className="relative w-full max-w-lg bg-[var(--bg-primary)] rounded-2xl shadow-2xl border border-[var(--border)]">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 bg-void-900/50 rounded-t-2xl">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] rounded-t-2xl">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-signal-500/10 rounded-xl border border-signal-500/20">
-                <Zap className="h-5 w-5 text-signal-400" />
+              <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                <Zap className="h-5 w-5 text-blue-400" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
+                <h2 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">
                   Enable Sparse Indexing
                 </h2>
-                <p className="text-sm text-gray-400">{collectionName}</p>
+                <p className="text-sm text-[var(--text-secondary)]">{collectionName}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
+              className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -103,7 +103,7 @@ export function SparseIndexConfigModal({
             <div className="px-6 py-6 space-y-6">
               {/* Plugin Selection */}
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                <label className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                   Select Sparse Indexer
                 </label>
                 <div className="grid grid-cols-2 gap-3">
@@ -120,49 +120,49 @@ export function SparseIndexConfigModal({
                           className={`
                             relative p-4 rounded-xl border transition-all text-left
                             ${isSelected
-                              ? 'border-signal-500 bg-signal-500/10 shadow-lg shadow-signal-500/10'
-                              : 'border-white/10 bg-void-900/50 hover:bg-white/5 hover:border-white/20'
+                              ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10'
+                              : 'border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] hover:border-[var(--border-strong)]'
                             }
                           `}
                         >
                           <div className="flex items-start gap-3">
                             <div
-                              className={`p-2 rounded-lg ${isSelected ? 'bg-signal-500/20' : 'bg-void-800'
+                              className={`p-2 rounded-lg ${isSelected ? 'bg-gray-200 dark:bg-white/20' : 'bg-[var(--bg-tertiary)]'
                                 }`}
                             >
                               {info.requiresGPU ? (
                                 <Cpu
-                                  className={`h-4 w-4 ${isSelected ? 'text-signal-400' : 'text-gray-500'
+                                  className={`h-4 w-4 ${isSelected ? 'text-gray-700 dark:text-white' : 'text-[var(--text-muted)]'
                                     }`}
                                 />
                               ) : (
                                 <Database
-                                  className={`h-4 w-4 ${isSelected ? 'text-signal-400' : 'text-gray-500'
+                                  className={`h-4 w-4 ${isSelected ? 'text-gray-700 dark:text-white' : 'text-[var(--text-muted)]'
                                     }`}
                                 />
                               )}
                             </div>
                             <div>
                               <p
-                                className={`font-bold text-sm ${isSelected ? 'text-signal-300' : 'text-gray-200'
+                                className={`font-bold text-sm ${isSelected ? 'text-gray-800 dark:text-white' : 'text-[var(--text-primary)]'
                                   }`}
                               >
                                 {info.name}
                               </p>
-                              <p className="text-xs text-gray-500 mt-0.5">
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
                                 {info.requiresGPU ? 'GPU required' : 'CPU only'}
                               </p>
                             </div>
                           </div>
                           {isSelected && (
-                            <div className="absolute top-2 right-2 w-2 h-2 bg-signal-400 rounded-full shadow-[0_0_8px_rgba(167,139,250,0.6)]" />
+                            <div className="absolute top-2 right-2 w-2 h-2 bg-gray-500 dark:bg-white rounded-full" />
                           )}
                         </button>
                       );
                     }
                   )}
                 </div>
-                <p className="mt-2 text-sm text-gray-500">{pluginInfo.description}</p>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">{pluginInfo.description}</p>
               </div>
 
               {/* BM25 Configuration */}
@@ -171,34 +171,34 @@ export function SparseIndexConfigModal({
                   <button
                     type="button"
                     onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-white uppercase tracking-wide transition-colors"
+                    className="flex items-center gap-2 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-wide transition-colors"
                   >
                     <span
-                      className={`transform transition-transform text-signal-400 ${showAdvanced ? 'rotate-90' : ''
+                      className={`transform transition-transform text-[var(--text-muted)] ${showAdvanced ? 'rotate-90' : ''
                         }`}
                     >
                       ▶
                     </span>
                     Advanced BM25 Parameters
-                    <span className="text-xs text-gray-400">(optional)</span>
+                    <span className="text-xs text-[var(--text-muted)]">(optional)</span>
                   </button>
 
                   {showAdvanced && (
-                    <div className="mt-4 p-4 bg-void-900/50 border border-white/5 rounded-xl space-y-4">
+                    <div className="mt-4 p-4 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl space-y-4">
                       {/* k1 Parameter */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-sm font-medium text-gray-300 flex items-center gap-1.5">
+                          <label className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-1.5">
                             k1 (Term Frequency Saturation)
                             <div className="group relative">
-                              <HelpCircle className="h-3.5 w-3.5 text-gray-500" />
-                              <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-void-950 border border-white/10 text-gray-300 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                              <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                              <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-secondary)] text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                                 Controls how quickly term frequency saturates.
                                 Higher values give more weight to repeated terms.
                               </div>
                             </div>
                           </label>
-                          <span className="text-sm font-mono text-signal-400 font-bold">
+                          <span className="text-sm font-mono text-[var(--text-primary)] font-bold">
                             {bm25Config.k1}
                           </span>
                         </div>
@@ -214,9 +214,9 @@ export function SparseIndexConfigModal({
                               k1: parseFloat(e.target.value),
                             })
                           }
-                          className="w-full h-2 bg-void-800 rounded-lg appearance-none cursor-pointer accent-signal-500"
+                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-500 dark:accent-white"
                         />
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
                           <span>Low ({BM25_PARAM_RANGES.k1.min})</span>
                           <span>Default (1.5)</span>
                           <span>High ({BM25_PARAM_RANGES.k1.max})</span>
@@ -226,17 +226,17 @@ export function SparseIndexConfigModal({
                       {/* b Parameter */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-sm font-medium text-gray-300 flex items-center gap-1.5">
+                          <label className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-1.5">
                             b (Length Normalization)
                             <div className="group relative">
-                              <HelpCircle className="h-3.5 w-3.5 text-gray-500" />
-                              <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-void-950 border border-white/10 text-gray-300 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                              <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                              <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-secondary)] text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                                 Controls document length normalization.
                                 0 = no normalization, 1 = full normalization.
                               </div>
                             </div>
                           </label>
-                          <span className="text-sm font-mono text-signal-400 font-bold">
+                          <span className="text-sm font-mono text-[var(--text-primary)] font-bold">
                             {bm25Config.b}
                           </span>
                         </div>
@@ -252,9 +252,9 @@ export function SparseIndexConfigModal({
                               b: parseFloat(e.target.value),
                             })
                           }
-                          className="w-full h-2 bg-void-800 rounded-lg appearance-none cursor-pointer accent-signal-500"
+                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-500 dark:accent-white"
                         />
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
                           <span>None ({BM25_PARAM_RANGES.b.min})</span>
                           <span>Default (0.75)</span>
                           <span>Full ({BM25_PARAM_RANGES.b.max})</span>
@@ -265,7 +265,7 @@ export function SparseIndexConfigModal({
                       <button
                         type="button"
                         onClick={() => setBm25Config(DEFAULT_BM25_CONFIG)}
-                        className="text-xs font-bold text-signal-400 hover:text-signal-300 uppercase tracking-wide"
+                        className="text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-wide"
                       >
                         Reset to defaults
                       </button>
@@ -281,11 +281,11 @@ export function SparseIndexConfigModal({
                   id="reindex-existing"
                   checked={reindexExisting}
                   onChange={(e) => setReindexExisting(e.target.checked)}
-                  className="mt-1 h-4 w-4 bg-void-800 border-white/20 text-signal-600 focus:ring-signal-500 rounded"
+                  className="mt-1 h-4 w-4 bg-[var(--bg-tertiary)] border-[var(--border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white rounded"
                 />
-                <label htmlFor="reindex-existing" className="text-sm text-gray-300">
-                  <span className="font-bold text-white">Index existing documents</span>
-                  <p className="text-gray-400 mt-0.5">
+                <label htmlFor="reindex-existing" className="text-sm text-[var(--text-secondary)]">
+                  <span className="font-bold text-[var(--text-primary)]">Index existing documents</span>
+                  <p className="text-[var(--text-muted)] mt-0.5">
                     This will create sparse vectors for all {documentCount.toLocaleString()} documents
                     in the background.
                   </p>
@@ -309,19 +309,19 @@ export function SparseIndexConfigModal({
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-white/10 bg-void-900/30 rounded-b-2xl flex justify-end gap-3 backdrop-blur-md">
+            <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] rounded-b-2xl flex justify-end gap-3 backdrop-blur-md">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-4 py-2 text-sm font-medium text-gray-400 border border-white/10 rounded-xl hover:bg-white/5 hover:text-white transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 text-sm font-bold text-white bg-signal-600 rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 disabled:opacity-50 flex items-center gap-2 transition-all transform active:scale-95"
+                className="px-6 py-2 text-sm font-bold text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg disabled:opacity-50 flex items-center gap-2 transition-all transform active:scale-95"
               >
                 {isSubmitting ? (
                   <>

@@ -78,7 +78,7 @@ export default function InterfaceSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <svg className="animate-spin h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"
@@ -93,7 +93,7 @@ export default function InterfaceSettings() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading interface preferences...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading interface preferences...</span>
       </div>
     );
   }
@@ -124,8 +124,8 @@ export default function InterfaceSettings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h3 className="text-lg leading-6 font-medium text-gray-900">Interface Preferences</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">Interface Preferences</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Configure UI behavior settings like data refresh intervals and visualizations.
         </p>
       </div>
@@ -155,12 +155,12 @@ export default function InterfaceSettings() {
       </div>
 
       {/* Interface Settings Form */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
           <div className="space-y-6">
             {/* Data Refresh Interval */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Data Refresh Interval
               </label>
               <div className="mt-2">
@@ -173,24 +173,24 @@ export default function InterfaceSettings() {
                   onChange={(e) =>
                     handleChange('data_refresh_interval_ms', secondsToMs(parseInt(e.target.value, 10)))
                   }
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-[var(--text-secondary)] mt-1">
                   <span>10s</span>
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-[var(--text-primary)]">
                     {msToSeconds(formState.data_refresh_interval_ms)}s
                   </span>
                   <span>60s</span>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 How often to automatically refresh data from the server (10-60 seconds)
               </p>
             </div>
 
             {/* Visualization Sample Limit */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Visualization Sample Limit
               </label>
               <div className="mt-2">
@@ -203,17 +203,17 @@ export default function InterfaceSettings() {
                   onChange={(e) =>
                     handleChange('visualization_sample_limit', parseInt(e.target.value, 10))
                   }
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-[var(--text-secondary)] mt-1">
                   <span>10K</span>
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-[var(--text-primary)]">
                     {formatSampleLimit(formState.visualization_sample_limit)}
                   </span>
                   <span>500K</span>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Maximum points to display in UMAP/PCA visualizations. Higher values show more detail
                 but may impact performance.
               </p>
@@ -226,12 +226,12 @@ export default function InterfaceSettings() {
                   type="checkbox"
                   checked={formState.animation_enabled}
                   onChange={(e) => handleChange('animation_enabled', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)]"
                 />
               </div>
               <div className="ml-3 text-sm">
-                <label className="font-medium text-gray-700">Enable Animations</label>
-                <p className="text-gray-500">
+                <label className="font-medium text-[var(--text-primary)]">Enable Animations</label>
+                <p className="text-[var(--text-secondary)]">
                   Show smooth transitions and animations throughout the interface. Disable for better
                   performance on slower devices.
                 </p>
@@ -247,7 +247,7 @@ export default function InterfaceSettings() {
           type="button"
           onClick={handleReset}
           disabled={resetMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {resetMutation.isPending ? 'Resetting...' : 'Reset to Defaults'}
         </button>
@@ -255,7 +255,7 @@ export default function InterfaceSettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>

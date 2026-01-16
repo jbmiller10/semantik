@@ -11,7 +11,7 @@ function StatusIndicator({ status }: { status: 'healthy' | 'unhealthy' | 'loadin
   const colors = {
     healthy: 'bg-green-400',
     unhealthy: 'bg-red-400',
-    loading: 'bg-gray-300 animate-pulse',
+    loading: 'bg-[var(--text-muted)] animate-pulse',
   };
 
   return (
@@ -24,9 +24,9 @@ function StatusIndicator({ status }: { status: 'healthy' | 'unhealthy' | 'loadin
  */
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
-    <div className="flex justify-between py-2 border-b border-gray-100 last:border-b-0">
-      <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-900">{value ?? 'N/A'}</span>
+    <div className="flex justify-between py-2 border-b border-[var(--border)] last:border-b-0">
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <span className="text-sm font-medium text-[var(--text-primary)]">{value ?? 'N/A'}</span>
     </div>
   );
 }
@@ -40,7 +40,7 @@ export default function SystemStatusCard() {
   if (infoLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <svg className="animate-spin h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"
@@ -55,7 +55,7 @@ export default function SystemStatusCard() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading system information...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading system information...</span>
       </div>
     );
   }
@@ -86,8 +86,8 @@ export default function SystemStatusCard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h3 className="text-lg leading-6 font-medium text-gray-900">System Information</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">System Information</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           View system configuration, resource limits, and service health status.
         </p>
       </div>
@@ -118,9 +118,9 @@ export default function SystemStatusCard() {
       </div>
 
       {/* System Information */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Application</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">Application</h4>
           <div className="space-y-1">
             <InfoRow label="Version" value={systemInfo?.version} />
             <InfoRow label="Environment" value={systemInfo?.environment} />
@@ -130,9 +130,9 @@ export default function SystemStatusCard() {
       </div>
 
       {/* Rate Limits */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Rate Limits</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">Rate Limits</h4>
           <div className="space-y-1">
             <InfoRow label="Chunking Preview" value={systemInfo?.rate_limits?.chunking_preview} />
             <InfoRow label="Plugin Install" value={systemInfo?.rate_limits?.plugin_install} />
@@ -142,20 +142,20 @@ export default function SystemStatusCard() {
       </div>
 
       {/* GPU Status */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">GPU Status</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">GPU Status</h4>
 
           {statusLoading ? (
             <div className="flex items-center">
               <StatusIndicator status="loading" />
-              <span className="ml-2 text-sm text-gray-500">Checking GPU status...</span>
+              <span className="ml-2 text-sm text-[var(--text-secondary)]">Checking GPU status...</span>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center">
                 <StatusIndicator status={systemStatus?.gpu_available ? 'healthy' : 'unhealthy'} />
-                <span className="ml-2 text-sm font-medium text-gray-900">
+                <span className="ml-2 text-sm font-medium text-[var(--text-primary)]">
                   {systemStatus?.gpu_available ? 'GPU Available' : 'GPU Not Available'}
                 </span>
               </div>
@@ -171,15 +171,15 @@ export default function SystemStatusCard() {
 
               <div className="flex items-center mt-2">
                 <StatusIndicator status={systemStatus?.reranking_available ? 'healthy' : 'unhealthy'} />
-                <span className="ml-2 text-sm font-medium text-gray-900">
+                <span className="ml-2 text-sm font-medium text-[var(--text-primary)]">
                   {systemStatus?.reranking_available ? 'Reranking Available' : 'Reranking Not Available'}
                 </span>
               </div>
 
               {systemStatus?.reranking_available && systemStatus.available_reranking_models?.length > 0 && (
                 <div className="ml-5">
-                  <p className="text-xs text-gray-500 mb-1">Available Models:</p>
-                  <ul className="list-disc list-inside text-sm text-gray-700">
+                  <p className="text-xs text-[var(--text-secondary)] mb-1">Available Models:</p>
+                  <ul className="list-disc list-inside text-sm text-[var(--text-primary)]">
                     {systemStatus.available_reranking_models.map((model) => (
                       <li key={model} className="truncate">{model}</li>
                     ))}
@@ -192,64 +192,64 @@ export default function SystemStatusCard() {
       </div>
 
       {/* Service Health */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="text-md font-medium text-gray-900">Service Health</h4>
+            <h4 className="text-md font-medium text-[var(--text-primary)]">Service Health</h4>
             {!healthLoading && (
-              <span className="text-xs text-gray-400">Auto-refreshes every 30s</span>
+              <span className="text-xs text-[var(--text-muted)]">Auto-refreshes every 30s</span>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             {/* PostgreSQL */}
-            <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center p-3 bg-[var(--bg-tertiary)] rounded-lg">
               <StatusIndicator
                 status={healthLoading ? 'loading' : (systemHealth?.postgres?.status === 'healthy' ? 'healthy' : 'unhealthy')}
               />
               <div className="ml-3">
-                <span className="text-sm font-medium text-gray-900">PostgreSQL</span>
+                <span className="text-sm font-medium text-[var(--text-primary)]">PostgreSQL</span>
                 {!healthLoading && systemHealth?.postgres?.message && (
-                  <p className="text-xs text-gray-500 truncate">{systemHealth.postgres.message}</p>
+                  <p className="text-xs text-[var(--text-secondary)] truncate">{systemHealth.postgres.message}</p>
                 )}
               </div>
             </div>
 
             {/* Redis */}
-            <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center p-3 bg-[var(--bg-tertiary)] rounded-lg">
               <StatusIndicator
                 status={healthLoading ? 'loading' : (systemHealth?.redis?.status === 'healthy' ? 'healthy' : 'unhealthy')}
               />
               <div className="ml-3">
-                <span className="text-sm font-medium text-gray-900">Redis</span>
+                <span className="text-sm font-medium text-[var(--text-primary)]">Redis</span>
                 {!healthLoading && systemHealth?.redis?.message && (
-                  <p className="text-xs text-gray-500 truncate">{systemHealth.redis.message}</p>
+                  <p className="text-xs text-[var(--text-secondary)] truncate">{systemHealth.redis.message}</p>
                 )}
               </div>
             </div>
 
             {/* Qdrant */}
-            <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center p-3 bg-[var(--bg-tertiary)] rounded-lg">
               <StatusIndicator
                 status={healthLoading ? 'loading' : (systemHealth?.qdrant?.status === 'healthy' ? 'healthy' : 'unhealthy')}
               />
               <div className="ml-3">
-                <span className="text-sm font-medium text-gray-900">Qdrant</span>
+                <span className="text-sm font-medium text-[var(--text-primary)]">Qdrant</span>
                 {!healthLoading && systemHealth?.qdrant?.message && (
-                  <p className="text-xs text-gray-500 truncate">{systemHealth.qdrant.message}</p>
+                  <p className="text-xs text-[var(--text-secondary)] truncate">{systemHealth.qdrant.message}</p>
                 )}
               </div>
             </div>
 
             {/* VecPipe */}
-            <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center p-3 bg-[var(--bg-tertiary)] rounded-lg">
               <StatusIndicator
                 status={healthLoading ? 'loading' : (systemHealth?.vecpipe?.status === 'healthy' ? 'healthy' : 'unhealthy')}
               />
               <div className="ml-3">
-                <span className="text-sm font-medium text-gray-900">VecPipe</span>
+                <span className="text-sm font-medium text-[var(--text-primary)]">VecPipe</span>
                 {!healthLoading && systemHealth?.vecpipe?.message && (
-                  <p className="text-xs text-gray-500 truncate">{systemHealth.vecpipe.message}</p>
+                  <p className="text-xs text-[var(--text-secondary)] truncate">{systemHealth.vecpipe.message}</p>
                 )}
               </div>
             </div>

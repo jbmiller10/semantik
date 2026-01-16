@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CreateCollectionModal } from '../CreateCollectionModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 
@@ -259,7 +259,7 @@ describe('CreateCollectionModal', () => {
       await waitFor(() => {
         // Check for the error in the input field's error message
         const nameInput = screen.getByLabelText(/collection name/i);
-        const errorMessage = nameInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = nameInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).toHaveTextContent(/collection name is required/i);
       });
 
@@ -277,7 +277,7 @@ describe('CreateCollectionModal', () => {
 
       await waitFor(() => {
         const nameInput = screen.getByLabelText(/collection name/i);
-        const errorMessage = nameInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = nameInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).toHaveTextContent(/collection name must be 100 characters or less/i);
       });
 
@@ -295,7 +295,7 @@ describe('CreateCollectionModal', () => {
 
       await waitFor(() => {
         const descInput = screen.getByLabelText(/description/i);
-        const errorMessage = descInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = descInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).toHaveTextContent(/description must be 500 characters or less/i);
       });
 
@@ -311,7 +311,7 @@ describe('CreateCollectionModal', () => {
 
       await waitFor(() => {
         const nameInput = screen.getByLabelText(/collection name/i);
-        const errorMessage = nameInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = nameInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).toHaveTextContent(/collection name is required/i);
       });
 
@@ -321,7 +321,7 @@ describe('CreateCollectionModal', () => {
       // Error should disappear
       await waitFor(() => {
         const nameInput = screen.getByLabelText(/collection name/i);
-        const errorMessage = nameInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = nameInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).not.toBeInTheDocument();
       });
     });
@@ -802,7 +802,7 @@ describe('CreateCollectionModal', () => {
 
       await waitFor(() => {
         const nameInput = screen.getByLabelText(/collection name/i);
-        const errorMessage = nameInput.parentElement?.querySelector('.text-red-600');
+        const errorMessage = nameInput.parentElement?.querySelector('.text-red-500');
         expect(errorMessage).toHaveTextContent(/collection name is required/i);
       });
 

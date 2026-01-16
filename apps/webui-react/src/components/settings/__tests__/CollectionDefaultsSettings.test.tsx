@@ -214,7 +214,7 @@ describe('CollectionDefaultsSettings', () => {
       await user.click(float32Button);
 
       // Check that float32 button is now selected (has selected styles)
-      expect(float32Button).toHaveClass('bg-blue-100');
+      expect(float32Button).toHaveClass('bg-[var(--accent-primary)]/10');
     });
 
     it('enables sparse type selection when sparse indexing is enabled', async () => {

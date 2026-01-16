@@ -41,26 +41,26 @@ export default function ProfileCard({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-sm hover:shadow-md transition-shadow">
       {/* Card Header */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-[var(--border)]">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-semibold text-gray-900 truncate">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] truncate">
                 {profile.name}
               </h3>
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                   profile.enabled
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-600'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-gray-500/20 text-gray-400'
                 }`}
               >
                 {profile.enabled ? 'Enabled' : 'Disabled'}
               </span>
             </div>
-            <p className="mt-1 text-sm text-gray-500 line-clamp-2">
+            <p className="mt-1 text-sm text-[var(--text-secondary)] line-clamp-2">
               {profile.description}
             </p>
           </div>
@@ -68,23 +68,23 @@ export default function ProfileCard({
           {/* Enable/Disable Toggle */}
           <div className="flex items-center ml-4">
             {toggleErrorMessage && (
-              <span className="text-xs text-red-500 mr-2 max-w-32 truncate" title={toggleErrorMessage}>
+              <span className="text-xs text-red-400 mr-2 max-w-32 truncate" title={toggleErrorMessage}>
                 {toggleErrorMessage}
               </span>
             )}
             <button
               onClick={handleToggleEnabled}
               disabled={isToggling}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                profile.enabled ? 'bg-blue-600' : 'bg-gray-200'
-              } ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${toggleErrorMessage ? 'ring-2 ring-red-300' : ''}`}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)] ${
+                profile.enabled ? 'bg-gray-600 dark:bg-white' : 'bg-gray-300 dark:bg-gray-600'
+              } ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${toggleErrorMessage ? 'ring-2 ring-red-400/50' : ''}`}
               role="switch"
               aria-checked={profile.enabled}
               aria-label={`${profile.enabled ? 'Disable' : 'Enable'} profile`}
             >
               <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  profile.enabled ? 'translate-x-5' : 'translate-x-0'
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow ring-0 transition duration-200 ease-in-out ${
+                  profile.enabled ? 'translate-x-5 bg-white dark:bg-gray-800' : 'translate-x-0 bg-white'
                 }`}
               />
             </button>
@@ -96,19 +96,19 @@ export default function ProfileCard({
       <div className="p-4 space-y-3">
         {/* Collections */}
         <div>
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+          <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
             Collections
           </span>
           <div className="mt-1 flex flex-wrap gap-1">
             {profile.collections.length === 0 ? (
-              <span className="text-sm text-gray-400 italic">
+              <span className="text-sm text-[var(--text-muted)] italic">
                 No collections
               </span>
             ) : (
               profile.collections.map((collection) => (
                 <span
                   key={collection.id}
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 dark:bg-white/20 text-gray-700 dark:text-gray-200"
                 >
                   {collection.name}
                 </span>
@@ -120,41 +120,41 @@ export default function ProfileCard({
         {/* Search Settings */}
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-gray-500">Search Type:</span>{' '}
-            <span className="font-medium text-gray-900">
+            <span className="text-[var(--text-secondary)]">Search Type:</span>{' '}
+            <span className="font-medium text-[var(--text-primary)]">
               {SEARCH_TYPE_LABELS[profile.search_type]}
             </span>
           </div>
           <div>
-            <span className="text-gray-500">Results:</span>{' '}
-            <span className="font-medium text-gray-900">
+            <span className="text-[var(--text-secondary)]">Results:</span>{' '}
+            <span className="font-medium text-[var(--text-primary)]">
               {profile.result_count}
             </span>
           </div>
           <div>
-            <span className="text-gray-500">Reranker:</span>{' '}
-            <span className="font-medium text-gray-900">
+            <span className="text-[var(--text-secondary)]">Reranker:</span>{' '}
+            <span className="font-medium text-[var(--text-primary)]">
               {profile.use_reranker ? 'Yes' : 'No'}
             </span>
           </div>
           <div>
-            <span className="text-gray-500">Mode:</span>{' '}
-            <span className="font-medium text-gray-900">
+            <span className="text-[var(--text-secondary)]">Mode:</span>{' '}
+            <span className="font-medium text-[var(--text-primary)]">
               {SEARCH_MODE_LABELS[profile.search_mode]}
             </span>
           </div>
           {profile.search_type === 'hybrid' && profile.hybrid_alpha !== null && (
             <div>
-              <span className="text-gray-500">Hybrid Alpha:</span>{' '}
-              <span className="font-medium text-gray-900">
+              <span className="text-[var(--text-secondary)]">Hybrid Alpha:</span>{' '}
+              <span className="font-medium text-[var(--text-primary)]">
                 {profile.hybrid_alpha}
               </span>
             </div>
           )}
           {profile.search_mode === 'hybrid' && profile.rrf_k !== null && (
             <div>
-              <span className="text-gray-500">RRF k:</span>{' '}
-              <span className="font-medium text-gray-900">
+              <span className="text-[var(--text-secondary)]">RRF k:</span>{' '}
+              <span className="font-medium text-[var(--text-primary)]">
                 {profile.rrf_k}
               </span>
             </div>
@@ -162,20 +162,20 @@ export default function ProfileCard({
         </div>
 
         {/* Tool Name */}
-        <div className="pt-2 border-t border-gray-100">
-          <span className="text-xs font-medium text-gray-500">MCP Tool Name</span>
-          <code className="mt-1 block text-sm font-mono bg-gray-50 px-2 py-1 rounded text-gray-700">
+        <div className="pt-2 border-t border-[var(--border)]">
+          <span className="text-xs font-medium text-[var(--text-muted)]">MCP Tool Name</span>
+          <code className="mt-1 block text-sm font-mono bg-[var(--bg-tertiary)] px-2 py-1 rounded text-[var(--text-primary)]">
             search_{profile.name}
           </code>
         </div>
       </div>
 
       {/* Card Footer - Actions */}
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 rounded-b-lg flex justify-between items-center">
+      <div className="px-4 py-3 bg-[var(--bg-tertiary)] border-t border-[var(--border)] rounded-b-lg flex justify-between items-center">
         <div className="flex gap-2">
           <button
             onClick={onEdit}
-            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-tertiary)]"
           >
             <svg
               className="w-4 h-4 mr-1"
@@ -194,7 +194,7 @@ export default function ProfileCard({
           </button>
           <button
             onClick={onViewConfig}
-            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded-md hover:bg-gray-200 dark:hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-tertiary)]"
           >
             <svg
               className="w-4 h-4 mr-1"
@@ -214,7 +214,7 @@ export default function ProfileCard({
         </div>
         <button
           onClick={onDelete}
-          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 focus:ring-offset-[var(--bg-tertiary)]"
         >
           <svg
             className="w-4 h-4 mr-1"

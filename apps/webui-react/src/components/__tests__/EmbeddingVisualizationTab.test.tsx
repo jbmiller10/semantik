@@ -1624,7 +1624,7 @@ describe('EmbeddingVisualizationTab', () => {
 
     const rows = screen.getAllByRole('row').slice(1);
     const widths = rows
-      .map((row) => row.querySelector('td:nth-child(3) .bg-purple-500') as HTMLElement | null)
+      .map((row) => row.querySelector('td:nth-child(3) .bg-blue-500') as HTMLElement | null)
       .filter((bar): bar is HTMLElement => Boolean(bar))
       .map((bar) => bar.style.width);
 

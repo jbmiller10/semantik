@@ -88,13 +88,13 @@ describe('UI Error States', () => {
       
       // Error toast
       const errorToast = screen.getByText('Network connection failed').closest('[data-testid="toast"]')
-      expect(errorToast).toHaveClass('toast-error')
-      expect(errorToast).toHaveClass('border-red-500')
-      
+      expect(errorToast).toHaveClass('border-l-4')
+      expect(errorToast).toHaveClass('border-l-error')
+
       // Warning toast
       const warningToast = screen.getByText('Operation completed with warnings').closest('[data-testid="toast"]')
-      expect(warningToast).toHaveClass('toast-warning')
-      expect(warningToast).toHaveClass('border-yellow-500')
+      expect(warningToast).toHaveClass('border-l-4')
+      expect(warningToast).toHaveClass('border-l-warning')
     })
 
     it.skip('should auto-dismiss error toasts after duration (not implemented)', async () => {

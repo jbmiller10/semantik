@@ -112,7 +112,7 @@ export default function CollectionDefaultsSettings() {
   if (isLoading || modelsLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <svg className="animate-spin h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"
@@ -127,7 +127,7 @@ export default function CollectionDefaultsSettings() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading collection defaults...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading collection defaults...</span>
       </div>
     );
   }
@@ -158,8 +158,8 @@ export default function CollectionDefaultsSettings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h3 className="text-lg leading-6 font-medium text-gray-900">Collection Defaults</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">Collection Defaults</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Configure default settings applied when creating new collections.
         </p>
       </div>
@@ -190,14 +190,14 @@ export default function CollectionDefaultsSettings() {
       </div>
 
       {/* Embedding Settings */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Embedding Settings</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">Embedding Settings</h4>
 
           <div className="space-y-4">
             {/* Embedding Model */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Default Embedding Model
               </label>
               <select
@@ -212,14 +212,14 @@ export default function CollectionDefaultsSettings() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 The embedding model used to vectorize documents
               </p>
             </div>
 
             {/* Model Precision */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 Model Precision
               </label>
               <div className="flex space-x-2">
@@ -228,8 +228,8 @@ export default function CollectionDefaultsSettings() {
                   onClick={() => handleChange('quantization', 'float32')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.quantization === 'float32'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   float32
@@ -239,8 +239,8 @@ export default function CollectionDefaultsSettings() {
                   onClick={() => handleChange('quantization', 'float16')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.quantization === 'float16'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   float16
@@ -250,14 +250,14 @@ export default function CollectionDefaultsSettings() {
                   onClick={() => handleChange('quantization', 'int8')}
                   className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                     formState.quantization === 'int8'
-                      ? 'bg-blue-100 border-blue-500 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
                   int8
                 </button>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Reduces GPU memory usage. float16 is recommended for most models.
               </p>
             </div>
@@ -266,14 +266,14 @@ export default function CollectionDefaultsSettings() {
       </div>
 
       {/* Chunking Settings */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Chunking Settings</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">Chunking Settings</h4>
 
           <div className="space-y-4">
             {/* Chunking Strategy */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
                 Chunking Strategy
               </label>
               <select
@@ -286,7 +286,7 @@ export default function CollectionDefaultsSettings() {
                 <option value="markdown">Markdown</option>
                 <option value="semantic">Semantic</option>
               </select>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 How documents are split into chunks for embedding
               </p>
             </div>
@@ -294,7 +294,7 @@ export default function CollectionDefaultsSettings() {
             {/* Chunk Size and Overlap */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
                   Chunk Size
                 </label>
                 <input
@@ -305,12 +305,12 @@ export default function CollectionDefaultsSettings() {
                   onChange={(e) => handleChange('chunk_size', parseInt(e.target.value, 10) || 1024)}
                   className={getInputClassName(false, false)}
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Characters per chunk (256-4096)
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
                   Chunk Overlap
                 </label>
                 <input
@@ -321,7 +321,7 @@ export default function CollectionDefaultsSettings() {
                   onChange={(e) => handleChange('chunk_overlap', parseInt(e.target.value, 10) || 0)}
                   className={getInputClassName(false, false)}
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Overlap between chunks (0-512)
                 </p>
               </div>
@@ -331,9 +331,9 @@ export default function CollectionDefaultsSettings() {
       </div>
 
       {/* Sparse Indexing Settings */}
-      <div className="bg-white shadow rounded-lg">
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
         <div className="px-4 py-5 sm:p-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Sparse Indexing</h4>
+          <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">Sparse Indexing</h4>
 
           <div className="space-y-4">
             {/* Enable Sparse Indexing */}
@@ -343,12 +343,12 @@ export default function CollectionDefaultsSettings() {
                   type="checkbox"
                   checked={formState.enable_sparse}
                   onChange={(e) => handleChange('enable_sparse', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)]"
                 />
               </div>
               <div className="ml-3 text-sm">
-                <label className="font-medium text-gray-700">Enable Sparse Indexing</label>
-                <p className="text-gray-500">
+                <label className="font-medium text-[var(--text-primary)]">Enable Sparse Indexing</label>
+                <p className="text-[var(--text-secondary)]">
                   Create keyword-based index in addition to vector embeddings
                 </p>
               </div>
@@ -357,7 +357,7 @@ export default function CollectionDefaultsSettings() {
             {/* Sparse Type - only shown when sparse is enabled */}
             {formState.enable_sparse && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                   Sparse Index Type
                 </label>
                 <div className="flex space-x-2">
@@ -366,8 +366,8 @@ export default function CollectionDefaultsSettings() {
                     onClick={() => handleChange('sparse_type', 'bm25')}
                     className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                       formState.sparse_type === 'bm25'
-                        ? 'bg-blue-100 border-blue-500 text-blue-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                        : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                     }`}
                   >
                     BM25
@@ -377,14 +377,14 @@ export default function CollectionDefaultsSettings() {
                     onClick={() => handleChange('sparse_type', 'splade')}
                     className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
                       formState.sparse_type === 'splade'
-                        ? 'bg-blue-100 border-blue-500 text-blue-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                        : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                     }`}
                   >
                     SPLADE
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   BM25 is keyword-based, SPLADE uses learned sparse representations
                 </p>
               </div>
@@ -398,14 +398,14 @@ export default function CollectionDefaultsSettings() {
                   checked={formState.enable_hybrid}
                   onChange={(e) => handleChange('enable_hybrid', e.target.checked)}
                   disabled={!formState.enable_sparse}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
+                  className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)] disabled:opacity-50"
                 />
               </div>
               <div className="ml-3 text-sm">
-                <label className={`font-medium ${formState.enable_sparse ? 'text-gray-700' : 'text-gray-400'}`}>
+                <label className={`font-medium ${formState.enable_sparse ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                   Enable Hybrid Search by Default
                 </label>
-                <p className={formState.enable_sparse ? 'text-gray-500' : 'text-gray-400'}>
+                <p className={formState.enable_sparse ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'}>
                   Combine dense and sparse results for better search quality
                   {!formState.enable_sparse && ' (requires sparse indexing)'}
                 </p>
@@ -428,7 +428,7 @@ export default function CollectionDefaultsSettings() {
           type="button"
           onClick={handleReset}
           disabled={resetMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {resetMutation.isPending ? 'Resetting...' : 'Reset to System Defaults'}
         </button>
@@ -436,7 +436,7 @@ export default function CollectionDefaultsSettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending || !!validationError}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>

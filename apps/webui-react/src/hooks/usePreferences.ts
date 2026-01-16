@@ -5,6 +5,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { preferencesApi } from '../services/api/v2/preferences';
 import { useUIStore } from '../stores/uiStore';
+import { useAuthStore } from '../stores/authStore';
 import { ApiErrorHandler } from '../utils/api-error-handler';
 import type { UserPreferencesResponse, UserPreferencesUpdate } from '../types/preferences';
 
@@ -20,8 +21,11 @@ export const preferencesKeys = {
 /**
  * Hook to fetch current user's preferences.
  * Creates defaults if not configured yet.
+ * Only runs when user is authenticated to prevent infinite loops on login page.
  */
 export function usePreferences() {
+  const token = useAuthStore((state) => state.token);
+
   return useQuery({
     queryKey: preferencesKeys.settings(),
     queryFn: async () => {
@@ -30,6 +34,7 @@ export function usePreferences() {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true, // Multi-tab sync
+    enabled: !!token, // Only fetch when authenticated
   });
 }
 

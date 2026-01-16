@@ -56,7 +56,7 @@ vi.mock('../CollectionMultiSelect', () => ({
 
 // Mock RerankingConfiguration component
 vi.mock('../RerankingConfiguration', () => ({
-  RerankingConfiguration: ({ enabled, model, quantization, onChange }: {
+  RerankingConfiguration: ({ enabled, model, quantization, onChange, hideToggle }: {
     enabled: boolean;
     model?: string;
     quantization?: string;
@@ -64,36 +64,39 @@ vi.mock('../RerankingConfiguration', () => ({
       useReranker?: boolean;
       rerankModel?: string;
       rerankQuantization?: string;
-    }) => void
+    }) => void;
+    hideToggle?: boolean;
   }) => (
     <div data-testid="reranking-configuration">
-      <label>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onChange({ useReranker: e.target.checked })}
-          aria-label="Enable cross-encoder reranking"
-        />
-        Enable Cross-Encoder Reranking
-      </label>
-      {enabled && (
-        <div>
-          <select
-            value={model || 'BAAI/bge-reranker-v2-m3'}
-            onChange={(e) => onChange({ rerankModel: e.target.value })}
-          >
-            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
-            <option value="Qwen/Qwen3-Reranker-0.6B">Qwen/Qwen3-Reranker-0.6B</option>
-          </select>
-          <select
-            value={quantization || 'int8'}
-            onChange={(e) => onChange({ rerankQuantization: e.target.value })}
-          >
-            <option value="int8">int8</option>
-            <option value="float16">float16</option>
-          </select>
-        </div>
+      {!hideToggle && (
+        <label>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onChange({ useReranker: e.target.checked })}
+            aria-label="Enable cross-encoder reranking"
+          />
+          Enable Cross-Encoder Reranking
+        </label>
       )}
+      <div className={!enabled && hideToggle ? 'opacity-50' : ''}>
+        <select
+          value={model || 'BAAI/bge-reranker-v2-m3'}
+          onChange={(e) => onChange({ rerankModel: e.target.value })}
+          disabled={!enabled}
+        >
+          <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+          <option value="Qwen/Qwen3-Reranker-0.6B">Qwen/Qwen3-Reranker-0.6B</option>
+        </select>
+        <select
+          value={quantization || 'int8'}
+          onChange={(e) => onChange({ rerankQuantization: e.target.value })}
+          disabled={!enabled}
+        >
+          <option value="int8">int8</option>
+          <option value="float16">float16</option>
+        </select>
+      </div>
     </div>
   )
 }))
@@ -146,6 +149,8 @@ describe('SearchInterface', () => {
       abortController: null,
       setAbortController: vi.fn(),
       setGpuMemoryError: vi.fn(),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     vi.mocked(useUIStore).mockReturnValue({
@@ -191,6 +196,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -213,7 +220,9 @@ describe('SearchInterface', () => {
     })
   })
 
-  it('shows hybrid search options when enabled', async () => {
+  it('shows RRF configuration in Advanced Options when hybrid mode is enabled', async () => {
+    const user = userEvent.setup()
+
     vi.mocked(useSearchStore).mockReturnValue({
       searchParams: { ...defaultSearchParams, searchMode: 'hybrid' as const },
       updateSearchParams: mockUpdateSearchParams,
@@ -228,13 +237,52 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
 
-    // New SearchModeSelector shows RRF config when in hybrid mode
-    expect(screen.getByText('Hybrid Search Configuration')).toBeInTheDocument()
-    expect(screen.getByText(/RRF Weighting/)).toBeInTheDocument()
+    // Expand Advanced Options to see RRF configuration
+    const advancedButton = screen.getByText('Advanced Options')
+    await user.click(advancedButton)
+
+    // RRF configuration is now in Advanced Options
+    expect(screen.getByText('RRF Weighting')).toBeInTheDocument()
+    // Should show the k value (appears in both display and slider labels)
+    expect(screen.getAllByText(/k=60/).length).toBeGreaterThan(0)
+  })
+
+  it('shows RRF configuration as disabled when not in hybrid mode', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(useSearchStore).mockReturnValue({
+      searchParams: { ...defaultSearchParams, searchMode: 'dense' as const },
+      updateSearchParams: mockUpdateSearchParams,
+      validateAndUpdateSearchParams: mockValidateAndUpdateSearchParams,
+      setResults: mockSetResults,
+      setLoading: mockSetLoading,
+      setError: mockSetError,
+      setCollections: mockSetCollections,
+      collections: [],
+      setRerankingMetrics: mockSetRerankingMetrics,
+      setFailedCollections: vi.fn(),
+      setPartialFailure: vi.fn(),
+      hasValidationErrors: vi.fn().mockReturnValue(false),
+      getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
+    })
+
+    render(<SearchInterface />)
+
+    // Expand Advanced Options
+    const advancedButton = screen.getByText('Advanced Options')
+    await user.click(advancedButton)
+
+    // RRF section should be visible but show "requires Hybrid mode"
+    expect(screen.getByText('RRF Weighting')).toBeInTheDocument()
+    expect(screen.getByText('(requires Hybrid mode)')).toBeInTheDocument()
   })
 
   it('toggles reranking options', async () => {
@@ -242,11 +290,8 @@ describe('SearchInterface', () => {
 
     render(<SearchInterface />)
 
-    // Expand advanced options
-    const advancedButton = screen.getByText('Advanced Options')
-    await user.click(advancedButton)
-
-    const rerankCheckbox = screen.getByLabelText(/enable cross-encoder reranking/i)
+    // Reranking toggle is now at top level (not inside Advanced Options)
+    const rerankCheckbox = screen.getByLabelText(/cross-encoder reranking/i)
     expect(rerankCheckbox).not.toBeChecked()
 
     await user.click(rerankCheckbox)
@@ -271,15 +316,17 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
 
-    // Expand advanced options
+    // Expand advanced options to see model/quantization options
     const advancedButton = screen.getByText('Advanced Options')
     await user.click(advancedButton)
 
-    // Check that reranking options are shown
+    // Check that reranking model/quantization options are shown
     const selects = screen.getAllByRole('combobox')
     // We expect at least 2 selects for reranking (model and quantization)
     // There might be others (Search Type, Collections, etc.)
@@ -323,6 +370,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -348,6 +397,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)
@@ -388,6 +439,8 @@ describe('SearchInterface', () => {
       setPartialFailure: vi.fn(),
       hasValidationErrors: vi.fn().mockReturnValue(false),
       getValidationError: vi.fn().mockReturnValue(undefined),
+      rerankingAvailable: true,
+      rerankingModelsLoading: false,
     })
 
     render(<SearchInterface />)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, X, Loader2 } from 'lucide-react';
+import { Search, X, Loader2, HelpCircle } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
 import SearchOptions from './SearchOptions';
@@ -51,7 +51,9 @@ export default function SearchForm({ collections }: SearchFormProps) {
         setAbortController,
         setRerankingMetrics,
         setHydeUsed,
-        setHydeInfo
+        setHydeInfo,
+        rerankingAvailable,
+        rerankingModelsLoading
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
@@ -270,8 +272,8 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         placeholder="Enter your search query..."
                         className={`w-full pl-5 pr-12 py-4 text-lg border rounded-xl shadow-sm transition-all duration-200 outline-none
                             ${getValidationError('query')
-                                ? 'border-red-500/50 bg-red-500/10 focus:ring-2 focus:ring-red-500/20 text-red-200'
-                                : 'input-glass text-white focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500'
+                                ? 'border-red-500/50 bg-red-500/10 focus:ring-2 focus:ring-red-500/20 text-red-600 dark:text-red-200'
+                                : 'input-field text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/20 focus:border-[var(--accent-primary)]'
                             }`}
                         disabled={loading}
                     />
@@ -280,24 +282,24 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             <button
                                 type="button"
                                 onClick={handleCancel}
-                                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                                className="p-1.5 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                                 title="Cancel search"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         ) : (
-                            <Search className="w-6 h-6 text-signal-400 group-focus-within:text-signal-300 transition-colors" />
+                            <Search className="w-6 h-6 text-[var(--text-muted)] group-focus-within:text-[var(--accent-primary)] transition-colors" />
                         )}
                     </div>
                 </div>
                 {getValidationError('query') && (
-                    <p className="text-sm text-red-400 font-medium ml-1">{getValidationError('query')}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400 font-medium ml-1">{getValidationError('query')}</p>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Collection Selector */}
                     <div className="lg:col-span-2 space-y-1.5">
-                        <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">
+                        <label className="block text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
                             Collections
                         </label>
                         <CollectionMultiSelect
@@ -315,7 +317,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
 
                     {/* Embedding Mode Selector */}
                     <div className="space-y-1.5">
-                        <label htmlFor="search-type" className="block text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">
+                        <label htmlFor="search-type" className="block text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
                             Embedding Mode
                         </label>
                         <select
@@ -325,52 +327,86 @@ export default function SearchForm({ collections }: SearchFormProps) {
                                 setFieldTouched('searchType', true);
                                 validateAndUpdateSearchParams({ searchType: e.target.value as 'semantic' | 'hybrid' | 'question' | 'code' });
                             }}
-                            className="w-full px-4 py-2.5 input-glass rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500 transition-all duration-200"
+                            className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 focus:border-[var(--accent-primary)] transition-all duration-200"
                             disabled={loading}
                         >
                             <option value="semantic">General</option>
                             <option value="question">Question Answering</option>
                             <option value="code">Code Search</option>
                         </select>
-                        <p className="text-xs text-gray-500 ml-1">
+                        <p className="text-xs text-[var(--text-muted)] ml-1">
                             Controls embedding instruction/prefix
                         </p>
                     </div>
                 </div>
             </div>
 
-            <div className="border-t border-white/5 pt-6">
+            <div className="border-t border-[var(--border)] pt-6">
                 {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
                 <SearchModeSelector
                     searchMode={searchParams.searchMode}
-                    rrfK={searchParams.rrfK}
                     onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
-                    onRrfKChange={(k: number) => validateAndUpdateSearchParams({ rrfK: k })}
                     disabled={loading}
                     sparseAvailable={true}
                 />
 
-                {/* HyDE Query Expansion Toggle */}
-                <div className="mt-4 flex items-center space-x-2">
-                    <input
-                        type="checkbox"
-                        id="use-hyde"
-                        checked={searchParams.useHyde}
-                        onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
-                        disabled={loading}
-                        className="h-4 w-4 bg-void-800 border-white/20 text-signal-600 rounded focus:ring-signal-500 focus:ring-offset-void-900"
-                    />
-                    <label htmlFor="use-hyde" className="text-sm text-gray-300 font-medium">
-                        Use HyDE query expansion
-                    </label>
-                    <span className="text-xs text-gray-500" title="Generates a hypothetical document to improve search quality">
-                        (?)
-                    </span>
+                {/* Reranking and HyDE Toggles */}
+                <div className="mt-4 grid grid-cols-2 gap-6">
+                    {/* Cross-Encoder Reranking Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-reranker"
+                            checked={searchParams.useReranker}
+                            onChange={(e) => validateAndUpdateSearchParams({ useReranker: e.target.checked })}
+                            disabled={loading || rerankingModelsLoading || !rerankingAvailable}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-reranker" className={`text-sm font-medium ${!rerankingAvailable && !rerankingModelsLoading ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}>
+                            Cross-Encoder Reranking
+                        </label>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Re-scores results using a model that reads query and document together for better ranking.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Increases VRAM and latency
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {/* HyDE Query Expansion Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-hyde"
+                            checked={searchParams.useHyde}
+                            onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
+                            disabled={loading}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-hyde" className="text-sm text-[var(--text-primary)] font-medium">
+                            HyDE Query Expansion
+                        </label>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Uses an LLM to generate a hypothetical answer, then searches with that embedding. Helps when questions don't match document wording.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Requires LLM; increases VRAM and latency
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Advanced Options */}
-            <div className="glass-card bg-void-800/30 rounded-xl p-4 border border-white/5">
+            <div className="card bg-[var(--bg-secondary)] rounded-xl p-4 border border-[var(--border)]">
                 <SearchOptions />
             </div>
 
@@ -379,14 +415,9 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 <button
                     type="submit"
                     disabled={loading}
-                    className={`
-            px-8 py-3.5 rounded-xl font-bold text-white shadow-lg shadow-signal-600/20 transition-all duration-200
+                    className={`btn-primary px-8 py-3.5 rounded-xl font-bold shadow-lg transition-all duration-200
             flex items-center space-x-2.5 transform hover:-translate-y-0.5
-            ${loading
-                            ? 'bg-signal-800 cursor-not-allowed shadow-none translate-y-0 opacity-50'
-                            : 'bg-signal-600 hover:bg-signal-500 hover:shadow-signal-600/40 active:translate-y-0'
-                        }
-          `}
+            ${loading ? 'cursor-not-allowed shadow-none translate-y-0 opacity-50' : 'hover:shadow-lg active:translate-y-0'}`}
                 >
                     {loading ? (
                         <>

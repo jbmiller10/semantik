@@ -60,11 +60,11 @@ export default function GpuMemorySettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <svg className="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-6 w-6 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
-        <span className="ml-2 text-gray-500">Loading GPU/memory settings...</span>
+        <span className="ml-2 text-[var(--text-secondary)]">Loading GPU/memory settings...</span>
       </div>
     );
   }
@@ -105,11 +105,11 @@ export default function GpuMemorySettings() {
 
       {/* GPU Memory Section */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">GPU Memory</h4>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">GPU Memory</h4>
         <div className="space-y-4 ml-4">
           {/* GPU Memory Limit */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-[var(--text-primary)]">
               GPU Memory Limit ({(formState.gpu_memory_max_percent * 100).toFixed(0)}%)
             </label>
             <input
@@ -119,9 +119,9 @@ export default function GpuMemorySettings() {
               step={0.05}
               value={formState.gpu_memory_max_percent}
               onChange={(e) => handleChange('gpu_memory_max_percent', parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer"
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               Maximum GPU memory percentage the application can use (50-100%)
             </p>
           </div>
@@ -130,11 +130,11 @@ export default function GpuMemorySettings() {
 
       {/* CPU Memory Section */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">CPU Memory (Warm Models)</h4>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">CPU Memory (Warm Models)</h4>
         <div className="space-y-4 ml-4">
           {/* CPU Memory Limit */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-[var(--text-primary)]">
               CPU Memory Limit ({(formState.cpu_memory_max_percent * 100).toFixed(0)}%)
             </label>
             <input
@@ -144,9 +144,9 @@ export default function GpuMemorySettings() {
               step={0.05}
               value={formState.cpu_memory_max_percent}
               onChange={(e) => handleChange('cpu_memory_max_percent', parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              className="w-full h-2 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer"
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               Maximum CPU memory for warm models when offloaded from GPU (30-90%)
             </p>
           </div>
@@ -155,7 +155,7 @@ export default function GpuMemorySettings() {
 
       {/* Offloading & Eviction Section */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">Offloading & Eviction</h4>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">Offloading & Eviction</h4>
         <div className="space-y-4 ml-4">
           {/* Enable CPU Offload */}
           <div className="flex items-start">
@@ -164,12 +164,12 @@ export default function GpuMemorySettings() {
                 type="checkbox"
                 checked={formState.enable_cpu_offload}
                 onChange={(e) => handleChange('enable_cpu_offload', e.target.checked)}
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                className="h-4 w-4 text-[var(--accent-primary)] border-[var(--border)] rounded focus:ring-[var(--accent-primary)]"
               />
             </div>
             <div className="ml-3 text-sm">
-              <label className="font-medium text-gray-700">Enable CPU Offload</label>
-              <p className="text-gray-500">
+              <label className="font-medium text-[var(--text-primary)]">Enable CPU Offload</label>
+              <p className="text-[var(--text-secondary)]">
                 Automatically offload models to CPU when GPU memory is low
               </p>
             </div>
@@ -177,7 +177,7 @@ export default function GpuMemorySettings() {
 
           {/* Eviction Idle Threshold */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-[var(--text-primary)]">
               Eviction Idle Threshold (seconds)
             </label>
             <input
@@ -188,7 +188,7 @@ export default function GpuMemorySettings() {
               onChange={(e) => handleChange('eviction_idle_threshold_seconds', parseInt(e.target.value, 10) || 120)}
               className={getInputClassName(false, false)}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               Time before idle models are evicted from memory (30-600 seconds)
             </p>
           </div>
@@ -196,12 +196,12 @@ export default function GpuMemorySettings() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex justify-between pt-4 border-t border-gray-200">
+      <div className="flex justify-between pt-4 border-t border-[var(--border)]">
         <button
           type="button"
           onClick={handleReset}
           disabled={resetMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-[var(--border)] shadow-sm text-sm font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {resetMutation.isPending ? 'Resetting...' : 'Reset to Defaults'}
         </button>
@@ -209,7 +209,7 @@ export default function GpuMemorySettings() {
           type="button"
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[var(--accent-primary)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <>

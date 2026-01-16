@@ -41,17 +41,17 @@ function CollectionCard({ collection }: CollectionCardProps) {
   const getStatusColor = (status: CollectionStatus) => {
     switch (status) {
       case 'ready':
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        return 'badge-success';
       case 'processing':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+        return 'badge-info';
       case 'error':
-        return 'bg-red-500/10 text-red-400 border-red-500/20';
+        return 'badge-error';
       case 'degraded':
-        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+        return 'badge-warning';
       case 'pending':
-        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+        return 'badge-neutral';
       default:
-        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+        return 'badge-neutral';
     }
   };
 
@@ -92,33 +92,33 @@ function CollectionCard({ collection }: CollectionCardProps) {
   return (
     <div
       data-testid="collection-card"
-      className={`relative group glass-card rounded-xl overflow-hidden hover:-translate-y-1 ${isProcessing ? 'ring-1 ring-signal-500/50' : ''
+      className={`relative group card rounded-xl overflow-hidden transition-transform duration-200 hover:-translate-y-0.5 ${isProcessing ? 'ring-1 ring-info/50' : ''
         }`}
     >
       {/* Processing indicator bar */}
       {isProcessing && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-void-800" role="progressbar">
-          <div className="h-full bg-gradient-to-r from-signal-600 to-signal-400 animate-pulse" style={{ width: `${collection.activeOperation?.progress || 50}%` }} />
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-[var(--bg-tertiary)]" role="progressbar">
+          <div className="h-full bg-info animate-pulse" style={{ width: `${collection.activeOperation?.progress || 50}%` }} />
         </div>
       )}
 
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0 pr-4">
-            <h3 className="text-lg font-bold text-white truncate tracking-tight" title={collection.name}>
+            <h3 className="text-lg font-semibold text-[var(--text-primary)] truncate tracking-tight" title={collection.name}>
               {collection.name}
             </h3>
             {collection.description && (
-              <p className="mt-1 text-sm text-gray-400 truncate" title={collection.description}>
+              <p className="mt-1 text-sm text-[var(--text-secondary)] truncate" title={collection.description}>
                 {collection.description}
               </p>
             )}
-            <div className="mt-3 text-[10px] font-mono uppercase tracking-wider text-signal-300 bg-signal-500/10 border border-signal-500/20 px-2 py-1 rounded inline-block">
+            <div className="mt-3 text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] px-2 py-1 rounded inline-block">
               {getModelDisplayName(collection.embedding_model)}
             </div>
           </div>
           <div className="flex-shrink-0">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getStatusColor(collection.status)}`}>
+            <span className={`badge ${getStatusColor(collection.status)} gap-1.5`}>
               {getStatusIcon(collection.status)}
               <span className="capitalize">{collection.status}</span>
             </span>
@@ -127,9 +127,9 @@ function CollectionCard({ collection }: CollectionCardProps) {
 
         {/* Active operation message */}
         {collection.activeOperation && (
-          <div className="mb-4 p-3 bg-void-800/50 rounded-lg border border-white/5">
-            <p className="text-xs font-medium text-signal-300 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-signal-500 animate-pulse"></span>
+          <div className="mb-4 p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-subtle)]">
+            <p className="text-xs font-medium text-info flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse"></span>
               {collection.activeOperation.type === 'index' && 'Indexing documents...'}
               {collection.activeOperation.type === 'append' && 'Adding new documents...'}
               {collection.activeOperation.type === 'reindex' && 'Reindexing collection...'}
@@ -141,37 +141,37 @@ function CollectionCard({ collection }: CollectionCardProps) {
 
         {/* Status message if error or degraded */}
         {collection.status_message && (collection.status === 'error' || collection.status === 'degraded') && (
-          <div className={`mb-4 p-3 rounded-lg border ${collection.status === 'error' ? 'bg-red-500/10 border-red-500/20' : 'bg-yellow-500/10 border-yellow-500/20'}`}>
-            <p className={`text-xs font-medium ${collection.status === 'error' ? 'text-red-300' : 'text-yellow-300'}`}>
+          <div className={`mb-4 p-3 rounded-lg border ${collection.status === 'error' ? 'bg-error/10 border-error/20' : 'bg-warning/10 border-warning/20'}`}>
+            <p className={`text-xs font-medium ${collection.status === 'error' ? 'text-error' : 'text-warning'}`}>
               {collection.status_message}
             </p>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 py-4 border-t border-white/5 mt-4">
+        <div className="grid grid-cols-2 gap-4 py-4 border-t border-[var(--border-subtle)] mt-4">
           <div>
-            <dt className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Documents</dt>
-            <dd className="mt-0.5 text-sm font-bold text-gray-200">
+            <dt className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Documents</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-[var(--text-primary)]">
               {formatNumber(collection.document_count)}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Vectors</dt>
-            <dd className="mt-0.5 text-sm font-bold text-gray-200">
+            <dt className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Vectors</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-[var(--text-primary)]">
               {formatNumber(collection.vector_count)}
             </dd>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-4 mt-2 border-t border-white/5">
-          <div className="text-xs text-gray-500 font-medium">
+        <div className="flex items-center justify-between pt-4 mt-2 border-t border-[var(--border-subtle)]">
+          <div className="text-xs text-[var(--text-muted)] font-medium">
             Updated {formatDate(collection.updated_at)}
           </div>
           <button
             onClick={() => {
               setShowCollectionDetailsModal(collection.id);
             }}
-            className="text-xs font-bold uppercase tracking-wider text-signal-400 hover:text-signal-300 transition-colors flex items-center group/btn"
+            className="text-xs font-semibold text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] transition-colors flex items-center group/btn"
             disabled={!!isProcessing}
           >
             Manage

@@ -22,12 +22,12 @@ function SearchInterface() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0 space-y-8 animate-fade-in">
-      <div className="glass-panel rounded-2xl p-8">
+      <div className="panel rounded-xl p-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-white tracking-tight">
+          <h2 className="text-2xl font-serif font-semibold text-[var(--text-primary)] tracking-tight">
             Search Knowledge Base
           </h2>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Find documents and semantic context across all collections
           </p>
         </div>

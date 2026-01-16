@@ -185,9 +185,9 @@ describe('Error States - Integration Tests', () => {
       // Should show prominent create button(s)
       const createButtons = screen.getAllByRole('button', { name: /create.*collection/i })
       expect(createButtons.length).toBeGreaterThan(0)
-      // Check at least one has a button style (bg-signal-600 or bg-signal-500)
+      // Check at least one has a button style (btn-primary)
       expect(createButtons.some(button =>
-        button.classList.contains('bg-signal-600') || button.classList.contains('bg-signal-500')
+        button.classList.contains('btn-primary')
       )).toBe(true)
     })
 

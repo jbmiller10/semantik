@@ -14,8 +14,8 @@ export default function PreferencesTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-100">Preferences</h3>
-        <p className="mt-1 text-sm text-gray-400">
+        <h3 className="text-lg font-medium text-[var(--text-primary)]">Preferences</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Configure your search, collection defaults, AI settings, and interface preferences.
         </p>
       </div>

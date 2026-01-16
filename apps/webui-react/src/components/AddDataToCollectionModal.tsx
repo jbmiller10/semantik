@@ -214,9 +214,9 @@ function AddDataToCollectionModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-void-950/80 z-[60]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-[60]" onClick={onClose} />
       <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel rounded-lg shadow-xl z-[60] w-full max-w-xl max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-void-700 sticky top-0 bg-void-900/95 backdrop-blur-sm">
+        <div className="px-6 py-4 border-b border-[var(--border)] sticky top-0 bg-[var(--bg-primary)]/95 backdrop-blur-sm">
           <h3 className="text-lg font-medium text-gray-100">Add Data to Collection</h3>
           <p className="mt-1 text-sm text-gray-400">
             Add new documents to "{collection.name}"
@@ -225,7 +225,7 @@ function AddDataToCollectionModal({
 
         {catalogLoading ? (
           <div className="px-6 py-12 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-signal-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--text-muted)]" />
             <span className="ml-2 text-gray-400">Loading connectors...</span>
           </div>
         ) : catalog ? (
@@ -255,7 +255,7 @@ function AddDataToCollectionModal({
               />
 
               {/* Settings Summary */}
-              <div className="bg-void-800/50 rounded-lg p-4 border border-void-700 mt-4">
+              <div className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border)] mt-4">
                 <h4 className="text-sm font-medium text-gray-100 mb-2">Collection Settings</h4>
                 <dl className="text-xs space-y-1">
                   <div className="flex justify-between">
@@ -274,15 +274,15 @@ function AddDataToCollectionModal({
               </div>
 
               {/* Info Banner */}
-              <div className="bg-signal-600/10 border border-signal-600/30 rounded-lg p-4">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-signal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-blue-300">
                       Duplicate content will be automatically skipped. Only new or modified items will be processed.
                     </p>
                   </div>
@@ -290,18 +290,18 @@ function AddDataToCollectionModal({
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-void-700 flex justify-end space-x-3 sticky bottom-0 bg-void-900/95 backdrop-blur-sm">
+            <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end space-x-3 sticky bottom-0 bg-[var(--bg-primary)]/95 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 border border-void-600 rounded-md text-sm font-medium text-gray-300 hover:bg-void-800 transition-colors"
+                className="px-4 py-2 border border-[var(--border)] rounded-md text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
                 disabled={isDisabled}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-signal-600 text-white rounded-md text-sm font-medium hover:bg-signal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-gray-200 dark:bg-white text-gray-900 dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 disabled={isDisabled}
               >
                 {isDisabled ? 'Adding Source...' : 'Add Source'}

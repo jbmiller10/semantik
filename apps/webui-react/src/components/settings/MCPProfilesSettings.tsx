@@ -20,7 +20,7 @@ export default function MCPProfilesSettings() {
     return (
       <div className="flex items-center justify-center py-12">
         <svg
-          className="animate-spin h-8 w-8 text-gray-400"
+          className="animate-spin h-8 w-8 text-[var(--text-muted)]"
           fill="none"
           viewBox="0 0 24 24"
         >
@@ -38,7 +38,7 @@ export default function MCPProfilesSettings() {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="ml-3 text-gray-500">Loading MCP profiles...</span>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading MCP profiles...</span>
       </div>
     );
   }
@@ -46,7 +46,7 @@ export default function MCPProfilesSettings() {
   // Error state
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
         <div className="flex">
           <svg
             className="h-5 w-5 text-red-400"
@@ -62,15 +62,15 @@ export default function MCPProfilesSettings() {
             />
           </svg>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">
+            <h3 className="text-sm font-medium text-red-300">
               Error loading MCP profiles
             </h3>
-            <p className="mt-1 text-sm text-red-700">
+            <p className="mt-1 text-sm text-red-400">
               {error instanceof Error ? error.message : 'Unknown error occurred'}
             </p>
             <button
               onClick={() => refetch()}
-              className="mt-2 text-sm font-medium text-red-600 hover:text-red-500"
+              className="mt-2 text-sm font-medium text-red-400 hover:text-red-300"
             >
               Try again
             </button>
@@ -85,14 +85,14 @@ export default function MCPProfilesSettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">MCP Profiles</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <h3 className="text-lg font-medium text-[var(--text-primary)]">MCP Profiles</h3>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Configure search profiles for MCP clients like Claude Desktop
           </p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-md hover:bg-gray-300 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]"
         >
           <svg
             className="w-4 h-4 mr-2"
@@ -112,7 +112,7 @@ export default function MCPProfilesSettings() {
       </div>
 
       {/* Info Box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
         <div className="flex">
           <svg
             className="h-5 w-5 text-blue-400 flex-shrink-0"
@@ -128,10 +128,10 @@ export default function MCPProfilesSettings() {
             />
           </svg>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">
+            <h3 className="text-sm font-medium text-blue-300">
               What are MCP Profiles?
             </h3>
-            <p className="mt-1 text-sm text-blue-700">
+            <p className="mt-1 text-sm text-blue-400">
               MCP (Model Context Protocol) profiles let you expose your Semantik
               collections to AI assistants like Claude Desktop. Each profile
               creates a search tool that the AI can use to search your selected
@@ -143,9 +143,9 @@ export default function MCPProfilesSettings() {
 
       {/* Empty State */}
       {(!profiles || profiles.length === 0) && (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+        <div className="text-center py-12 bg-[var(--bg-tertiary)] rounded-lg border-2 border-dashed border-[var(--border)]">
           <svg
-            className="mx-auto h-12 w-12 text-gray-400"
+            className="mx-auto h-12 w-12 text-[var(--text-muted)]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -157,16 +157,16 @@ export default function MCPProfilesSettings() {
               d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">
+          <h3 className="mt-2 text-sm font-medium text-[var(--text-primary)]">
             No MCP profiles
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Get started by creating a new profile to expose your collections to
             AI assistants.
           </p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-md hover:bg-gray-300 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]"
           >
             <svg
               className="w-4 h-4 mr-2"

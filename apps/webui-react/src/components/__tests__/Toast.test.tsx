@@ -52,14 +52,14 @@ describe('Toast', () => {
     })
 
     render(<Toast />)
-    
+
     expect(screen.getByText('Error')).toBeInTheDocument()
     expect(screen.getByText('Something went wrong!')).toBeInTheDocument()
-    
-    // Check for error styling (red border)
+
+    // Check for error styling
     const toastElement = screen.getByText('Error').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('border-l-4')
-    expect(toastElement).toHaveClass('border-red-500')
+    expect(toastElement).toHaveClass('border-l-error')
   })
 
   it('renders success toast correctly', () => {
@@ -86,10 +86,10 @@ describe('Toast', () => {
     expect(screen.getByText('Success')).toBeInTheDocument()
     expect(screen.getByText('Operation completed successfully!')).toBeInTheDocument()
     
-    // Check for success styling (green border)
+    // Check for success styling
     const toastElement = screen.getByText('Success').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('border-l-4')
-    expect(toastElement).toHaveClass('border-green-500')
+    expect(toastElement).toHaveClass('border-l-success')
   })
 
   it('renders warning toast correctly', () => {
@@ -116,10 +116,10 @@ describe('Toast', () => {
     expect(screen.getByText('Warning')).toBeInTheDocument()
     expect(screen.getByText('Please be careful!')).toBeInTheDocument()
     
-    // Check for warning styling (yellow border)
+    // Check for warning styling
     const toastElement = screen.getByText('Warning').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('border-l-4')
-    expect(toastElement).toHaveClass('border-yellow-500')
+    expect(toastElement).toHaveClass('border-l-warning')
   })
 
   it('renders info toast correctly', () => {
@@ -146,10 +146,10 @@ describe('Toast', () => {
     expect(screen.getByText('Info')).toBeInTheDocument()
     expect(screen.getByText('Here is some information.')).toBeInTheDocument()
 
-    // Check for info styling (signal border for dark theme)
+    // Check for info styling
     const toastElement = screen.getByText('Info').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('border-l-4')
-    expect(toastElement).toHaveClass('border-signal-500')
+    expect(toastElement).toHaveClass('border-l-info')
   })
 
   it('renders multiple toasts', () => {
@@ -310,12 +310,10 @@ describe('Toast', () => {
     const toastElement = screen.getByText('Info').closest('.p-4')?.parentElement
     expect(toastElement).toHaveClass('max-w-sm')
     expect(toastElement).toHaveClass('w-full')
-    expect(toastElement).toHaveClass('bg-void-900')
     expect(toastElement).toHaveClass('shadow-lg')
     expect(toastElement).toHaveClass('rounded-lg')
     expect(toastElement).toHaveClass('pointer-events-auto')
-    expect(toastElement).toHaveClass('ring-1')
-    expect(toastElement).toHaveClass('ring-void-700')
     expect(toastElement).toHaveClass('overflow-hidden')
+    expect(toastElement).toHaveClass('border-l-4')
   })
 })

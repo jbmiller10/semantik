@@ -202,18 +202,18 @@ function statusBadge(status: ProjectionMetadata['status'] | string) {
   const base = 'px-2 py-1 rounded-full text-xs font-medium';
   switch (status) {
     case 'completed':
-      return <span className={`${base} bg-green-100 text-green-800`}>Completed</span>;
+      return <span className={`${base} bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400`}>Completed</span>;
     case 'running':
     case 'processing':
-      return <span className={`${base} bg-blue-100 text-blue-800`}>Processing</span>;
+      return <span className={`${base} bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400`}>Processing</span>;
     case 'failed':
-      return <span className={`${base} bg-red-100 text-red-800`}>Failed</span>;
+      return <span className={`${base} bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400`}>Failed</span>;
     case 'cancelled':
-      return <span className={`${base} bg-gray-100 text-gray-600`}>Cancelled</span>;
+      return <span className={`${base} bg-[var(--bg-tertiary)] text-[var(--text-muted)]`}>Cancelled</span>;
     case 'pending':
-      return <span className={`${base} bg-amber-100 text-amber-800`}>Pending</span>;
+      return <span className={`${base} bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400`}>Pending</span>;
     default:
-      return <span className={`${base} bg-amber-100 text-amber-800`}>Pending</span>;
+      return <span className={`${base} bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400`}>Pending</span>;
   }
 }
 
@@ -939,11 +939,11 @@ export function EmbeddingVisualizationTab({
 
   return (
     <div className="space-y-6">
-      <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Start a new projection</h3>
+      <section className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4 shadow-sm">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Start a new projection</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               Projection method
             </label>
             <div className="grid md:grid-cols-3 gap-3">
@@ -953,22 +953,22 @@ export function EmbeddingVisualizationTab({
                   type="button"
                   onClick={() => setSelectedReducer(option.value)}
                   className={`border rounded-lg p-3 text-left transition-colors ${selectedReducer === option.value
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-200 hover:border-purple-300'
+                    ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10'
+                    : 'border-[var(--border)] hover:border-[var(--border-strong)]'
                     }`}
                 >
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <p className="text-sm text-gray-600 mt-1">{option.description}</p>
+                  <div className="font-medium text-[var(--text-primary)]">{option.label}</div>
+                  <p className="text-sm text-[var(--text-secondary)] mt-1">{option.description}</p>
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Color by</label>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">Color by</label>
             <select
               value={selectedColorBy}
               onChange={(event) => setSelectedColorBy(event.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+              className="mt-1 block w-full rounded-md border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
             >
               {COLOR_BY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -981,7 +981,7 @@ export function EmbeddingVisualizationTab({
             type="button"
             onClick={handleStartProjection}
             disabled={startProjection.isPending}
-            className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 disabled:opacity-50"
+            className="inline-flex items-center px-4 py-2 bg-gray-700 dark:bg-white text-white dark:text-gray-900 rounded-md shadow-sm hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50"
           >
             {startProjection.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1031,60 +1031,60 @@ export function EmbeddingVisualizationTab({
         </div>
       )}
 
-      <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-        <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Projection runs</h3>
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-purple-600" />}
+      <section className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-sm">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Projection runs</h3>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-[var(--text-secondary)]" />}
         </header>
         {sortedProjections.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
-            <p className="font-medium text-gray-700 mb-2">No projections yet</p>
+          <div className="p-6 text-center text-[var(--text-secondary)]">
+            <p className="font-medium text-[var(--text-primary)] mb-2">No projections yet</p>
             <p className="text-sm">Start a projection to generate a 2D representation of your embeddings.</p>
           </div>
         ) : (
           <div className="overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-[var(--border)]">
+              <thead className="bg-[var(--bg-tertiary)]">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                     Projection
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                     Progress
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                     Created
                   </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-[var(--bg-secondary)] divide-y divide-[var(--border)]">
                 {sortedProjections.map((projection) => {
                   // Prefer operation_status over projection.status for more accurate state
                   const displayStatus = projection.operation_status || projection.status;
                   const progress = projectionProgress(displayStatus);
                   return (
-                    <tr key={projection.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        <div className="font-medium text-gray-900">{projection.reducer.toUpperCase()}</div>
-                        <div className="text-xs text-gray-500">ID: {projection.id}</div>
+                    <tr key={projection.id} className="hover:bg-[var(--bg-tertiary)]">
+                      <td className="px-4 py-3 text-sm text-[var(--text-primary)]">
+                        <div className="font-medium text-[var(--text-primary)]">{projection.reducer.toUpperCase()}</div>
+                        <div className="text-xs text-[var(--text-muted)]">ID: {projection.id}</div>
                         {projection.message && (
-                          <div className="mt-1 text-xs text-gray-500">{projection.message}</div>
+                          <div className="mt-1 text-xs text-[var(--text-muted)]">{projection.message}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">{statusBadge(displayStatus)}</td>
                       <td className="px-4 py-3">
-                        <div className="h-2 rounded bg-gray-200">
+                        <div className="h-2 rounded bg-[var(--bg-tertiary)]">
                           <div
-                            className="h-2 rounded bg-purple-500 transition-all"
+                            className="h-2 rounded bg-blue-500 transition-all"
                             style={{ width: `${progress}%` }}
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
+                      <td className="px-4 py-3 text-sm text-[var(--text-muted)]">
                         {projection.created_at
                           ? new Date(projection.created_at).toLocaleString()
                           : '—'}
@@ -1095,7 +1095,7 @@ export function EmbeddingVisualizationTab({
                             <button
                               type="button"
                               onClick={() => handleViewProjection(projection)}
-                              className="text-sm text-purple-600 hover:text-purple-800 inline-flex items-center"
+                              className="text-sm text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 inline-flex items-center"
                             >
                               <Eye className="h-4 w-4 mr-1" /> View
                             </button>
@@ -1119,36 +1119,36 @@ export function EmbeddingVisualizationTab({
         )}
       </section>
 
-      <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Projection preview</h3>
+      <section className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-sm p-4">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Projection preview</h3>
         {activeProjection.status === 'idle' && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-[var(--text-secondary)]">
             Select a completed projection to load its coordinates and visualize the embedding.
           </div>
         )}
 
         {activeProjection.status === 'loading' && (
-          <div className="flex items-center gap-2 text-sm text-purple-700">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading projection data…
           </div>
         )}
 
         {activeProjection.status === 'error' && (
-          <div className="flex items-center gap-2 text-sm text-red-600">
+          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
             <AlertCircle className="h-4 w-4" /> {activeProjection.error}
           </div>
         )}
 
         {activeProjection.status === 'loaded' && activeProjection.arrays && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-primary)]">
               <span>
                 Loaded <span className="font-semibold">{activeProjection.pointCount}</span> points.
                 Categories: {new Set(activeProjection.arrays.category).size}.
               </span>
               {activeProjectionMeta?.sampled && (
                 <span
-                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400"
                   title={`Showing ${shownCountDisplay.toLocaleString()} of ${totalCountDisplay.toLocaleString()} points`}
                 >
                   Sampled
@@ -1157,9 +1157,9 @@ export function EmbeddingVisualizationTab({
             </div>
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                  <span className="font-medium text-gray-800">Rendering</span>
-                  <div className="inline-flex overflow-hidden rounded-md border border-gray-200 bg-white">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-primary)]">
+                  <span className="font-medium text-[var(--text-primary)]">Rendering</span>
+                  <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-secondary)]">
                     {RENDER_MODE_OPTIONS.map((mode) => {
                       const isActive = currentRenderMode === mode;
                       const label =
@@ -1173,9 +1173,9 @@ export function EmbeddingVisualizationTab({
                           key={mode}
                           type="button"
                           onClick={() => handleRenderModeChange(mode)}
-                          className={`px-2.5 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 ${isActive
-                            ? 'bg-purple-600 text-white shadow-sm'
-                            : 'text-gray-600 hover:bg-purple-50'
+                          className={`px-2.5 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:focus-visible:ring-white focus-visible:ring-offset-1 ${isActive
+                            ? 'bg-gray-700 dark:bg-white text-white dark:text-gray-900 shadow-sm'
+                            : 'text-[var(--text-secondary)] hover:bg-gray-500/10'
                             }`}
                           aria-pressed={isActive}
                         >
@@ -1184,17 +1184,17 @@ export function EmbeddingVisualizationTab({
                       );
                     })}
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--text-muted)]">
                     {currentRenderMode === 'auto'
                       ? `Auto switches to density at ${densityThreshold.toLocaleString()}+ points`
                       : `Forced ${currentRenderMode}`}
                   </span>
                 </div>
                 {hasLegend ? (
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      className="h-4 w-4 rounded border-[var(--border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white"
                       checked={labelsEnabled}
                       onChange={(event) => setLabelsEnabled(event.target.checked)}
                     />
@@ -1204,7 +1204,7 @@ export function EmbeddingVisualizationTab({
               </div>
               {activeProjectionMeta?.color_by && (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[var(--text-secondary)]">
                     Colored by <span className="font-medium">{activeProjectionMeta.color_by}</span>
                   </p>
                   {(activeProjectionMeta.color_by !== selectedColorBy || activeProjectionMeta.degraded) && (
@@ -1212,7 +1212,7 @@ export function EmbeddingVisualizationTab({
                       type="button"
                       onClick={handleRecomputeProjection}
                       disabled={startProjection.isPending}
-                      className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-purple-500 text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+                      className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                     >
                       {startProjection.isPending ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1225,14 +1225,14 @@ export function EmbeddingVisualizationTab({
                 </div>
               )}
               {activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Legend</h4>
-                  <ul className="max-h-48 overflow-y-auto text-sm text-gray-600 space-y-1">
+                <div className="bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-md p-3">
+                  <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">Legend</h4>
+                  <ul className="max-h-48 overflow-y-auto text-sm text-[var(--text-secondary)] space-y-1">
                     {activeProjectionMeta.legend.map((entry) => (
                       <li key={entry.index} className="flex items-center justify-between">
                         <span>{entry.label}</span>
                         {typeof entry.count === 'number' && (
-                          <span className="text-xs text-gray-500">{entry.count.toLocaleString()}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{entry.count.toLocaleString()}</span>
                         )}
                       </li>
                     ))}
@@ -1241,12 +1241,12 @@ export function EmbeddingVisualizationTab({
               )}
             </div>
             <div
-              className="border border-gray-200 rounded-md overflow-hidden"
+              className="border border-[var(--border)] rounded-md overflow-hidden"
               ref={viewContainerRef}
               style={{ minHeight: '320px' }}
               onPointerLeave={handleTooltipLeaveEvent}
             >
-              <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
+              <Suspense fallback={<div className="p-4 text-sm text-[var(--text-secondary)]">Rendering projection…</div>}>
                 {/* EmbeddingView (embedding-atlas)
                     - data: typed arrays (Float32Array / Uint8Array) for
                       x / y / category. Length consistency is validated above.
@@ -1291,47 +1291,47 @@ export function EmbeddingVisualizationTab({
               </Suspense>
             </div>
             {(selectionState.indices.length > 0 || selectionState.loading || selectionState.error) && (
-              <div className="border border-gray-200 rounded-md p-4 bg-white shadow-sm">
+              <div className="border border-[var(--border)] rounded-md p-4 bg-[var(--bg-secondary)] shadow-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-semibold text-gray-800">Selection</h4>
-                  <span className="text-xs text-gray-500">
+                  <h4 className="text-sm font-semibold text-[var(--text-primary)]">Selection</h4>
+                  <span className="text-xs text-[var(--text-muted)]">
                     Indices: {selectionState.indices.length.toLocaleString()}
                   </span>
                 </div>
                 {activeProjectionMeta?.degraded && !selectionState.loading && (
-                  <p className="mb-2 text-xs text-amber-700">
+                  <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
                     This projection is marked as degraded; selection results may be incomplete. Consider recomputing.
                   </p>
                 )}
                 {selectionState.loading && (
-                  <div className="flex items-center gap-2 text-sm text-purple-600">
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <Loader2 className="h-4 w-4 animate-spin" /> Resolving selection…
                   </div>
                 )}
                 {selectionState.error && !selectionState.loading && (
-                  <div className="text-sm text-red-600">{selectionState.error}</div>
+                  <div className="text-sm text-red-600 dark:text-red-400">{selectionState.error}</div>
                 )}
                 {!selectionState.loading && selectionState.items.length > 0 && (
                   <>
                     {selectionState.items.length > 1 && (
-                      <p className="text-xs text-gray-500 mb-2 italic">
+                      <p className="text-xs text-[var(--text-muted)] mb-2 italic">
                         Actions apply to the first selected point
                       </p>
                     )}
-                    <ul className="space-y-3 text-sm text-gray-700 max-h-64 overflow-y-auto">
+                    <ul className="space-y-3 text-sm text-[var(--text-primary)] max-h-64 overflow-y-auto">
                       {selectionState.items.map((item) => (
-                        <li key={`${item.selected_id}-${item.index}`} className="border border-gray-200 rounded-md p-3">
-                          <div className="text-xs text-gray-500 mb-1">
+                        <li key={`${item.selected_id}-${item.index}`} className="border border-[var(--border)] rounded-md p-3">
+                          <div className="text-xs text-[var(--text-muted)] mb-1">
                             Point #{item.index + 1} • ID {item.selected_id}
                           </div>
                           {item.document_id && (
-                            <div className="font-medium text-gray-900">Document {item.document_id}</div>
+                            <div className="font-medium text-[var(--text-primary)]">Document {item.document_id}</div>
                           )}
                           {item.chunk_index !== undefined && item.chunk_index !== null && (
-                            <div className="text-xs text-gray-500">Chunk #{item.chunk_index}</div>
+                            <div className="text-xs text-[var(--text-muted)]">Chunk #{item.chunk_index}</div>
                           )}
                           {item.content_preview && (
-                            <p className="mt-2 text-sm text-gray-600 line-clamp-3">{item.content_preview}</p>
+                            <p className="mt-2 text-sm text-[var(--text-secondary)] line-clamp-3">{item.content_preview}</p>
                           )}
                           <div className="mt-3 flex gap-2">
                             <button
@@ -1339,7 +1339,7 @@ export function EmbeddingVisualizationTab({
                               onClick={() => handleOpenDocument(item)}
                               disabled={!item.document_id}
                               title="View the full document containing this chunk"
-                              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Open
                             </button>
@@ -1348,7 +1348,7 @@ export function EmbeddingVisualizationTab({
                               onClick={() => handleFindSimilar(item)}
                               disabled={!item.content_preview || similarSearchState.loading}
                               title="Search for semantically similar content"
-                              className="text-xs px-2 py-1 rounded border border-purple-400 text-purple-600 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="text-xs px-2 py-1 rounded border border-blue-400 dark:border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {similarSearchState.loading ? 'Searching...' : 'Find Similar'}
                             </button>
@@ -1362,26 +1362,26 @@ export function EmbeddingVisualizationTab({
                   selectionState.items.length === 0 &&
                   !selectionState.error &&
                   selectionState.indices.length > 0 && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[var(--text-muted)]">
                       Selected points could not be mapped to documents. Try recomputing the projection or refining your
                       selection.
                     </p>
                   )}
                 {selectionState.missing.length > 0 && (
-                  <p className="mt-2 text-xs text-amber-600">
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                     {selectionState.missing.length.toLocaleString()} point(s) could not be resolved.
                   </p>
                 )}
 
                 {/* Similar Results Section */}
                 {similarSearchState.visible && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="mt-4 pt-4 border-t border-[var(--border)]">
                     <div className="flex items-center justify-between mb-3">
-                      <h5 className="text-sm font-semibold text-gray-800">Similar Chunks</h5>
+                      <h5 className="text-sm font-semibold text-[var(--text-primary)]">Similar Chunks</h5>
                       <button
                         type="button"
                         onClick={() => setSimilarSearchState((prev) => ({ ...prev, visible: false }))}
-                        className="text-gray-500 hover:text-gray-700"
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                         title="Close similar results"
                       >
                         <X className="h-4 w-4" />
@@ -1389,34 +1389,34 @@ export function EmbeddingVisualizationTab({
                     </div>
 
                     {similarSearchState.loading && (
-                      <div className="flex items-center gap-2 text-sm text-purple-600">
+                      <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                         <Loader2 className="h-4 w-4 animate-spin" /> Searching for similar chunks…
                       </div>
                     )}
 
                     {similarSearchState.error && !similarSearchState.loading && (
-                      <div className="text-sm text-red-600">{similarSearchState.error}</div>
+                      <div className="text-sm text-red-600 dark:text-red-400">{similarSearchState.error}</div>
                     )}
 
                     {!similarSearchState.loading && similarSearchState.results.length > 0 && (
-                      <ul className="space-y-2 text-sm text-gray-700 max-h-96 overflow-y-auto">
+                      <ul className="space-y-2 text-sm text-[var(--text-primary)] max-h-96 overflow-y-auto">
                         {similarSearchState.results.map((result) => (
                           <li
                             key={`${result.document_id}-${result.chunk_index}`}
-                            className="border border-gray-200 rounded-md p-3 hover:bg-gray-50"
+                            className="border border-[var(--border)] rounded-md p-3 hover:bg-[var(--bg-tertiary)]"
                           >
                             <div className="flex items-center justify-between mb-1">
-                              <div className="font-medium text-gray-900 text-xs truncate">
+                              <div className="font-medium text-[var(--text-primary)] text-xs truncate">
                                 {result.file_name}
                               </div>
-                              <span className="text-xs text-purple-600 font-medium ml-2">
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium ml-2">
                                 {(result.score * 100).toFixed(1)}%
                               </span>
                             </div>
-                            <div className="text-xs text-gray-500 mb-2">
+                            <div className="text-xs text-[var(--text-muted)] mb-2">
                               Chunk #{result.chunk_index}
                             </div>
-                            <p className="text-sm text-gray-600 line-clamp-2 mb-2">{result.text}</p>
+                            <p className="text-sm text-[var(--text-secondary)] line-clamp-2 mb-2">{result.text}</p>
                             <button
                               type="button"
                               onClick={() => {
@@ -1426,7 +1426,7 @@ export function EmbeddingVisualizationTab({
                                   chunkId: result.chunk_id,
                                 });
                               }}
-                              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                              className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
                             >
                               Open
                             </button>
@@ -1436,7 +1436,7 @@ export function EmbeddingVisualizationTab({
                     )}
 
                     {!similarSearchState.loading && similarSearchState.results.length === 0 && !similarSearchState.error && (
-                      <p className="text-sm text-gray-500">No similar chunks found.</p>
+                      <p className="text-sm text-[var(--text-muted)]">No similar chunks found.</p>
                     )}
                   </div>
                 )}
@@ -1448,21 +1448,21 @@ export function EmbeddingVisualizationTab({
 
       {recomputeDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Recompute Projection</h3>
-            <p className="mt-2 text-sm text-gray-600">
+          <div className="w-full max-w-lg rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">Recompute Projection</h3>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
               Choose reducer and sampling parameters for the new projection run.
             </p>
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reducer</label>
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Reducer</label>
                 <select
                   value={recomputeReducer}
                   onChange={(event) =>
                     handleRecomputeReducerChange(event.target.value as ProjectionReducer)
                   }
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                 >
                   <option value="umap">UMAP</option>
                   <option value="tsne">t-SNE</option>
@@ -1473,7 +1473,7 @@ export function EmbeddingVisualizationTab({
               {recomputeReducer === 'umap' && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">n_neighbors</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">n_neighbors</label>
                     <input
                       type="number"
                       min={2}
@@ -1481,11 +1481,11 @@ export function EmbeddingVisualizationTab({
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, n_neighbors: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">min_dist</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">min_dist</label>
                     <input
                       type="number"
                       min={0}
@@ -1495,17 +1495,17 @@ export function EmbeddingVisualizationTab({
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, min_dist: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Metric</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Metric</label>
                     <select
                       value={recomputeParams.metric}
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, metric: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     >
                       {METRIC_OPTIONS.map((metricOption) => (
                         <option key={metricOption} value={metricOption}>
@@ -1520,7 +1520,7 @@ export function EmbeddingVisualizationTab({
               {recomputeReducer === 'tsne' && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">perplexity</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">perplexity</label>
                     <input
                       type="number"
                       min={1}
@@ -1528,11 +1528,11 @@ export function EmbeddingVisualizationTab({
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, perplexity: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">learning_rate</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">learning_rate</label>
                     <input
                       type="number"
                       min={1}
@@ -1540,11 +1540,11 @@ export function EmbeddingVisualizationTab({
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, learning_rate: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">n_iter</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">n_iter</label>
                     <input
                       type="number"
                       min={250}
@@ -1552,17 +1552,17 @@ export function EmbeddingVisualizationTab({
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, n_iter: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">metric</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">metric</label>
                     <select
                       value={recomputeParams.metric}
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, metric: event.target.value }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     >
                       {TSNE_METRIC_OPTIONS.map((metricOption) => (
                         <option key={metricOption} value={metricOption}>
@@ -1572,13 +1572,13 @@ export function EmbeddingVisualizationTab({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">init</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">init</label>
                     <select
                       value={recomputeParams.init}
                       onChange={(event) =>
                         setRecomputeParams((prev) => ({ ...prev, init: event.target.value as 'pca' | 'random' }))
                       }
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                     >
                       {TSNE_INIT_OPTIONS.map((initOption) => (
                         <option key={initOption} value={initOption}>
@@ -1591,7 +1591,7 @@ export function EmbeddingVisualizationTab({
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sample size</label>
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Sample size</label>
                 <input
                   type="number"
                   min={1}
@@ -1600,15 +1600,15 @@ export function EmbeddingVisualizationTab({
                   onChange={(event) =>
                     setRecomputeParams((prev) => ({ ...prev, sample_n: event.target.value }))
                   }
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  className="block w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm focus:border-gray-400 dark:focus:border-white focus:ring-gray-400 dark:focus:ring-white sm:text-sm"
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
                   Leave blank to use the default cap ({SAMPLE_LIMIT_CAP.toLocaleString()} points).
                 </p>
               </div>
 
               {recomputeError && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-400">
                   {recomputeError}
                 </div>
               )}
@@ -1618,7 +1618,7 @@ export function EmbeddingVisualizationTab({
               <button
                 type="button"
                 onClick={closeRecomputeDialog}
-                className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                className="inline-flex items-center rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]"
                 disabled={startProjection.isPending}
               >
                 Cancel
@@ -1627,7 +1627,7 @@ export function EmbeddingVisualizationTab({
                 type="button"
                 onClick={handleRecomputeSubmit}
                 disabled={startProjection.isPending}
-                className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                className="inline-flex items-center rounded-md bg-gray-700 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50"
               >
                 {startProjection.isPending ? (
                   <>

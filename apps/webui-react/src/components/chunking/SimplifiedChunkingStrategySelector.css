@@ -41,12 +41,12 @@ button {
 /* Focus visible improvements */
 button:focus-visible,
 select:focus-visible {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid #9ca3af;
   outline-offset: 2px;
 }
 
 /* Hover state for learn more link */
-.text-signal-500:hover {
+.text-blue-400:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
