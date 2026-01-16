@@ -168,7 +168,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="button"
                   onClick={() => setShowStrategySelector(!showStrategySelector)}
-                  className="text-sm text-signal-400 hover:text-signal-300 font-bold tracking-wide"
+                  className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] font-bold tracking-wide"
                 >
                   {showStrategySelector ? 'Hide' : 'Change'} Chunking Strategy
                 </button>
@@ -259,7 +259,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
-                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-transparent placeholder-[var(--text-muted)]"
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400/50 dark:focus:ring-white/50 focus:border-transparent placeholder-[var(--text-muted)]"
                   placeholder="Type the confirmation text"
                   autoComplete="off"
                   autoFocus
@@ -283,7 +283,7 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 <button
                   type="submit"
                   disabled={!isConfirmValid || isSubmitting || reindexCollectionMutation.isPending}
-                  className="px-4 py-2 text-sm font-bold text-white bg-signal-600 border border-transparent rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="px-4 py-2 text-sm font-bold text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {isSubmitting || reindexCollectionMutation.isPending ? 'Starting Re-index...' : 'Re-index Collection'}
                 </button>

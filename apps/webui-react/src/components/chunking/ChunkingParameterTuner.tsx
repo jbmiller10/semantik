@@ -138,7 +138,7 @@ export function ChunkingParameterTuner({
                   <p className="text-xs text-[var(--text-muted)] mt-1">Measured in {param.unit}</p>
                 )}
               </div>
-              <span className="text-sm font-mono font-medium text-signal-500 bg-[var(--bg-tertiary)] px-3 py-1 rounded-lg border border-[var(--border)]">
+              <span className="text-sm font-mono font-medium text-[var(--text-primary)] bg-[var(--bg-tertiary)] px-3 py-1 rounded-lg border border-[var(--border)]">
                 {value}
               </span>
             </div>
@@ -151,7 +151,7 @@ export function ChunkingParameterTuner({
                 value={value as number}
                 onChange={(e) => handleParameterChange(param.key, Number(e.target.value))}
                 disabled={disabled}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer slider accent-signal-500
+                className={`w-full h-2 rounded-lg appearance-none cursor-pointer slider accent-gray-600 dark:accent-white
                   ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 style={{
                   background: `linear-gradient(to right, var(--accent-primary) 0%, var(--accent-primary) ${
@@ -195,8 +195,8 @@ export function ChunkingParameterTuner({
               onClick={() => handleParameterChange(param.key, !value)}
               disabled={disabled}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent
-                transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]
-                ${value ? 'bg-signal-600' : 'bg-gray-300 dark:bg-gray-600'}
+                transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]
+                ${value ? 'bg-gray-600 dark:bg-white' : 'bg-gray-300 dark:bg-gray-600'}
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               role="switch"
               aria-checked={value as boolean}
@@ -230,7 +230,7 @@ export function ChunkingParameterTuner({
               value={value as string}
               onChange={(e) => handleParameterChange(param.key, e.target.value)}
               disabled={disabled}
-              className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
+              className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-gray-400/50 dark:focus:ring-white/50 focus:border-gray-400 dark:focus:border-white rounded-lg"
             >
               {param.options?.map(option => (
                 <option key={option.value} value={option.value}>
@@ -269,7 +269,7 @@ export function ChunkingParameterTuner({
               type="button"
               onClick={() => setShowSavePreset(!showSavePreset)}
               disabled={disabled}
-              className="text-xs text-signal-500 hover:text-signal-400 font-medium flex items-center gap-1 transition-colors"
+              className="text-xs text-[var(--text-primary)] hover:text-[var(--text-primary)] font-medium flex items-center gap-1 transition-colors"
             >
               <Save className="h-3 w-3" />
               Save Preset
@@ -281,7 +281,7 @@ export function ChunkingParameterTuner({
           value={selectedPreset || 'custom'}
           onChange={(e) => handlePresetChange(e.target.value)}
           disabled={disabled}
-          className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-signal-500/50 focus:border-signal-500 rounded-lg"
+          className="block w-full pl-3 pr-10 py-2 text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-gray-400/50 dark:focus:ring-white/50 focus:border-gray-400 dark:focus:border-white rounded-lg"
         >
           <option value="custom">Custom Configuration</option>
           {CHUNKING_PRESETS.filter(p => p.strategy === selectedStrategy).length > 0 && (
@@ -307,7 +307,7 @@ export function ChunkingParameterTuner({
 
       {/* Save Custom Preset Form */}
       {showSavePreset && (
-        <div className="bg-signal-500/10 border border-signal-500/20 rounded-xl p-3 space-y-2">
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 space-y-2">
           <input
             type="text"
             value={customPresetName}
@@ -331,7 +331,7 @@ export function ChunkingParameterTuner({
               type="button"
               onClick={handleSaveCustomPreset}
               disabled={!customPresetName.trim() || disabled}
-              className="px-3 py-1 text-sm bg-signal-600 text-white rounded-lg hover:bg-signal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 text-sm bg-gray-600 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-500 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save
             </button>
@@ -395,7 +395,7 @@ export function ChunkingParameterTuner({
               type="button"
               onClick={() => loadPreview(true)}
               disabled={disabled || previewLoading}
-              className="text-signal-500 hover:text-signal-400 font-medium disabled:opacity-50"
+              className="text-[var(--text-primary)] hover:text-[var(--text-primary)] font-medium disabled:opacity-50"
             >
               Refresh
             </button>

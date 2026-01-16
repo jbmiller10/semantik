@@ -292,7 +292,7 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
               link.href = objectUrl;
               link.download = '';
               link.className =
-                'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-signal-600 hover:bg-signal-700';
+                'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-200 dark:bg-white text-gray-900 hover:bg-gray-300 dark:hover:bg-gray-100';
               link.textContent = 'Download Document';
 
               container.appendChild(message);
@@ -319,7 +319,7 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
             link.href = objectUrl;
             link.download = '';
             link.className =
-              'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-signal-600 hover:bg-signal-700';
+              'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-200 dark:bg-white text-gray-900 hover:bg-gray-300 dark:hover:bg-gray-100';
             link.textContent = 'Download File';
 
             container.appendChild(message);
@@ -446,7 +446,7 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
           <div className="flex-1 overflow-auto p-4">
             {loading && (
               <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-signal-500" />
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 dark:border-white" />
               </div>
             )}
 

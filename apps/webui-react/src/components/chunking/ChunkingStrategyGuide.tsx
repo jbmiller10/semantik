@@ -89,12 +89,12 @@ export function ChunkingStrategyGuide({
             <div className="p-6">
               {/* Quick Recommendation */}
               <div className="mb-6 p-4 bg-blue-500/10 border border-gray-400 dark:border-white/20 rounded-xl">
-                <h3 className="font-medium text-signal-600 dark:text-signal-300 mb-2 flex items-center gap-2">
+                <h3 className="font-medium text-blue-400 mb-2 flex items-center gap-2">
                   <Info className="h-5 w-5" />
                   Quick Recommendation
                 </h3>
-                <p className="text-sm text-signal-600/80 dark:text-signal-400/80">
-                  <strong className="text-signal-600 dark:text-signal-300">Not sure which to choose?</strong> Use <span className="font-semibold text-signal-600 dark:text-signal-300">Hybrid Auto-Select</span> —
+                <p className="text-sm text-blue-400">
+                  <strong className="text-blue-400">Not sure which to choose?</strong> Use <span className="font-semibold text-blue-400">Hybrid Auto-Select</span> —
                   it automatically picks the best strategy based on your content type. Perfect for most use cases!
                 </p>
               </div>
@@ -231,8 +231,8 @@ export function ChunkingStrategyGuide({
                   <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
                       <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1 (50 chars)</span>
-                      <div className="bg-signal-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
-                        <span className="font-mono text-signal-600 dark:text-signal-300">Machine learning algorithms analyze patterns in dat</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in dat</span>
                       </div>
                     </div>
                     <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
@@ -254,8 +254,8 @@ export function ChunkingStrategyGuide({
                   <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
                       <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
-                      <div className="bg-signal-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
-                        <span className="font-mono text-signal-600 dark:text-signal-300">Machine learning algorithms analyze patterns in data to make predictions.</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in data to make predictions.</span>
                       </div>
                     </div>
                     <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
@@ -277,8 +277,8 @@ export function ChunkingStrategyGuide({
                   <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
                       <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1: Machine Learning</span>
-                      <div className="bg-signal-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
-                        <span className="font-mono text-signal-600 dark:text-signal-300">Machine learning algorithms analyze patterns in data to make predictions. Deep neural networks have revolutionized computer vision. Training models requires large datasets and computational resources.</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in data to make predictions. Deep neural networks have revolutionized computer vision. Training models requires large datasets and computational resources.</span>
                       </div>
                     </div>
                     <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
@@ -300,7 +300,7 @@ export function ChunkingStrategyGuide({
                   <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
                       <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
-                      <div className="bg-signal-500/20 p-2 rounded border border-gray-400 dark:border-white/30 font-mono text-signal-600 dark:text-signal-300">
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30 font-mono text-blue-400">
                         <div className="font-bold">## Getting Started</div>
                         <div className="mt-1">1. Install dependencies with `npm install`</div>
                         <div>2. Set up your environment variables</div>
@@ -352,10 +352,10 @@ export function ChunkingStrategyGuide({
                   <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs">
                     <div className="relative">
                       <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
-                      <div className="bg-signal-500/20 p-2 rounded-t border border-gray-400 dark:border-white/30 border-b-0">
-                        <span className="font-mono text-signal-600 dark:text-signal-300">Neural networks consist of layers of interconnected nodes. Each node processes input signals and produces an output.</span>
+                      <div className="bg-blue-500/20 p-2 rounded-t border border-gray-400 dark:border-white/30 border-b-0">
+                        <span className="font-mono text-blue-400">Neural networks consist of layers of interconnected nodes. Each node processes input signals and produces an output.</span>
                       </div>
-                      <div className="bg-gradient-to-b from-signal-500/20 to-green-500/20 p-2 border-x border-gray-400 dark:border-white/30">
+                      <div className="bg-gradient-to-b from-blue-500/20 to-green-500/20 p-2 border-x border-gray-400 dark:border-white/30">
                         <span className="font-mono text-[var(--text-secondary)]">The output is passed through an activation function.</span>
                         <span className="text-xs text-[var(--text-muted)] ml-2">[Overlap: 100 chars]</span>
                       </div>
@@ -394,7 +394,7 @@ export function ChunkingStrategyGuide({
         <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end bg-[var(--bg-secondary)]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-bold text-white bg-signal-600 border border-transparent rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 focus:ring-offset-[var(--bg-primary)] transition-all"
+            className="px-4 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] transition-all"
           >
             Got it
           </button>

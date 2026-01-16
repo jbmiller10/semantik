@@ -109,7 +109,7 @@ export function ConnectorForm({
             type="button"
             onClick={onPreview}
             disabled={disabled || isPreviewLoading}
-            className="inline-flex items-center px-4 py-2 border border-[var(--border)] rounded-md shadow-sm text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center px-4 py-2 border border-[var(--border)] rounded-md shadow-sm text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPreviewLoading ? (
               <>

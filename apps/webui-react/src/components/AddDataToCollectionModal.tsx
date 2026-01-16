@@ -225,7 +225,7 @@ function AddDataToCollectionModal({
 
         {catalogLoading ? (
           <div className="px-6 py-12 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-signal-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--text-muted)]" />
             <span className="ml-2 text-gray-400">Loading connectors...</span>
           </div>
         ) : catalog ? (
@@ -274,15 +274,15 @@ function AddDataToCollectionModal({
               </div>
 
               {/* Info Banner */}
-              <div className="bg-signal-600/10 border border-signal-600/30 rounded-lg p-4">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-signal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-blue-300">
                       Duplicate content will be automatically skipped. Only new or modified items will be processed.
                     </p>
                   </div>
@@ -301,7 +301,7 @@ function AddDataToCollectionModal({
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-signal-600 text-white rounded-md text-sm font-medium hover:bg-signal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-gray-200 dark:bg-white text-gray-900 dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 disabled={isDisabled}
               >
                 {isDisabled ? 'Adding Source...' : 'Add Source'}

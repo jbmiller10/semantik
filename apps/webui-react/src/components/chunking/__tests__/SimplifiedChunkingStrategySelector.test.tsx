@@ -530,10 +530,10 @@ describe('SimplifiedChunkingStrategySelector', () => {
       render(<SimplifiedChunkingStrategySelector />);
 
       const learnMoreButton = screen.getByRole('button', { name: /learn more/i });
-      expect(learnMoreButton).toHaveClass('hover:text-signal-400');
+      expect(learnMoreButton).toHaveClass('hover:text-blue-300');
 
       const advancedButton = screen.getByRole('button', { name: /advanced options/i });
-      expect(advancedButton).toHaveClass('hover:text-white');
+      expect(advancedButton).toHaveClass('hover:text-[var(--text-primary)]');
     });
 
     it('should show focus ring on dropdown when open', async () => {
@@ -551,10 +551,10 @@ describe('SimplifiedChunkingStrategySelector', () => {
       render(<SimplifiedChunkingStrategySelector fileType="md" />);
 
       const alert = screen.getByText(/For md files/).closest('div');
-      expect(alert).toHaveClass('bg-signal-500/10', 'border-signal-500/20');
+      expect(alert).toHaveClass('bg-blue-500/10', 'border-blue-500/20');
 
       const text = screen.getByText(/For md files/);
-      expect(text).toHaveClass('text-signal-400');
+      expect(text).toHaveClass('text-blue-400');
     });
 
     it('should show transition effects', async () => {
@@ -574,7 +574,7 @@ describe('SimplifiedChunkingStrategySelector', () => {
       await openDropdown();
 
       const recursiveOption = screen.getByRole('option', { name: /Recursive/i });
-      expect(recursiveOption).toHaveClass('bg-signal-500/20', 'text-white');
+      expect(recursiveOption).toHaveClass('bg-gray-100', 'dark:bg-white/10');
     });
   });
 });

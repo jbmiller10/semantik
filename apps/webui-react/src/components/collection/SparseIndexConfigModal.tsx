@@ -80,8 +80,8 @@ export function SparseIndexConfigModal({
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] rounded-t-2xl">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-signal-500/10 rounded-xl border border-signal-500/20">
-                <Zap className="h-5 w-5 text-signal-400" />
+              <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                <Zap className="h-5 w-5 text-blue-400" />
               </div>
               <div>
                 <h2 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">
@@ -174,7 +174,7 @@ export function SparseIndexConfigModal({
                     className="flex items-center gap-2 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-wide transition-colors"
                   >
                     <span
-                      className={`transform transition-transform text-signal-400 ${showAdvanced ? 'rotate-90' : ''
+                      className={`transform transition-transform text-[var(--text-muted)] ${showAdvanced ? 'rotate-90' : ''
                         }`}
                     >
                       ▶
@@ -198,7 +198,7 @@ export function SparseIndexConfigModal({
                               </div>
                             </div>
                           </label>
-                          <span className="text-sm font-mono text-signal-400 font-bold">
+                          <span className="text-sm font-mono text-[var(--text-primary)] font-bold">
                             {bm25Config.k1}
                           </span>
                         </div>
@@ -214,7 +214,7 @@ export function SparseIndexConfigModal({
                               k1: parseFloat(e.target.value),
                             })
                           }
-                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-signal-500"
+                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-500 dark:accent-white"
                         />
                         <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
                           <span>Low ({BM25_PARAM_RANGES.k1.min})</span>
@@ -236,7 +236,7 @@ export function SparseIndexConfigModal({
                               </div>
                             </div>
                           </label>
-                          <span className="text-sm font-mono text-signal-400 font-bold">
+                          <span className="text-sm font-mono text-[var(--text-primary)] font-bold">
                             {bm25Config.b}
                           </span>
                         </div>
@@ -252,7 +252,7 @@ export function SparseIndexConfigModal({
                               b: parseFloat(e.target.value),
                             })
                           }
-                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-signal-500"
+                          className="w-full h-2 bg-[var(--border)] rounded-lg appearance-none cursor-pointer accent-gray-500 dark:accent-white"
                         />
                         <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
                           <span>None ({BM25_PARAM_RANGES.b.min})</span>
@@ -265,7 +265,7 @@ export function SparseIndexConfigModal({
                       <button
                         type="button"
                         onClick={() => setBm25Config(DEFAULT_BM25_CONFIG)}
-                        className="text-xs font-bold text-signal-400 hover:text-signal-300 uppercase tracking-wide"
+                        className="text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-wide"
                       >
                         Reset to defaults
                       </button>
@@ -281,7 +281,7 @@ export function SparseIndexConfigModal({
                   id="reindex-existing"
                   checked={reindexExisting}
                   onChange={(e) => setReindexExisting(e.target.checked)}
-                  className="mt-1 h-4 w-4 bg-[var(--bg-tertiary)] border-[var(--border)] text-signal-600 focus:ring-signal-500 rounded"
+                  className="mt-1 h-4 w-4 bg-[var(--bg-tertiary)] border-[var(--border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white rounded"
                 />
                 <label htmlFor="reindex-existing" className="text-sm text-[var(--text-secondary)]">
                   <span className="font-bold text-[var(--text-primary)]">Index existing documents</span>
@@ -321,7 +321,7 @@ export function SparseIndexConfigModal({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 text-sm font-bold text-white bg-signal-600 rounded-xl hover:bg-signal-500 shadow-lg shadow-signal-600/20 disabled:opacity-50 flex items-center gap-2 transition-all transform active:scale-95"
+                className="px-6 py-2 text-sm font-bold text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg disabled:opacity-50 flex items-center gap-2 transition-all transform active:scale-95"
               >
                 {isSubmitting ? (
                   <>

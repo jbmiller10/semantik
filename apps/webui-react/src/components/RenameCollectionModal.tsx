@@ -108,7 +108,7 @@ function RenameCollectionModal({
                 onChange={handleNameChange}
                 className={`mt-1 block w-full rounded-xl shadow-sm sm:text-sm bg-[var(--bg-tertiary)] px-4 py-2 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 ${error
                     ? 'border border-red-500/50 focus:ring-red-500/50'
-                    : 'border border-[var(--border)] focus:ring-signal-500/50'
+                    : 'border border-[var(--border)] focus:ring-gray-400/50 dark:focus:ring-white/50'
                   }`}
                 required
                 autoFocus
@@ -146,7 +146,7 @@ function RenameCollectionModal({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-signal-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-signal-600/20 hover:bg-signal-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gray-200 dark:bg-white text-gray-900 dark:text-gray-900 rounded-xl text-sm font-bold shadow-lg hover:bg-gray-300 dark:hover:bg-gray-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={mutation.isPending || !!error || newName === currentName}
             >
               {mutation.isPending ? 'Renaming...' : 'Rename'}

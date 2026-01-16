@@ -270,7 +270,7 @@ export default function ProfileFormModal({
                 htmlFor="name"
                 className="block text-sm font-medium text-[var(--text-secondary)]"
               >
-                Profile Name <span className="text-signal-500">*</span>
+                Profile Name <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -284,7 +284,7 @@ export default function ProfileFormModal({
                 className={`mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 ${
                   errors.name
                     ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-signal-500 focus:border-signal-500'
+                    : 'focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white'
                 } focus:outline-none focus:ring-2`}
               />
               <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -301,7 +301,7 @@ export default function ProfileFormModal({
                 htmlFor="description"
                 className="block text-sm font-medium text-[var(--text-secondary)]"
               >
-                Description <span className="text-signal-500">*</span>
+                Description <span className="text-red-400">*</span>
               </label>
               <textarea
                 id="description"
@@ -315,7 +315,7 @@ export default function ProfileFormModal({
                 className={`mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 ${
                   errors.description
                     ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500'
-                    : 'focus:ring-signal-500 focus:border-signal-500'
+                    : 'focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white'
                 } focus:outline-none focus:ring-2`}
               />
               <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -329,7 +329,7 @@ export default function ProfileFormModal({
             {/* Collections */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                Collections <span className="text-signal-500">*</span>
+                Collections <span className="text-red-400">*</span>
               </label>
               <p className="mt-1 text-xs text-[var(--text-muted)] mb-2">
                 Select which collections this profile can search. Selected collections are searched together.
@@ -368,7 +368,7 @@ export default function ProfileFormModal({
                         checked={formData.collection_ids.includes(collection.id)}
                         onChange={() => handleCollectionToggle(collection.id)}
                         disabled={isSubmitting}
-                        className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--input-bg)] border-[var(--input-border)] rounded"
+                        className="h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--input-bg)] border-[var(--input-border)] rounded"
                       />
                       <span className="ml-2 text-sm text-[var(--text-primary)]">
                         {collection.name}
@@ -402,7 +402,7 @@ export default function ProfileFormModal({
                     handleChange('search_type', e.target.value as MCPSearchType)
                   }
                   disabled={isSubmitting}
-                  className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-signal-500 focus:border-signal-500 focus:outline-none focus:ring-2"
+                  className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white focus:outline-none focus:ring-2"
                 >
                   {Object.entries(SEARCH_TYPE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -438,7 +438,7 @@ export default function ProfileFormModal({
                   className={`mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 ${
                     errors.result_count
                       ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500'
-                      : 'focus:ring-signal-500 focus:border-signal-500'
+                      : 'focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white'
                   } focus:outline-none focus:ring-2`}
                 />
                 <p id="result-count-help" className="mt-1 text-xs text-[var(--text-muted)]">
@@ -467,7 +467,7 @@ export default function ProfileFormModal({
                     handleChange('search_mode', e.target.value as MCPSearchMode)
                   }
                   disabled={isSubmitting}
-                  className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-signal-500 focus:border-signal-500 focus:outline-none focus:ring-2"
+                  className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white focus:outline-none focus:ring-2"
                 >
                   {Object.entries(SEARCH_MODE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -499,7 +499,7 @@ export default function ProfileFormModal({
                       handleChange('rrf_k', e.target.value ? parseInt(e.target.value) : null)
                     }
                     disabled={isSubmitting}
-                    className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-signal-500 focus:border-signal-500 focus:outline-none focus:ring-2"
+                    className="mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white focus:outline-none focus:ring-2"
                   />
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                     Higher values give more weight to top-ranked results (default: 60)
@@ -621,7 +621,7 @@ export default function ProfileFormModal({
                       className={`mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 ${
                         errors.score_threshold
                           ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500'
-                          : 'focus:ring-signal-500 focus:border-signal-500'
+                          : 'focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white'
                       } focus:outline-none focus:ring-2`}
                     />
                     <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -661,7 +661,7 @@ export default function ProfileFormModal({
                         className={`mt-1 block w-full input-field rounded-lg sm:text-sm px-3 py-2 ${
                           errors.hybrid_alpha
                             ? 'border-red-500/50 focus:ring-red-500 focus:border-red-500'
-                            : 'focus:ring-signal-500 focus:border-signal-500'
+                            : 'focus:ring-gray-400 dark:focus:ring-white focus:border-gray-400 dark:focus:border-white'
                         } focus:outline-none focus:ring-2`}
                       />
                       <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -688,7 +688,7 @@ export default function ProfileFormModal({
                       checked={formData.use_hyde}
                       onChange={(e) => handleChange('use_hyde', e.target.checked)}
                       disabled={isSubmitting}
-                      className="h-4 w-4 text-signal-600 bg-[var(--input-bg)] border-[var(--input-border)] rounded focus:ring-signal-500"
+                      className="h-4 w-4 text-gray-600 dark:text-white bg-[var(--input-bg)] border-[var(--input-border)] rounded focus:ring-gray-400 dark:focus:ring-white"
                     />
                   </div>
                 </div>
@@ -709,14 +709,14 @@ export default function ProfileFormModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn-primary inline-flex items-center rounded-lg focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)]"
+              className="btn-primary inline-flex items-center rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)]"
             >
               {isSubmitting && (
                 <svg

@@ -71,7 +71,7 @@ export function SimplifiedChunkingStrategySelector({
           <button
             type="button"
             onClick={() => setShowGuide(true)}
-            className="text-sm text-signal-500 hover:text-signal-400 flex items-center gap-1 transition-colors"
+            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
           >
             <Info className="h-3 w-3" />
             Learn more
@@ -91,7 +91,7 @@ export function SimplifiedChunkingStrategySelector({
                 ? 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] cursor-not-allowed border-[var(--border)]'
                 : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] cursor-pointer border-[var(--border)]'
               }
-              ${isDropdownOpen ? 'ring-2 ring-signal-500/50 border-signal-500' : ''}
+              ${isDropdownOpen ? 'ring-2 ring-gray-400/50 dark:ring-white/50 border-gray-400 dark:border-white' : ''}
             `}
             aria-expanded={isDropdownOpen}
             aria-haspopup="listbox"
@@ -151,8 +151,8 @@ export function SimplifiedChunkingStrategySelector({
 
         {/* File Type Recommendation */}
         {fileType && selectedStrategy !== recommendedStrategy && (
-          <div className="mt-2 p-2 bg-signal-500/10 border border-signal-500/20 rounded-lg">
-            <p className="text-xs text-signal-400 flex items-center gap-1">
+          <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <p className="text-xs text-blue-400 flex items-center gap-1">
               <Sparkles className="h-3 w-3" />
               For {fileType} files, we recommend using {CHUNKING_STRATEGIES[recommendedStrategy].name}
             </p>

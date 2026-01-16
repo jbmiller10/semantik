@@ -43,7 +43,7 @@ export function DynamicField({
           className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
         >
           {field.label}
-          {field.required && <span className="text-signal-500 ml-1">*</span>}
+          {field.required && <span className="text-red-400 ml-1">*</span>}
         </label>
 
         {secretField.is_multiline ? (
@@ -198,7 +198,7 @@ function TextField({
         className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="text"
@@ -233,7 +233,7 @@ function NumberField({
         className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="number"
@@ -271,7 +271,7 @@ function SelectField({
         className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <select
         id={field.name}
@@ -315,7 +315,7 @@ function MultiselectField({
     <div className="space-y-1">
       <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <div className="space-y-2 mt-2">
         {field.options?.map((option) => (
@@ -328,7 +328,7 @@ function MultiselectField({
               checked={currentValue.includes(option.value)}
               onChange={() => handleToggle(option.value)}
               disabled={disabled}
-              className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
+              className="h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
             />
             <span className="ml-2 text-sm text-gray-300">{option.label}</span>
           </label>
@@ -358,7 +358,7 @@ function TextareaField({
         className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <textarea
         id={field.name}
@@ -397,7 +397,7 @@ function BooleanField({
           checked={currentValue}
           onChange={(e) => onChange(e.target.checked)}
           disabled={disabled}
-          className="h-4 w-4 text-signal-600 focus:ring-signal-500 bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
+          className="h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
         />
         <span className="ml-2 text-sm font-medium text-gray-300">
           {field.label}
@@ -461,7 +461,7 @@ function GlobListField({
         className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-signal-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="text"
