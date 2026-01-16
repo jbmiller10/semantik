@@ -6,8 +6,11 @@ from typing import Any
 
 import pytest
 
+from shared.chunking.unified.factory import (
+    TextProcessingStrategyAdapter,
+    UnifiedChunkingFactory,
+)
 from shared.text_processing.base_chunker import ChunkResult
-from shared.text_processing.chunking_factory import ChunkingFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
@@ -22,10 +25,10 @@ EDGE_CASES: dict[str, str] = {
 STRATEGIES: tuple[str, ...] = ("character", "recursive", "markdown", "semantic", "hierarchical", "hybrid")
 
 
-def _create_chunker(strategy: str) -> Any:
-    """Helper that creates a chunker using factory defaults."""
-    config: dict[str, Any] = {"strategy": strategy, "params": {}}
-    return ChunkingFactory.create_chunker(config)
+def _create_chunker(strategy: str) -> TextProcessingStrategyAdapter:
+    """Helper that creates a chunker using the unified factory."""
+    unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
+    return TextProcessingStrategyAdapter(unified_strategy)
 
 
 @pytest.mark.parametrize("strategy", STRATEGIES)
@@ -50,7 +53,7 @@ async def test_chunkers_handle_edge_cases(strategy: str, edge_case_name: str, te
 async def test_recursive_chunker_preserves_metadata() -> None:
     """Recursive chunker should keep arbitrary metadata intact."""
     chunker = _create_chunker("recursive")
-    metadata = {"source": "edge_case.txt", "author": "testsuite", "custom_field": 42}
+    metadata: dict[str, Any] = {"source": "edge_case.txt", "author": "testsuite", "custom_field": 42}
 
     chunks = await chunker.chunk_text_async("Sentence one. Sentence two.", "meta_doc", metadata)
 
