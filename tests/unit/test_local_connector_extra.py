@@ -55,7 +55,7 @@ def test_process_file_worker_success(monkeypatch, tmp_path: Path) -> None:
                 "filename": "doc.txt",
                 "file_extension": ".txt",
                 "file_type": "txt",
-                "mime_type": None,
+                "mime_type": "text/plain",
                 "parser": "text",
                 "foo": "bar",
             },

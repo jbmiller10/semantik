@@ -127,6 +127,7 @@ result = parse_content(
 | `errors` | `str` | `"replace"` | Encoding error handling: `"replace"`, `"ignore"`, `"strict"`. |
 
 **Binary detection:** TextParser rejects content containing NUL bytes or with >30% non-printable characters.
+**BOM support:** UTF-8/UTF-16/UTF-32 BOM-marked text is treated as text (not binary) and decoded appropriately.
 
 ### UnstructuredParser Options
 
@@ -149,6 +150,8 @@ result = parse_content(
 )
 ```
 
+Override keys are normalized, so `"html"`, `".html"`, and `".HTML"` are treated the same.
+
 ## Metadata Contract
 
 ### Parser-Set Keys
@@ -160,7 +163,7 @@ All parsers set these keys in `ParseResult.metadata`:
 | `filename` | Document filename (from parameter or `"document"` default). |
 | `file_extension` | Normalized extension (lowercase, with dot). |
 | `file_type` | Extension without leading dot. |
-| `mime_type` | MIME type (if provided or detected). |
+| `mime_type` | MIME type (normalized). If not provided, it is guessed from filename/extension and defaults to `application/octet-stream`. |
 | `parser` | Parser name that produced the result (`"text"` or `"unstructured"`). |
 
 ### Caller-Set Keys (Standardized)

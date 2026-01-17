@@ -10,9 +10,11 @@ Error Handling:
     close codes and maintain their own error handling.
 """
 
+import ipaddress
 import json
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
@@ -49,19 +51,74 @@ def _get_allowed_websocket_origins() -> list[str]:
     return origins
 
 
+def _is_ip_same_origin(websocket: WebSocket, origin: str) -> bool:
+    """Return True when the Origin is an IP literal matching the request host.
+
+    This is a safe escape hatch for LAN/dev deployments where the UI is served from
+    an IP (e.g. http://192.168.x.y:8080) but the configured CORS_ORIGINS only include
+    localhost. It intentionally does *not* allow arbitrary hostnames to avoid
+    weakening origin checks via DNS rebinding.
+    """
+
+    try:
+        parsed_origin = urlparse(origin)
+    except Exception:
+        return False
+
+    origin_host = parsed_origin.hostname
+    if not origin_host:
+        return False
+
+    try:
+        ipaddress.ip_address(origin_host)
+    except ValueError:
+        return False
+
+    request_host = websocket.url.hostname
+    if not request_host:
+        return False
+
+    try:
+        ipaddress.ip_address(request_host)
+    except ValueError:
+        return False
+
+    origin_port = parsed_origin.port
+    if origin_port is None:
+        if parsed_origin.scheme == "http":
+            origin_port = 80
+        elif parsed_origin.scheme == "https":
+            origin_port = 443
+        else:
+            return False
+
+    request_port = websocket.url.port
+    if request_port is None:
+        if websocket.url.scheme == "ws":
+            request_port = 80
+        elif websocket.url.scheme == "wss":
+            request_port = 443
+        else:
+            return False
+
+    return origin_host == request_host and origin_port == request_port
+
+
 async def _validate_websocket_origin(websocket: WebSocket) -> bool:
     """Validate WebSocket Origin header against allowed origins.
 
-    Returns True if origin is valid or not present (same-origin requests may not send Origin).
+    Returns True if origin is valid or not present.
     Returns False if origin is present but not in allowed list.
     """
     origin = websocket.headers.get("origin")
     if not origin:
-        # Same-origin requests may not include Origin header
+        # Non-browser clients may omit Origin header.
         return True
 
     allowed_origins = _get_allowed_websocket_origins()
     if origin not in allowed_origins:
+        if _is_ip_same_origin(websocket, origin):
+            return True
         logger.warning(
             "WebSocket connection rejected: origin %s not in allowed origins %s",
             origin,

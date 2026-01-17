@@ -210,7 +210,7 @@ function CollectionDetailsModal() {
 
   return (
     <>
-      <div className="fixed inset-0 bg-[var(--bg-primary)]/80 backdrop-blur-sm z-50 transition-opacity" onClick={handleClose} />
+      <div className="fixed inset-0 bg-[var(--bg-primary)]/80 backdrop-blur-sm z-40 transition-opacity" onClick={handleClose} />
       <div className="fixed inset-4 md:inset-[5%] panel rounded-2xl shadow-2xl border border-[var(--border)] z-50 flex flex-col max-w-6xl mx-auto overflow-hidden">
 
         {/* Header */}

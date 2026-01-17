@@ -400,6 +400,9 @@ class CollectionService:
             logger.info(f"Reusing existing CollectionSource {collection_source.id} for collection {collection.id}")
 
         # Create operation record with source_id included
+        # DEBUG: Log source_config to trace path duplication bug
+        logger.info(f"add_source: Creating operation with source_config={source_config}, source_path={source_path}")
+
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,

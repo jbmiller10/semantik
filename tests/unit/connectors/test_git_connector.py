@@ -913,6 +913,18 @@ class TestGitConnectorProcessFile:
                 result = await connector._process_file(py_file, "src/main.py")
 
             assert result is not None
+            # Connector identity
+            assert result.metadata["source_type"] == "git"
+            assert result.metadata["source_path"] == "src/main.py"
+
+            # Parser metadata contract
+            assert result.metadata["parser"] == "text"
+            assert result.metadata["filename"] == "main.py"
+            assert result.metadata["file_extension"] == ".py"
+            assert result.metadata["file_type"] == "py"
+            assert isinstance(result.metadata["mime_type"], str)
+            assert result.metadata["mime_type"]
+
             assert result.metadata["file_path"] == "src/main.py"
             assert result.metadata["ref"] == "main"
             assert result.metadata["repo_url"] == "https://github.com/user/repo.git"

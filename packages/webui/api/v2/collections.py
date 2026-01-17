@@ -316,6 +316,13 @@ async def add_source(
     Adds a new source (file or directory) to the collection and triggers
     indexing of its contents. Returns an operation that can be tracked.
     """
+    # DEBUG: Log incoming request to trace path duplication bug
+    logger.info(
+        f"add_source API: source_type={add_source_request.source_type}, "
+        f"source_config={add_source_request.source_config}, "
+        f"source_path={add_source_request.source_path}"
+    )
+
     operation = await service.add_source(
         collection_id=collection_uuid,
         user_id=int(current_user["id"]),

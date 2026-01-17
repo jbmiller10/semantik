@@ -39,6 +39,13 @@ class _WorkerSuccessData(TypedDict):
     file_path: str
 
 
+class _WorkerArgs(TypedDict, total=False):
+    file_path: str
+    base_path: str
+    parser_overrides: dict[str, str]
+    parser_configs: dict[str, dict[str, Any]]
+
+
 class _WorkerSuccess(TypedDict):
     status: Literal["success"]
     data: _WorkerSuccessData
@@ -59,14 +66,15 @@ class _WorkerError(TypedDict):
 _WorkerResult = _WorkerSuccess | _WorkerSkipped | _WorkerError
 
 
-def _process_file_worker(file_path_str: str) -> _WorkerResult:
+def _process_file_worker(worker_input: str | _WorkerArgs) -> _WorkerResult:
     """Module-level worker function for process pools (billiard.Pool).
 
     Process pools require picklable functions, so this must be
     at module level rather than an instance method.
 
     Args:
-        file_path_str: String path to the file (Path objects have pickling issues)
+        worker_input: Either a string file path, or a dict containing the file path and
+            additional context (base_path, parser configs, overrides).
 
     Returns:
         Dictionary with 'status' key indicating outcome:
@@ -74,7 +82,19 @@ def _process_file_worker(file_path_str: str) -> _WorkerResult:
         - status='skipped': Contains 'reason' (file_too_large, empty_content)
         - status='error': Contains 'reason' with error message
     """
+    if isinstance(worker_input, str):
+        file_path_str = worker_input
+        base_path_str = ""
+        parser_overrides: dict[str, str] | None = None
+        parser_configs: dict[str, dict[str, Any]] | None = None
+    else:
+        file_path_str = worker_input.get("file_path", "")
+        base_path_str = worker_input.get("base_path", "")
+        parser_overrides = worker_input.get("parser_overrides")
+        parser_configs = worker_input.get("parser_configs")
+
     file_path = Path(file_path_str)
+    base_path = Path(base_path_str) if base_path_str else None
 
     # Check file size
     try:
@@ -87,6 +107,15 @@ def _process_file_worker(file_path_str: str) -> _WorkerResult:
         logger.error(f"Cannot access file {file_path}: {e}")
         return {"status": "error", "reason": f"Cannot access file: {e}", "path": file_path_str}
 
+    # Compute source path (relative to configured base) when available.
+    if base_path is not None:
+        try:
+            source_path = str(file_path.relative_to(base_path))
+        except Exception:
+            source_path = file_path.name
+    else:
+        source_path = file_path.name
+
     # Parse document content
     try:
         result = parse_content(
@@ -95,9 +124,11 @@ def _process_file_worker(file_path_str: str) -> _WorkerResult:
             file_extension=file_path.suffix.lower(),
             metadata={
                 "source_type": "directory",
-                "source_path": file_path.name,  # Just filename in worker context
+                "source_path": source_path,
                 "local_file_path": str(file_path),
             },
+            parser_overrides=parser_overrides,
+            parser_configs=parser_configs,
         )
         content = result.text
         base_metadata = result.metadata
@@ -123,17 +154,20 @@ def _process_file_worker(file_path_str: str) -> _WorkerResult:
     mime_type, _ = mimetypes.guess_type(str(file_path))
 
     # Return as dict (IngestedDocument will be created in main process)
+    worker_metadata: dict[str, Any] = {
+        **base_metadata,
+        "file_size": file_size,
+    }
+    if mime_type:
+        worker_metadata["mime_type"] = mime_type
+
     return {
         "status": "success",
         "data": {
             "content": content,
             "unique_id": f"file://{file_path}",
             "source_type": "directory",
-            "metadata": {
-                **base_metadata,
-                "file_size": file_size,
-                "mime_type": mime_type,
-            },
+            "metadata": worker_metadata,
             "content_hash": content_hash,
             "file_path": str(file_path),
         },
@@ -171,6 +205,14 @@ class LocalFileConnector(BaseConnector):
         "supports_sync": True,
     }
 
+    PARSER_OVERRIDES: ClassVar[dict[str, str]] = {}
+
+    def _build_parser_configs(self) -> dict[str, dict[str, Any]]:
+        return {
+            "unstructured": {"strategy": self._config.get("parsing_strategy", "auto")},
+            "text": {"encoding": "utf-8", "errors": "replace"},
+        }
+
     @classmethod
     def get_config_fields(cls) -> list[dict[str, Any]]:
         return [
@@ -202,6 +244,19 @@ class LocalFileConnector(BaseConnector):
                 "label": "Exclude Patterns",
                 "description": "Glob patterns to exclude",
                 "placeholder": "*.log, __pycache__/**",
+            },
+            {
+                "name": "parsing_strategy",
+                "type": "select",
+                "label": "Parsing Strategy",
+                "description": "Unstructured parsing strategy (only applies to complex formats like PDF/DOCX)",
+                "default": "auto",
+                "options": [
+                    {"value": "auto", "label": "Auto (recommended)"},
+                    {"value": "fast", "label": "Fast (less accurate)"},
+                    {"value": "hi_res", "label": "High Resolution (slower)"},
+                    {"value": "ocr_only", "label": "OCR Only (scanned docs)"},
+                ],
             },
         ]
 
@@ -271,6 +326,8 @@ class LocalFileConnector(BaseConnector):
         """
         source_path = Path(self._config["path"])
         recursive = self._config.get("recursive", True)
+        parser_overrides = dict(self.PARSER_OVERRIDES) if self.PARSER_OVERRIDES else None
+        parser_configs = self._build_parser_configs()
 
         # Collect all file paths first (fast)
         file_paths: list[Path] = []
@@ -328,7 +385,13 @@ class LocalFileConnector(BaseConnector):
         if use_parallel and len(file_paths) > 1:
             # Parallel processing
             logger.info("Processing %d files with %d parallel workers", len(file_paths), num_workers)
-            async for doc in self._process_files_parallel(file_paths, num_workers):
+            async for doc in self._process_files_parallel(
+                file_paths,
+                num_workers,
+                base_path=source_path,
+                parser_overrides=parser_overrides,
+                parser_configs=parser_configs,
+            ):
                 yield doc
         else:
             # Sequential processing (fallback)
@@ -341,6 +404,10 @@ class LocalFileConnector(BaseConnector):
         self,
         file_paths: list[Path],
         num_workers: int,
+        *,
+        base_path: Path,
+        parser_overrides: dict[str, str] | None,
+        parser_configs: dict[str, dict[str, Any]] | None,
     ) -> AsyncIterator[IngestedDocument]:
         """Process files in parallel batches using multiple processes.
 
@@ -364,7 +431,15 @@ class LocalFileConnector(BaseConnector):
             for batch_start in range(0, len(file_paths), PARALLEL_BATCH_SIZE):
                 batch_end = min(batch_start + PARALLEL_BATCH_SIZE, len(file_paths))
                 batch = file_paths[batch_start:batch_end]
-                batch_strs = [str(fp) for fp in batch]
+                batch_args: list[_WorkerArgs] = [
+                    {
+                        "file_path": str(fp),
+                        "base_path": str(base_path),
+                        "parser_overrides": parser_overrides or {},
+                        "parser_configs": parser_configs or {},
+                    }
+                    for fp in batch
+                ]
 
                 # Run pool.map in a thread to avoid blocking the event loop
                 try:
@@ -372,7 +447,7 @@ class LocalFileConnector(BaseConnector):
                         None,  # Use default thread pool
                         pool.map,
                         _process_file_worker,
-                        batch_strs,
+                        batch_args,
                     )
                 except Exception as exc:
                     if isinstance(exc, MemoryError | SystemExit | KeyboardInterrupt):
@@ -477,6 +552,8 @@ class LocalFileConnector(BaseConnector):
                     "source_path": rel_path,
                     "local_file_path": str(file_path),
                 },
+                parser_overrides=self.PARSER_OVERRIDES or None,
+                parser_configs=self._build_parser_configs(),
             )
             content = result.text
             base_metadata = result.metadata
@@ -502,11 +579,9 @@ class LocalFileConnector(BaseConnector):
         mime_type, _ = mimetypes.guess_type(str(file_path))
 
         # Build metadata
-        metadata: dict[str, Any] = {
-            **base_metadata,
-            "file_size": file_size,
-            "mime_type": mime_type,
-        }
+        metadata: dict[str, Any] = {**base_metadata, "file_size": file_size}
+        if mime_type:
+            metadata["mime_type"] = mime_type
 
         return IngestedDocument(
             content=content,
