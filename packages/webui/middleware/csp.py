@@ -32,8 +32,7 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "connect-src 'self' blob:; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
-        "form-action 'self'; "
-        "upgrade-insecure-requests"
+        "form-action 'self'"
     )
 
     # Specific CSP for chunking endpoints (even more restrictive)
