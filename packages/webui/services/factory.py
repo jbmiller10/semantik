@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     import httpx
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from .api_key_service import ApiKeyService
     from .mcp_profile_service import MCPProfileService
 
 from fastapi import Depends
@@ -282,6 +283,26 @@ def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
 async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
     """FastAPI dependency for MCPProfileService injection."""
     return create_mcp_profile_service(db)
+
+
+def create_api_key_service(db: AsyncSession) -> "ApiKeyService":
+    """Create an ApiKeyService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured ApiKeyService instance
+    """
+    # Lazy import to avoid circular dependency
+    from .api_key_service import ApiKeyService
+
+    return ApiKeyService(db_session=db)
+
+
+async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> "ApiKeyService":
+    """FastAPI dependency for ApiKeyService injection."""
+    return create_api_key_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

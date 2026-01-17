@@ -72,6 +72,11 @@ class WebuiConfig(BaseConfig):
     # Generate with: python scripts/generate_secrets_key.py
     CONNECTOR_SECRETS_KEY: str | None = None
 
+    # API Key Management Configuration
+    API_KEY_MAX_PER_USER: int = 20
+    API_KEY_MAX_EXPIRY_DAYS: int = 3650  # ~10 years (0 = no max)
+    API_KEY_DEFAULT_EXPIRY_DAYS: int = 365
+
     # Runtime override hooks (used in tests)
     _document_root: Path | None = None
     _document_allowed_roots: tuple[Path, ...] | None = None

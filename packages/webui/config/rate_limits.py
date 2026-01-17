@@ -54,6 +54,15 @@ class RateLimitConfig:
     LLM_TEST_LIMIT = int(os.getenv("LLM_TEST_RATE_LIMIT", "5"))
     LLM_TEST_RATE = f"{LLM_TEST_LIMIT}/minute"
 
+    # API key management rate limits
+    API_KEY_CREATE_LIMIT = int(os.getenv("API_KEY_CREATE_RATE_LIMIT", "5"))
+    API_KEY_UPDATE_LIMIT = int(os.getenv("API_KEY_UPDATE_RATE_LIMIT", "30"))
+    API_KEY_LIST_LIMIT = int(os.getenv("API_KEY_LIST_RATE_LIMIT", "60"))
+
+    API_KEY_CREATE_RATE = f"{API_KEY_CREATE_LIMIT}/hour"
+    API_KEY_UPDATE_RATE = f"{API_KEY_UPDATE_LIMIT}/minute"
+    API_KEY_LIST_RATE = f"{API_KEY_LIST_LIMIT}/minute"
+
     # Default global limit
     DEFAULT_LIMIT = "1000/hour"
 
