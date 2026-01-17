@@ -362,7 +362,8 @@ class TestGetCurrentUser:
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = None
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
@@ -390,7 +391,8 @@ class TestGetCurrentUser:
         mock_create_user_repo.return_value = mock_user_repo
         mock_user_repo.get_user_by_username.return_value = None
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
@@ -422,7 +424,8 @@ class TestGetCurrentUser:
             "is_active": False,
         }
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
@@ -455,7 +458,8 @@ class TestGetCurrentUser:
             "is_active": True,
         }
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         result = await get_current_user(credentials)
 
@@ -496,7 +500,7 @@ class TestGetCurrentUserWebSocket:
         mock_verify_token.return_value = None
 
         with pytest.raises(ValueError, match="Invalid authentication token"):
-            await get_current_user_websocket("invalid_token")
+            await get_current_user_websocket("invalid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -519,7 +523,7 @@ class TestGetCurrentUserWebSocket:
         mock_user_repo.get_user_by_username.return_value = None
 
         with pytest.raises(ValueError, match="User not found"):
-            await get_current_user_websocket("valid_token")
+            await get_current_user_websocket("valid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -546,7 +550,7 @@ class TestGetCurrentUserWebSocket:
         }
 
         with pytest.raises(ValueError, match="User account is inactive"):
-            await get_current_user_websocket("valid_token")
+            await get_current_user_websocket("valid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -573,7 +577,7 @@ class TestGetCurrentUserWebSocket:
             "is_active": True,
         }
 
-        result = await get_current_user_websocket("valid_token")
+        result = await get_current_user_websocket("valid.jwt.token")
 
         assert result["username"] == "test_user"
         assert result["email"] == "test@example.com"
@@ -595,7 +599,7 @@ class TestEdgeCases:
         # Simulate database connection failure
         mock_get_db.return_value.__aiter__.return_value = []
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)

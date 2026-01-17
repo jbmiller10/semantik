@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -124,7 +125,11 @@ async def api_client_unauthenticated(
     use_fakeredis,
     reset_redis_manager,
 ) -> AsyncGenerator[AsyncClient, None]:
-    """Provide an AsyncClient WITHOUT auth override for testing auth requirements."""
+    """Provide an AsyncClient WITHOUT auth override for testing auth requirements.
+
+    This fixture patches get_db_session so that auth code (which uses get_db_session
+    directly instead of FastAPI dependencies) also uses the fixture's session.
+    """
 
     _ = use_fakeredis
     _ = reset_redis_manager
@@ -132,12 +137,18 @@ async def api_client_unauthenticated(
     async def override_get_db() -> AsyncGenerator[Any, None]:
         yield db_session
 
+    async def patched_get_db_session() -> AsyncGenerator[Any, None]:
+        """Yield the fixture's db_session for auth code that uses get_db_session directly."""
+        yield db_session
+
     app.dependency_overrides[get_db] = override_get_db
     # Note: get_current_user is NOT overridden - authentication is enforced
 
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    # Patch get_db_session so auth code uses the same session as the fixture
+    with patch("webui.auth.get_db_session", patched_get_db_session):
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
     app.dependency_overrides.clear()
 
