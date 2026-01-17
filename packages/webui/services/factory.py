@@ -285,7 +285,7 @@ async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProf
     return create_mcp_profile_service(db)
 
 
-def create_api_key_service(db: AsyncSession) -> "ApiKeyService":
+def create_api_key_service(db: AsyncSession) -> ApiKeyService:
     """Create an ApiKeyService instance with required dependencies.
 
     Args:
@@ -300,7 +300,7 @@ def create_api_key_service(db: AsyncSession) -> "ApiKeyService":
     return ApiKeyService(db_session=db)
 
 
-async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> "ApiKeyService":
+async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> ApiKeyService:
     """FastAPI dependency for ApiKeyService injection."""
     return create_api_key_service(db)
 

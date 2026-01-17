@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
-
 # =============================================================================
 # Create API Key Tests
 # =============================================================================
@@ -494,10 +493,10 @@ async def test_update_api_key_owned_by_other_user_returns_403(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_list_api_keys_only_returns_owned_keys(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     db_session,
 ) -> None:
