@@ -222,6 +222,14 @@ class TestSelectionRulesAndFallback:
         candidates = parser_candidates_for_extension(".html", overrides={".html": "text"})
         assert candidates[0] == "text"
 
+    def test_overrides_keys_are_normalized(self) -> None:
+        """Overrides work with keys like 'html' or '.HTML'."""
+        candidates = parser_candidates_for_extension(".html", overrides={"html": "text"})
+        assert candidates[0] == "text"
+
+        candidates = parser_candidates_for_extension(".html", overrides={".HTML": "text"})
+        assert candidates[0] == "text"
+
     def test_fallback_only_on_unsupported_format_error(self) -> None:
         """Fallback occurs only on UnsupportedFormatError, not ExtractionFailedError."""
         # Create binary content that will make TextParser fail
@@ -1024,8 +1032,9 @@ class TestZeroLegacyReferences:
             r"from\s+shared\.text_processing\.extraction",
         ]
 
-        # Directories to search
-        search_paths = ["packages/", "tests/", "scripts/"]
+        # Directories to search. We intentionally do not search tests/ because this
+        # file contains the guardrail patterns as literals.
+        search_paths = ["packages/", "scripts/"]
 
         for pattern in patterns:
             for search_path in search_paths:
@@ -1055,7 +1064,9 @@ class TestZeroLegacyReferences:
             r"parse_document_content",
         ]
 
-        search_paths = ["packages/", "tests/", "scripts/"]
+        # Directories to search. We intentionally do not search tests/ because this
+        # file contains the guardrail patterns as literals.
+        search_paths = ["packages/", "scripts/"]
 
         for pattern in patterns:
             for search_path in search_paths:
@@ -1067,5 +1078,5 @@ class TestZeroLegacyReferences:
                 )
                 # grep returns 0 if matches found, 1 if no matches
                 assert result.returncode == 1, (
-                    f"Found legacy function reference '{pattern}' in {search_path}:\n" f"{result.stdout}"
+                    f"Found legacy function reference '{pattern}' in {search_path}:\n{result.stdout}"
                 )
