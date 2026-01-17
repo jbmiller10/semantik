@@ -6,6 +6,7 @@ import {
   Server,
   Puzzle,
   Terminal,
+  Key,
   ArrowLeft,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
@@ -14,8 +15,9 @@ import AdminTab from '../components/settings/AdminTab';
 import SystemTab from '../components/settings/SystemTab';
 import PluginsSettings from '../components/settings/PluginsSettings';
 import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
+import ApiKeysSettings from '../components/settings/ApiKeysSettings';
 
-type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp';
+type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys';
 
 interface TabConfig {
   id: SettingsTab;
@@ -30,6 +32,7 @@ const tabs: TabConfig[] = [
   { id: 'system', label: 'System', icon: Server },
   { id: 'plugins', label: 'Plugins', icon: Puzzle },
   { id: 'mcp', label: 'MCP Profiles', icon: Terminal },
+  { id: 'api-keys', label: 'API Keys', icon: Key },
 ];
 
 function SettingsPage() {
@@ -107,6 +110,7 @@ function SettingsPage() {
         {activeTab === 'system' && <SystemTab />}
         {activeTab === 'plugins' && <PluginsSettings />}
         {activeTab === 'mcp' && <MCPProfilesSettings />}
+        {activeTab === 'api-keys' && <ApiKeysSettings />}
       </div>
     </div>
   );
