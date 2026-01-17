@@ -244,7 +244,7 @@ def parse_file_thread_safe(
 ) -> ParseResult:
     """Thread-safe file parsing using the new parser framework.
 
-    Replaces extract_and_serialize_thread_safe for Phase 3 migration.
+    Replaces the legacy task parsing helper used before the parser framework migration.
 
     Args:
         file_path: Absolute path to the file to parse.
