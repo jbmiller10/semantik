@@ -1077,6 +1077,6 @@ class TestZeroLegacyReferences:
                     cwd="/home/john/semantik",
                 )
                 # grep returns 0 if matches found, 1 if no matches
-                assert result.returncode == 1, (
-                    f"Found legacy function reference '{pattern}' in {search_path}:\n{result.stdout}"
-                )
+                assert (
+                    result.returncode == 1
+                ), f"Found legacy function reference '{pattern}' in {search_path}:\n{result.stdout}"
