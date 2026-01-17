@@ -129,7 +129,8 @@ class TestCollectionRepositoryIntegration:
         owned = await collection_factory(owner_id=test_user_db.id, name=f"owned-{uuid4().hex[:8]}")
         public = await collection_factory(owner_id=other_user_db.id, name=f"public-{uuid4().hex[:8]}", is_public=True)
 
-        collections, total = await repository.list_for_user(test_user_db.id)
+        # Use a high limit to avoid pagination affecting results (test DB may have leftover data)
+        collections, total = await repository.list_for_user(test_user_db.id, limit=10000)
 
         returned_ids = {collection.id for collection in collections}
         assert owned.id in returned_ids
@@ -137,7 +138,7 @@ class TestCollectionRepositoryIntegration:
         assert total == len(returned_ids)
 
         collections_without_public, total_without_public = await repository.list_for_user(
-            test_user_db.id, include_public=False
+            test_user_db.id, include_public=False, limit=10000
         )
 
         returned_ids = {collection.id for collection in collections_without_public}

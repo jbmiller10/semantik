@@ -13,7 +13,7 @@ import billiard
 
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
-from shared.text_processing.extraction import extract_and_serialize
+from shared.text_processing.parsers import ExtractionFailedError, UnsupportedFormatError, parse_content
 from shared.utils.hashing import compute_content_hash
 
 logger = logging.getLogger(__name__)
@@ -89,11 +89,24 @@ def _process_file_worker(file_path_str: str) -> _WorkerResult:
 
     # Parse document content
     try:
-        elements = extract_and_serialize(str(file_path))
-        content = "\n\n".join(text for text, _ in elements)
-
-        # Collect metadata from first element (has filename)
-        base_metadata = elements[0][1] if elements else {}
+        result = parse_content(
+            file_path.read_bytes(),
+            filename=file_path.name,
+            file_extension=file_path.suffix.lower(),
+            metadata={
+                "source_type": "directory",
+                "source_path": file_path.name,  # Just filename in worker context
+                "local_file_path": str(file_path),
+            },
+        )
+        content = result.text
+        base_metadata = result.metadata
+    except UnsupportedFormatError:
+        logger.debug(f"Skipping unsupported format: {file_path}")
+        return {"status": "skipped", "reason": "unsupported_format", "path": file_path_str}
+    except ExtractionFailedError as e:
+        logger.error(f"Failed to parse {file_path}: {e}")
+        return {"status": "error", "reason": f"Failed to parse: {e}", "path": file_path_str}
     except Exception as e:
         logger.error(f"Failed to parse {file_path}: {e}")
         return {"status": "error", "reason": f"Failed to parse: {e}", "path": file_path_str}
@@ -446,13 +459,33 @@ class LocalFileConnector(BaseConnector):
             logger.error(f"Cannot access file {file_path}: {e}")
             return None
 
+        # Compute relative path from configured base directory
+        base_path = Path(self._config["path"])
+        try:
+            rel_path = str(file_path.relative_to(base_path))
+        except ValueError:
+            rel_path = file_path.name
+
         # Parse document content
         try:
-            elements = extract_and_serialize(str(file_path))
-            content = "\n\n".join(text for text, _ in elements)
-
-            # Collect metadata from first element (has filename)
-            base_metadata = elements[0][1] if elements else {}
+            result = parse_content(
+                file_path.read_bytes(),
+                filename=file_path.name,
+                file_extension=file_path.suffix.lower(),
+                metadata={
+                    "source_type": "directory",
+                    "source_path": rel_path,
+                    "local_file_path": str(file_path),
+                },
+            )
+            content = result.text
+            base_metadata = result.metadata
+        except UnsupportedFormatError:
+            logger.debug(f"Skipping unsupported format: {file_path}")
+            return None
+        except ExtractionFailedError as e:
+            logger.error(f"Failed to parse {file_path}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Failed to parse {file_path}: {e}")
             return None

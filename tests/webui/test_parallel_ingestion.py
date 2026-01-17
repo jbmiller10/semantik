@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from shared.text_processing.parsers import ParseResult
 from webui.tasks import parallel_ingestion as pi
 
 
@@ -151,7 +152,7 @@ async def test_extract_and_chunk_uses_preparsed_content() -> None:
 @pytest.mark.asyncio()
 async def test_extract_and_chunk_handles_no_text_extracted() -> None:
     doc = SimpleNamespace(id="doc-2", file_path="/tmp/doc.txt", uri=None)
-    extract_fn = MagicMock(return_value=[])
+    extract_fn = MagicMock(return_value=ParseResult(text="", metadata={}))
     chunking_service = AsyncMock()
 
     result = await pi.extract_and_chunk_document(
@@ -171,7 +172,8 @@ async def test_extract_and_chunk_handles_no_text_extracted() -> None:
 @pytest.mark.asyncio()
 async def test_extract_and_chunk_handles_empty_content() -> None:
     doc = SimpleNamespace(id="doc-3", file_path="/tmp/doc.txt", uri=None)
-    extract_fn = MagicMock(return_value=[("   ", {})])
+    # Whitespace-only content is now caught earlier as "no_text_extracted"
+    extract_fn = MagicMock(return_value=ParseResult(text="   ", metadata={}))
     chunking_service = AsyncMock()
 
     result = await pi.extract_and_chunk_document(
@@ -184,13 +186,13 @@ async def test_extract_and_chunk_handles_empty_content() -> None:
     )
 
     assert result.success is True
-    assert result.skip_reason == "empty_content"
+    assert result.skip_reason == "no_text_extracted"
 
 
 @pytest.mark.asyncio()
 async def test_extract_and_chunk_handles_no_chunks_created() -> None:
     doc = SimpleNamespace(id="doc-4", file_path="/tmp/doc.txt", uri=None)
-    extract_fn = MagicMock(return_value=[("hello", {})])
+    extract_fn = MagicMock(return_value=ParseResult(text="hello", metadata={}))
     chunking_service = AsyncMock()
     chunking_service.execute_ingestion_chunking.return_value = []
 
@@ -210,7 +212,7 @@ async def test_extract_and_chunk_handles_no_chunks_created() -> None:
 @pytest.mark.asyncio()
 async def test_extract_and_chunk_handles_chunk_missing_text() -> None:
     doc = SimpleNamespace(id="doc-5", file_path="/tmp/doc.txt", uri=None)
-    extract_fn = MagicMock(return_value=[("hello", {})])
+    extract_fn = MagicMock(return_value=ParseResult(text="hello", metadata={}))
     chunking_service = AsyncMock()
     chunking_service.execute_ingestion_chunking.return_value = [{"content": None}]
 

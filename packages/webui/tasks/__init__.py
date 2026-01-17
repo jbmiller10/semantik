@@ -71,8 +71,8 @@ from .utils import (
     calculate_cleanup_delay,
     celery_app,
     executor,
-    extract_and_serialize_thread_safe,
     logger,
+    parse_file_thread_safe,
     settings,
 )
 
@@ -108,7 +108,7 @@ __all__ = [
     "resolve_celery_chunking_orchestrator",
     "celery_app",
     "executor",
-    "extract_and_serialize_thread_safe",
+    "parse_file_thread_safe",
     "calculate_cleanup_delay",
     "qdrant_manager",
     "settings",

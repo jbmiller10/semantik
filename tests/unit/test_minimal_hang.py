@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Minimal test to ensure hierarchical chunker handles edge case inputs."""
 
-from shared.chunking.unified.factory import (
-    TextProcessingStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 def _create_hierarchical_chunker() -> TextProcessingStrategyAdapter:

@@ -2,6 +2,7 @@
 
 import pytest
 
+from shared.text_processing.parsers import ParseResult
 from webui.tasks import ingestion as ingestion_module
 
 
@@ -77,8 +78,8 @@ class _ChunkingService:
 async def test_process_append_operation_uses_orchestrator(monkeypatch):
     monkeypatch.setattr(
         ingestion_module,
-        "extract_and_serialize_thread_safe",
-        lambda _path: [("hello", {"a": 1})],
+        "parse_file_thread_safe",
+        lambda _path: ParseResult(text="hello", metadata={"a": 1}),
     )
 
     monkeypatch.setattr(
@@ -95,7 +96,9 @@ async def test_process_append_operation_uses_orchestrator(monkeypatch):
 
     tasks_ns = ingestion_module._tasks_namespace()
     monkeypatch.setattr(tasks_ns, "resolve_celery_chunking_orchestrator", fake_resolver, raising=False)
-    monkeypatch.setattr(tasks_ns, "extract_and_serialize_thread_safe", lambda path: [("hello", {})], raising=False)
+    monkeypatch.setattr(
+        tasks_ns, "parse_file_thread_safe", lambda path: ParseResult(text="hello", metadata={}), raising=False
+    )
 
     class _AsyncClient:
         def __init__(self, *args, **kwargs):

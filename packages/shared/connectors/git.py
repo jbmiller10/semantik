@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from shared.config import settings
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
-from shared.text_processing.extraction import extract_and_serialize
+from shared.text_processing.parsers import ExtractionFailedError, UnsupportedFormatError, parse_content
 from shared.utils.hashing import compute_content_hash
 
 logger = logging.getLogger(__name__)
@@ -738,14 +738,22 @@ class GitConnector(BaseConnector):
             with contextlib.suppress(Exception):
                 content = file_path.read_text(encoding="utf-8", errors="replace")
 
-        # Fall back to extraction service for binary formats
+        # Fall back to parser for binary formats
         if content is None:
             try:
-                elements = extract_and_serialize(str(file_path))
-                content = "\n\n".join(text for text, _ in elements)
-            except Exception as e:
+                result = parse_content(
+                    file_path.read_bytes(),
+                    filename=rel_path,
+                    file_extension=file_path.suffix.lower(),
+                    metadata={
+                        "source_type": "git",
+                        "source_path": rel_path,
+                    },
+                )
+                content = result.text
+            except (UnsupportedFormatError, ExtractionFailedError) as e:
                 logger.debug(f"Cannot extract content from {rel_path}: {e}")
-                # For binary files that can't be extracted, read as text anyway
+                # Last-resort: read as text anyway (preserves current behavior)
                 try:
                     content = file_path.read_text(encoding="utf-8", errors="replace")
                 except Exception:

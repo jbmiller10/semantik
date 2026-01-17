@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.database.models import DocumentStatus
+from shared.text_processing.parsers import ParseResult
 from webui.tasks import parallel_ingestion as pi
 from webui.tasks.parallel_ingestion import (
     ChunkBatch,
@@ -183,7 +184,7 @@ async def test_extract_and_chunk_handles_no_chunks() -> None:
 
     result = await extract_and_chunk_document(
         doc=doc,
-        extract_fn=lambda _: [("content", {})],
+        extract_fn=lambda _: ParseResult(text="content", metadata={}),
         chunking_service=chunking_service,
         collection={},
         executor_pool=None,
@@ -202,7 +203,7 @@ async def test_extract_and_chunk_rejects_missing_text() -> None:
 
     result = await extract_and_chunk_document(
         doc=doc,
-        extract_fn=lambda _: [("content", {})],
+        extract_fn=lambda _: ParseResult(text="content", metadata={}),
         chunking_service=chunking_service,
         collection={},
         executor_pool=None,

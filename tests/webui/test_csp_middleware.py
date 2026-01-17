@@ -7,15 +7,14 @@ DEFAULT_POLICY = (
     "default-src 'self'; "
     "worker-src 'self' blob:; "
     "child-src 'self' blob:; "
-    "script-src 'self' blob: 'wasm-unsafe-eval';"  # 'unsafe-eval' removed for security
-    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'self' blob: 'wasm-unsafe-eval'; "  # 'unsafe-eval' removed for security
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "  # Allow Google Fonts CSS
     "img-src 'self' data: https:; "
-    "font-src 'self' data:; "
+    "font-src 'self' data: https://fonts.gstatic.com; "  # Allow Google Fonts files
     "connect-src 'self' blob:; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
-    "form-action 'self'; "
-    "upgrade-insecure-requests"
+    "form-action 'self'"
 )
 
 CHUNKING_POLICY = (

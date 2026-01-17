@@ -25,15 +25,14 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "default-src 'self'; "
         "worker-src 'self' blob:; "
         "child-src 'self' blob:; "
-        "script-src 'self' blob: 'wasm-unsafe-eval';"
-        "style-src 'self' 'unsafe-inline'; "  # Allow inline styles for UI frameworks
+        "script-src 'self' blob: 'wasm-unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "  # Allow inline styles + Google Fonts
         "img-src 'self' data: https:; "  # Allow data URIs and HTTPS images
-        "font-src 'self' data:; "
+        "font-src 'self' data: https://fonts.gstatic.com; "  # Allow Google Fonts
         "connect-src 'self' blob:; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
-        "form-action 'self'; "
-        "upgrade-insecure-requests"
+        "form-action 'self'"
     )
 
     # Specific CSP for chunking endpoints (even more restrictive)
