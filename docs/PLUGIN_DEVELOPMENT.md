@@ -274,6 +274,42 @@ class MyConnector(ConnectorPlugin):
         pass
 ```
 
+### Parsing Binary Files in Connectors
+
+If your connector handles binary file formats (PDF, DOCX, etc.), use the parser system to extract text:
+
+```python
+from pathlib import Path
+from shared.text_processing.parsers import (
+    parse_content,
+    ExtractionFailedError,
+    UnsupportedFormatError,
+)
+
+async def load_documents(self, source_id=None) -> AsyncIterator[IngestedDocument]:
+    for file_bytes, filename in self._fetch_files():
+        try:
+            result = parse_content(
+                file_bytes,
+                filename=filename,
+                file_extension=Path(filename).suffix,
+                metadata={"source_type": self.PLUGIN_ID, "source_path": filename},
+            )
+            yield IngestedDocument(
+                content=result.text,
+                unique_id=filename,
+                source_type=self.PLUGIN_ID,
+                metadata=result.metadata,
+                content_hash=hashlib.sha256(file_bytes).hexdigest(),
+            )
+        except UnsupportedFormatError:
+            continue  # Skip unsupported files
+        except ExtractionFailedError as e:
+            logger.error(f"Failed to parse {filename}: {e}")
+```
+
+See [PARSERS.md](./PARSERS.md) for parser selection rules and configuration options.
+
 ---
 
 ## Reranker Plugins
@@ -324,6 +360,8 @@ class MyReranker(RerankerPlugin):
 ---
 
 ## Extractor Plugins
+
+> **Note**: Extractors operate on *already-parsed text* to extract metadata like entities, keywords, and sentiment. To convert documents (PDF, DOCX, etc.) to text, use the parser system - see [PARSERS.md](./PARSERS.md). Parsers are built-in utilities, not plugins.
 
 Extractor plugins extract metadata from documents.
 

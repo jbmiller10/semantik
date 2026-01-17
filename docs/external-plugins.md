@@ -233,6 +233,42 @@ class MyConnector:
         }
 ```
 
+### Handling Binary Files (External Connectors)
+
+External connectors should return already-parsed text in the `content` field. If your source provides binary files (PDF, DOCX, etc.), you have two options:
+
+1. **Parse before yielding**: Use a library like `unstructured`, `pypdf`, or `python-docx` to extract text before yielding documents:
+
+```python
+from pypdf import PdfReader
+import io
+
+async def load_documents(self, source_id=None):
+    for file_bytes, filename in self._fetch_files():
+        if filename.endswith(".pdf"):
+            reader = PdfReader(io.BytesIO(file_bytes))
+            content = "\n".join(page.extract_text() for page in reader.pages)
+        else:
+            content = file_bytes.decode("utf-8", errors="replace")
+
+        yield {
+            "content": content,
+            "unique_id": filename,
+            ...
+        }
+```
+
+2. **Defer to ingestion pipeline**: If you have `semantik-shared` available, use the built-in parser system:
+
+```python
+from shared.text_processing.parsers import parse_content
+
+result = parse_content(file_bytes, filename=filename, file_extension=".pdf")
+content = result.text
+```
+
+See the [Parsers documentation](./PARSERS.md) for details on parser selection and configuration.
+
 ### Embedding Plugin
 
 Embedding plugins convert text to vector representations.
@@ -463,6 +499,8 @@ class MyReranker:
 ```
 
 ### Extractor Plugin
+
+> **Note**: Extractors operate on *already-parsed text* to extract metadata like entities, keywords, and sentiment. To convert documents (PDF, DOCX, etc.) to text, see [Handling Binary Files](#handling-binary-files-external-connectors) above or [PARSERS.md](./PARSERS.md).
 
 Extractor plugins extract structured information from text.
 
