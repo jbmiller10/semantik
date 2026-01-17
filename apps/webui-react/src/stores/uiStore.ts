@@ -70,8 +70,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   showCollectionDetailsModal: null,
   theme: initialTheme,
   addToast: (toast) => {
-    // Use crypto.randomUUID() to avoid ID collisions from Date.now()
-    const id = crypto.randomUUID();
+    // Use crypto.randomUUID() with fallback for insecure contexts (HTTP on LAN)
+    const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let timerId: ReturnType<typeof setTimeout> | undefined;
 
     // Auto-remove toast after duration

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from shared.config import settings
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
-from shared.text_processing.parsers import ExtractionFailedError, UnsupportedFormatError, parse_content
+from shared.text_processing.parsers import ExtractionFailedError, ParseResult, UnsupportedFormatError, parse_content
 from shared.utils.hashing import compute_content_hash
 
 logger = logging.getLogger(__name__)
@@ -721,11 +721,25 @@ class GitConnector(BaseConnector):
         # Get blob SHA for change detection
         blob_sha = await self._get_blob_sha(file_path)
 
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+        connector_metadata: dict[str, Any] = {
+            "source_type": "git",
+            "source_path": rel_path,
+            # Keep legacy/consumer-facing key for backwards compatibility.
+            "file_path": rel_path,
+            "file_size": file_size,
+            "mime_type": mime_type,
+            "blob_sha": blob_sha,
+            "commit_sha": self._commit_sha,
+            "ref": self.ref,
+            "repo_url": self.repo_url,
+        }
+
         # Try to extract text content
         content: str | None = None
+        parse_result: ParseResult | None = None
 
         # For text files, try direct reading first
-        mime_type, _ = mimetypes.guess_type(str(file_path))
         is_likely_text = (
             mime_type
             and (
@@ -737,25 +751,38 @@ class GitConnector(BaseConnector):
         if is_likely_text:
             with contextlib.suppress(Exception):
                 content = file_path.read_text(encoding="utf-8", errors="replace")
+            if content is not None:
+                parse_result = parse_content(
+                    content,
+                    filename=file_path.name,
+                    file_extension=file_path.suffix.lower(),
+                    mime_type=mime_type,
+                    metadata=connector_metadata,
+                )
 
         # Fall back to parser for binary formats
         if content is None:
             try:
-                result = parse_content(
+                parse_result = parse_content(
                     file_path.read_bytes(),
-                    filename=rel_path,
+                    filename=file_path.name,
                     file_extension=file_path.suffix.lower(),
-                    metadata={
-                        "source_type": "git",
-                        "source_path": rel_path,
-                    },
+                    mime_type=mime_type,
+                    metadata=connector_metadata,
                 )
-                content = result.text
+                content = parse_result.text
             except (UnsupportedFormatError, ExtractionFailedError) as e:
                 logger.debug(f"Cannot extract content from {rel_path}: {e}")
                 # Last-resort: read as text anyway (preserves current behavior)
                 try:
                     content = file_path.read_text(encoding="utf-8", errors="replace")
+                    parse_result = parse_content(
+                        content,
+                        filename=file_path.name,
+                        file_extension=file_path.suffix.lower(),
+                        mime_type=mime_type,
+                        metadata=connector_metadata,
+                    )
                 except Exception:
                     return None
 
@@ -770,22 +797,11 @@ class GitConnector(BaseConnector):
         # Build unique ID: git://{repo_url}/{path}
         unique_id = f"git://{self.repo_url}/{rel_path}"
 
-        # Build metadata
-        metadata: dict[str, Any] = {
-            "file_path": rel_path,
-            "file_size": file_size,
-            "mime_type": mime_type,
-            "blob_sha": blob_sha,
-            "commit_sha": self._commit_sha,
-            "ref": self.ref,
-            "repo_url": self.repo_url,
-        }
-
         return IngestedDocument(
             content=content,
             unique_id=unique_id,
             source_type="git",
-            metadata=metadata,
+            metadata=parse_result.metadata if parse_result is not None else connector_metadata,
             content_hash=content_hash,
             file_path=None,  # No local file path for git sources
         )

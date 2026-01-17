@@ -1102,6 +1102,10 @@ async def _process_append_operation_impl(
     source_type = op_config.get("source_type", "directory")
     source_config = op_config.get("source_config")
 
+    # DEBUG: Log source config to trace path duplication bug
+    logger.info(f"APPEND operation source_config from op_config: {source_config}")
+    logger.info(f"APPEND operation source_path from op_config: {op_config.get('source_path')}")
+
     # Legacy fallback: derive from source_path if new format not present
     legacy_source_path = op_config.get("source_path")
     if source_config is None:

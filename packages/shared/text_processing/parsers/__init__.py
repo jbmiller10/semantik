@@ -27,8 +27,6 @@ from .normalization import (
     normalize_mime_type,
 )
 from .registry import (
-    DEFAULT_PARSER_MAP,
-    PARSER_REGISTRY,
     ensure_registered,
     get_default_parser_map,
     get_parser,
@@ -40,6 +38,9 @@ from .registry import (
 )
 from .text import TextParser
 from .unstructured import UnstructuredParser
+
+PARSER_REGISTRY = get_parser_registry()
+DEFAULT_PARSER_MAP = get_default_parser_map()
 
 
 def parse_content(

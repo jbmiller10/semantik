@@ -7,7 +7,7 @@ DEFAULT_POLICY = (
     "default-src 'self'; "
     "worker-src 'self' blob:; "
     "child-src 'self' blob:; "
-    "script-src 'self' blob: 'wasm-unsafe-eval'; "  # 'unsafe-eval' removed for security
+    "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; "  # 'unsafe-eval' needed for embedding-atlas
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "  # Allow Google Fonts CSS
     "img-src 'self' data: https:; "
     "font-src 'self' data: https://fonts.gstatic.com; "  # Allow Google Fonts files

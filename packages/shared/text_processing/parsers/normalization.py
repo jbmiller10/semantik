@@ -16,8 +16,10 @@ from typing import Any
 PROTECTED_METADATA_KEYS: frozenset[str] = frozenset(
     {
         "parser",
+        "filename",
         "file_extension",
         "file_type",
+        "mime_type",
     }
 )
 
@@ -128,20 +130,33 @@ def build_parser_metadata(
         {'custom': 'value', 'filename': 'document', 'file_extension': '.txt',
          'file_type': 'txt', 'mime_type': None, 'parser': 'text'}
     """
+    import mimetypes
+
     ext_norm = normalize_extension(file_extension)
-    mime_norm = normalize_mime_type(mime_type)
 
     # Start with caller metadata (or empty dict)
     result = dict(caller_metadata or {})
 
-    # Determine filename: explicit > caller metadata > default
-    resolved_filename = filename or result.get("filename", "document")
+    # Determine filename: explicit > default (caller cannot override).
+    resolved_filename = filename or "document"
 
     # Overwrite with protected/required keys - these cannot be overridden by caller
     result["filename"] = resolved_filename
     result["file_extension"] = ext_norm
     result["file_type"] = normalize_file_type(ext_norm)
-    result["mime_type"] = mime_norm
     result["parser"] = parser_name
+
+    # Determine MIME type: explicit > guess > default.
+    # This guarantees a non-null, normalized value for downstream code.
+    mime_norm = normalize_mime_type(mime_type)
+    if mime_norm is None:
+        guessed_mime: str | None = None
+        if resolved_filename and resolved_filename != "document":
+            guessed_mime, _ = mimetypes.guess_type(resolved_filename)
+        if guessed_mime is None and ext_norm:
+            guessed_mime, _ = mimetypes.guess_type(f"document{ext_norm}")
+        result["mime_type"] = normalize_mime_type(guessed_mime) or "application/octet-stream"
+    else:
+        result["mime_type"] = mime_norm
 
     return result
