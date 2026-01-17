@@ -183,7 +183,14 @@ def parser_candidates_for_extension(
     ensure_registered()
     ext_norm = normalize_extension(ext)
 
-    override = (overrides or {}).get(ext_norm)
+    normalized_overrides: dict[str, str] = {}
+    if overrides:
+        # Normalize override keys so callers can pass "pdf" or ".PDF" interchangeably.
+        # If duplicates normalize to the same extension, the last one wins.
+        for key, value in overrides.items():
+            normalized_overrides[normalize_extension(key)] = value
+
+    override = normalized_overrides.get(ext_norm)
     default = DEFAULT_PARSER_MAP.get(ext_norm)
 
     # text-first for known text extensions; unstructured-first otherwise (binary/unknown)

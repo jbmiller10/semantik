@@ -20,6 +20,7 @@ Tests cover:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -1038,11 +1039,13 @@ class TestZeroLegacyReferences:
 
         for pattern in patterns:
             for search_path in search_paths:
+                # Use project root dynamically
+                project_root = Path(__file__).parent.parent.parent
                 result = subprocess.run(
                     ["grep", "-rE", "--include=*.py", pattern, search_path],
                     capture_output=True,
                     text=True,
-                    cwd="/home/john/semantik",
+                    cwd=str(project_root),
                 )
                 # grep returns 0 if matches found, 1 if no matches
                 assert result.returncode == 1, (
@@ -1070,11 +1073,13 @@ class TestZeroLegacyReferences:
 
         for pattern in patterns:
             for search_path in search_paths:
+                # Use project root dynamically
+                project_root = Path(__file__).parent.parent.parent
                 result = subprocess.run(
                     ["grep", "-rE", "--include=*.py", pattern, search_path],
                     capture_output=True,
                     text=True,
-                    cwd="/home/john/semantik",
+                    cwd=str(project_root),
                 )
                 # grep returns 0 if matches found, 1 if no matches
                 assert (
