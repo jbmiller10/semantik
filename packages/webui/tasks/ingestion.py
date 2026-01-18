@@ -980,7 +980,10 @@ async def _maybe_generate_sparse_vectors(
 
             indexer = plugin_record.plugin_class()
             if hasattr(indexer, "initialize"):
-                await indexer.initialize(model_config)
+                # Include collection_name for BM25 IDF persistence
+                init_config = dict(model_config)
+                init_config["collection_name"] = qdrant_collection_name
+                await indexer.initialize(init_config)
         else:
             # Use VecPipe for GPU-based plugins (SPLADE)
             vecpipe_client = SparseEncodingClient()

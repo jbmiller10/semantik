@@ -111,10 +111,7 @@ async def _reindex_collection_async(
         except ValueError as e:
             logger.error("Failed to load sparse indexer: %s", e)
             raise
-
-        # Initialize plugin with config if it has an initialize method
-        if hasattr(indexer, "initialize"):
-            await indexer.initialize(model_config)
+        # NOTE: initialize() is called later after we have vector_store_name
     else:
         # Use VecPipe for GPU-based plugins (SPLADE)
         vecpipe_client = SparseEncodingClient()
@@ -150,6 +147,13 @@ async def _reindex_collection_async(
                 raise ValueError(f"Collection '{collection_uuid}' not found")
 
             vector_store_name = collection.vector_store_name
+
+        # Initialize local plugin with config now that we have the collection name
+        # This is needed for BM25 to set up IDF persistence paths
+        if indexer is not None and hasattr(indexer, "initialize"):
+            init_config = dict(model_config)
+            init_config["collection_name"] = vector_store_name
+            await indexer.initialize(init_config)
 
         # Create Qdrant client
         async_qdrant = AsyncQdrantClient(

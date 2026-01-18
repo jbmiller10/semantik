@@ -213,10 +213,13 @@ async def _perform_sparse_search(
         if sparse_manager is not None:
             # Use managed sparse model - keeps model loaded between queries
             encode_start = time.time()
+            # Include collection_name in config for BM25 IDF stats loading
+            query_config = dict(plugin_config)
+            query_config["collection_name"] = collection_name
             query_vector = await sparse_manager.encode_query(
                 plugin_id=plugin_id,
                 query=query,
-                config=plugin_config,
+                config=query_config,
             )
             encode_time = time.time() - encode_start
 

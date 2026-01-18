@@ -12,10 +12,12 @@ import jwt
 import pytest
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.requests import Request
 
 from webui.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     UserCreate,
+    _verify_api_key,
     authenticate_user,
     create_access_token,
     create_refresh_token,
@@ -25,6 +27,17 @@ from webui.auth import (
     verify_password,
     verify_token,
 )
+
+
+def _make_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+        }
+    )
 
 
 class TestUserModels:
@@ -166,6 +179,20 @@ class TestTokenFunctions:
         assert payload["sub"] == "test_user"
         assert payload["type"] == "refresh"
         assert "exp" in payload
+
+    @patch("webui.auth.settings")
+    def test_create_refresh_token_custom_expiry(self, mock_settings) -> None:
+        """Test creating refresh token with custom expiry."""
+        mock_settings.JWT_SECRET_KEY = "test_secret"
+        mock_settings.ALGORITHM = "HS256"
+
+        data = {"sub": "test_user"}
+        expires_delta = timedelta(days=1)
+        token = create_refresh_token(data, expires_delta)
+
+        payload = jwt.decode(token, "test_secret", algorithms=["HS256"])
+        assert payload["sub"] == "test_user"
+        assert payload["type"] == "refresh"
 
     @patch("webui.auth.settings")
     def test_verify_token_valid_access(self, mock_settings) -> None:
@@ -326,6 +353,14 @@ class TestAuthentication:
         result = await authenticate_user("test_user", "wrong_password")
         assert result is None
 
+    @pytest.mark.asyncio()
+    @patch("webui.auth.get_db_session")
+    async def test_authenticate_user_db_connection_failure(self, mock_get_db) -> None:
+        mock_get_db.return_value.__aiter__.return_value = []
+
+        result = await authenticate_user("test_user", "password")
+        assert result is None
+
 
 class TestGetCurrentUser:
     """Test get_current_user dependency"""
@@ -336,11 +371,23 @@ class TestGetCurrentUser:
         """Test get_current_user when auth is disabled"""
         mock_settings.DISABLE_AUTH = True
 
-        result = await get_current_user(None)
+        result = await get_current_user(_make_request(), None)
 
         assert result["username"] == "dev_user"
         assert result["email"] == "dev@example.com"
         assert result["is_superuser"] is False  # Dev user should NOT be superuser for security
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    async def test_get_current_user_disallow_disable_auth_in_production(self, mock_settings) -> None:
+        mock_settings.DISABLE_AUTH = True
+        mock_settings.ENVIRONMENT = "production"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(_make_request(), None)
+
+        assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert "DISABLE_AUTH cannot be enabled in production" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -349,7 +396,7 @@ class TestGetCurrentUser:
         mock_settings.DISABLE_AUTH = False
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(None)
+            await get_current_user(_make_request(), None)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "Not authenticated"
@@ -362,10 +409,11 @@ class TestGetCurrentUser:
         mock_settings.DISABLE_AUTH = False
         mock_verify_token.return_value = None
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "Invalid authentication credentials"
@@ -390,10 +438,11 @@ class TestGetCurrentUser:
         mock_create_user_repo.return_value = mock_user_repo
         mock_user_repo.get_user_by_username.return_value = None
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "User not found"
@@ -422,10 +471,11 @@ class TestGetCurrentUser:
             "is_active": False,
         }
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
         assert exc_info.value.detail == "Inactive user"
@@ -455,9 +505,10 @@ class TestGetCurrentUser:
             "is_active": True,
         }
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        # Use a JWT-like token (has 2 dots) so it's routed to JWT path
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
-        result = await get_current_user(credentials)
+        result = await get_current_user(_make_request(), credentials)
 
         assert result["username"] == "test_user"
         assert result["email"] == "test@example.com"
@@ -480,6 +531,15 @@ class TestGetCurrentUserWebSocket:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
+    async def test_get_current_user_websocket_disallow_disable_auth_in_production(self, mock_settings) -> None:
+        mock_settings.DISABLE_AUTH = True
+        mock_settings.ENVIRONMENT = "production"
+
+        with pytest.raises(ValueError, match="DISABLE_AUTH cannot be enabled in production"):
+            await get_current_user_websocket(None)
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
     async def test_get_current_user_websocket_no_token(self, mock_settings) -> None:
         """Test WebSocket auth with no token"""
         mock_settings.DISABLE_AUTH = False
@@ -496,7 +556,7 @@ class TestGetCurrentUserWebSocket:
         mock_verify_token.return_value = None
 
         with pytest.raises(ValueError, match="Invalid authentication token"):
-            await get_current_user_websocket("invalid_token")
+            await get_current_user_websocket("invalid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -519,7 +579,7 @@ class TestGetCurrentUserWebSocket:
         mock_user_repo.get_user_by_username.return_value = None
 
         with pytest.raises(ValueError, match="User not found"):
-            await get_current_user_websocket("valid_token")
+            await get_current_user_websocket("valid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -546,7 +606,7 @@ class TestGetCurrentUserWebSocket:
         }
 
         with pytest.raises(ValueError, match="User account is inactive"):
-            await get_current_user_websocket("valid_token")
+            await get_current_user_websocket("valid.jwt.token")
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
@@ -573,7 +633,7 @@ class TestGetCurrentUserWebSocket:
             "is_active": True,
         }
 
-        result = await get_current_user_websocket("valid_token")
+        result = await get_current_user_websocket("valid.jwt.token")
 
         assert result["username"] == "test_user"
         assert result["email"] == "test@example.com"
@@ -595,12 +655,39 @@ class TestEdgeCases:
         # Simulate database connection failure
         mock_get_db.return_value.__aiter__.return_value = []
 
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.get_db_session")
+    @patch("webui.auth.PostgreSQLApiKeyRepository")
+    async def test_get_current_user_api_key_verification_exception(
+        self, mock_repo_class, mock_get_db, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+
+        mock_session = AsyncMock()
+        mock_get_db.return_value.__aiter__.return_value = [mock_session]
+
+        mock_repo = AsyncMock()
+        mock_repo.verify_api_key.side_effect = Exception("boom")
+        mock_repo_class.return_value = mock_repo
+
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="smtk_12345678_secret",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(_make_request(), credentials)
+
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert exc_info.value.detail == "Invalid API key"
 
     def test_token_expiry_constants(self) -> None:
         """Test token expiry constants"""
@@ -621,3 +708,126 @@ class TestEdgeCases:
         assert payload["role"] == "admin"
         assert payload["permissions"] == ["read", "write"]
         assert payload["type"] == "access"
+
+
+class TestApiKeyAuth:
+    @pytest.mark.asyncio()
+    async def test_verify_api_key_returns_none_for_empty_or_short_tokens(self) -> None:
+        async def should_not_be_called():
+            raise AssertionError("get_db_session should not be called for short tokens")
+            if False:  # pragma: no cover
+                yield
+
+        with patch("webui.auth.get_db_session", new=should_not_be_called):
+            assert await _verify_api_key("") is None
+            assert await _verify_api_key("   ") is None
+            assert await _verify_api_key("short-token") is None
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.get_db_session")
+    async def test_verify_api_key_returns_none_when_db_yields_no_sessions(self, mock_get_db) -> None:
+        mock_get_db.return_value.__aiter__.return_value = []
+
+        token = "smtk_12345678_" + ("x" * 32)
+        assert await _verify_api_key(token) is None
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.verify_token")
+    @patch("webui.auth.get_db_session")
+    async def test_get_current_user_websocket_db_connection_failure(
+        self, mock_get_db, mock_verify_token, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+        mock_verify_token.return_value = "test_user"
+        mock_get_db.return_value.__aiter__.return_value = []
+
+        with pytest.raises(ValueError, match="Database connection failed"):
+            await get_current_user_websocket("valid.jwt.token")
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.get_db_session")
+    @patch("webui.auth.PostgreSQLApiKeyRepository")
+    async def test_get_current_user_api_key_success_and_caches(
+        self, mock_repo_class, mock_get_db, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+
+        mock_session = AsyncMock()
+        mock_get_db.return_value.__aiter__.return_value = [mock_session]
+
+        api_key_data = {
+            "id": "key-1",
+            "name": "integration key",
+            "user": {
+                "id": 12,
+                "username": "alice",
+                "email": "alice@example.com",
+                "full_name": "Alice",
+                "is_active": True,
+            },
+        }
+        mock_repo = AsyncMock()
+        mock_repo.verify_api_key.return_value = api_key_data
+        mock_repo_class.return_value = mock_repo
+
+        request = _make_request()
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="smtk_12345678_" + ("x" * 32))
+
+        first = await get_current_user(request, credentials)
+        second = await get_current_user(request, credentials)
+
+        assert first["id"] == 12
+        assert first["username"] == "alice"
+        assert first["_auth_method"] == "api_key"
+        assert first["_api_key_id"] == "key-1"
+        assert first["_api_key_name"] == "integration key"
+
+        assert second["_api_key_id"] == "key-1"
+        mock_repo.verify_api_key.assert_called_once_with(credentials.credentials, update_last_used=True)
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.get_db_session")
+    @patch("webui.auth.PostgreSQLApiKeyRepository")
+    async def test_get_current_user_websocket_api_key_success(
+        self, mock_repo_class, mock_get_db, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+
+        mock_session = AsyncMock()
+        mock_get_db.return_value.__aiter__.return_value = [mock_session]
+
+        api_key_data = {"id": "key-1", "name": "key", "user": {"id": 7, "username": "alice"}}
+        mock_repo = AsyncMock()
+        mock_repo.verify_api_key.return_value = api_key_data
+        mock_repo_class.return_value = mock_repo
+
+        token = "smtk_12345678_" + ("x" * 32)
+        user = await get_current_user_websocket(token)
+
+        assert user["id"] == 7
+        assert user["username"] == "alice"
+        assert user["_auth_method"] == "api_key"
+        mock_repo.verify_api_key.assert_called_once_with(token, update_last_used=True)
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.get_db_session")
+    @patch("webui.auth.PostgreSQLApiKeyRepository")
+    async def test_get_current_user_websocket_api_key_invalid(
+        self, mock_repo_class, mock_get_db, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+
+        mock_session = AsyncMock()
+        mock_get_db.return_value.__aiter__.return_value = [mock_session]
+
+        mock_repo = AsyncMock()
+        mock_repo.verify_api_key.return_value = None
+        mock_repo_class.return_value = mock_repo
+
+        token = "smtk_12345678_" + ("x" * 32)
+        with pytest.raises(ValueError, match="Invalid API key"):
+            await get_current_user_websocket(token)

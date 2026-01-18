@@ -154,8 +154,13 @@ class ApiKeyRepository(ABC):
         """Delete an API key."""
 
     @abstractmethod
-    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
-        """Verify an API key and return associated data if valid."""
+    async def verify_api_key(self, api_key: str, *, update_last_used: bool = True) -> dict[str, Any] | None:
+        """Verify an API key and return associated data if valid.
+
+        Args:
+            api_key: The API key string presented by the client.
+            update_last_used: Whether to update last_used_at when verification succeeds.
+        """
 
     @abstractmethod
     async def update_last_used(self, api_key_id: str) -> None:

@@ -202,7 +202,14 @@
   <manager>websocket/scalable_manager.py (ScalableWebSocketManager)</manager>
   <architecture>Redis Pub/Sub for horizontal scaling</architecture>
   <limits>10 connections per user, 10,000 total</limits>
-  <authentication>JWT token via first message after connection</authentication>
+  <authentication>
+    <methods>
+      - JWT token: Via subprotocol, query parameter (?token=), or first message
+      - API key: Via subprotocol, query parameter (?token=), or first message
+    </methods>
+    <token-routing>Same as HTTP - format-based detection (JWT has dots, API keys have smtk_ prefix)</token-routing>
+    <api-key-constraints>API keys never grant superuser access for WebSocket connections</api-key-constraints>
+  </authentication>
   <endpoints>
     - /ws/operations: Global operation updates
     - /ws/operations/{operation_id}: Specific operation progress
@@ -275,7 +282,31 @@
 </background-tasks>
 
 <security>
-  <authentication>JWT with 24h access tokens, 30d refresh tokens</authentication>
+  <authentication>
+    <jwt>JWT with 24h access tokens, 30d refresh tokens</jwt>
+    <api-keys>
+      <description>API keys for headless/programmatic access (MCP servers, automation)</description>
+      <format>smtk_&lt;uuid_prefix&gt;_&lt;secret&gt; (e.g., smtk_550e8400_Wq3xY5pZ...)</format>
+      <usage>Authorization: Bearer &lt;api_key&gt;</usage>
+      <token-routing>
+        - JWT tokens detected by format: header.payload.signature (2 dots)
+        - API keys detected by prefix: smtk_
+        - Token format checked first, no fallback between types
+      </token-routing>
+      <constraints>
+        - API keys NEVER grant is_superuser=true (security constraint)
+        - Keys include audit metadata: _auth_method, _api_key_id, _api_key_name
+        - Expired keys return 401
+        - Revoked keys (is_active=false) return 401
+        - Inactive user's keys return 401
+      </constraints>
+      <management>
+        - Create: POST /api/v2/api-keys
+        - List: GET /api/v2/api-keys
+        - Revoke: PATCH /api/v2/api-keys/{id} with {"is_active": false}
+      </management>
+    </api-keys>
+  </authentication>
   <authorization>Owner-based collection access (owner_id check)</authorization>
   <validation>Pydantic models for all API inputs</validation>
   <secrets>

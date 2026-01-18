@@ -288,11 +288,15 @@ class SparseModelManager:
                     await self._governor.touch(model_name, ModelType.SPARSE, quantization)
                 return plugin
 
+            # Calculate memory estimate (used for governor tracking)
+            # Note: This uses SPLADE estimates even for BM25 which is CPU-only,
+            # but BM25 uses minimal memory (~50MB) vs SPLADE's 400MB base.
+            required_mb = _estimate_splade_memory(config)
+
             # Request memory from governor
             if self._governor is not None:
                 model_name = self._get_governor_model_name(plugin_id, config)
                 quantization = (config or {}).get("quantization", "float16")
-                required_mb = _estimate_splade_memory(config)
 
                 can_allocate = await self._governor.request_memory(
                     model_name=model_name,
@@ -314,7 +318,7 @@ class SparseModelManager:
                 self._loaded_plugins[plugin_key] = plugin
                 self._plugin_configs[plugin_key] = config or {}
 
-                # Mark as loaded in governor
+                # Mark as loaded in governor with the calculated memory estimate
                 if self._governor is not None:
                     model_name = self._get_governor_model_name(plugin_id, config)
                     quantization = (config or {}).get("quantization", "float16")
@@ -324,6 +328,7 @@ class SparseModelManager:
                         model_type=ModelType.SPARSE,
                         quantization=quantization,
                         model_ref=model_ref,
+                        memory_mb=required_mb,
                     )
 
                 return plugin

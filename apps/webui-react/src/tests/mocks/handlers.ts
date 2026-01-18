@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Collection, Operation } from '../../types/collection'
+import type { ApiKeyResponse, ApiKeyCreateResponse, ApiKeyListResponse } from '../../types/api-key'
 
 export const handlers = [
   // Auth endpoints
@@ -899,5 +900,106 @@ export const handlers = [
         [key]: { value: body.settings[key], updated_at: new Date().toISOString(), updated_by: 1 },
       }), {}),
     })
+  }),
+
+  // API Keys endpoints
+  http.get('/api/v2/api-keys', () => {
+    const mockApiKeys: ApiKeyResponse[] = [
+      {
+        id: 'key-1-uuid',
+        name: 'Development Key',
+        is_active: true,
+        permissions: null,
+        last_used_at: '2025-01-10T12:00:00Z',
+        expires_at: '2026-01-01T00:00:00Z',
+        created_at: '2025-01-01T00:00:00Z',
+      },
+      {
+        id: 'key-2-uuid',
+        name: 'CI/CD Key',
+        is_active: true,
+        permissions: null,
+        last_used_at: null,
+        expires_at: null,
+        created_at: '2025-01-05T00:00:00Z',
+      },
+      {
+        id: 'key-3-uuid',
+        name: 'Revoked Key',
+        is_active: false,
+        permissions: null,
+        last_used_at: '2025-01-08T09:00:00Z',
+        expires_at: '2026-06-01T00:00:00Z',
+        created_at: '2025-01-02T00:00:00Z',
+      },
+    ]
+    const response: ApiKeyListResponse = {
+      api_keys: mockApiKeys,
+      total: mockApiKeys.length,
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.get('/api/v2/api-keys/:keyId', ({ params }) => {
+    const key: ApiKeyResponse = {
+      id: params.keyId as string,
+      name: 'Test Key',
+      is_active: true,
+      permissions: null,
+      last_used_at: '2025-01-10T12:00:00Z',
+      expires_at: '2026-01-01T00:00:00Z',
+      created_at: '2025-01-01T00:00:00Z',
+    }
+    return HttpResponse.json(key)
+  }),
+
+  http.post('/api/v2/api-keys', async ({ request }) => {
+    const body = await request.json() as { name: string; expires_in_days?: number | null }
+
+    // Simulate duplicate name error
+    if (body.name === 'duplicate-name') {
+      return HttpResponse.json(
+        { detail: 'API key with this name already exists' },
+        { status: 409 }
+      )
+    }
+
+    // Simulate limit reached error
+    if (body.name === 'limit-reached') {
+      return HttpResponse.json(
+        { detail: 'Maximum API keys limit reached (10)' },
+        { status: 400 }
+      )
+    }
+
+    const expiresAt = body.expires_in_days
+      ? new Date(Date.now() + body.expires_in_days * 24 * 60 * 60 * 1000).toISOString()
+      : null
+
+    const response: ApiKeyCreateResponse = {
+      id: 'new-key-uuid-' + Date.now(),
+      name: body.name,
+      is_active: true,
+      permissions: null,
+      last_used_at: null,
+      expires_at: expiresAt,
+      created_at: new Date().toISOString(),
+      api_key: 'smtk_' + Math.random().toString(36).substring(2, 34),
+    }
+    return HttpResponse.json(response, { status: 201 })
+  }),
+
+  http.patch('/api/v2/api-keys/:keyId', async ({ params, request }) => {
+    const body = await request.json() as { is_active: boolean }
+    const response: ApiKeyResponse = {
+      id: params.keyId as string,
+      name: 'Updated Key',
+      is_active: body.is_active,
+      permissions: null,
+      last_used_at: '2025-01-10T12:00:00Z',
+      expires_at: '2026-01-01T00:00:00Z',
+      created_at: '2025-01-01T00:00:00Z',
+    }
+    return HttpResponse.json(response)
   }),
 ]
