@@ -1,6 +1,7 @@
 """Integration tests for the v2 API keys endpoints."""
 
 import os
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -68,6 +69,34 @@ async def test_create_api_key_with_custom_expiry(
     assert response.status_code == 201, response.text
     payload = response.json()
     assert payload["expires_at"] is not None
+
+
+@pytest.mark.asyncio()
+async def test_create_api_key_enforces_max_expiry(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    """Creating an API key enforces API_KEY_MAX_EXPIRY_DAYS when configured."""
+    monkeypatch.setattr("shared.config.settings.API_KEY_MAX_EXPIRY_DAYS", 30)
+
+    start = datetime.now(UTC)
+    response = await api_client.post(
+        "/api/v2/api-keys",
+        headers=api_auth_headers,
+        json={"name": "Max Expiry Key", "expires_in_days": 365},
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["expires_at"] is not None
+
+    expires_at_raw = str(payload["expires_at"])
+    expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
+    diff_seconds = (expires_at - start).total_seconds()
+
+    # Allow slack for execution time and timestamp rounding.
+    assert 28 * 24 * 60 * 60 <= diff_seconds <= 32 * 24 * 60 * 60
 
 
 @pytest.mark.asyncio()

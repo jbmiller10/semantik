@@ -344,6 +344,18 @@ class TestGetCurrentUser:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
+    async def test_get_current_user_disallow_disable_auth_in_production(self, mock_settings) -> None:
+        mock_settings.DISABLE_AUTH = True
+        mock_settings.ENVIRONMENT = "production"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(None)
+
+        assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert "DISABLE_AUTH cannot be enabled in production" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
     async def test_get_current_user_no_credentials(self, mock_settings) -> None:
         """Test get_current_user with no credentials"""
         mock_settings.DISABLE_AUTH = False
@@ -484,6 +496,15 @@ class TestGetCurrentUserWebSocket:
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")
+    async def test_get_current_user_websocket_disallow_disable_auth_in_production(self, mock_settings) -> None:
+        mock_settings.DISABLE_AUTH = True
+        mock_settings.ENVIRONMENT = "production"
+
+        with pytest.raises(ValueError, match="DISABLE_AUTH cannot be enabled in production"):
+            await get_current_user_websocket(None)
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
     async def test_get_current_user_websocket_no_token(self, mock_settings) -> None:
         """Test WebSocket auth with no token"""
         mock_settings.DISABLE_AUTH = False
@@ -605,6 +626,33 @@ class TestEdgeCases:
             await get_current_user(credentials)
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    @pytest.mark.asyncio()
+    @patch("webui.auth.settings")
+    @patch("webui.auth.get_db_session")
+    @patch("webui.auth.PostgreSQLApiKeyRepository")
+    async def test_get_current_user_api_key_verification_exception(
+        self, mock_repo_class, mock_get_db, mock_settings
+    ) -> None:
+        mock_settings.DISABLE_AUTH = False
+
+        mock_session = AsyncMock()
+        mock_get_db.return_value.__aiter__.return_value = [mock_session]
+
+        mock_repo = AsyncMock()
+        mock_repo.verify_api_key.side_effect = Exception("boom")
+        mock_repo_class.return_value = mock_repo
+
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="smtk_12345678_secret",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(credentials)
+
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert exc_info.value.detail == "Invalid API key"
 
     def test_token_expiry_constants(self) -> None:
         """Test token expiry constants"""
