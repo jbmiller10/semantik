@@ -223,13 +223,8 @@ describe('useApiKeys hooks', () => {
         }
       });
 
-      // 409 shows toast (form may also show field-level error for better UX)
-      await waitFor(() => {
-        expect(mockAddToast).toHaveBeenCalledWith({
-          type: 'error',
-          message: 'API key with this name already exists',
-        });
-      });
+      // 409 is handled by the form, no toast shown
+      expect(mockAddToast).not.toHaveBeenCalled();
     });
 
     it('should handle 400 limit reached error', async () => {

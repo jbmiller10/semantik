@@ -68,8 +68,11 @@ export function useCreateApiKey() {
           addToast({ type: 'error', message: 'Maximum API keys limit reached' });
           return;
         }
-        // Note: 409 (duplicate name) falls through to generic handler
-        // Form components may additionally show field-level validation
+
+        if (status === 409) {
+          // Duplicate name - this is handled by the form (field-level validation).
+          return;
+        }
       }
 
       const errorMessage = ApiErrorHandler.getMessage(error);

@@ -405,6 +405,55 @@ async def test_update_api_key_reactivate_success(
 
 
 @pytest.mark.asyncio()
+async def test_update_api_key_reactivate_enforces_max_active_keys(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    """Reactivating a key should fail when the user is at the active keys limit."""
+    monkeypatch.setattr("shared.config.settings.API_KEY_MAX_PER_USER", 2)
+
+    # Create two active keys.
+    create_a = await api_client.post(
+        "/api/v2/api-keys",
+        headers=api_auth_headers,
+        json={"name": "Key A"},
+    )
+    assert create_a.status_code == 201, create_a.text
+    key_a_id = create_a.json()["id"]
+
+    create_b = await api_client.post(
+        "/api/v2/api-keys",
+        headers=api_auth_headers,
+        json={"name": "Key B"},
+    )
+    assert create_b.status_code == 201, create_b.text
+
+    # Revoke one key, then create a third key to get back to the limit.
+    revoke_a = await api_client.patch(
+        f"/api/v2/api-keys/{key_a_id}",
+        headers=api_auth_headers,
+        json={"is_active": False},
+    )
+    assert revoke_a.status_code == 200, revoke_a.text
+
+    create_c = await api_client.post(
+        "/api/v2/api-keys",
+        headers=api_auth_headers,
+        json={"name": "Key C"},
+    )
+    assert create_c.status_code == 201, create_c.text
+
+    # Reactivating Key A would exceed the maximum active keys limit.
+    reactivate_a = await api_client.patch(
+        f"/api/v2/api-keys/{key_a_id}",
+        headers=api_auth_headers,
+        json={"is_active": True},
+    )
+    assert reactivate_a.status_code == 400, reactivate_a.text
+
+
+@pytest.mark.asyncio()
 async def test_update_api_key_not_found(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],

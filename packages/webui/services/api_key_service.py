@@ -6,7 +6,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
@@ -44,11 +44,11 @@ class ApiKeyService:
             EntityAlreadyExistsError: If a key with the same name exists for this user.
         """
         # Check key limit
-        key_count = await self._count_user_keys(user_id)
+        key_count = await self._count_user_active_keys(user_id)
         max_keys = settings.API_KEY_MAX_PER_USER
         if key_count >= max_keys:
             raise ValidationError(
-                f"Maximum number of API keys ({max_keys}) reached. "
+                f"Maximum number of active API keys ({max_keys}) reached. "
                 "Please revoke an existing key before creating a new one.",
                 field="name",
             )
@@ -156,8 +156,21 @@ class ApiKeyService:
         Raises:
             EntityNotFoundError: If key doesn't exist.
             AccessDeniedError: If user doesn't own the key.
+            ValidationError: If reactivating would exceed the maximum active keys limit.
         """
         api_key = await self.get(key_id, user_id)
+
+        # Enforce the maximum active keys limit on reactivation.
+        if is_active and not api_key.is_active:
+            active_count = await self._count_user_active_keys(user_id)
+            max_keys = settings.API_KEY_MAX_PER_USER
+            if active_count >= max_keys:
+                raise ValidationError(
+                    f"Maximum number of active API keys ({max_keys}) reached. "
+                    "Please revoke an existing key before reactivating this one.",
+                    field="is_active",
+                )
+
         api_key.is_active = is_active
         await self.db_session.flush()
 
@@ -172,9 +185,14 @@ class ApiKeyService:
 
         return api_key
 
-    async def _count_user_keys(self, user_id: int) -> int:
-        """Count total API keys for a user."""
-        stmt = select(func.count(ApiKey.id)).where(ApiKey.user_id == user_id)
+    async def _count_user_active_keys(self, user_id: int) -> int:
+        """Count currently-active, non-expired API keys for a user."""
+        now = datetime.now(UTC)
+        stmt = select(func.count(ApiKey.id)).where(
+            ApiKey.user_id == user_id,
+            ApiKey.is_active.is_(True),
+            or_(ApiKey.expires_at.is_(None), ApiKey.expires_at > now),
+        )
         result = await self.db_session.execute(stmt)
         return result.scalar_one()
 

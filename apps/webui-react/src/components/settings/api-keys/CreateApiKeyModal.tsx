@@ -13,7 +13,7 @@ const EXPIRATION_OPTIONS = [
   { label: '30 days', value: 30 },
   { label: '90 days', value: 90 },
   { label: '365 days', value: 365 },
-  { label: 'Never', value: null },
+  { label: '10 years', value: 3650 },
 ] as const;
 
 export default function CreateApiKeyModal({
@@ -22,7 +22,7 @@ export default function CreateApiKeyModal({
 }: CreateApiKeyModalProps) {
   const createApiKey = useCreateApiKey();
   const [name, setName] = useState('');
-  const [expiresInDays, setExpiresInDays] = useState<number | null>(365);
+  const [expiresInDays, setExpiresInDays] = useState<number>(365);
   const [nameError, setNameError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -185,18 +185,14 @@ export default function CreateApiKeyModal({
             </label>
             <select
               id="key-expiration"
-              value={expiresInDays ?? 'never'}
-              onChange={(e) =>
-                setExpiresInDays(
-                  e.target.value === 'never' ? null : Number(e.target.value)
-                )
-              }
+              value={expiresInDays}
+              onChange={(e) => setExpiresInDays(Number(e.target.value))}
               className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white"
             >
               {EXPIRATION_OPTIONS.map((option) => (
                 <option
-                  key={option.value ?? 'never'}
-                  value={option.value ?? 'never'}
+                  key={option.value}
+                  value={option.value}
                 >
                   {option.label}
                 </option>

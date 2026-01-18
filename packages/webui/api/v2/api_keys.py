@@ -151,6 +151,7 @@ async def get_api_key(
     "/{key_id}",
     response_model=ApiKeyResponse,
     responses={
+        400: {"model": ErrorResponse, "description": "Maximum keys limit reached"},
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         403: {"model": ErrorResponse, "description": "Access denied"},
         404: {"model": ErrorResponse, "description": "API key not found"},

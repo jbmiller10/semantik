@@ -47,20 +47,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from the next middleware
         """
-        # Try to get user from authorization header
-        auth_header = request.headers.get("authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
-            try:
-                # Try to decode the token and get user
-                user = await self.get_user_from_token(request, token)
-                if user:
-                    request.state.user = user
-            except Exception as e:
-                # If token is invalid, don't set user
-                # Rate limiting will fall back to IP address
-                logger.debug(f"Could not extract user from token for rate limiting: {e}")
-
         limiter = getattr(request.app.state, "limiter", None)
         inject_headers = False
 
@@ -73,6 +59,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if _should_exempt(limiter, handler):
                 logger.debug("Skipping middleware rate limit check due to exemption")
                 return await call_next(request)
+
+            # Try to get user from authorization header.
+            # Only do this work when rate limiting is enabled and the route is not exempt.
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+                try:
+                    user = await self.get_user_from_token(request, token)
+                    if user:
+                        request.state.user = user
+                except Exception as e:
+                    # If token is invalid, don't set user
+                    # Rate limiting will fall back to IP address
+                    logger.debug(f"Could not extract user from token for rate limiting: {e}")
 
             error_response, inject_headers = sync_check_limits(
                 limiter,

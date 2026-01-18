@@ -179,7 +179,7 @@ describe('CreateApiKeyModal', () => {
     })
   })
 
-  it('supports Never expiration and shows pending state', () => {
+  it('supports long expiration and shows pending state', () => {
     vi.mocked(useCreateApiKey).mockReturnValue({
       mutateAsync: vi.fn(),
       isPending: true,
@@ -189,8 +189,7 @@ describe('CreateApiKeyModal', () => {
 
     expect(screen.getByText('Creating...')).toBeInTheDocument()
 
-    // Keep the "Never" branch executed via select change
     const select = screen.getByLabelText('Expiration')
-    fireEvent.change(select, { target: { value: 'never' } })
+    fireEvent.change(select, { target: { value: '3650' } })
   })
 })
