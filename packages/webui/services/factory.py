@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from .api_key_service import ApiKeyService
+    from .benchmark_dataset_service import BenchmarkDatasetService
+    from .benchmark_service import BenchmarkService
     from .mcp_profile_service import MCPProfileService
 
 from fastapi import Depends
@@ -303,6 +305,75 @@ def create_api_key_service(db: AsyncSession) -> ApiKeyService:
 async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> ApiKeyService:
     """FastAPI dependency for ApiKeyService injection."""
     return create_api_key_service(db)
+
+
+def create_benchmark_dataset_service(db: AsyncSession) -> BenchmarkDatasetService:
+    """Create a BenchmarkDatasetService instance with dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured BenchmarkDatasetService instance
+    """
+    from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
+
+    from .benchmark_dataset_service import BenchmarkDatasetService
+
+    benchmark_dataset_repo = BenchmarkDatasetRepository(db)
+    collection_repo = CollectionRepository(db)
+    document_repo = DocumentRepository(db)
+
+    return BenchmarkDatasetService(
+        db_session=db,
+        benchmark_dataset_repo=benchmark_dataset_repo,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
+
+
+async def get_benchmark_dataset_service(
+    db: AsyncSession = Depends(get_db),
+) -> BenchmarkDatasetService:
+    """FastAPI dependency for BenchmarkDatasetService injection."""
+    return create_benchmark_dataset_service(db)
+
+
+def create_benchmark_service(db: AsyncSession) -> BenchmarkService:
+    """Create a BenchmarkService instance with dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured BenchmarkService instance
+    """
+    from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
+    from shared.database.repositories.benchmark_repository import BenchmarkRepository
+
+    from .benchmark_service import BenchmarkService
+
+    benchmark_repo = BenchmarkRepository(db)
+    benchmark_dataset_repo = BenchmarkDatasetRepository(db)
+    collection_repo = CollectionRepository(db)
+    operation_repo = OperationRepository(db)
+    search_service = create_search_service(db)
+
+    return BenchmarkService(
+        db_session=db,
+        benchmark_repo=benchmark_repo,
+        benchmark_dataset_repo=benchmark_dataset_repo,
+        collection_repo=collection_repo,
+        operation_repo=operation_repo,
+        search_service=search_service,
+    )
+
+
+async def get_benchmark_service(
+    db: AsyncSession = Depends(get_db),
+) -> BenchmarkService:
+    """FastAPI dependency for BenchmarkService injection."""
+    return create_benchmark_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
@@ -731,3 +732,134 @@ class SearchService:
         except Exception as e:
             logger.error("Search failed: %s", e, exc_info=True)
             raise
+
+    async def benchmark_search(
+        self,
+        collection: Collection,
+        query: str,
+        search_mode: SearchMode,
+        use_reranker: bool,
+        top_k: int,
+        rrf_k: int = 60,
+        score_threshold: float | None = None,
+    ) -> "BenchmarkSearchResult":
+        """Low-level search for benchmarking.
+
+        This method differs from the standard search methods in several ways:
+        - No HyDE expansion (disabled for reproducibility)
+        - No auth checks (collection passed in pre-validated)
+        - Returns raw chunk-level results with document IDs
+        - Returns detailed timing breakdowns
+
+        Args:
+            collection: Pre-fetched Collection instance (already validated)
+            query: Search query text
+            search_mode: Search mode (dense, sparse, hybrid)
+            use_reranker: Whether to use reranking
+            top_k: Number of results to return
+            rrf_k: RRF constant k for hybrid mode (default: 60)
+            score_threshold: Minimum score threshold (optional)
+
+        Returns:
+            BenchmarkSearchResult with chunks, timing, and total results
+        """
+        search_params: dict[str, Any] = {
+            "query": query,
+            "k": top_k,
+            "collection": collection.vector_store_name,
+            "model_name": collection.embedding_model,
+            "quantization": collection.quantization,
+            "search_mode": search_mode,
+            "rrf_k": rrf_k,
+            "score_threshold": score_threshold,
+            "use_reranker": use_reranker,
+            "include_content": False,  # Not needed for metrics calculation
+        }
+
+        # Note: Reranker model selection is handled by vecpipe based on the embedding model
+        # We don't override it here for benchmark consistency
+
+        start = time.perf_counter()
+
+        try:
+            headers = _vecpipe_headers()
+            async with httpx.AsyncClient(timeout=self.default_timeout) as client:
+                response = await client.post(
+                    f"{settings.SEARCH_API_URL}/search",
+                    json=search_params,
+                    headers=headers,
+                )
+                response.raise_for_status()
+
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            data: dict[str, Any] = response.json()
+
+            # Extract timing from response metadata if available
+            metadata = data.get("metadata", {})
+            rerank_time_ms: int | None = metadata.get("rerank_time_ms")
+            search_time_ms = elapsed_ms - (rerank_time_ms or 0)
+
+            # Format chunks for metrics calculation
+            # Each result has document_id, chunk_id, and score
+            chunks: list[dict[str, Any]] = []
+            for r in data.get("results", []):
+                chunks.append(
+                    {
+                        "doc_id": r.get("document_id"),
+                        "chunk_id": r.get("chunk_id"),
+                        "score": r.get("score", 0.0),
+                    }
+                )
+
+            return BenchmarkSearchResult(
+                chunks=chunks,
+                search_time_ms=search_time_ms,
+                rerank_time_ms=rerank_time_ms,
+                total_results=len(chunks),
+            )
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "Benchmark search failed for collection %s with status %s",
+                collection.name,
+                e.response.status_code,
+                exc_info=True,
+            )
+            # Return empty result on error
+            return BenchmarkSearchResult(
+                chunks=[],
+                search_time_ms=int((time.perf_counter() - start) * 1000),
+                rerank_time_ms=None,
+                total_results=0,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Benchmark search failed for collection %s: %s",
+                collection.name,
+                e,
+                exc_info=True,
+            )
+            return BenchmarkSearchResult(
+                chunks=[],
+                search_time_ms=int((time.perf_counter() - start) * 1000),
+                rerank_time_ms=None,
+                total_results=0,
+            )
+
+
+@dataclass
+class BenchmarkSearchResult:
+    """Result from benchmark search with timing details.
+
+    Attributes:
+        chunks: List of raw chunks with doc_id, chunk_id, and score
+        search_time_ms: Time spent on vector search in milliseconds
+        rerank_time_ms: Time spent on reranking (if applicable)
+        total_results: Total number of results returned
+    """
+
+    chunks: list[dict[str, Any]]
+    search_time_ms: int
+    rerank_time_ms: int | None
+    total_results: int
