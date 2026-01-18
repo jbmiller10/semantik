@@ -8,12 +8,11 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
-from shared.database.models import MappingStatus
+from shared.database.models import BenchmarkDataset, BenchmarkDatasetMapping, MappingStatus
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from shared.database.models import BenchmarkDataset, BenchmarkDatasetMapping
     from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
