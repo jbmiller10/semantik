@@ -136,6 +136,8 @@ class BenchmarkService:
         # Update total runs count
         await self.benchmark_repo.set_total_runs(str(benchmark.id), runs_created)
 
+        await self.db_session.commit()
+
         logger.info(
             "Created benchmark %s with %d runs for user %d",
             benchmark.id,
@@ -368,6 +370,8 @@ class BenchmarkService:
             BenchmarkStatus.CANCELLED,
         )
 
+        await self.db_session.commit()
+
         logger.info("Cancelled benchmark %s", benchmark_id)
 
         return {
@@ -482,4 +486,5 @@ class BenchmarkService:
             AccessDeniedError: If user doesn't own the benchmark
         """
         await self.benchmark_repo.delete(benchmark_id, user_id)
+        await self.db_session.commit()
         logger.info("Deleted benchmark %s for user %d", benchmark_id, user_id)

@@ -135,6 +135,8 @@ class BenchmarkDatasetService:
                 metadata=query_metadata,
             )
 
+        await self.db_session.commit()
+
         logger.info(
             "Uploaded benchmark dataset %s with %d queries for user %d",
             dataset.id,
@@ -206,6 +208,7 @@ class BenchmarkDatasetService:
             AccessDeniedError: If user doesn't own the dataset
         """
         await self.benchmark_dataset_repo.delete(dataset_id, user_id)
+        await self.db_session.commit()
         logger.info("Deleted benchmark dataset %s for user %d", dataset_id, user_id)
 
     async def create_mapping(
@@ -283,6 +286,8 @@ class BenchmarkDatasetService:
             status=MappingStatus.PENDING,
             total_count=total_refs,
         )
+
+        await self.db_session.commit()
 
         logger.info(
             "Created mapping %d: dataset %s -> collection %s with %d references",
@@ -429,6 +434,8 @@ class BenchmarkDatasetService:
             mapped_count=resolved_count,
             total_count=total,
         )
+
+        await self.db_session.commit()
 
         logger.info(
             "Resolved mapping %d: %d/%d references resolved",
