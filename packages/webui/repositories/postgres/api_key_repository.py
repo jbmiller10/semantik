@@ -237,11 +237,12 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             logger.error(f"Failed to delete API key {api_key_id}: {e}")
             raise DatabaseOperationError("delete", "api_key", str(e)) from e
 
-    async def verify_api_key(self, api_key: str) -> dict[str, Any] | None:
+    async def verify_api_key(self, api_key: str, *, update_last_used: bool = True) -> dict[str, Any] | None:
         """Verify an API key and return associated data if valid.
 
         Args:
             api_key: The actual API key string
+            update_last_used: Whether to update last_used_at for the key when verification succeeds.
 
         Returns:
             API key data with user info if valid, None otherwise
@@ -271,8 +272,9 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                 logger.info(f"User {api_key_record.user_id} is inactive")
                 return None
 
-            # Update last used timestamp (fire-and-forget)
-            await self.update_last_used(api_key_record.id)
+            if update_last_used:
+                # Update last used timestamp (best-effort, do not fail auth on write errors)
+                await self.update_last_used(api_key_record.id)
 
             return self._api_key_to_dict(api_key_record)
 

@@ -56,9 +56,9 @@ describe('Search Validation Utilities', () => {
         field: 'topK',
         message: 'Number of results must be at least 1'
       });
-      expect(validateTopK(101)).toEqual({
+      expect(validateTopK(251)).toEqual({
         field: 'topK',
-        message: 'Number of results cannot exceed 100'
+        message: 'Number of results cannot exceed 250'
       });
     });
   });
@@ -150,7 +150,7 @@ describe('Search Validation Utilities', () => {
     it('should collect all validation errors', () => {
       const invalidParams = {
         query: '',
-        topK: 200,
+        topK: 300,
         scoreThreshold: -1,
         hybridAlpha: 2,
         selectedCollections: [],

@@ -127,6 +127,7 @@ class OperationType(str, enum.Enum):
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
+    RETRY_DOCUMENTS = "retry_documents"
 
     @classmethod
     def _missing_(cls, value: Any) -> "OperationType | None":
@@ -177,6 +178,19 @@ class User(Base):
     permissions = relationship("CollectionPermission", back_populates="user", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="user")
     audit_logs = relationship("CollectionAuditLog", back_populates="user")
+    mcp_profiles = relationship("MCPProfile", back_populates="owner", cascade="all, delete-orphan")
+    llm_provider_config = relationship(
+        "LLMProviderConfig",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
 
 
 class Collection(Base):
@@ -253,6 +267,7 @@ class Collection(Base):
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
+    mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
 
 
 class Document(Base):
@@ -294,6 +309,11 @@ class Document(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
     is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
 
+    # Retry tracking fields (for failed document retry functionality)
+    retry_count = Column(Integer, nullable=False, default=0)  # Number of retry attempts
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)  # When last retry was attempted
+    error_category = Column(String(50), nullable=True)  # 'transient', 'permanent', or 'unknown'
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
@@ -311,6 +331,16 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+        # Index for querying retryable failed documents
+        # Note: DocumentStatus enum uses member NAMES (FAILED) not VALUES (failed) in PostgreSQL
+        Index(
+            "ix_documents_collection_failed_retryable",
+            "collection_id",
+            "status",
+            "error_category",
+            "retry_count",
+            postgresql_where=text("status = 'FAILED'"),
         ),
     )
 
@@ -885,3 +915,383 @@ class Chunk(Base):
             },
         },
     )
+
+
+class MCPProfile(Base):
+    """MCP search profile configuration.
+
+    Defines a named search profile that exposes collections to MCP clients
+    like Claude Desktop. Each profile has scoped collection access and
+    configurable search defaults.
+
+    Profile names must be unique per user and follow the pattern [a-z][a-z0-9_-]*
+    to ensure valid tool naming in MCP clients.
+    """
+
+    __tablename__ = "mcp_profiles"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    name = Column(String(64), nullable=False)  # Tool name: lowercase, no spaces
+    description = Column(Text, nullable=False)  # Shown to LLM as tool description
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    # Search defaults
+    search_type = Column(String(32), nullable=False, default="semantic")  # semantic, hybrid, keyword, question, code
+    result_count = Column(Integer, nullable=False, default=10)
+    use_reranker = Column(Boolean, nullable=False, default=True)
+    score_threshold = Column(Float, nullable=True)
+    hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
+    search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
+    rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
+    use_hyde = Column(Boolean, nullable=False, default=False)  # HyDE query expansion
+
+    # Metadata
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="mcp_profiles")
+    collections = relationship("Collection", secondary="mcp_profile_collections", back_populates="mcp_profiles")
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),
+        CheckConstraint(
+            "search_type IN ('semantic', 'hybrid', 'keyword', 'question', 'code')",
+            name="ck_mcp_profiles_search_type",
+        ),
+        CheckConstraint("result_count >= 1 AND result_count <= 100", name="ck_mcp_profiles_result_count"),
+        CheckConstraint(
+            "score_threshold IS NULL OR (score_threshold >= 0 AND score_threshold <= 1)",
+            name="ck_mcp_profiles_score_threshold",
+        ),
+        CheckConstraint(
+            "hybrid_alpha IS NULL OR (hybrid_alpha >= 0 AND hybrid_alpha <= 1)",
+            name="ck_mcp_profiles_hybrid_alpha",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_mcp_profiles_search_mode",
+        ),
+        CheckConstraint(
+            "rrf_k IS NULL OR (rrf_k >= 1 AND rrf_k <= 1000)",
+            name="ck_mcp_profiles_rrf_k",
+        ),
+    )
+
+
+class MCPProfileCollection(Base):
+    """Junction table for MCP profile to collection mapping.
+
+    Maps collections to MCP profiles with an ordering field that determines
+    search priority. Lower order values are searched first and may affect
+    result ranking when searching across multiple collections.
+    """
+
+    __tablename__ = "mcp_profile_collections"
+
+    profile_id = Column(
+        String,
+        ForeignKey("mcp_profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    order = Column(Integer, nullable=False, default=0)  # Lower values = higher priority
+
+
+class LLMProviderConfig(Base):
+    """Per-user LLM provider configuration.
+
+    Stores quality tier settings (high/low) for LLM model selection.
+    Each user has at most one config row (one-to-one with users).
+    API keys are stored separately in LLMProviderApiKey for security.
+    """
+
+    __tablename__ = "llm_provider_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # High-quality tier (complex tasks: summaries, entity extraction)
+    # NULL means "use application default from model registry"
+    high_quality_provider = Column(String(32))  # 'anthropic', 'openai', etc.
+    high_quality_model = Column(String(128))  # Model ID
+
+    # Low-quality tier (simple tasks: HyDE, keywords)
+    low_quality_provider = Column(String(32))
+    low_quality_model = Column(String(128))
+
+    # Optional defaults (can be overridden per-call)
+    default_temperature = Column(Float)
+    default_max_tokens = Column(Integer)
+    provider_config = Column(JSON)  # Provider-specific config
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "default_temperature IS NULL OR (default_temperature >= 0 AND default_temperature <= 2)",
+            name="ck_llm_provider_configs_temperature",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="llm_provider_config")
+    api_keys = relationship(
+        "LLMProviderApiKey",
+        back_populates="config",
+        cascade="all, delete-orphan",
+    )
+
+
+class LLMProviderApiKey(Base):
+    """Encrypted API keys for LLM providers.
+
+    Keys are stored per-provider (not per-tier). If both tiers use the
+    same provider, they share the key. Uses Fernet encryption via
+    SecretEncryption class.
+
+    The key_id field stores SHA-256 fingerprint of the encryption key
+    used, enabling future key rotation support.
+    """
+
+    __tablename__ = "llm_provider_api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    config_id = Column(
+        Integer,
+        ForeignKey("llm_provider_configs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    ciphertext = Column(LargeBinary, nullable=False)  # Fernet-encrypted API key
+    key_id = Column(String(64), nullable=False)  # Encryption key fingerprint
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    last_used_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("config_id", "provider", name="uq_llm_api_keys_config_provider"),)
+
+    # Relationships
+    config = relationship("LLMProviderConfig", back_populates="api_keys")
+
+
+class LLMUsageEvent(Base):
+    """LLM token usage tracking.
+
+    Records usage per-request for both interactive (HyDE search) and
+    background operations (summarization). Uses provider-reported token
+    counts, not approximations.
+
+    Stored in a dedicated table (not OperationMetrics) because:
+    - HyDE runs in request path with no Operation record
+    - Enables per-user usage dashboards without joining Operations
+    """
+
+    __tablename__ = "llm_usage_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # What was called
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    model = Column(String(128), nullable=False)  # Model ID
+    quality_tier = Column(String(16), nullable=False)  # 'high' or 'low'
+    feature = Column(String(50), nullable=False)  # 'hyde', 'summary', 'extraction'
+
+    # Token counts (provider-reported)
+    input_tokens = Column(Integer, nullable=False)
+    output_tokens = Column(Integer, nullable=False)
+
+    # Optional context
+    operation_id = Column(Integer)  # NULL for interactive requests (HyDE)
+    collection_id = Column(String(36))
+    request_metadata = Column(JSON)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_llm_usage_user_created", "user_id", "created_at"),
+        Index("idx_llm_usage_feature", "user_id", "feature"),
+    )
+
+
+class UserPreferences(Base):
+    """Per-user preferences for search, collection defaults, and interface settings.
+
+    Stores user-specific settings for search behavior, collection creation, and UI.
+    Each user has at most one preferences row (one-to-one with users).
+    Missing preferences use application defaults via get_or_create pattern.
+
+    Search preferences:
+    - search_top_k: Number of results to return (1-250, default 10)
+    - search_mode: 'dense', 'sparse', or 'hybrid' (default 'dense')
+    - search_use_reranker: Enable reranking (default false)
+    - search_rrf_k: RRF constant for hybrid fusion (1-100, default 60)
+    - search_similarity_threshold: Minimum similarity score (0-1, NULL for no threshold)
+    - search_use_hyde: Enable HyDE query expansion (default false)
+    - search_hyde_quality_tier: 'high' or 'low' LLM tier for HyDE (default 'low')
+    - search_hyde_timeout_seconds: Timeout for HyDE generation (3-180, default 30)
+
+    Collection defaults:
+    - default_embedding_model: Model ID or NULL for system default
+    - default_quantization: 'float32', 'float16', 'int8' (default 'float16')
+    - default_chunking_strategy: 'character', 'recursive', 'markdown', 'semantic'
+    - default_chunk_size: 256-4096 (default 1024)
+    - default_chunk_overlap: 0-512 (default 200)
+    - default_enable_sparse: Enable sparse indexing (default false)
+    - default_sparse_type: 'bm25' or 'splade' (default 'bm25')
+    - default_enable_hybrid: Enable hybrid search (requires sparse, default false)
+
+    Interface preferences:
+    - data_refresh_interval_ms: Data polling interval in ms (10000-60000, default 30000)
+    - visualization_sample_limit: Max points for UMAP/PCA (10000-500000, default 200000)
+    - animation_enabled: Enable UI animations (default true)
+    """
+
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # Search preferences
+    search_top_k = Column(Integer, nullable=False, default=10)
+    search_mode = Column(String(16), nullable=False, default="dense")
+    search_use_reranker = Column(Boolean, nullable=False, default=False)
+    search_rrf_k = Column(Integer, nullable=False, default=60)
+    search_similarity_threshold = Column(Float, nullable=True)
+    # HyDE settings
+    search_use_hyde = Column(Boolean, nullable=False, default=False)
+    search_hyde_quality_tier = Column(String(4), nullable=False, default="low")
+    search_hyde_timeout_seconds = Column(Integer, nullable=False, default=30)
+
+    # Collection defaults
+    default_embedding_model = Column(String(128), nullable=True)
+    default_quantization = Column(String(16), nullable=False, default="float16")
+    default_chunking_strategy = Column(String(32), nullable=False, default="recursive")
+    default_chunk_size = Column(Integer, nullable=False, default=1024)
+    default_chunk_overlap = Column(Integer, nullable=False, default=200)
+    default_enable_sparse = Column(Boolean, nullable=False, default=False)
+    default_sparse_type = Column(String(16), nullable=False, default="bm25")
+    default_enable_hybrid = Column(Boolean, nullable=False, default=False)
+
+    # Interface preferences
+    data_refresh_interval_ms = Column(Integer, nullable=False, default=30000)
+    visualization_sample_limit = Column(Integer, nullable=False, default=200000)
+    animation_enabled = Column(Boolean, nullable=False, default=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "search_top_k >= 1 AND search_top_k <= 250",
+            name="ck_user_preferences_search_top_k",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_user_preferences_search_mode",
+        ),
+        CheckConstraint(
+            "search_rrf_k >= 1 AND search_rrf_k <= 100",
+            name="ck_user_preferences_search_rrf_k",
+        ),
+        CheckConstraint(
+            "search_similarity_threshold IS NULL OR (search_similarity_threshold >= 0.0 AND search_similarity_threshold <= 1.0)",
+            name="ck_user_preferences_search_similarity_threshold",
+        ),
+        CheckConstraint(
+            "search_hyde_quality_tier IN ('high', 'low')",
+            name="ck_user_preferences_search_hyde_quality_tier",
+        ),
+        CheckConstraint(
+            "search_hyde_timeout_seconds >= 3 AND search_hyde_timeout_seconds <= 180",
+            name="ck_user_preferences_search_hyde_timeout",
+        ),
+        CheckConstraint(
+            "default_quantization IN ('float32', 'float16', 'int8')",
+            name="ck_user_preferences_default_quantization",
+        ),
+        CheckConstraint(
+            "default_chunking_strategy IN ('character', 'recursive', 'markdown', 'semantic')",
+            name="ck_user_preferences_default_chunking_strategy",
+        ),
+        CheckConstraint(
+            "default_chunk_size >= 256 AND default_chunk_size <= 4096",
+            name="ck_user_preferences_default_chunk_size",
+        ),
+        CheckConstraint(
+            "default_chunk_overlap >= 0 AND default_chunk_overlap <= 512",
+            name="ck_user_preferences_default_chunk_overlap",
+        ),
+        CheckConstraint(
+            "default_sparse_type IN ('bm25', 'splade')",
+            name="ck_user_preferences_default_sparse_type",
+        ),
+        CheckConstraint(
+            "default_enable_hybrid = false OR default_enable_sparse = true",
+            name="ck_user_preferences_hybrid_requires_sparse",
+        ),
+        CheckConstraint(
+            "data_refresh_interval_ms >= 10000 AND data_refresh_interval_ms <= 60000",
+            name="ck_user_preferences_data_refresh_interval_ms",
+        ),
+        CheckConstraint(
+            "visualization_sample_limit >= 10000 AND visualization_sample_limit <= 500000",
+            name="ck_user_preferences_visualization_sample_limit",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="preferences")
+
+
+class SystemSettings(Base):
+    """Key-value store for system-wide admin settings.
+
+    This table stores configurable system parameters that can be modified
+    by administrators through the UI instead of requiring environment variables.
+    Values are stored as JSON and support any JSON-serializable type.
+
+    A JSON null value means "use environment variable fallback".
+
+    Example:
+        >>> setting = SystemSettings(
+        ...     key="max_collections_per_user",
+        ...     value=20,
+        ...     updated_by=admin_user_id,
+        ... )
+    """
+
+    __tablename__ = "system_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[updated_by])

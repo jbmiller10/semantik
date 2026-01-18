@@ -21,7 +21,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 VERSION_FILES = [
     ("VERSION", r"^(.*)$", r"{version}"),
     ("pyproject.toml", r'^version = "([^"]+)"', 'version = "{version}"'),
-    ("packages/cli/pyproject.toml", r'^version = "([^"]+)"', 'version = "{version}"'),
 ]
 
 

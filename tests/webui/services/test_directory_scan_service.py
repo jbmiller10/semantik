@@ -11,11 +11,7 @@ import pytest
 
 from shared.utils.hashing import HASH_CHUNK_SIZE
 from webui.api.schemas import DirectoryScanResponse
-from webui.services.directory_scan_service import (
-    MAX_FILE_SIZE,
-    PROGRESS_UPDATE_INTERVAL,
-    DirectoryScanService,
-)
+from webui.services.directory_scan_service import MAX_FILE_SIZE, PROGRESS_UPDATE_INTERVAL, DirectoryScanService
 
 
 @pytest.fixture()

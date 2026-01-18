@@ -50,27 +50,27 @@ function DeleteCollectionModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-[60] w-full max-w-lg">
-        <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-medium text-gray-900">Delete Collection</h3>
+      <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-2xl shadow-2xl z-[60] w-full max-w-lg">
+        <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+          <h3 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Delete Collection</h3>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 space-y-4">
-            <div className="bg-red-50 border-l-4 border-red-400 p-4">
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
               <div className="flex">
                 <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">
+                  <h3 className="text-sm font-bold text-red-400">
                     This action cannot be undone
                   </h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    <p>You are about to permanently delete the collection "{collectionName}".</p>
+                  <div className="mt-2 text-sm text-red-300/80">
+                    <p>You are about to permanently delete the collection <span className="text-white font-mono">{collectionName}</span>.</p>
                   </div>
                 </div>
               </div>
@@ -80,7 +80,7 @@ function DeleteCollectionModal({
               <button
                 type="button"
                 onClick={() => setShowDetails(!showDetails)}
-                className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+                className="flex items-center text-sm font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <svg
                   className={`h-4 w-4 mr-1 transform transition-transform ${showDetails ? 'rotate-90' : ''}`}
@@ -92,28 +92,28 @@ function DeleteCollectionModal({
                 </svg>
                 What will be deleted?
               </button>
-              
+
               {showDetails && (
-                <div className="mt-2 bg-gray-50 rounded-lg p-4 text-sm">
+                <div className="mt-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 text-sm">
                   <dl className="space-y-2">
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Jobs:</dt>
-                      <dd className="font-medium text-gray-900">{stats.job_count}</dd>
+                      <dt className="text-[var(--text-muted)]">Jobs:</dt>
+                      <dd className="font-bold text-[var(--text-primary)]">{stats.job_count}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Documents:</dt>
-                      <dd className="font-medium text-gray-900">{stats.total_files.toLocaleString()}</dd>
+                      <dt className="text-[var(--text-muted)]">Documents:</dt>
+                      <dd className="font-bold text-[var(--text-primary)]">{stats.total_files.toLocaleString()}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Vectors:</dt>
-                      <dd className="font-medium text-gray-900">{stats.total_vectors.toLocaleString()}</dd>
+                      <dt className="text-[var(--text-muted)]">Vectors:</dt>
+                      <dd className="font-bold text-[var(--text-primary)]">{stats.total_vectors.toLocaleString()}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Storage:</dt>
-                      <dd className="font-medium text-gray-900">{formatBytes(stats.total_size)}</dd>
+                      <dt className="text-[var(--text-muted)]">Storage:</dt>
+                      <dd className="font-bold text-[var(--text-primary)]">{formatBytes(stats.total_size)}</dd>
                     </div>
                   </dl>
-                  <p className="mt-3 text-xs text-gray-600">
+                  <p className="mt-3 text-xs text-[var(--text-muted)]">
                     All database records, vector embeddings, and associated files will be permanently removed.
                   </p>
                 </div>
@@ -121,15 +121,15 @@ function DeleteCollectionModal({
             </div>
 
             <div>
-              <label htmlFor="confirm-text" className="block text-sm font-medium text-gray-700">
-                Type <span className="font-mono font-bold">DELETE</span> to confirm
+              <label htmlFor="confirm-text" className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+                Type <span className="font-mono text-red-400">DELETE</span> to confirm
               </label>
               <input
                 type="text"
                 id="confirm-text"
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                className="mt-1 block w-full bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl px-4 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-transparent placeholder-[var(--text-muted)] sm:text-sm"
                 placeholder="Type DELETE here"
                 autoComplete="off"
                 autoFocus
@@ -138,18 +138,18 @@ function DeleteCollectionModal({
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t flex justify-end space-x-3">
+          <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end space-x-3 bg-[var(--bg-secondary)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="px-4 py-2 border border-[var(--border)] rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               disabled={deleteCollectionMutation.isPending}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-red-600/20 hover:bg-red-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={deleteCollectionMutation.isPending || confirmText !== 'DELETE'}
             >
               {deleteCollectionMutation.isPending ? 'Deleting...' : 'Delete Collection'}

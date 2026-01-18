@@ -8,11 +8,7 @@ import threading
 from typing import Any, ClassVar
 
 from shared.plugins.manifest import PluginManifest
-from shared.plugins.types.reranker import (
-    RerankerCapabilities,
-    RerankerPlugin,
-    RerankResult,
-)
+from shared.plugins.types.reranker import RerankerCapabilities, RerankerPlugin, RerankResult
 
 logger = logging.getLogger(__name__)
 

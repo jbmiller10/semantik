@@ -10,18 +10,8 @@ import pytest
 from shared.plugins.base import SemanticPlugin
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.protocols import PluginProtocol
-from shared.plugins.types import (
-    ChunkingPlugin,
-    ConnectorPlugin,
-    EmbeddingPlugin,
-    ExtractorPlugin,
-    RerankerPlugin,
-)
-from shared.plugins.validation import (
-    PLUGIN_ID_MAX_LENGTH,
-    PLUGIN_ID_REGEX,
-    validate_plugin_id,
-)
+from shared.plugins.types import ChunkingPlugin, ConnectorPlugin, EmbeddingPlugin, ExtractorPlugin, RerankerPlugin
+from shared.plugins.validation import PLUGIN_ID_MAX_LENGTH, PLUGIN_ID_REGEX, validate_plugin_id
 
 # Valid plugin types as defined in loader.py
 VALID_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}

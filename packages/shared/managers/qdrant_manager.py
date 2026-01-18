@@ -311,22 +311,30 @@ class QdrantManager:
             hours: Age threshold in hours (default: 24)
 
         Returns:
-            bool: True if collection is older than threshold
+            bool: True if collection is older than threshold or cannot be parsed
         """
+        # Extract timestamp from staging collection name
+        # Format: staging_collection_uuid_YYYYMMDD_HHMMSS
+        parts = collection_name.split("_")
+        if len(parts) < 4:
+            logger.warning(
+                "Could not parse timestamp from collection name %s: insufficient parts (%d < 4)",
+                collection_name,
+                len(parts),
+            )
+            # If we can't parse the timestamp, consider it old to be safe
+            return True
+
         try:
-            # Extract timestamp from staging collection name
-            # Format: staging_collection_uuid_YYYYMMDD_HHMMSS
-            parts = collection_name.split("_")
-            if len(parts) >= 4:
-                date_str = parts[-2]
-                time_str = parts[-1]
-                timestamp_str = f"{date_str}_{time_str}"
+            date_str = parts[-2]
+            time_str = parts[-1]
+            timestamp_str = f"{date_str}_{time_str}"
 
-                # Parse timestamp
-                collection_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S").replace(tzinfo=UTC)
-                age_hours = (datetime.now(UTC) - collection_time).total_seconds() / 3600
+            # Parse timestamp
+            collection_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S").replace(tzinfo=UTC)
+            age_hours = (datetime.now(UTC) - collection_time).total_seconds() / 3600
 
-                return age_hours > hours
+            return age_hours > hours
         except Exception as e:
             logger.warning(
                 "Could not parse timestamp from collection name %s: %s",
@@ -336,8 +344,6 @@ class QdrantManager:
             )
             # If we can't parse the timestamp, consider it old to be safe
             return True
-
-        return True
 
     def _get_collection_info_safe(self, collection_name: str) -> CollectionInfo | None:
         """

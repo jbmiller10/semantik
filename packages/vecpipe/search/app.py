@@ -4,8 +4,10 @@ from fastapi import FastAPI
 
 from shared.version import get_version
 from vecpipe.search.lifespan import lifespan
+from vecpipe.search.llm_api import router as llm_router
 from vecpipe.search.memory_api import router as memory_router
 from vecpipe.search.router import router
+from vecpipe.search.sparse_router import router as sparse_router
 
 
 def create_app() -> FastAPI:
@@ -17,6 +19,8 @@ def create_app() -> FastAPI:
     )
     app.include_router(router)
     app.include_router(memory_router)
+    app.include_router(sparse_router)
+    app.include_router(llm_router)
     return app
 
 

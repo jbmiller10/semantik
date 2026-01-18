@@ -89,13 +89,19 @@ Mock Classes
 - ``MockChunker``: Mock chunker
 """
 
-from .contracts import (
+from .contracts import (  # Protocol-based test mixins (for external plugins with no semantik imports); ABC-based contract tests (require inheritance)
+    AgentProtocolTestMixin,
     ChunkingPluginContractTest,
+    ChunkingProtocolTestMixin,
     ConnectorPluginContractTest,
+    ConnectorProtocolTestMixin,
     EmbeddingPluginContractTest,
+    EmbeddingProtocolTestMixin,
     ExtractorPluginContractTest,
+    ExtractorProtocolTestMixin,
     PluginContractTest,
     RerankerPluginContractTest,
+    RerankerProtocolTestMixin,
 )
 from .fixtures import (
     _env_with_api_key,
@@ -119,22 +125,23 @@ from .fixtures import (
     sample_short_text,
     sample_text,
 )
-from .mocks import (
-    MockChunker,
-    MockDocument,
-    MockEmbeddingService,
-    MockExtractor,
-    MockReranker,
-)
+from .mocks import MockChunker, MockDocument, MockEmbeddingService, MockExtractor, MockReranker
 
 __all__ = [
-    # Contract test classes
+    # ABC-based contract test classes (require inheritance)
     "PluginContractTest",
     "EmbeddingPluginContractTest",
     "ChunkingPluginContractTest",
     "ConnectorPluginContractTest",
     "RerankerPluginContractTest",
     "ExtractorPluginContractTest",
+    # Protocol-based test mixins (for external plugins with no semantik imports)
+    "ConnectorProtocolTestMixin",
+    "EmbeddingProtocolTestMixin",
+    "ChunkingProtocolTestMixin",
+    "RerankerProtocolTestMixin",
+    "ExtractorProtocolTestMixin",
+    "AgentProtocolTestMixin",
     # Mock classes
     "MockDocument",
     "MockEmbeddingService",

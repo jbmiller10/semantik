@@ -327,3 +327,74 @@ class TestAuditCollectionDeletion:
 
             # Verify no session created
             mock_session_maker.assert_not_called()
+
+
+class TestCleanupStuckOperations:
+    """Test suite for cleanup_stuck_operations task."""
+
+    def test_cleanup_stuck_operations_no_stuck_operations(self) -> None:
+        """Test cleanup when no stuck operations exist."""
+        from webui.tasks import cleanup_stuck_operations
+
+        # Mock the async implementation to return no stuck operations
+        with patch(
+            "webui.tasks.cleanup._cleanup_stuck_operations_async",
+            new=AsyncMock(return_value={"cleaned": 0, "skipped": 0, "operation_ids": []}),
+        ):
+            result = cleanup_stuck_operations(stuck_threshold_minutes=15)
+
+        assert result["cleaned"] == 0
+        assert result["skipped"] == 0
+        assert result["operation_ids"] == []
+        assert "timestamp" in result
+
+    def test_cleanup_stuck_operations_cleans_orphaned(self) -> None:
+        """Test cleanup marks orphaned operations as failed."""
+        from webui.tasks import cleanup_stuck_operations
+
+        # Mock the async implementation to return cleaned operations
+        with patch(
+            "webui.tasks.cleanup._cleanup_stuck_operations_async",
+            new=AsyncMock(
+                return_value={
+                    "cleaned": 3,
+                    "skipped": 1,
+                    "operation_ids": ["op-1", "op-2", "op-3"],
+                }
+            ),
+        ):
+            result = cleanup_stuck_operations(stuck_threshold_minutes=15)
+
+        assert result["cleaned"] == 3
+        assert result["skipped"] == 1
+        assert len(result["operation_ids"]) == 3
+
+    def test_cleanup_stuck_operations_handles_error(self) -> None:
+        """Test cleanup handles errors gracefully."""
+        from webui.tasks import cleanup_stuck_operations
+
+        # Mock the async implementation to raise an exception
+        with patch(
+            "webui.tasks.cleanup._cleanup_stuck_operations_async",
+            new=AsyncMock(side_effect=Exception("Database connection error")),
+        ):
+            result = cleanup_stuck_operations(stuck_threshold_minutes=15)
+
+        # Should not raise, but return error in result
+        assert result["cleaned"] == 0
+        assert "Database connection error" in result["errors"][0]
+
+    def test_cleanup_stuck_operations_threshold_passed(self) -> None:
+        """Test cleanup passes threshold parameter correctly."""
+        from webui.tasks import cleanup_stuck_operations
+
+        # Mock the async implementation to verify threshold is passed
+        with patch(
+            "webui.tasks.cleanup._cleanup_stuck_operations_async",
+            new=AsyncMock(return_value={"cleaned": 2, "skipped": 0, "operation_ids": ["op-1", "op-2"]}),
+        ) as mock_async:
+            result = cleanup_stuck_operations(stuck_threshold_minutes=30)
+
+        # Verify threshold was passed to async function
+        mock_async.assert_awaited_once_with(30)
+        assert result["cleaned"] == 2

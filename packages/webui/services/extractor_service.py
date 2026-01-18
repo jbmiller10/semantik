@@ -5,15 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, plugin_registry
-from shared.plugins.types.extractor import (
-    ExtractionResult,
-    ExtractionType,
-    ExtractorPlugin,
-)
+from shared.plugins.types.extractor import ExtractionResult, ExtractionType, ExtractorPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +36,7 @@ class ExtractorService:
         # Ensure plugins are loaded
         load_plugins(plugin_types={"extractor"})
 
-        return plugin_registry.list_records(plugin_type="extractor")
+        return cast(list[PluginRecord], plugin_registry.list_records(plugin_type="extractor"))
 
     def get_extractor(self, extractor_id: str) -> PluginRecord | None:
         """Get a specific extractor by ID.
@@ -217,7 +213,7 @@ class ExtractorService:
         if not searchable:
             return None
 
-        return searchable
+        return cast(dict[str, Any], searchable)
 
     async def cleanup(self) -> None:
         """Clean up all extractor instances."""

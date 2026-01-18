@@ -72,9 +72,10 @@ describe('DeleteCollectionModal', () => {
   describe('Modal Rendering', () => {
     it('should render the modal with collection details', () => {
       renderComponent();
-      
+
       expect(screen.getByRole('heading', { name: 'Delete Collection' })).toBeInTheDocument();
-      expect(screen.getByText(/You are about to permanently delete the collection "Test Collection"/)).toBeInTheDocument();
+      expect(screen.getByText(/You are about to permanently delete the collection/)).toBeInTheDocument();
+      expect(screen.getByText('Test Collection')).toBeInTheDocument();
       expect(screen.getByText('This action cannot be undone')).toBeInTheDocument();
     });
 
@@ -285,11 +286,11 @@ describe('DeleteCollectionModal', () => {
     it('should call onClose when backdrop is clicked', async () => {
       const user = userEvent.setup();
       const { container } = renderComponent();
-      
-      // Find the backdrop (first div with fixed inset-0)
-      const backdrop = container.querySelector('.fixed.inset-0.bg-black');
+
+      // Find the backdrop (first div with fixed inset-0 and backdrop-blur)
+      const backdrop = container.querySelector('.fixed.inset-0.backdrop-blur-sm');
       await user.click(backdrop!);
-      
+
       expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
     });
 
@@ -308,8 +309,9 @@ describe('DeleteCollectionModal', () => {
   describe('Edge Cases', () => {
     it('should handle empty collection name gracefully', () => {
       renderComponent({ collectionName: '' });
-      
-      expect(screen.getByText(/You are about to permanently delete the collection ""/)).toBeInTheDocument();
+
+      // Component shows the text with the collection name in a span
+      expect(screen.getByText(/You are about to permanently delete the collection/)).toBeInTheDocument();
     });
 
     it('should handle zero stats gracefully', async () => {

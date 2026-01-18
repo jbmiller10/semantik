@@ -16,7 +16,6 @@ if Path(_plugins_dir).is_dir() and _plugins_dir not in sys.path:
 from shared.config import settings
 from shared.embedding.service import get_embedding_service
 from shared.metrics.prometheus import start_metrics_server
-from vecpipe.hybrid_search import HybridSearchEngine
 from vecpipe.qwen3_search_config import get_reranker_for_embedding_model
 from vecpipe.search import state as search_state
 from vecpipe.search.app import app, create_app
@@ -28,15 +27,13 @@ from vecpipe.search.metrics import (
     search_latency,
     search_requests,
 )
-from vecpipe.search.router import batch_search, hybrid_search, keyword_search, search_post
+from vecpipe.search.router import batch_search, search_post
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, PointPayload, UpsertPoint, UpsertRequest, UpsertResponse
 from vecpipe.search.service import (
     embed_texts,
     generate_embedding_async,
     generate_mock_embedding,
     perform_batch_search,
-    perform_hybrid_search,
-    perform_keyword_search,
     perform_search,
     upsert_points,
 )
@@ -56,8 +53,6 @@ __all__ = [
     "generate_mock_embedding",
     "generate_embedding_async",
     "perform_search",
-    "perform_hybrid_search",
-    "perform_keyword_search",
     "perform_batch_search",
     "embed_texts",
     "upsert_points",
@@ -75,8 +70,6 @@ __all__ = [
     "get_embedding_service",
     "start_metrics_server",
     "batch_search",
-    "hybrid_search",
-    "keyword_search",
     "search_post",
     "model_manager",
     "state_model_manager",
@@ -84,7 +77,6 @@ __all__ = [
     "embedding_service",
     "executor",
     "search_qdrant",
-    "HybridSearchEngine",
     "get_reranker_for_embedding_model",
     "search_state",
 ]

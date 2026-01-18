@@ -15,12 +15,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from shared.config import settings
 
 from .cpu_offloader import get_offloader
-from .memory_governor import (
-    GPUMemoryGovernor,
-    MemoryBudget,
-    ModelType,
-    create_memory_budget,
-)
+from .memory_governor import GPUMemoryGovernor, MemoryBudget, ModelType, create_memory_budget
 from .memory_utils import ModelRestoreError, get_model_memory_requirement
 from .model_manager import ModelManager
 

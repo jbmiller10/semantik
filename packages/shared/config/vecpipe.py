@@ -29,10 +29,8 @@ class VecpipeConfig(BaseConfig):
 
     # GPU Memory Governor Settings
     ENABLE_MEMORY_GOVERNOR: bool = True  # Use GovernedModelManager with dynamic memory management
-    GPU_MEMORY_RESERVE_PERCENT: float = 0.10  # Always keep 10% VRAM free (safety buffer)
-    GPU_MEMORY_MAX_PERCENT: float = 0.90  # Never use more than 90% of VRAM
-    CPU_MEMORY_RESERVE_PERCENT: float = 0.20  # Always keep 20% RAM free for system
-    CPU_MEMORY_MAX_PERCENT: float = 0.50  # Never use more than 50% of RAM for warm models
+    GPU_MEMORY_MAX_PERCENT: float = 0.90  # Maximum GPU memory the application can use
+    CPU_MEMORY_MAX_PERCENT: float = 0.50  # Maximum CPU memory for warm models
     ENABLE_CPU_OFFLOAD: bool = True  # Offload models to CPU instead of unloading
     EVICTION_IDLE_THRESHOLD_SECONDS: int = 120  # Idle time before model eligible for eviction
     PRESSURE_CHECK_INTERVAL_SECONDS: int = 15  # Background pressure check interval
@@ -43,6 +41,13 @@ class VecpipeConfig(BaseConfig):
     MAX_BATCH_SIZE: int = 256  # Maximum allowed batch size
     BATCH_SIZE_SAFETY_MARGIN: float = 0.2  # 20% safety margin for GPU memory to prevent OOM
     BATCH_SIZE_INCREASE_THRESHOLD: int = 10  # Number of successful batches before attempting to increase size
+
+    # Local LLM Configuration
+    ENABLE_LOCAL_LLM: bool = True  # Enable local LLM support in VecPipe
+    DEFAULT_LLM_QUANTIZATION: str = "int8"  # Default quantization for local LLMs (int4, int8, float16)
+    LLM_UNLOAD_AFTER_SECONDS: int = 300  # Inactivity timeout before LLM is eligible for eviction
+    LLM_KV_CACHE_BUFFER_MB: int = 1024  # Conservative KV cache + runtime overhead per loaded LLM
+    LLM_TRUST_REMOTE_CODE: bool = False  # Require explicit opt-in for models with remote code
 
     # Additional Paths specific to vecpipe
     @property

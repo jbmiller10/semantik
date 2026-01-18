@@ -1,0 +1,78 @@
+# Curated list of recommended LLM models
+# This list is used for the UI dropdown and default model selection.
+# Advanced users can enter custom model IDs via freeform input.
+
+anthropic:
+  - id: claude-opus-4-5-20251101
+    name: "Opus 4.5"
+    display_name: "Claude - Opus 4.5"
+    tier_recommendation: high
+    context_window: 200000
+    description: "Most capable for complex reasoning"
+
+  - id: claude-sonnet-4-5-20250929
+    name: "Sonnet 4.5"
+    display_name: "Claude - Sonnet 4.5"
+    tier_recommendation: low
+    context_window: 200000
+    description: "Fast and cost-effective"
+
+openai:
+  - id: gpt-4o
+    name: "GPT-4o"
+    display_name: "OpenAI - GPT-4o"
+    tier_recommendation: high
+    context_window: 128000
+    description: "Most capable GPT model"
+
+  - id: gpt-4o-mini
+    name: "GPT-4o Mini"
+    display_name: "OpenAI - GPT-4o Mini"
+    tier_recommendation: low
+    context_window: 128000
+    description: "Fast and inexpensive"
+
+local:
+  - id: Qwen/Qwen2.5-0.5B-Instruct
+    name: "Qwen 2.5 0.5B"
+    display_name: "Local - Qwen 2.5 0.5B"
+    tier_recommendation: low
+    context_window: 32768
+    description: "Tiny model for simple tasks"
+    memory_mb:
+      float16: 1300
+      int8: 800
+      int4: 500
+
+  - id: Qwen/Qwen2.5-1.5B-Instruct
+    name: "Qwen 2.5 1.5B"
+    display_name: "Local - Qwen 2.5 1.5B"
+    tier_recommendation: low
+    context_window: 32768
+    description: "Small model, good for HyDE"
+    memory_mb:
+      float16: 3500
+      int8: 2000
+      int4: 1200
+
+  - id: Qwen/Qwen2.5-3B-Instruct
+    name: "Qwen 2.5 3B"
+    display_name: "Local - Qwen 2.5 3B"
+    tier_recommendation: high
+    context_window: 32768
+    description: "Medium model, good balance"
+    memory_mb:
+      float16: 7000
+      int8: 4000
+      int4: 2500
+
+  - id: Qwen/Qwen2.5-7B-Instruct
+    name: "Qwen 2.5 7B"
+    display_name: "Local - Qwen 2.5 7B"
+    tier_recommendation: high
+    context_window: 32768
+    description: "Large model, best quality"
+    memory_mb:
+      float16: 15000
+      int8: 8500
+      int4: 5000

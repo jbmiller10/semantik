@@ -6,12 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    DatabaseOperationError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, CollectionStatus, Operation, OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
 

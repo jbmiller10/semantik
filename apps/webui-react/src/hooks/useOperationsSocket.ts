@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUpdateOperationInCache } from './useCollectionOperations';
+import { useUpdateCollectionInCache } from './useCollections';
 import { useWebSocket } from './useWebSocket';
 import type { OperationStatus } from '../types/collection';
 import { operationsV2Api } from '../services/api/v2/operations';
@@ -16,6 +17,7 @@ function isValidOperationStatus(status: unknown): status is OperationStatus {
 
 export function useOperationsSocket() {
     const updateOperationInCache = useUpdateOperationInCache();
+    const updateCollectionInCache = useUpdateCollectionInCache();
     const { addToast } = useUIStore();
     const token = useAuthStore((state) => state.token);
 
@@ -40,10 +42,30 @@ export function useOperationsSocket() {
                 const type = payload.type;
                 const data = payload.data || {};
 
-                const operationId = data.operation_id;
+                const operationId: string | undefined = data.operation_id ?? data.operationId;
+                const collectionId: string | undefined = data.collection_id ?? data.collectionId;
 
-                if (!operationId) {
-                    return;
+                // Update collection stats immediately when available
+                const stats = data.stats;
+                if (
+                    collectionId &&
+                    stats &&
+                    typeof stats === 'object' &&
+                    typeof (stats as { document_count?: unknown }).document_count === 'number' &&
+                    typeof (stats as { vector_count?: unknown }).vector_count === 'number'
+                ) {
+                    const updates: {
+                        document_count: number;
+                        vector_count: number;
+                        total_size_bytes?: number;
+                    } = {
+                        document_count: (stats as { document_count: number }).document_count,
+                        vector_count: (stats as { vector_count: number }).vector_count,
+                    };
+                    if (typeof (stats as { total_size_bytes?: unknown }).total_size_bytes === 'number') {
+                        updates.total_size_bytes = (stats as { total_size_bytes: number }).total_size_bytes;
+                    }
+                    updateCollectionInCache(collectionId, updates);
                 }
 
                 let status: string | undefined;
@@ -66,15 +88,34 @@ export function useOperationsSocket() {
                     error = error || data.error || data.error_message;
                 }
 
-                // Validate status before using it to prevent type confusion
-                if (status && isValidOperationStatus(status)) {
-                    updateOperationInCache(operationId, {
-                        status: status,
-                        progress: progress,
-                    });
+                // Derive progress from known message shapes when backend doesn't provide a unified progress field.
+                if (progress === undefined) {
+                    if (typeof data.progress_percent === 'number') {
+                        progress = data.progress_percent;
+                    } else if (
+                        type === 'document_processed' &&
+                        typeof data.processed === 'number' &&
+                        typeof data.total === 'number' &&
+                        data.total > 0
+                    ) {
+                        progress = (data.processed / data.total) * 100;
+                    }
+                }
 
-                    if (status === 'failed') {
-                        addToast({ type: 'error', message: error || `Operation ${operationId} failed` });
+                if (operationId) {
+                    // Validate status before using it to prevent type confusion
+                    if (status && isValidOperationStatus(status)) {
+                        updateOperationInCache(
+                            operationId,
+                            { status: status, progress: progress },
+                            collectionId // Pass collection_id from message for direct cache invalidation
+                        );
+
+                        if (status === 'failed') {
+                            addToast({ type: 'error', message: error || `Operation ${operationId} failed` });
+                        }
+                    } else if (progress !== undefined) {
+                        updateOperationInCache(operationId, { progress: progress }, collectionId);
                     }
                 }
             } catch (error) {

@@ -75,26 +75,18 @@ def _build_base_config() -> dict[str, Any]:
             "refresh-collection-chunking-stats": {
                 "task": "webui.tasks.refresh_collection_chunking_stats",
                 "schedule": 3600.0,  # Run hourly
-                "options": {
-                    "queue": "default",
-                    "priority": 5,
-                },
             },
             "monitor-partition-health": {
                 "task": "webui.tasks.monitor_partition_health",
                 "schedule": 21600.0,  # Every 6 hours
-                "options": {
-                    "queue": "default",
-                    "priority": 3,
-                },
             },
             "dispatch-sync-sources": {
                 "task": "webui.tasks.dispatch_due_syncs",
                 "schedule": 60.0,  # Every 60 seconds
-                "options": {
-                    "queue": "default",
-                    "priority": 8,  # Higher priority for sync coordination
-                },
+            },
+            "cleanup-stuck-operations": {
+                "task": "webui.tasks.cleanup_stuck_operations",
+                "schedule": 900.0,  # Every 15 minutes
             },
         },
     }
@@ -141,7 +133,7 @@ def _create_celery_app() -> Celery:
         "webui",
         broker=broker_url,
         backend=backend_url,
-        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher"],
+        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher", "webui.sparse_tasks"],
     )
 
     config = _build_base_config()

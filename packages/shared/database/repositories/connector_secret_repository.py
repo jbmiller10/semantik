@@ -10,11 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError
 from shared.database.models import ConnectorSecret
-from shared.utils.encryption import (
-    DecryptionError,
-    EncryptionNotConfiguredError,
-    SecretEncryption,
-)
+from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption
 
 logger = logging.getLogger(__name__)
 

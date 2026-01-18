@@ -11,11 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from vecpipe.memory_governor import (
-    GPUMemoryGovernor,
-    MemoryBudget,
-    ModelType,
-)
+from vecpipe.memory_governor import GPUMemoryGovernor, MemoryBudget, ModelType
 
 
 @pytest.fixture()
@@ -23,10 +19,8 @@ def memory_budget():
     """Create a test memory budget with known values."""
     return MemoryBudget(
         total_gpu_mb=8000,  # 8GB GPU
-        gpu_reserve_percent=0.10,
         gpu_max_percent=0.90,
         total_cpu_mb=16000,
-        cpu_reserve_percent=0.20,
         cpu_max_percent=0.50,
     )
 

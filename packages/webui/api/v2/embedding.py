@@ -9,10 +9,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException
 
 from shared.embedding.factory import EmbeddingProviderFactory, get_all_supported_models, get_model_config_from_providers
-from shared.embedding.provider_registry import (
-    get_provider_definition,
-    list_provider_metadata_list,
-)
+from shared.embedding.provider_registry import get_provider_definition, list_provider_metadata_list
 from shared.plugins.loader import load_plugins
 from webui.auth import get_current_user
 

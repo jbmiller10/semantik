@@ -425,7 +425,7 @@ def _write_meta(path: Path, payload: dict[str, Any]) -> None:
 
 @asynccontextmanager
 async def _operation_updates(
-    operation_id: str | None, user_id: int | None = None
+    operation_id: str | None, user_id: int | None = None, collection_id: str | None = None
 ) -> AsyncIterator[CeleryTaskWithOperationUpdates | None]:
     """Yield an update publisher when an operation ID is available."""
 
@@ -436,6 +436,8 @@ async def _operation_updates(
     async with CeleryTaskWithOperationUpdates(operation_id) as updater:
         if user_id is not None:
             updater.set_user_id(user_id)
+        if collection_id is not None:
+            updater.set_collection_id(collection_id)
         yield updater
 
 
@@ -535,12 +537,13 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     user_id = getattr(operation, "user_id", None)
 
             operation_updates_fn = _operation_updates
-            supports_user_id = "user_id" in inspect.signature(operation_updates_fn).parameters
-            updates_ctx = (
-                operation_updates_fn(operation_uuid, user_id=user_id)
-                if supports_user_id
-                else operation_updates_fn(operation_uuid)
-            )
+            signature = inspect.signature(operation_updates_fn)
+            kwargs: dict[str, Any] = {}
+            if "user_id" in signature.parameters:
+                kwargs["user_id"] = user_id
+            if "collection_id" in signature.parameters:
+                kwargs["collection_id"] = run.collection_id
+            updates_ctx = operation_updates_fn(operation_uuid, **kwargs)
 
             async with updates_ctx as updater:
                 try:

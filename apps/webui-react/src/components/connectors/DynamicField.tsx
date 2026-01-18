@@ -40,10 +40,10 @@ export function DynamicField({
       <div className="space-y-1">
         <label
           htmlFor={field.name}
-          className="block text-sm font-medium text-gray-700"
+          className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
         >
           {field.label}
-          {field.required && <span className="text-red-500 ml-1">*</span>}
+          {field.required && <span className="text-red-400 ml-1">*</span>}
         </label>
 
         {secretField.is_multiline ? (
@@ -73,7 +73,7 @@ export function DynamicField({
           <p className="text-xs text-gray-500">{field.description}</p>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
     );
   }
@@ -195,10 +195,10 @@ function TextField({
     <div className="space-y-1">
       <label
         htmlFor={field.name}
-        className="block text-sm font-medium text-gray-700"
+        className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="text"
@@ -212,7 +212,7 @@ function TextField({
       {field.description && (
         <p className="text-xs text-gray-500">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -230,10 +230,10 @@ function NumberField({
     <div className="space-y-1">
       <label
         htmlFor={field.name}
-        className="block text-sm font-medium text-gray-700"
+        className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="number"
@@ -250,7 +250,7 @@ function NumberField({
       {field.description && (
         <p className="text-xs text-gray-500">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -268,10 +268,10 @@ function SelectField({
     <div className="space-y-1">
       <label
         htmlFor={field.name}
-        className="block text-sm font-medium text-gray-700"
+        className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <select
         id={field.name}
@@ -289,7 +289,7 @@ function SelectField({
       {field.description && (
         <p className="text-xs text-gray-500">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -313,9 +313,9 @@ function MultiselectField({
 
   return (
     <div className="space-y-1">
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <div className="space-y-2 mt-2">
         {field.options?.map((option) => (
@@ -328,16 +328,16 @@ function MultiselectField({
               checked={currentValue.includes(option.value)}
               onChange={() => handleToggle(option.value)}
               disabled={disabled}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
             />
-            <span className="ml-2 text-sm text-gray-700">{option.label}</span>
+            <span className="ml-2 text-sm text-gray-300">{option.label}</span>
           </label>
         ))}
       </div>
       {field.description && (
         <p className="text-xs text-gray-500">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -355,10 +355,10 @@ function TextareaField({
     <div className="space-y-1">
       <label
         htmlFor={field.name}
-        className="block text-sm font-medium text-gray-700"
+        className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <textarea
         id={field.name}
@@ -372,7 +372,7 @@ function TextareaField({
       {field.description && (
         <p className="text-xs text-gray-500">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -397,16 +397,16 @@ function BooleanField({
           checked={currentValue}
           onChange={(e) => onChange(e.target.checked)}
           disabled={disabled}
-          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          className="h-4 w-4 text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white bg-[var(--bg-tertiary)] border-[var(--border)] rounded"
         />
-        <span className="ml-2 text-sm font-medium text-gray-700">
+        <span className="ml-2 text-sm font-medium text-gray-300">
           {field.label}
         </span>
       </label>
       {field.description && (
         <p className="text-xs text-gray-500 ml-6">{field.description}</p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }
@@ -458,10 +458,10 @@ function GlobListField({
     <div className="space-y-1">
       <label
         htmlFor={field.name}
-        className="block text-sm font-medium text-gray-700"
+        className="block text-xs font-bold text-gray-400 uppercase tracking-wider"
       >
         {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
       <input
         type="text"
@@ -475,7 +475,7 @@ function GlobListField({
       <p className="text-xs text-gray-500">
         {field.description || 'Comma-separated glob patterns'}
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }

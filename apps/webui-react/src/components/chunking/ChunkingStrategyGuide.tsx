@@ -16,15 +16,15 @@ const performanceLabels = {
 };
 
 const performanceColors = {
-  speed: { fast: 'text-green-600', medium: 'text-yellow-600', slow: 'text-red-600' },
-  quality: { basic: 'text-gray-600', good: 'text-blue-600', excellent: 'text-purple-600' },
-  memoryUsage: { low: 'text-green-600', medium: 'text-yellow-600', high: 'text-red-600' }
+  speed: { fast: 'text-green-500 dark:text-green-400', medium: 'text-yellow-500 dark:text-yellow-400', slow: 'text-red-500 dark:text-red-400' },
+  quality: { basic: 'text-[var(--text-muted)]', good: 'text-gray-700 dark:text-gray-200', excellent: 'text-purple-500 dark:text-purple-400' },
+  memoryUsage: { low: 'text-green-500 dark:text-green-400', medium: 'text-yellow-500 dark:text-yellow-400', high: 'text-red-500 dark:text-red-400' }
 };
 
-export function ChunkingStrategyGuide({ 
-  onClose, 
-  currentStrategy, 
-  fileType 
+export function ChunkingStrategyGuide({
+  onClose,
+  currentStrategy,
+  fileType
 }: ChunkingStrategyGuideProps) {
   const [selectedTab, setSelectedTab] = useState<'comparison' | 'examples'>('comparison');
 
@@ -39,33 +39,33 @@ export function ChunkingStrategyGuide({
   const getFileTypeRecommendation = (strategy: ChunkingStrategyType): boolean => {
     if (!fileType) return false;
     const strategyInfo = CHUNKING_STRATEGIES[strategy];
-    return strategyInfo.supportedFileTypes.includes('*') || 
+    return strategyInfo.supportedFileTypes.includes('*') ||
            strategyInfo.supportedFileTypes.includes(fileType);
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-xl">
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-[var(--bg-primary)] rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-[var(--border)]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Chunking Strategy Guide</h2>
+        <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-secondary)]">
+          <h2 className="text-xl font-bold text-[var(--text-primary)]">Chunking Strategy Guide</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-500 transition-colors"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
           >
             <X className="h-6 w-6" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
+        <div className="border-b border-[var(--border)]">
           <nav className="flex">
             <button
               onClick={() => setSelectedTab('comparison')}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
                 selectedTab === 'comparison'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-gray-400 dark:border-white text-gray-700 dark:text-gray-200'
+                  : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
               Strategy Comparison
@@ -74,8 +74,8 @@ export function ChunkingStrategyGuide({
               onClick={() => setSelectedTab('examples')}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
                 selectedTab === 'examples'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-gray-400 dark:border-white text-gray-700 dark:text-gray-200'
+                  : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
               Visual Examples
@@ -88,13 +88,13 @@ export function ChunkingStrategyGuide({
           {selectedTab === 'comparison' ? (
             <div className="p-6">
               {/* Quick Recommendation */}
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+              <div className="mb-6 p-4 bg-blue-500/10 border border-gray-400 dark:border-white/20 rounded-xl">
+                <h3 className="font-medium text-blue-400 mb-2 flex items-center gap-2">
                   <Info className="h-5 w-5" />
                   Quick Recommendation
                 </h3>
-                <p className="text-sm text-blue-700">
-                  <strong>Not sure which to choose?</strong> Use <span className="font-semibold">Hybrid Auto-Select</span> — 
+                <p className="text-sm text-blue-400">
+                  <strong className="text-blue-400">Not sure which to choose?</strong> Use <span className="font-semibold text-blue-400">Hybrid Auto-Select</span> —
                   it automatically picks the best strategy based on your content type. Perfect for most use cases!
                 </p>
               </div>
@@ -103,13 +103,13 @@ export function ChunkingStrategyGuide({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Strategy</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900">Speed</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900">Quality</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900">Memory</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-900">Best For</th>
-                      <th className="text-center py-3 px-4 font-medium text-gray-900">Recommended</th>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="text-left py-3 px-4 font-medium text-[var(--text-secondary)]">Strategy</th>
+                      <th className="text-center py-3 px-4 font-medium text-[var(--text-secondary)]">Speed</th>
+                      <th className="text-center py-3 px-4 font-medium text-[var(--text-secondary)]">Quality</th>
+                      <th className="text-center py-3 px-4 font-medium text-[var(--text-secondary)]">Memory</th>
+                      <th className="text-left py-3 px-4 font-medium text-[var(--text-secondary)]">Best For</th>
+                      <th className="text-center py-3 px-4 font-medium text-[var(--text-secondary)]">Recommended</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -120,16 +120,16 @@ export function ChunkingStrategyGuide({
                         const isRecommended = strategy.isRecommended || strategyType === 'hybrid';
 
                         return (
-                          <tr 
-                            key={strategyType} 
-                            className={`border-b border-gray-100 ${
-                              isCurrentStrategy ? 'bg-blue-50' : index % 2 === 0 ? 'bg-gray-50' : 'bg-white'
+                          <tr
+                            key={strategyType}
+                            className={`border-b border-[var(--border)]/50 ${
+                              isCurrentStrategy ? 'bg-blue-500/10' : index % 2 === 0 ? 'bg-[var(--bg-secondary)]/30' : 'bg-transparent'
                             }`}
                           >
                             <td className="py-4 px-4">
                               <div>
-                                <p className="font-medium text-gray-900">{strategy.name}</p>
-                                <p className="text-xs text-gray-500 mt-1">{strategy.description}</p>
+                                <p className="font-medium text-[var(--text-primary)]">{strategy.name}</p>
+                                <p className="text-xs text-[var(--text-muted)] mt-1">{strategy.description}</p>
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center">
@@ -148,13 +148,13 @@ export function ChunkingStrategyGuide({
                               </span>
                             </td>
                             <td className="py-4 px-4">
-                              <p className="text-sm text-gray-600">
+                              <p className="text-sm text-[var(--text-secondary)]">
                                 {strategy.recommendedFor?.join(', ') || 'General use'}
                               </p>
                             </td>
                             <td className="py-4 px-4 text-center">
                               {(isRecommended || isRecommendedForFile) && (
-                                <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />
+                                <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400 mx-auto" />
                               )}
                             </td>
                           </tr>
@@ -167,29 +167,29 @@ export function ChunkingStrategyGuide({
 
               {/* File Type Specific Recommendations */}
               {fileType && (
-                <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">
+                <div className="mt-6 p-4 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl">
+                  <h3 className="font-medium text-[var(--text-primary)] mb-2">
                     Recommendations for {fileType.toUpperCase()} files
                   </h3>
-                  <div className="space-y-2 text-sm text-gray-600">
+                  <div className="space-y-2 text-sm text-[var(--text-secondary)]">
                     {fileType === 'md' && (
-                      <p>• <strong>Markdown-aware</strong> is ideal for preserving document structure</p>
+                      <p>• <strong className="text-[var(--text-primary)]">Markdown-aware</strong> is ideal for preserving document structure</p>
                     )}
                     {fileType === 'pdf' && (
-                      <p>• <strong>Semantic</strong> works best for complex PDFs with mixed content</p>
+                      <p>• <strong className="text-[var(--text-primary)]">Semantic</strong> works best for complex PDFs with mixed content</p>
                     )}
                     {['py', 'js', 'ts', 'jsx', 'tsx'].includes(fileType) && (
-                      <p>• <strong>Markdown-aware</strong> handles code files effectively</p>
+                      <p>• <strong className="text-[var(--text-primary)]">Markdown-aware</strong> handles code files effectively</p>
                     )}
-                    <p>• <strong>Hybrid Auto-Select</strong> will automatically choose the best strategy</p>
+                    <p>• <strong className="text-[var(--text-primary)]">Hybrid Auto-Select</strong> will automatically choose the best strategy</p>
                   </div>
                 </div>
               )}
             </div>
           ) : (
             <div className="p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">How Each Strategy Chunks Text</h3>
-              
+              <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">How Each Strategy Chunks Text</h3>
+
               {/* Visual Examples */}
               {(() => {
                 const entries = Object.entries(CHUNKING_STRATEGIES) as [ChunkingStrategyType, ChunkingStrategy][];
@@ -199,12 +199,12 @@ export function ChunkingStrategyGuide({
                 return (
                   <div className="grid md:grid-cols-2 gap-6 mb-6" data-testid="chunking-visual-examples">
                     {withVisuals.map(([strategyType, strategy]) => (
-                      <div key={strategyType} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white">
-                        <div className="p-4 border-b border-gray-100">
-                          <h4 className="font-medium text-gray-900">{strategy.name}</h4>
-                          <p className="text-xs text-gray-500 mt-1">{strategy.description}</p>
+                      <div key={strategyType} className="border border-[var(--border)] rounded-xl overflow-hidden shadow-lg bg-[var(--bg-secondary)]">
+                        <div className="p-4 border-b border-[var(--border)]">
+                          <h4 className="font-medium text-[var(--text-primary)]">{strategy.name}</h4>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">{strategy.description}</p>
                         </div>
-                        <div className="relative bg-gray-50">
+                        <div className="relative bg-[var(--bg-tertiary)]">
                           <img
                             src={strategy.visualExample?.url}
                             alt={strategy.visualExample?.caption || `${strategy.name} visual example`}
@@ -226,160 +226,160 @@ export function ChunkingStrategyGuide({
               {/* Legacy static examples (fallback when no visuals supplied) */}
               <div className="space-y-6">
                 {/* Character-based Example */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Character-based Chunking</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs space-y-3">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Character-based Chunking</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 1 (50 chars)</span>
-                      <div className="bg-blue-100 p-2 rounded border border-blue-200">
-                        <span className="font-mono">Machine learning algorithms analyze patterns in dat</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1 (50 chars)</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in dat</span>
                       </div>
                     </div>
-                    <div className="border-t-2 border-dashed border-gray-300 -my-1"></div>
+                    <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 2 (50 chars)</span>
-                      <div className="bg-green-100 p-2 rounded border border-green-200">
-                        <span className="font-mono">a to make predictions. Deep neural networks have r</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 2 (50 chars)</span>
+                      <div className="bg-green-500/20 p-2 rounded border border-green-500/30">
+                        <span className="font-mono text-green-600 dark:text-green-300">a to make predictions. Deep neural networks have r</span>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Splits at exactly 50 characters, breaking words mid-sentence.
                   </p>
                 </div>
 
                 {/* Recursive Example */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Recursive Chunking</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs space-y-3">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Recursive Chunking</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 1</span>
-                      <div className="bg-blue-100 p-2 rounded border border-blue-200">
-                        <span className="font-mono">Machine learning algorithms analyze patterns in data to make predictions.</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in data to make predictions.</span>
                       </div>
                     </div>
-                    <div className="border-t-2 border-dashed border-gray-300 -my-1"></div>
+                    <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 2</span>
-                      <div className="bg-green-100 p-2 rounded border border-green-200">
-                        <span className="font-mono">Deep neural networks have revolutionized computer vision and natural language processing.</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 2</span>
+                      <div className="bg-green-500/20 p-2 rounded border border-green-500/30">
+                        <span className="font-mono text-green-600 dark:text-green-300">Deep neural networks have revolutionized computer vision and natural language processing.</span>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Splits at sentence boundaries, preserving complete thoughts.
                   </p>
                 </div>
 
                 {/* Semantic Example */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Semantic Chunking</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs space-y-3">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Semantic Chunking</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 1: Machine Learning</span>
-                      <div className="bg-blue-100 p-2 rounded border border-blue-200">
-                        <span className="font-mono">Machine learning algorithms analyze patterns in data to make predictions. Deep neural networks have revolutionized computer vision. Training models requires large datasets and computational resources.</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1: Machine Learning</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-blue-400">Machine learning algorithms analyze patterns in data to make predictions. Deep neural networks have revolutionized computer vision. Training models requires large datasets and computational resources.</span>
                       </div>
                     </div>
-                    <div className="border-t-2 border-dashed border-gray-300 -my-1"></div>
+                    <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 2: Data Privacy</span>
-                      <div className="bg-green-100 p-2 rounded border border-green-200">
-                        <span className="font-mono">Data privacy is crucial when handling user information. GDPR regulations require explicit consent for data processing. Companies must implement strong security measures to protect sensitive data.</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 2: Data Privacy</span>
+                      <div className="bg-green-500/20 p-2 rounded border border-green-500/30">
+                        <span className="font-mono text-green-600 dark:text-green-300">Data privacy is crucial when handling user information. GDPR regulations require explicit consent for data processing. Companies must implement strong security measures to protect sensitive data.</span>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Groups sentences by topic, keeping related concepts together.
                   </p>
                 </div>
 
                 {/* Markdown Example */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Markdown-aware Chunking</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs space-y-3">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Markdown-aware Chunking</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 1</span>
-                      <div className="bg-blue-100 p-2 rounded border border-blue-200 font-mono">
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
+                      <div className="bg-blue-500/20 p-2 rounded border border-gray-400 dark:border-white/30 font-mono text-blue-400">
                         <div className="font-bold">## Getting Started</div>
                         <div className="mt-1">1. Install dependencies with `npm install`</div>
                         <div>2. Set up your environment variables</div>
                         <div>3. Run `npm run dev` to start the server</div>
                       </div>
                     </div>
-                    <div className="border-t-2 border-dashed border-gray-300 -my-1"></div>
+                    <div className="border-t-2 border-dashed border-[var(--border)] -my-1"></div>
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 2</span>
-                      <div className="bg-green-100 p-2 rounded border border-green-200 font-mono">
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 2</span>
+                      <div className="bg-green-500/20 p-2 rounded border border-green-500/30 font-mono text-green-600 dark:text-green-300">
                         <div className="font-bold">## Configuration</div>
                         <div className="mt-1">The app uses environment variables for configuration.</div>
                         <div>Create a `.env` file based on `.env.example`</div>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Keeps headers with their content, respecting document structure.
                   </p>
                 </div>
 
                 {/* Hierarchical Example */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Hierarchical Chunking</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs space-y-3">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Hierarchical Chunking</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs space-y-3">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Parent Chunk</span>
-                      <div className="bg-purple-100 p-2 rounded border border-purple-200">
-                        <span className="font-mono">Chapter 3: Advanced Techniques. This chapter covers optimization strategies...</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Parent Chunk</span>
+                      <div className="bg-purple-500/20 p-2 rounded border border-purple-500/30">
+                        <span className="font-mono text-purple-600 dark:text-purple-300">Chapter 3: Advanced Techniques. This chapter covers optimization strategies...</span>
                         <div className="mt-2 ml-4 space-y-2">
-                          <div className="bg-purple-50 p-1 rounded border-l-2 border-purple-300 pl-2">
-                            <span className="text-xs text-gray-600">Child 1:</span> Performance optimization
+                          <div className="bg-purple-500/10 p-1 rounded border-l-2 border-purple-400 pl-2">
+                            <span className="text-xs text-[var(--text-muted)]">Child 1:</span> <span className="text-purple-600 dark:text-purple-300">Performance optimization</span>
                           </div>
-                          <div className="bg-purple-50 p-1 rounded border-l-2 border-purple-300 pl-2">
-                            <span className="text-xs text-gray-600">Child 2:</span> Memory management
+                          <div className="bg-purple-500/10 p-1 rounded border-l-2 border-purple-400 pl-2">
+                            <span className="text-xs text-[var(--text-muted)]">Child 2:</span> <span className="text-purple-600 dark:text-purple-300">Memory management</span>
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Creates parent-child relationships for better context retention.
                   </p>
                 </div>
 
                 {/* Hybrid Example with Overlap */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Chunk Overlap Visualization</h4>
-                  <div className="bg-gray-50 p-4 rounded text-xs">
+                <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-secondary)]/30">
+                  <h4 className="font-medium text-[var(--text-primary)] mb-3">Chunk Overlap Visualization</h4>
+                  <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-xs">
                     <div className="relative">
-                      <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 1</span>
-                      <div className="bg-blue-100 p-2 rounded-t border border-blue-200 border-b-0">
-                        <span className="font-mono">Neural networks consist of layers of interconnected nodes. Each node processes input signals and produces an output.</span>
+                      <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 1</span>
+                      <div className="bg-blue-500/20 p-2 rounded-t border border-gray-400 dark:border-white/30 border-b-0">
+                        <span className="font-mono text-blue-400">Neural networks consist of layers of interconnected nodes. Each node processes input signals and produces an output.</span>
                       </div>
-                      <div className="bg-gradient-to-b from-blue-100 to-green-100 p-2 border-x border-blue-200">
-                        <span className="font-mono text-gray-700">The output is passed through an activation function.</span>
-                        <span className="text-xs text-gray-500 ml-2">[Overlap: 100 chars]</span>
+                      <div className="bg-gradient-to-b from-blue-500/20 to-green-500/20 p-2 border-x border-gray-400 dark:border-white/30">
+                        <span className="font-mono text-[var(--text-secondary)]">The output is passed through an activation function.</span>
+                        <span className="text-xs text-[var(--text-muted)] ml-2">[Overlap: 100 chars]</span>
                       </div>
                       <div className="relative">
-                        <span className="absolute -top-2 left-2 text-xs font-medium text-gray-500 bg-gray-50 px-1">Chunk 2</span>
-                        <div className="bg-green-100 p-2 rounded-b border border-green-200 border-t-0">
-                          <span className="font-mono">Common activation functions include ReLU, sigmoid, and tanh.</span>
+                        <span className="absolute -top-2 left-2 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1">Chunk 2</span>
+                        <div className="bg-green-500/20 p-2 rounded-b border border-green-500/30 border-t-0">
+                          <span className="font-mono text-green-600 dark:text-green-300">Common activation functions include ReLU, sigmoid, and tanh.</span>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-3">
+                  <p className="text-sm text-[var(--text-secondary)] mt-3">
                     Overlap ensures context continuity between chunks.
                   </p>
                 </div>
               </div>
 
               {/* Tips */}
-              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <h4 className="font-medium text-yellow-900 mb-2 flex items-center gap-2">
+              <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                <h4 className="font-medium text-amber-600 dark:text-amber-300 mb-2 flex items-center gap-2">
                   <Info className="h-5 w-5" />
                   Pro Tips
                 </h4>
-                <ul className="space-y-1 text-sm text-yellow-700">
+                <ul className="space-y-1 text-sm text-amber-600/80 dark:text-amber-400/80">
                   <li>• Larger chunks preserve more context but may reduce search precision</li>
                   <li>• Smaller chunks improve search accuracy but may lose context</li>
                   <li>• Overlap helps maintain continuity between chunks</li>
@@ -391,10 +391,10 @@ export function ChunkingStrategyGuide({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+        <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end bg-[var(--bg-secondary)]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="px-4 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white border border-transparent rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] transition-all"
           >
             Got it
           </button>

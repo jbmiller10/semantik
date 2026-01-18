@@ -4,11 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.connectors.local import (
-    MAX_FILE_SIZE,
-    SUPPORTED_EXTENSIONS,
-    LocalFileConnector,
-)
+from shared.connectors.local import MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, LocalFileConnector
 
 
 class TestLocalFileConnectorConfig:

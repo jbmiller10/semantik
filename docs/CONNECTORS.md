@@ -11,6 +11,10 @@ Semantik ingests documents via *connectors*: per-source implementations that kno
 Connector metadata is derived directly from connector classes (`get_config_fields()` / `get_secret_fields()` and `METADATA`).
 Connector plugins register via the unified `semantik.plugins` entry point group; use `GET /api/v2/connectors` to discover what is enabled.
 
+## Document Parsing
+
+Connectors use the parser system (`shared.text_processing.parsers`) to extract text from documents. The `parse_content()` function handles format detection and fallback automatically. For details, see [PARSERS.md](./PARSERS.md).
+
 ## Connector Secrets Encryption (`CONNECTOR_SECRETS_KEY`)
 
 Connectors that require credentials (e.g., Git tokens, IMAP passwords, SSH keys) store those credentials in the database, encrypted at rest using Fernet.

@@ -7,12 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, EntityNotFoundError, ValidationError
 from shared.database.repositories.collection_repository import CollectionRepository
 
 

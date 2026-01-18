@@ -78,7 +78,7 @@ describe('DynamicField', () => {
       );
 
       const label = screen.getByLabelText(/api token/i).closest('div')?.querySelector('label');
-      const asterisk = label?.querySelector('.text-red-500');
+      const asterisk = label?.querySelector('.text-red-400');
       expect(asterisk).toHaveTextContent('*');
     });
 

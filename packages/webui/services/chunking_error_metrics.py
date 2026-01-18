@@ -36,10 +36,10 @@ def _get_or_create_metric(
         return existing
 
     if metric_cls is Info:
-        return metric_cls(name, documentation, registry=registry, **kwargs)
+        return metric_cls(name, documentation, registry=registry, **kwargs)  # type: ignore[call-arg]
 
     labels = tuple(labelnames or ())
-    return metric_cls(name, documentation, labelnames=labels, registry=registry, **kwargs)
+    return metric_cls(name, documentation, labelnames=labels, registry=registry, **kwargs)  # type: ignore[call-arg]
 
 
 # Error tracking metrics

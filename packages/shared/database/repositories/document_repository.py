@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, delete, desc, func, select, update
+from sqlalchemy import and_, case, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -344,6 +344,7 @@ class DocumentRepository:
         status: DocumentStatus,
         error_message: str | None = None,
         chunk_count: int | None = None,
+        error_category: str | None = None,
     ) -> Document:
         """Update document status.
 
@@ -352,6 +353,7 @@ class DocumentRepository:
             status: New status
             error_message: Optional error message
             chunk_count: Optional chunk count
+            error_category: Optional error category ('transient', 'permanent', 'unknown')
 
         Returns:
             Updated Document instance
@@ -368,6 +370,8 @@ class DocumentRepository:
             document.error_message = error_message
             if chunk_count is not None:
                 document.chunk_count = chunk_count
+            if error_category is not None:
+                document.error_category = error_category
             document.updated_at = datetime.now(UTC)
 
             await self.session.flush()
@@ -769,3 +773,348 @@ class DocumentRepository:
         except Exception as e:
             logger.error("Failed to clear stale flag: %s", e, exc_info=True)
             raise DatabaseOperationError("clear_stale_flag", "document", str(e)) from e
+
+    # ========== Retry Methods ==========
+
+    async def reset_for_retry(self, document_id: str) -> Document:
+        """Reset a failed document for manual retry.
+
+        Resets the document status to PENDING and increments the retry count.
+        Clears error message and category so the document can be reprocessed.
+
+        Args:
+            document_id: UUID of the document
+
+        Returns:
+            Updated Document instance
+
+        Raises:
+            EntityNotFoundError: If document not found
+            ValidationError: If document is not in FAILED status
+        """
+        try:
+            document = await self.get_by_id(document_id)
+            if not document:
+                raise EntityNotFoundError("document", document_id)
+
+            status_value = document.status
+            if isinstance(status_value, DocumentStatus):
+                normalized_status = status_value.value
+            elif isinstance(status_value, str):
+                normalized_status = status_value.lower()
+            else:
+                normalized_status = str(status_value).lower()
+
+            if normalized_status != DocumentStatus.FAILED.value:
+                raise ValidationError(f"Document {document_id} is not in FAILED status (current: {document.status})")
+
+            document.status = DocumentStatus.PENDING.value
+            document.retry_count = (document.retry_count or 0) + 1
+            document.last_retry_at = datetime.now(UTC)
+            document.error_message = None
+            document.error_category = None
+            document.chunk_count = 0
+            document.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Reset document {document_id} for retry (attempt {document.retry_count})")
+            return document
+
+        except (EntityNotFoundError, ValidationError):
+            raise
+        except Exception as e:
+            logger.error("Failed to reset document for retry: %s", e, exc_info=True)
+            raise DatabaseOperationError("reset_for_retry", "document", str(e)) from e
+
+    async def bulk_reset_failed_for_retry(
+        self,
+        collection_id: str,
+        max_retry_count: int = 3,
+        error_categories: list[str] | None = None,
+        retry_at: datetime | None = None,
+    ) -> int:
+        """Reset all retryable failed documents in a collection for retry.
+
+        Only resets documents that:
+        - Are in FAILED status
+        - Have retry_count < max_retry_count
+        - Have error_category in the specified list (or transient/unknown if not specified)
+
+        Args:
+            collection_id: UUID of the collection
+            max_retry_count: Maximum retry attempts (documents with more won't be reset)
+            error_categories: List of error categories to include (default: transient, unknown, None)
+            retry_at: Timestamp to record for last_retry_at (defaults to now)
+
+        Returns:
+            Number of documents reset
+        """
+        try:
+            # Default to retryable categories
+            if error_categories is None:
+                error_categories = ["transient", "unknown"]
+
+            retry_time = retry_at or datetime.now(UTC)
+
+            # Build conditions for retryable documents
+            conditions = [
+                Document.collection_id == collection_id,
+                Document.status == DocumentStatus.FAILED.value,
+                Document.retry_count < max_retry_count,
+            ]
+
+            # Include documents with specified categories or NULL category
+            category_conditions = [Document.error_category.in_(error_categories)]
+            if None not in error_categories:
+                # Also include NULL categories as they're likely retryable
+                category_conditions.append(Document.error_category.is_(None))
+
+            from sqlalchemy import or_
+
+            conditions.append(or_(*category_conditions))
+
+            stmt = (
+                update(Document)
+                .where(and_(*conditions))
+                .values(
+                    status=DocumentStatus.PENDING.value,
+                    retry_count=Document.retry_count + 1,
+                    last_retry_at=retry_time,
+                    error_message=None,
+                    error_category=None,
+                    chunk_count=0,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.rowcount or 0
+
+            logger.info(f"Reset {count} failed documents for retry in collection {collection_id}")
+            return count
+
+        except Exception as e:
+            logger.error("Failed to bulk reset documents for retry: %s", e, exc_info=True)
+            raise DatabaseOperationError("bulk_reset_for_retry", "documents", str(e)) from e
+
+    async def bulk_mark_retry_dispatch_failed(
+        self,
+        collection_id: str,
+        retry_at: datetime,
+        error_message: str,
+        error_category: str | None = "transient",
+    ) -> int:
+        """Revert retry reset when task dispatch fails.
+
+        Args:
+            collection_id: UUID of the collection
+            retry_at: Timestamp used for the retry reset
+            error_message: Message to store on reverted documents
+            error_category: Category to store (default: transient)
+
+        Returns:
+            Number of documents reverted to FAILED
+        """
+        try:
+            stmt = (
+                update(Document)
+                .where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.status == DocumentStatus.PENDING.value,
+                        Document.last_retry_at == retry_at,
+                    )
+                )
+                .values(
+                    status=DocumentStatus.FAILED.value,
+                    retry_count=case(
+                        (Document.retry_count > 0, Document.retry_count - 1),
+                        else_=0,
+                    ),
+                    error_message=error_message,
+                    error_category=error_category,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.rowcount or 0
+            if count:
+                logger.warning(
+                    "Reverted %d documents to FAILED after retry dispatch failure in collection %s",
+                    count,
+                    collection_id,
+                )
+            return count
+
+        except Exception as e:
+            logger.error("Failed to revert documents after retry dispatch failure: %s", e, exc_info=True)
+            raise DatabaseOperationError("bulk_revert_retry_dispatch", "documents", str(e)) from e
+
+    async def count_stuck_pending_documents(
+        self,
+        collection_id: str,
+        stuck_threshold_minutes: int = 5,
+    ) -> int:
+        """Count documents stuck in PENDING status for longer than threshold.
+
+        These are documents that were registered but never processed, likely due to
+        an interrupted operation or worker crash.
+
+        Args:
+            collection_id: UUID of the collection
+            stuck_threshold_minutes: How long a document must be in PENDING to be
+                considered "stuck" (default: 5 minutes)
+
+        Returns:
+            Number of stuck pending documents
+        """
+        from datetime import timedelta
+
+        try:
+            threshold_time = datetime.now(UTC) - timedelta(minutes=stuck_threshold_minutes)
+
+            stmt = select(func.count(Document.id)).where(
+                and_(
+                    Document.collection_id == collection_id,
+                    Document.status == DocumentStatus.PENDING.value,
+                    Document.created_at < threshold_time,
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.scalar() or 0
+
+            if count > 0:
+                logger.info(
+                    "Found %d stuck pending documents in collection %s (threshold: %d min)",
+                    count,
+                    collection_id,
+                    stuck_threshold_minutes,
+                )
+
+            return count
+
+        except Exception as e:
+            logger.error("Failed to count stuck pending documents: %s", e, exc_info=True)
+            raise DatabaseOperationError("count_stuck_pending", "documents", str(e)) from e
+
+    async def list_failed_documents(
+        self,
+        collection_id: str,
+        error_category: str | None = None,
+        retryable_only: bool = False,
+        max_retry_count: int = 3,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[Document], int]:
+        """List failed documents in a collection with optional filtering.
+
+        Args:
+            collection_id: UUID of the collection
+            error_category: Filter by specific error category (transient, permanent, unknown)
+            retryable_only: If True, only return documents that can be retried
+            max_retry_count: Max retry attempts (used when retryable_only=True)
+            offset: Pagination offset
+            limit: Maximum results
+
+        Returns:
+            Tuple of (documents list, total count)
+        """
+        try:
+            # Build base query
+            conditions = [
+                Document.collection_id == collection_id,
+                Document.status == DocumentStatus.FAILED.value,
+            ]
+
+            if error_category is not None:
+                conditions.append(Document.error_category == error_category)
+
+            if retryable_only:
+                conditions.append(Document.retry_count < max_retry_count)
+                # Exclude permanent errors
+                from sqlalchemy import or_
+
+                conditions.append(
+                    or_(
+                        Document.error_category != "permanent",
+                        Document.error_category.is_(None),
+                    )
+                )
+
+            query = select(Document).where(and_(*conditions))
+
+            # Get total count
+            count_query = select(func.count()).select_from(query.subquery())
+            total = await self.session.scalar(count_query)
+
+            # Get paginated results
+            query = query.order_by(desc(Document.updated_at)).offset(offset).limit(limit)
+            result = await self.session.execute(query)
+            documents = result.scalars().all()
+
+            return list(documents), total or 0
+
+        except Exception as e:
+            logger.error("Failed to list failed documents: %s", e, exc_info=True)
+            raise DatabaseOperationError("list_failed_documents", "documents", str(e)) from e
+
+    async def get_failed_document_count(
+        self,
+        collection_id: str,
+        retryable_only: bool = False,
+        max_retry_count: int = 3,
+    ) -> dict[str, int]:
+        """Get count of failed documents by error category.
+
+        Args:
+            collection_id: UUID of the collection
+            retryable_only: If True, only count documents that can be retried
+            max_retry_count: Max retry attempts (used when retryable_only=True)
+
+        Returns:
+            Dictionary with counts by category: {transient: N, permanent: N, unknown: N, total: N}
+        """
+        try:
+            conditions = [
+                Document.collection_id == collection_id,
+                Document.status == DocumentStatus.FAILED.value,
+            ]
+
+            if retryable_only:
+                conditions.append(Document.retry_count < max_retry_count)
+                from sqlalchemy import or_
+
+                conditions.append(
+                    or_(
+                        Document.error_category != "permanent",
+                        Document.error_category.is_(None),
+                    )
+                )
+
+            # Count by category using group by
+            query = (
+                select(
+                    Document.error_category,
+                    func.count(Document.id).label("count"),
+                )
+                .where(and_(*conditions))
+                .group_by(Document.error_category)
+            )
+
+            result = await self.session.execute(query)
+            rows = result.all()
+
+            counts = {"transient": 0, "permanent": 0, "unknown": 0, "total": 0}
+            for category, count in rows:
+                key = category if category in counts else "unknown"
+                counts[key] += count
+                counts["total"] += count
+
+            return counts
+
+        except Exception as e:
+            logger.error("Failed to get failed document count: %s", e, exc_info=True)
+            raise DatabaseOperationError("get_failed_document_count", "documents", str(e)) from e

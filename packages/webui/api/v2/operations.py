@@ -3,17 +3,24 @@ Operation API v2 endpoints.
 
 This module provides RESTful API endpoints for operation management
 in the new collection-centric architecture.
+
+Error Handling:
+    REST endpoints rely on global exception handlers registered in
+    middleware/exception_handlers.py. WebSocket endpoints use WebSocket
+    close codes and maintain their own error handling.
 """
 
+import ipaddress
 import json
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
 from shared.config import settings as shared_settings
 from shared.database import get_db
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.repositories.operation_repository import OperationRepository
 from webui.api.schemas import ErrorResponse, OperationListResponse, OperationResponse
 from webui.auth import get_current_user, get_current_user_websocket
@@ -44,19 +51,74 @@ def _get_allowed_websocket_origins() -> list[str]:
     return origins
 
 
+def _is_ip_same_origin(websocket: WebSocket, origin: str) -> bool:
+    """Return True when the Origin is an IP literal matching the request host.
+
+    This is a safe escape hatch for LAN/dev deployments where the UI is served from
+    an IP (e.g. http://192.168.x.y:8080) but the configured CORS_ORIGINS only include
+    localhost. It intentionally does *not* allow arbitrary hostnames to avoid
+    weakening origin checks via DNS rebinding.
+    """
+
+    try:
+        parsed_origin = urlparse(origin)
+    except Exception:
+        return False
+
+    origin_host = parsed_origin.hostname
+    if not origin_host:
+        return False
+
+    try:
+        ipaddress.ip_address(origin_host)
+    except ValueError:
+        return False
+
+    request_host = websocket.url.hostname
+    if not request_host:
+        return False
+
+    try:
+        ipaddress.ip_address(request_host)
+    except ValueError:
+        return False
+
+    origin_port = parsed_origin.port
+    if origin_port is None:
+        if parsed_origin.scheme == "http":
+            origin_port = 80
+        elif parsed_origin.scheme == "https":
+            origin_port = 443
+        else:
+            return False
+
+    request_port = websocket.url.port
+    if request_port is None:
+        if websocket.url.scheme == "ws":
+            request_port = 80
+        elif websocket.url.scheme == "wss":
+            request_port = 443
+        else:
+            return False
+
+    return origin_host == request_host and origin_port == request_port
+
+
 async def _validate_websocket_origin(websocket: WebSocket) -> bool:
     """Validate WebSocket Origin header against allowed origins.
 
-    Returns True if origin is valid or not present (same-origin requests may not send Origin).
+    Returns True if origin is valid or not present.
     Returns False if origin is present but not in allowed list.
     """
     origin = websocket.headers.get("origin")
     if not origin:
-        # Same-origin requests may not include Origin header
+        # Non-browser clients may omit Origin header.
         return True
 
     allowed_origins = _get_allowed_websocket_origins()
     if origin not in allowed_origins:
+        if _is_ip_same_origin(websocket, origin):
+            return True
         logger.warning(
             "WebSocket connection rejected: origin %s not in allowed origins %s",
             origin,
@@ -87,40 +149,22 @@ async def get_operation(
     Returns full details about an operation including its status, configuration,
     and any error messages.
     """
-    try:
-        operation = await service.get_operation(
-            operation_uuid=operation_uuid,
-            user_id=int(current_user["id"]),
-        )
+    operation = await service.get_operation(
+        operation_uuid=operation_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        return OperationResponse(
-            id=operation.uuid,
-            collection_id=operation.collection_id,
-            type=operation.type.value,
-            status=operation.status.value,
-            config=operation.config,
-            error_message=operation.error_message,
-            created_at=operation.created_at,
-            started_at=operation.started_at,
-            completed_at=operation.completed_at,
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Operation '{operation_uuid}' not found",
-        ) from e
-    except AccessDeniedError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to this operation",
-        ) from e
-    except Exception as e:
-        logger.error("Failed to get operation: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get operation",
-        ) from e
+    return OperationResponse(
+        id=operation.uuid,
+        collection_id=operation.collection_id,
+        type=operation.type.value,
+        status=operation.status.value,
+        config=operation.config,
+        error_message=operation.error_message,
+        created_at=operation.created_at,
+        started_at=operation.started_at,
+        completed_at=operation.completed_at,
+    )
 
 
 @router.delete(
@@ -143,45 +187,22 @@ async def cancel_operation(
     state can be cancelled. The actual cancellation depends on the task
     implementation and may not be immediate.
     """
-    try:
-        operation = await service.cancel_operation(
-            operation_uuid=operation_uuid,
-            user_id=int(current_user["id"]),
-        )
+    operation = await service.cancel_operation(
+        operation_uuid=operation_uuid,
+        user_id=int(current_user["id"]),
+    )
 
-        return OperationResponse(
-            id=operation.uuid,
-            collection_id=operation.collection_id,
-            type=operation.type.value,
-            status=operation.status.value,
-            config=operation.config,
-            error_message=operation.error_message,
-            created_at=operation.created_at,
-            started_at=operation.started_at,
-            completed_at=operation.completed_at,
-        )
-
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Operation '{operation_uuid}' not found",
-        ) from e
-    except AccessDeniedError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to cancel this operation",
-        ) from e
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error("Failed to cancel operation: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to cancel operation",
-        ) from e
+    return OperationResponse(
+        id=operation.uuid,
+        collection_id=operation.collection_id,
+        type=operation.type.value,
+        status=operation.status.value,
+        config=operation.config,
+        error_message=operation.error_message,
+        created_at=operation.created_at,
+        started_at=operation.started_at,
+        completed_at=operation.completed_at,
+    )
 
 
 @router.get(
@@ -204,53 +225,37 @@ async def list_operations(
     Returns a paginated list of all operations created by the current user,
     ordered by creation date (newest first).
     """
-    try:
-        offset = (page - 1) * per_page
+    offset = (page - 1) * per_page
 
-        # Delegate all parsing and filtering logic to service
-        operations, total = await service.list_operations_with_filters(
-            user_id=int(current_user["id"]),
-            status=status,
-            operation_type=operation_type,
-            offset=offset,
-            limit=per_page,
+    # Delegate all parsing and filtering logic to service
+    operations, total = await service.list_operations_with_filters(
+        user_id=int(current_user["id"]),
+        status=status,
+        operation_type=operation_type,
+        offset=offset,
+        limit=per_page,
+    )
+
+    operations_response = [
+        OperationResponse(
+            id=op.uuid,
+            collection_id=op.collection_id,
+            type=op.type.value,
+            status=op.status.value,
+            config=op.config,
+            error_message=op.error_message,
+            created_at=op.created_at,
+            started_at=op.started_at,
+            completed_at=op.completed_at,
         )
-
-        operations_response = [
-            OperationResponse(
-                id=op.uuid,
-                collection_id=op.collection_id,
-                type=op.type.value,
-                status=op.status.value,
-                config=op.config,
-                error_message=op.error_message,
-                created_at=op.created_at,
-                started_at=op.started_at,
-                completed_at=op.completed_at,
-            )
-            for op in operations
-        ]
-        return OperationListResponse(
-            operations=operations_response,
-            total=total,
-            page=page,
-            per_page=per_page,
-        )
-
-    except ValueError as e:
-        # Service method raises ValueError for invalid filters
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        ) from e
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to list operations: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to list operations",
-        ) from e
+        for op in operations
+    ]
+    return OperationListResponse(
+        operations=operations_response,
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
 
 
 # WebSocket handler for operation progress - export this separately so it can be mounted at the app level

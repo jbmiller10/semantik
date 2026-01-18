@@ -545,8 +545,7 @@ async def test_select_projection_region_resolves_chunk_metadata_via_embedding_ve
 ) -> None:
     """Selection should resolve chunk metadata when original_ids store vector IDs."""
 
-    from shared.database.models import Document
-    from shared.database.repositories.chunk_repository import ChunkRepository
+    from shared.database.models import Chunk, Document
     from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
@@ -556,19 +555,19 @@ async def test_select_projection_region_resolves_chunk_metadata_via_embedding_ve
     collection = await collection_factory(owner_id=test_user_db.id)
     document: Document = await document_factory(collection_id=collection.id)
 
-    # Use repository helper so partition_key is set correctly for the test DB.
-    chunk_repo = ChunkRepository(db_session)
-    chunk = await chunk_repo.create_chunk(
-        {
-            "collection_id": collection.id,
-            "document_id": document.id,
-            "chunk_index": 0,
-            "content": "hello from chunk",
-        }
-    )
     # Use a UUID-like embedding_vector_id mirroring Qdrant point IDs.
     vector_id = str(uuid4())
-    chunk.embedding_vector_id = vector_id
+
+    # Create chunk directly via SQLAlchemy model
+    chunk = Chunk(
+        collection_id=collection.id,
+        document_id=document.id,
+        chunk_index=0,
+        content="hello from chunk",
+        embedding_vector_id=vector_id,
+        partition_key=int(collection.id.replace("-", "")[:8], 16) % 100,
+    )
+    db_session.add(chunk)
     await db_session.commit()
     await db_session.refresh(chunk)
 

@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from shared.database.exceptions import ValidationError
+from webui.middleware.exception_handlers import register_global_exception_handlers
 
 
 @pytest.fixture()
@@ -31,6 +32,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, AsyncMock]
     importlib.reload(collections)
 
     app = FastAPI()
+    register_global_exception_handlers(app)
     app.include_router(collections.router)
 
     mock_service: AsyncMock = AsyncMock()

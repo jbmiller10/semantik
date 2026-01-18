@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { collectionsV2Api, handleApiError } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
-import type { 
-  Collection, 
-  CreateCollectionRequest, 
-  UpdateCollectionRequest 
+import { usePreferences } from './usePreferences';
+import { DEFAULT_REFRESH_INTERVAL_MS } from './useRefreshInterval';
+import type {
+  Collection,
+  CreateCollectionRequest,
+  UpdateCollectionRequest
 } from '../types/collection';
 
 // Query key factory for consistent key generation
@@ -18,7 +20,12 @@ export const collectionKeys = {
 
 // Hook to fetch all collections
 export function useCollections() {
-  const isTestEnv = import.meta.env.MODE === 'test'
+  const isTestEnv = import.meta.env.MODE === 'test';
+  const { data: preferences } = usePreferences();
+
+  // Get user's preferred refresh interval, with fallback to default
+  const baselineInterval =
+    preferences?.interface?.data_refresh_interval_ms ?? DEFAULT_REFRESH_INTERVAL_MS;
 
   return useQuery({
     queryKey: collectionKeys.lists(),
@@ -29,14 +36,14 @@ export function useCollections() {
       }
       return response.data.collections;
     },
-    // Automatically refetch every 30 seconds if there are active operations
+    // Automatically refetch every 5 seconds if there are active operations, otherwise use user preference
     refetchInterval: isTestEnv
       ? false
       : (query) => {
           const hasActiveOperations = query.state.data?.some(
             (c: Collection) => c.status === 'processing' || c.activeOperation
           );
-          return hasActiveOperations ? 30000 : false;
+          return hasActiveOperations ? 5000 : baselineInterval;
         },
     staleTime: 5000, // Consider data stale after 5 seconds
   });

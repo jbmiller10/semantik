@@ -50,7 +50,7 @@ export function ConnectorTypeSelector({
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-sm font-medium text-[var(--text-muted)]">
         Select Source Type
       </label>
       <div className={`grid ${gridCols} gap-3`}>
@@ -64,24 +64,24 @@ export function ConnectorTypeSelector({
               relative flex flex-col items-center p-4 rounded-lg border-2 transition-all
               ${
                 selectedType === 'none'
-                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10'
+                  : 'border-[var(--border)] bg-[var(--bg-secondary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-tertiary)]'
               }
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
           >
             {selectedType === 'none' && (
               <div className="absolute top-2 right-2">
-                <div className="h-2 w-2 rounded-full bg-blue-500" />
+                <div className="h-2 w-2 rounded-full bg-gray-500 dark:bg-white" />
               </div>
             )}
-            <div className={`mb-2 ${selectedType === 'none' ? 'text-blue-600' : 'text-gray-500'}`}>
+            <div className={`mb-2 ${selectedType === 'none' ? 'text-gray-700 dark:text-white' : 'text-[var(--text-muted)]'}`}>
               <Ban className="h-6 w-6" />
             </div>
-            <span className={`text-sm font-medium ${selectedType === 'none' ? 'text-blue-900' : 'text-gray-900'}`}>
+            <span className={`text-sm font-medium ${selectedType === 'none' ? 'text-gray-800 dark:text-white' : 'text-[var(--text-primary)]'}`}>
               None
             </span>
-            <span className={`text-xs mt-1 text-center ${selectedType === 'none' ? 'text-blue-700' : 'text-gray-500'}`}>
+            <span className={`text-xs mt-1 text-center ${selectedType === 'none' ? 'text-gray-600 dark:text-gray-300' : 'text-[var(--text-secondary)]'}`}>
               Add later
             </span>
           </button>
@@ -102,8 +102,8 @@ export function ConnectorTypeSelector({
                 relative flex flex-col items-center p-4 rounded-lg border-2 transition-all
                 ${
                   isSelected
-                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10'
+                    : 'border-[var(--border)] bg-[var(--bg-secondary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-tertiary)]'
                 }
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
@@ -111,13 +111,13 @@ export function ConnectorTypeSelector({
               {/* Selection indicator */}
               {isSelected && (
                 <div className="absolute top-2 right-2">
-                  <div className="h-2 w-2 rounded-full bg-blue-500" />
+                  <div className="h-2 w-2 rounded-full bg-gray-500 dark:bg-white" />
                 </div>
               )}
 
               {/* Icon */}
               <div
-                className={`mb-2 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}
+                className={`mb-2 ${isSelected ? 'text-gray-700 dark:text-white' : 'text-[var(--text-muted)]'}`}
               >
                 {icon}
               </div>
@@ -125,7 +125,7 @@ export function ConnectorTypeSelector({
               {/* Name */}
               <span
                 className={`text-sm font-medium ${
-                  isSelected ? 'text-blue-900' : 'text-gray-900'
+                  isSelected ? 'text-gray-800 dark:text-white' : 'text-[var(--text-primary)]'
                 }`}
               >
                 {definition.name}
@@ -134,7 +134,7 @@ export function ConnectorTypeSelector({
               {/* Short description */}
               <span
                 className={`text-xs mt-1 text-center ${
-                  isSelected ? 'text-blue-700' : 'text-gray-500'
+                  isSelected ? 'text-gray-600 dark:text-gray-300' : 'text-[var(--text-secondary)]'
                 }`}
               >
                 {getShortDescription(type)}

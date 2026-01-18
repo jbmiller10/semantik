@@ -547,7 +547,7 @@ describe('RenameCollectionModal', () => {
       // Error should be associated with input (though not with aria-describedby in current implementation)
       const errorMessage = screen.getByText('Collection name cannot be empty');
       expect(errorMessage).toBeInTheDocument();
-      expect(errorMessage).toHaveClass('text-red-600');
+      expect(errorMessage).toHaveClass('text-red-400');
     });
 
     it('should properly disable form elements during submission', async () => {

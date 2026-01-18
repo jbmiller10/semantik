@@ -29,14 +29,14 @@ describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockNavigate.mockClear()
-    
+
     // Reset stores
     useAuthStore.setState({
       token: null,
       user: null,
       refreshToken: null,
     })
-    
+
     // Reset UI store and clear any existing toasts
     useUIStore.setState({
       toasts: [],
@@ -44,61 +44,61 @@ describe('LoginPage', () => {
       showDocumentViewer: null,
       showCollectionDetailsModal: null,
     })
-    
+
     // Clear any pending timers that might add/remove toasts
     vi.clearAllTimers()
   })
 
   it('renders login form by default', () => {
     renderWithProviders(<LoginPage />)
-    
-    expect(screen.getByText('Sign in to Semantik')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument()
+
+    expect(screen.getByText('Welcome back')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('username')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.getByText("Don't have an account? Register")).toBeInTheDocument()
-    
+    expect(screen.getByText("Don't have an account? Sign up")).toBeInTheDocument()
+
     // Email and full name fields should not be visible in login mode
-    expect(screen.queryByPlaceholderText('Email address')).not.toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('Full Name (optional)')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('name@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('John Doe')).not.toBeInTheDocument()
   })
 
   it('toggles to registration form', async () => {
     const user = userEvent.setup()
     renderWithProviders(<LoginPage />)
-    
-    const toggleButton = screen.getByText("Don't have an account? Register")
+
+    const toggleButton = screen.getByText("Don't have an account? Sign up")
     await user.click(toggleButton)
-    
-    expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Full Name (optional)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument()
+
+    expect(screen.getByText('Create an account')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('name@example.com')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('John Doe')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument()
     expect(screen.getByText('Already have an account? Sign in')).toBeInTheDocument()
   })
 
   it('handles successful login', async () => {
     const user = userEvent.setup()
-    
+
     renderWithProviders(<LoginPage />)
-    
+
     // Fill in login form with credentials that match the default handler
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
-    
+    await user.type(screen.getByPlaceholderText('username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
+
     // Submit form
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    
+
     // Wait for the form to be processed (button should become enabled again after processing)
     await waitFor(() => {
       const button = screen.getByRole('button', { name: 'Sign in' })
       expect(button).toBeEnabled()
     })
-    
+
     // Check if we have any toast messages (success or error)
     const uiState = useUIStore.getState()
     expect(uiState.toasts.length).toBeGreaterThan(0)
-    
+
     // Check if there's a success toast
     const successToast = uiState.toasts.find(toast => toast.type === 'success')
     if (successToast) {
@@ -114,7 +114,7 @@ describe('LoginPage', () => {
 
   it('handles login error', async () => {
     const user = userEvent.setup()
-    
+
     server.use(
       http.post('/api/auth/login', () => {
         return HttpResponse.json(
@@ -123,27 +123,27 @@ describe('LoginPage', () => {
         )
       })
     )
-    
+
     renderWithProviders(<LoginPage />)
-    
-    await user.type(screen.getByPlaceholderText('Username'), 'wronguser')
-    await user.type(screen.getByPlaceholderText('Password'), 'wrongpass')
+
+    await user.type(screen.getByPlaceholderText('username'), 'wronguser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'wrongpass')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     })
-    
+
     // Check that navigation didn't happen
     expect(mockNavigate).not.toHaveBeenCalled()
-    
+
     // Login failed - the key verification is that navigation didn't happen
     // Error toast is nice-to-have but not the core functionality
   })
 
   it('handles successful registration', async () => {
     const user = userEvent.setup()
-    
+
     // Add a registration handler
     server.use(
       http.post('/api/auth/register', () => {
@@ -157,46 +157,46 @@ describe('LoginPage', () => {
         })
       })
     )
-    
+
     renderWithProviders(<LoginPage />)
-    
+
     // Switch to registration mode
-    await user.click(screen.getByText("Don't have an account? Register"))
-    
+    await user.click(screen.getByText("Don't have an account? Sign up"))
+
     // Fill in registration form
-    await user.type(screen.getByPlaceholderText('Username'), 'newuser')
-    await user.type(screen.getByPlaceholderText('Email address'), 'new@example.com')
-    await user.type(screen.getByPlaceholderText('Full Name (optional)'), 'New User')
-    await user.type(screen.getByPlaceholderText('Password'), 'newpass1')
-    
+    await user.type(screen.getByPlaceholderText('username'), 'newuser')
+    await user.type(screen.getByPlaceholderText('name@example.com'), 'new@example.com')
+    await user.type(screen.getByPlaceholderText('John Doe'), 'New User')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'newpass1')
+
     // Submit form
-    await user.click(screen.getByRole('button', { name: 'Register' }))
-    
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
     // Wait for the form to be processed (button should become enabled again)
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: 'Register' })
+      const button = screen.getByRole('button', { name: 'Create account' })
       expect(button).toBeEnabled()
     })
-    
+
     // Check if there's a success toast indicating registration worked
     const uiState = useUIStore.getState()
-    const successToast = uiState.toasts.find(toast => toast.type === 'success' && toast.message.includes('Registration successful'))
-    
+    const successToast = uiState.toasts.find(toast => toast.type === 'success' && toast.message.includes('Account created'))
+
     if (successToast) {
       // Should switch back to login mode after successful registration
-      expect(screen.getByText('Sign in to Semantik')).toBeInTheDocument()
+      expect(screen.getByText('Welcome back')).toBeInTheDocument()
       // Username should be preserved, password should be cleared
-      expect(screen.getByPlaceholderText('Username')).toHaveValue('newuser')
-      expect(screen.getByPlaceholderText('Password')).toHaveValue('')
+      expect(screen.getByPlaceholderText('username')).toHaveValue('newuser')
+      expect(screen.getByPlaceholderText('Enter your password')).toHaveValue('')
     } else {
       // If registration failed, we should still be in registration mode
-      expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
+      expect(screen.getByText('Create an account')).toBeInTheDocument()
     }
   })
 
   it('handles registration error', async () => {
     const user = userEvent.setup()
-    
+
     server.use(
       http.post('/api/auth/register', () => {
         return HttpResponse.json(
@@ -205,50 +205,50 @@ describe('LoginPage', () => {
         )
       })
     )
-    
+
     renderWithProviders(<LoginPage />)
-    
+
     // Switch to registration mode
-    await user.click(screen.getByText("Don't have an account? Register"))
-    
+    await user.click(screen.getByText("Don't have an account? Sign up"))
+
     // Fill in registration form
-    await user.type(screen.getByPlaceholderText('Username'), 'existinguser')
-    await user.type(screen.getByPlaceholderText('Email address'), 'existing@example.com')
-    await user.type(screen.getByPlaceholderText('Password'), 'password')
-    
+    await user.type(screen.getByPlaceholderText('username'), 'existinguser')
+    await user.type(screen.getByPlaceholderText('name@example.com'), 'existing@example.com')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'password')
+
     // Submit form
-    await user.click(screen.getByRole('button', { name: 'Register' }))
-    
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Register' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
     })
-    
+
     // Should still be in registration mode
-    expect(screen.getByText('Create a Semantik account')).toBeInTheDocument()
-    
+    expect(screen.getByText('Create an account')).toBeInTheDocument()
+
     // Registration failed - key verification is staying in registration mode
   })
 
   it('submits form successfully', async () => {
     const user = userEvent.setup()
-    
+
     renderWithProviders(<LoginPage />)
-    
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
-    
+
+    await user.type(screen.getByPlaceholderText('username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
+
     const submitButton = screen.getByRole('button', { name: 'Sign in' })
     expect(submitButton).toBeEnabled()
-    
+
     // Submit the form
     await user.click(submitButton)
-    
+
     // Wait for the form submission to complete
     await waitFor(() => {
       // Form should have been processed and button should be enabled again
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     })
-    
+
     // Verify that some action was taken (either success or error toast)
     const uiState = useUIStore.getState()
     expect(uiState.toasts.length).toBeGreaterThan(0)
@@ -256,29 +256,29 @@ describe('LoginPage', () => {
 
   it('handles network error gracefully', async () => {
     const user = userEvent.setup()
-    
+
     server.use(
       http.post('/api/auth/login', () => {
         return HttpResponse.error()
       })
     )
-    
+
     renderWithProviders(<LoginPage />)
-    
-    await user.type(screen.getByPlaceholderText('Username'), 'testuser')
-    await user.type(screen.getByPlaceholderText('Password'), 'testpass')
+
+    await user.type(screen.getByPlaceholderText('username'), 'testuser')
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'testpass')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     })
-    
+
     // Wait for error toast to be added
     await waitFor(() => {
       const uiState = useUIStore.getState()
       expect(uiState.toasts.length).toBeGreaterThan(0)
     })
-    
+
     // Check that there's an error toast (may have multiple toasts, so check the last one)
     const uiState = useUIStore.getState()
     const errorToast = uiState.toasts.find(toast => toast.type === 'error')

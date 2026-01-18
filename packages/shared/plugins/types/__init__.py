@@ -3,13 +3,9 @@
 from .chunking import ChunkingPlugin
 from .connector import ConnectorPlugin
 from .embedding import EmbeddingPlugin
-from .extractor import (
-    Entity,
-    ExtractionResult,
-    ExtractionType,
-    ExtractorPlugin,
-)
+from .extractor import Entity, ExtractionResult, ExtractionType, ExtractorPlugin
 from .reranker import RerankerCapabilities, RerankerPlugin, RerankResult
+from .sparse_indexer import SparseIndexerCapabilities, SparseIndexerPlugin, SparseQueryVector, SparseVector
 
 __all__ = [
     "ChunkingPlugin",
@@ -22,4 +18,8 @@ __all__ = [
     "RerankerCapabilities",
     "RerankerPlugin",
     "RerankResult",
+    "SparseIndexerCapabilities",
+    "SparseIndexerPlugin",
+    "SparseQueryVector",
+    "SparseVector",
 ]

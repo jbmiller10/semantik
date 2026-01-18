@@ -8,11 +8,7 @@ from collections import Counter
 from typing import Any, ClassVar
 
 from shared.plugins.manifest import PluginManifest
-from shared.plugins.types.extractor import (
-    ExtractionResult,
-    ExtractionType,
-    ExtractorPlugin,
-)
+from shared.plugins.types.extractor import ExtractionResult, ExtractionType, ExtractorPlugin
 
 logger = logging.getLogger(__name__)
 

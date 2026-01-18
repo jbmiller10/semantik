@@ -12,17 +12,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import psutil
-from qdrant_client.models import PointStruct
 
 from shared.database.models import DocumentStatus
+from webui.tasks.error_classifier import ErrorCategory, classify_error
+from webui.tasks.qdrant_utils import build_chunk_point
 from webui.tasks.utils import _build_internal_api_headers
+
+# Avoid circular import at module load - will import at call site
+_maybe_generate_sparse_vectors = None
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,6 +43,10 @@ VECTOR_UPLOAD_BATCH_SIZE = 100
 QUEUE_MAX_SIZE = 100  # Max pending chunks in queue
 QUEUE_PUT_POLL_INTERVAL_SECONDS = 0.5  # How often producers check for downstream shutdown when backpressured
 
+# Retry configuration for transient errors
+MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for transient errors
+RETRY_BACKOFF_SECONDS = [2.0, 4.0, 8.0]  # Exponential backoff: 2s, 4s, 8s
+
 # Resource thresholds for dynamic scaling
 MIN_MEMORY_PER_WORKER_MB = 512  # Minimum memory per worker
 MIN_FREE_MEMORY_PERCENT = 20  # Keep at least 20% memory free
@@ -53,6 +60,70 @@ def _vecpipe_url(path: str) -> str:
     This runs inside the worker container, so we use internal Docker networking.
     """
     return f"http://vecpipe:8000/{path.lstrip('/')}"
+
+
+async def _retry_http_post(
+    url: str,
+    json_data: dict[str, Any],
+    *,
+    timeout: float = 60.0,
+    operation_name: str = "HTTP request",
+    context: str = "",
+) -> httpx.Response:
+    """Execute HTTP POST with retry for transient errors.
+
+    Args:
+        url: Target URL
+        json_data: Request body
+        timeout: Request timeout in seconds
+        operation_name: Name for logging (e.g., "Embedding", "Upsert")
+        context: Additional context for log messages (e.g., "batch 0-10")
+
+    Returns:
+        Successful response
+
+    Raises:
+        RuntimeError: If all retries exhausted or non-transient error
+    """
+    last_error: Exception | None = None
+    last_error_message: str = ""
+    attempt: int = 0
+
+    for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                headers = _build_internal_api_headers()
+                response = await client.post(url, json=json_data, headers=headers)
+                response.raise_for_status()
+                return response
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            last_error = exc
+            if isinstance(exc, httpx.HTTPStatusError):
+                last_error_message = f"{operation_name} failed: {exc.response.status_code} - {exc.response.text}"
+            else:
+                last_error_message = f"{operation_name} request failed: {exc}"
+
+            error_category = classify_error(exc)
+            if error_category == ErrorCategory.TRANSIENT and attempt < MAX_RETRY_ATTEMPTS:
+                delay = (
+                    RETRY_BACKOFF_SECONDS[attempt]
+                    if attempt < len(RETRY_BACKOFF_SECONDS)
+                    else RETRY_BACKOFF_SECONDS[-1]
+                )
+                logger.warning(
+                    "%s%s failed (attempt %d/%d), retrying in %.1fs: %s",
+                    operation_name,
+                    f" {context}" if context else "",
+                    attempt + 1,
+                    MAX_RETRY_ATTEMPTS + 1,
+                    delay,
+                    last_error_message,
+                )
+                await asyncio.sleep(delay)
+                continue
+            break
+
+    raise RuntimeError(f"{last_error_message} (after {attempt + 1} attempt(s))") from last_error
 
 
 def calculate_optimal_workers(
@@ -273,7 +344,7 @@ async def _best_effort(label: str, awaitable: Any) -> None:
     except (SystemExit, KeyboardInterrupt, MemoryError):
         raise
     except Exception as exc:
-        logger.debug("Best-effort %s failed: %s", label, exc, exc_info=True)
+        logger.warning("Best-effort %s failed: %s", label, exc, exc_info=True)
 
 
 async def _update_document_status(
@@ -284,6 +355,7 @@ async def _update_document_status(
     *,
     error_message: str | None = None,
     chunk_count: int | None = None,
+    error_category: str | None = None,
 ) -> None:
     """Update status and commit immediately to make progress durable/visible."""
     async with db_lock:
@@ -293,9 +365,11 @@ async def _update_document_status(
                 status,
                 error_message=error_message,
                 chunk_count=chunk_count,
+                error_category=error_category,
             )
             await document_repo.session.commit()
-        except Exception:
+        except Exception as exc:
+            logger.error("Document status update failed for %s: %s", document_id, exc, exc_info=True)
             # Keep the session usable for subsequent updates.
             await _best_effort(
                 f"document status rollback for {document_id}",
@@ -339,7 +413,7 @@ async def extract_and_chunk_document(
             # Extract from file
             loop = asyncio.get_running_loop()
             try:
-                text_blocks = await asyncio.wait_for(
+                parse_result = await asyncio.wait_for(
                     loop.run_in_executor(executor_pool, extract_fn, doc.file_path),
                     timeout=300,
                 )
@@ -347,16 +421,12 @@ async def extract_and_chunk_document(
                 logger.error("Extraction failed for %s: %s", doc_identifier, exc)
                 return ExtractionResult(success=False, error=f"Extraction failed: {exc}")
 
-            if not text_blocks:
+            if not parse_result or not parse_result.text.strip():
                 logger.warning("No text extracted from %s", doc_identifier)
                 return ExtractionResult(success=True, skip_reason="no_text_extracted")
 
-            combined_text = ""
-            for text, metadata in text_blocks:
-                if text.strip():
-                    combined_text += text + "\n\n"
-                    if metadata:
-                        combined_metadata.update(metadata)
+            combined_text = parse_result.text
+            combined_metadata = parse_result.metadata
 
         if not combined_text.strip():
             logger.warning("No content for document %s", doc_identifier)
@@ -440,13 +510,16 @@ async def extraction_worker(
                 )
 
                 if not result.success:
-                    # Processing failed - mark as FAILED with error message
+                    # Processing failed - mark as FAILED with error message and category
+                    error_msg = result.error[:500] if result.error else "Unknown error"
+                    category = classify_error(result.error) if result.error else ErrorCategory.UNKNOWN
                     await _update_document_status(
                         document_repo,
                         db_lock,
                         doc.id,
                         DocumentStatus.FAILED,
-                        error_message=result.error[:500] if result.error else "Unknown error",
+                        error_message=error_msg,
+                        error_category=category.value,
                     )
                     await _incr_stat(stats, stats_lock, "failed")
                 elif result.skip_reason:
@@ -470,12 +543,14 @@ async def extraction_worker(
                 # CRITICAL: Update document status on exception to prevent stuck PROCESSING state
                 if doc is not None:
                     try:
+                        category = classify_error(exc)
                         await _update_document_status(
                             document_repo,
                             db_lock,
                             doc.id,
                             DocumentStatus.FAILED,
                             error_message=f"Extraction worker error: {str(exc)[:500]}",
+                            error_category=category.value,
                         )
                         await _incr_stat(stats, stats_lock, "failed")
                     except Exception as status_exc:
@@ -516,7 +591,7 @@ async def embedding_worker(
     pending_texts: list[str] = []
 
     async def flush_batch() -> None:
-        """Send accumulated texts for embedding."""
+        """Send accumulated texts for embedding with automatic retry for transient errors."""
         nonlocal pending_batches, pending_texts
 
         if not pending_texts:
@@ -524,32 +599,34 @@ async def embedding_worker(
 
         logger.info("Embedding batch of %d texts from %d documents", len(pending_texts), len(pending_batches))
 
+        embed_request = {
+            "texts": pending_texts,
+            "model_name": embedding_model,
+            "quantization": quantization,
+            "instruction": instruction,
+            "batch_size": batch_size,
+            "mode": "document",
+        }
+
         try:
-            vecpipe_url = _vecpipe_url("/embed")
-            embed_request = {
-                "texts": pending_texts,
-                "model_name": embedding_model,
-                "quantization": quantization,
-                "instruction": instruction,
-                "batch_size": batch_size,
-                "mode": "document",
-            }
+            response = await _retry_http_post(
+                _vecpipe_url("/embed"),
+                embed_request,
+                timeout=300.0,
+                operation_name="Embedding batch",
+            )
 
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                headers = _build_internal_api_headers()
-                response = await client.post(vecpipe_url, json=embed_request, headers=headers)
-                response.raise_for_status()
+            # Validate response
+            embed_response = response.json()
+            all_embeddings = embed_response.get("embeddings")
+            if not isinstance(all_embeddings, list):
+                raise ValueError(f"Invalid embedding response: embeddings={type(all_embeddings)}")
+            if len(all_embeddings) != len(pending_texts):
+                raise ValueError(
+                    f"Embedding response size mismatch: got {len(all_embeddings)} vectors, expected {len(pending_texts)}"
+                )
 
-                embed_response = response.json()
-                all_embeddings = embed_response.get("embeddings")
-                if not isinstance(all_embeddings, list):
-                    raise ValueError(f"Invalid embedding response: embeddings={type(all_embeddings)}")
-                if len(all_embeddings) != len(pending_texts):
-                    raise ValueError(
-                        f"Embedding response size mismatch: got {len(all_embeddings)} vectors, expected {len(pending_texts)}"
-                    )
-
-            # Distribute embeddings back to batches
+            # Success - distribute embeddings back to batches
             offset = 0
             for batch in pending_batches:
                 batch_embeddings = all_embeddings[offset : offset + len(batch.texts)]
@@ -564,42 +641,21 @@ async def embedding_worker(
                         success=True,
                     )
                 )
+            pending_batches = []
+            pending_texts = []
 
-        except httpx.RequestError as exc:
-            error_message = f"Embedding request failed: {exc}"
-            logger.error(error_message, exc_info=True)
-            # Mark all batches as failed
-            for batch in pending_batches:
-                await result_queue.put(
-                    EmbeddingResult(
-                        doc_id=batch.doc_id,
-                        doc_identifier=batch.doc_identifier,
-                        chunks=batch.chunks,
-                        embeddings=[],
-                        success=False,
-                        error=error_message,
-                    )
-                )
-        except httpx.HTTPStatusError as exc:
-            response = exc.response
-            error_message = f"Embedding failed: {response.status_code} - {response.text}"
-            logger.error(error_message, exc_info=True)
-            # Mark all batches as failed
-            for batch in pending_batches:
-                await result_queue.put(
-                    EmbeddingResult(
-                        doc_id=batch.doc_id,
-                        doc_identifier=batch.doc_identifier,
-                        chunks=batch.chunks,
-                        embeddings=[],
-                        success=False,
-                        error=error_message,
-                    )
-                )
         except Exception as exc:
+            # RuntimeError from _retry_http_post or other exceptions
             error_message = str(exc)
-            logger.error("Embedding batch failed: %s", error_message, exc_info=True)
-            # Mark all batches as failed
+            # Use the original exception for classification if available
+            original_error = exc.__cause__ if isinstance(exc.__cause__, Exception) else exc
+            error_category = classify_error(original_error)
+            logger.error(
+                "Embedding batch failed (error_category=%s): %s",
+                error_category.value,
+                error_message,
+                exc_info=True,
+            )
             for batch in pending_batches:
                 await result_queue.put(
                     EmbeddingResult(
@@ -611,9 +667,8 @@ async def embedding_worker(
                         error=error_message,
                     )
                 )
-
-        pending_batches = []
-        pending_texts = []
+            pending_batches = []
+            pending_texts = []
 
     try:
         while True:
@@ -682,7 +737,9 @@ async def result_processor(
     result_queue: asyncio.Queue,
     qdrant_collection_name: str,
     collection_id: str,
+    collection: dict[str, Any],
     document_repo: DocumentRepository,
+    collection_repo: Any | None,
     stats: dict[str, int],
     stats_lock: asyncio.Lock,
     db_lock: asyncio.Lock,
@@ -700,30 +757,30 @@ async def result_processor(
 
         try:
             if not result.success:
+                category = classify_error(result.error) if result.error else ErrorCategory.UNKNOWN
                 await _update_document_status(
                     document_repo,
                     db_lock,
                     result.doc_id,
                     DocumentStatus.FAILED,
                     error_message=result.error,
+                    error_category=category.value,
                 )
                 await _incr_stat(stats, stats_lock, "failed")
                 continue
 
             # Build points
             points = []
+            total_chunks = len(result.chunks)
             for i, chunk in enumerate(result.chunks):
-                point = PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=result.embeddings[i],
-                    payload={
-                        "collection_id": collection_id,
-                        "doc_id": result.doc_id,
-                        "chunk_id": chunk["chunk_id"],
-                        "path": result.doc_identifier,
-                        "content": chunk.get("text") or chunk.get("content") or "",
-                        "metadata": chunk.get("metadata", {}),
-                    },
+                point = build_chunk_point(
+                    collection_id=collection_id,
+                    doc_id=result.doc_id,
+                    chunk=chunk,
+                    chunk_index=chunk.get("chunk_index", i),
+                    total_chunks=total_chunks,
+                    path=result.doc_identifier,
+                    embedding=result.embeddings[i],
                 )
                 points.append(point)
 
@@ -742,16 +799,27 @@ async def result_processor(
                     "wait": True,
                 }
 
-                try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        headers = _build_internal_api_headers()
-                        response = await client.post(_vecpipe_url("/upsert"), json=upsert_request, headers=headers)
-                        response.raise_for_status()
-                except httpx.RequestError as exc:
-                    raise RuntimeError(f"Upsert request failed: {exc}") from exc
-                except httpx.HTTPStatusError as exc:
-                    response = exc.response
-                    raise RuntimeError(f"Upsert failed: {response.status_code} - {response.text}") from exc
+                await _retry_http_post(
+                    _vecpipe_url("/upsert"),
+                    upsert_request,
+                    timeout=60.0,
+                    operation_name="Upsert",
+                    context=f"batch {batch_start}-{batch_end}",
+                )
+
+            # Generate sparse vectors if sparse indexing is enabled
+            # Import lazily to avoid circular imports
+            global _maybe_generate_sparse_vectors
+            if _maybe_generate_sparse_vectors is None:
+                from webui.tasks.ingestion import _maybe_generate_sparse_vectors as _gen_sparse
+
+                _maybe_generate_sparse_vectors = _gen_sparse
+
+            await _maybe_generate_sparse_vectors(
+                chunks=result.chunks,
+                points=points,
+                qdrant_collection_name=qdrant_collection_name,
+            )
 
             # Update document status
             await _update_document_status(
@@ -775,6 +843,27 @@ async def result_processor(
             # Send progress update
             if updater and stats["processed"] % 10 == 0:
                 total = stats["processed"] + stats["failed"] + stats["skipped"]
+                base_vector_count = int(collection.get("vector_count") or 0)
+                document_count = int(collection.get("document_count") or 0)
+                total_size_bytes = int(collection.get("total_size_bytes") or 0)
+                vector_count = base_vector_count + int(stats["vectors"] or 0)
+
+                if collection_repo is not None:
+                    async with db_lock:
+                        try:
+                            await collection_repo.update_stats(
+                                collection_id,
+                                document_count=document_count,
+                                vector_count=vector_count,
+                                total_size_bytes=total_size_bytes,
+                            )
+                            await document_repo.session.commit()
+                        except Exception:
+                            await _best_effort(
+                                f"collection stats rollback for {collection_id}",
+                                document_repo.session.rollback(),
+                            )
+
                 await updater.send_update(
                     "processing_progress",
                     {
@@ -783,11 +872,17 @@ async def result_processor(
                         "skipped": stats["skipped"],
                         "vectors_created": stats["vectors"],
                         "total_processed": total,
+                        "stats": {
+                            "document_count": document_count,
+                            "vector_count": vector_count,
+                            "total_size_bytes": total_size_bytes,
+                        },
                     },
                 )
 
         except Exception as exc:
             logger.error("Result processing failed for %s: %s", result.doc_identifier, exc, exc_info=True)
+            category = classify_error(exc)
             await _best_effort(
                 f"result status update for {result.doc_identifier}",
                 _update_document_status(
@@ -796,6 +891,7 @@ async def result_processor(
                     result.doc_id,
                     DocumentStatus.FAILED,
                     error_message=str(exc)[:500],
+                    error_category=category.value,
                 ),
             )
             await _incr_stat(stats, stats_lock, "failed")
@@ -813,6 +909,7 @@ async def process_documents_parallel(
     executor_pool: Any,
     new_doc_contents: dict[str, str],
     document_repo: DocumentRepository,
+    collection_repo: Any | None,
     qdrant_collection_name: str,
     embedding_model: str,
     quantization: str,
@@ -910,7 +1007,9 @@ async def process_documents_parallel(
             result_queue=result_queue,
             qdrant_collection_name=qdrant_collection_name,
             collection_id=collection["id"],
+            collection=collection,
             document_repo=document_repo,
+            collection_repo=collection_repo,
             stats=stats,
             stats_lock=stats_lock,
             db_lock=db_lock,

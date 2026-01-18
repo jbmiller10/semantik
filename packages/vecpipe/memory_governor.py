@@ -46,6 +46,8 @@ class ModelType(Enum):
 
     EMBEDDING = auto()
     RERANKER = auto()
+    SPARSE = auto()  # SPLADE sparse indexer models
+    LLM = auto()  # Local LLM models
 
 
 class PressureLevel(Enum):
@@ -79,13 +81,11 @@ class MemoryBudget:
 
     # GPU limits
     total_gpu_mb: int
-    gpu_reserve_percent: float = 0.10  # Always keep 10% VRAM free
-    gpu_max_percent: float = 0.90  # Never use more than 90% of VRAM
+    gpu_max_percent: float = 0.90  # Maximum GPU memory the application can use
 
     # CPU limits (for offloaded/warm models)
     total_cpu_mb: int = 0
-    cpu_reserve_percent: float = 0.20  # Always keep 20% RAM free
-    cpu_max_percent: float = 0.50  # Never use more than 50% for warm models
+    cpu_max_percent: float = 0.50  # Maximum CPU memory for warm models
 
     def __post_init__(self) -> None:
         """Validate all fields."""
@@ -94,7 +94,7 @@ class MemoryBudget:
 
     def _validate_percentages(self) -> None:
         """Validate percentage fields are in valid range [0.0, 1.0]."""
-        for field_name in ("gpu_reserve_percent", "gpu_max_percent", "cpu_reserve_percent", "cpu_max_percent"):
+        for field_name in ("gpu_max_percent", "cpu_max_percent"):
             value = getattr(self, field_name)
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{field_name} must be between 0.0 and 1.0, got {value}")
@@ -108,23 +108,19 @@ class MemoryBudget:
 
     @property
     def usable_gpu_mb(self) -> int:
-        """Usable GPU memory after reserves."""
-        effective_max = min(self.gpu_max_percent, 1.0 - self.gpu_reserve_percent)
-        return int(self.total_gpu_mb * effective_max)
+        """Usable GPU memory based on max percent."""
+        return int(self.total_gpu_mb * self.gpu_max_percent)
 
     @property
     def usable_cpu_mb(self) -> int:
         """Usable CPU memory for warm models."""
-        effective_max = min(self.cpu_max_percent, 1.0 - self.cpu_reserve_percent)
-        return int(self.total_cpu_mb * effective_max)
+        return int(self.total_cpu_mb * self.cpu_max_percent)
 
 
 def create_memory_budget(
     total_gpu_mb: int | None = None,
     total_cpu_mb: int | None = None,
-    gpu_reserve_percent: float = 0.10,
     gpu_max_percent: float = 0.90,
-    cpu_reserve_percent: float = 0.20,
     cpu_max_percent: float = 0.50,
 ) -> MemoryBudget:
     """
@@ -133,10 +129,8 @@ def create_memory_budget(
     Args:
         total_gpu_mb: GPU memory in MB (auto-detected if None)
         total_cpu_mb: CPU memory in MB (auto-detected if None)
-        gpu_reserve_percent: GPU reserve percentage (default 0.10)
-        gpu_max_percent: GPU max percentage (default 0.90)
-        cpu_reserve_percent: CPU reserve percentage (default 0.20)
-        cpu_max_percent: CPU max percentage (default 0.50)
+        gpu_max_percent: Maximum GPU memory percentage (default 0.90)
+        cpu_max_percent: Maximum CPU memory percentage (default 0.50)
 
     Returns:
         Configured MemoryBudget instance
@@ -162,9 +156,7 @@ def create_memory_budget(
     return MemoryBudget(
         total_gpu_mb=total_gpu_mb,
         total_cpu_mb=total_cpu_mb,
-        gpu_reserve_percent=gpu_reserve_percent,
         gpu_max_percent=gpu_max_percent,
-        cpu_reserve_percent=cpu_reserve_percent,
         cpu_max_percent=cpu_max_percent,
     )
 
@@ -280,6 +272,8 @@ class GPUMemoryGovernor:
         self._callbacks: dict[ModelType, dict[str, Callable[..., Awaitable[None]]]] = {
             ModelType.EMBEDDING: {},
             ModelType.RERANKER: {},
+            ModelType.SPARSE: {},
+            ModelType.LLM: {},
         }
 
         # Async coordination - prevents concurrent coroutine access to shared state
@@ -452,15 +446,24 @@ class GPUMemoryGovernor:
         model_type: ModelType,
         quantization: str,
         model_ref: Any = None,
+        memory_mb: int | None = None,
     ) -> None:
         """
         Mark a model as loaded on GPU.
 
         Called after successful model load to register with governor.
+
+        Args:
+            model_name: Model identifier
+            model_type: Type of model (EMBEDDING, RERANKER, SPARSE, LLM)
+            quantization: Quantization type
+            model_ref: Reference to actual model for offloading
+            memory_mb: Optional explicit memory size (used for LLMs where memory_utils
+                       doesn't have size data). If None, uses _get_model_memory().
         """
         async with self._lock:
             model_key = self._make_key(model_name, model_type, quantization)
-            required_mb = self._get_model_memory(model_name, quantization)
+            required_mb = memory_mb if memory_mb is not None else self._get_model_memory(model_name, quantization)
 
             tracked = TrackedModel(
                 model_name=model_name,
@@ -554,9 +557,12 @@ class GPUMemoryGovernor:
                     tracked.idle_seconds,
                 )
 
-            # Try CPU offload first if enabled and there's room
+            # Try CPU offload first if enabled, there's room, and the model type has an offload callback
+            # (LLM models with bitsandbytes quantization don't support CPU offload in Phase 1)
+            offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
             if (
-                self._enable_cpu_offload
+                offload_cb is not None
+                and self._enable_cpu_offload
                 and tracked.location == ModelLocation.GPU
                 and self._can_offload_to_cpu(tracked.memory_mb)
             ):
@@ -937,7 +943,9 @@ class GPUMemoryGovernor:
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 30:
                     try:
-                        if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
+                        # Check if offload callback exists before attempting offload
+                        offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
+                        if offload_cb and self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
                             result = await self._offload_model(tracked)
                         else:
                             result = await self._unload_model(tracked)
@@ -966,7 +974,9 @@ class GPUMemoryGovernor:
                 is_idle_on_gpu = (
                     tracked.location == ModelLocation.GPU and tracked.idle_seconds >= self._eviction_idle_threshold
                 )
-                can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
+                # Check if offload callback exists before attempting offload
+                offload_cb = self._callbacks.get(tracked.model_type, {}).get("offload")
+                can_offload = offload_cb and self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
                 if is_idle_on_gpu and can_offload:
                     try:
                         result = await self._offload_model(tracked)

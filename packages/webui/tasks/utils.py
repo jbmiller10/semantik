@@ -19,7 +19,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from shared.text_processing.parsers import ParseResult
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
@@ -109,10 +112,15 @@ class CeleryTaskWithOperationUpdates:
             or f"celery-worker:{socket.gethostname()}"
         )
         self.user_id: int | None = None
+        self.collection_id: str | None = None
 
     def set_user_id(self, user_id: int | None) -> None:
         """Set the user ID for publishing updates to the user channel."""
         self.user_id = user_id
+
+    def set_collection_id(self, collection_id: str | None) -> None:
+        """Set the collection ID for enriching progress messages."""
+        self.collection_id = collection_id
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
@@ -128,6 +136,10 @@ class CeleryTaskWithOperationUpdates:
 
             # Avoid mutating the caller's payload; keep data exactly as supplied
             payload = dict(data) if isinstance(data, dict) else data
+            if isinstance(payload, dict):
+                payload.setdefault("operation_id", self.operation_id)
+                if self.collection_id:
+                    payload.setdefault("collection_id", self.collection_id)
 
             message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": payload}
             message_json = json.dumps(message)
@@ -223,12 +235,54 @@ def _build_internal_api_headers() -> dict[str, str]:
     }
 
 
-def extract_and_serialize_thread_safe(filepath: str) -> list[tuple[str, dict[str, Any]]]:
-    """Thread-safe wrapper around extract_and_serialize that preserves metadata."""
-    from shared.text_processing.extraction import extract_and_serialize
+def parse_file_thread_safe(
+    file_path: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+    parser_configs: dict[str, dict[str, Any]] | None = None,
+    include_elements: bool = False,
+) -> ParseResult:
+    """Thread-safe file parsing using the new parser framework.
 
-    result: list[tuple[str, dict[str, Any]]] = extract_and_serialize(filepath)
-    return result
+    Replaces the legacy task parsing helper used before the parser framework migration.
+
+    Args:
+        file_path: Absolute path to the file to parse.
+        metadata: Optional base metadata to include in result.
+        parser_configs: Per-parser configs (e.g., {"unstructured": {"strategy": "fast"}}).
+        include_elements: Whether to populate ParseResult.elements.
+
+    Returns:
+        ParseResult with extracted text and metadata.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+        UnsupportedFormatError: If no parser can handle the content.
+        ExtractionFailedError: If extraction fails.
+    """
+    from pathlib import Path
+
+    from shared.text_processing.parsers import parse_content
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    content = path.read_bytes()
+    base_metadata = {
+        "filename": path.name,
+        "local_file_path": str(path.absolute()),
+        **(metadata or {}),
+    }
+
+    return parse_content(
+        content,
+        filename=path.name,
+        file_extension=path.suffix.lower(),
+        metadata=base_metadata,
+        include_elements=include_elements,
+        parser_configs=parser_configs,
+    )
 
 
 def calculate_cleanup_delay(vector_count: int) -> int:
@@ -442,6 +496,12 @@ def resolve_awaitable_sync(value: Any) -> Any:
             if loop is None or loop.is_closed():
                 loop = asyncio_module.new_event_loop()
                 loop_map[thread_id] = loop
+                # Reset database connection pool when event loop changes.
+                # asyncpg connections are bound to a specific event loop, so
+                # old connections cannot be reused on a new loop.
+                from shared.database.postgres_database import pg_connection_manager
+
+                pg_connection_manager.reset()
 
             # Maintain legacy attribute for compatibility with tests/patching.
             setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)
@@ -490,7 +550,7 @@ __all__ = [
     "CLEANUP_DELAY_MIN_SECONDS",
     "CLEANUP_DELAY_SECONDS",
     "executor",
-    "extract_and_serialize_thread_safe",
+    "parse_file_thread_safe",
     "calculate_cleanup_delay",
     "_audit_log_operation",
     "_build_internal_api_headers",

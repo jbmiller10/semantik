@@ -7,18 +7,24 @@ This module tests the semantic chunking strategy with various scenarios includin
 mocked embeddings, error handling, performance, and edge cases.
 """
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
 
-from shared.text_processing.chunking_factory import ChunkingFactory
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
-# Create SemanticChunker using the factory
-def create_semantic_chunker(embed_model):
-    """Create a semantic chunker using the factory."""
-    return ChunkingFactory.create_chunker({"strategy": "semantic", "params": {"embed_model": embed_model}})
+# Create SemanticChunker using the unified factory
+def create_semantic_chunker(embed_model: MockEmbedding) -> TextProcessingStrategyAdapter:
+    """Create a semantic chunker using the unified factory."""
+    unified_strategy = UnifiedChunkingFactory.create_strategy(
+        "semantic",
+        use_llama_index=True,
+        embed_model=embed_model,
+    )
+    return TextProcessingStrategyAdapter(unified_strategy)
 
 
 class TestSemanticChunker:
@@ -57,13 +63,13 @@ Climate change affects global temperatures. Data science involves statistical an
             "single_sentence": "This is just one sentence.",
         }
 
-    def test_semantic_chunker_initialization(self, mock_embed_model):
+    def test_semantic_chunker_initialization(self, mock_embed_model: MockEmbedding) -> None:
         """Test SemanticChunker initialization with embed model."""
         chunker = create_semantic_chunker(mock_embed_model)
         assert chunker is not None
         assert chunker.strategy_name == "semantic"
 
-    def test_semantic_chunker_basic(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_basic(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test basic semantic chunking functionality."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -81,7 +87,9 @@ Climate change affects global temperatures. Data science involves statistical an
             assert hasattr(result, "metadata")
             assert result.text in sample_texts["simple"]
 
-    def test_semantic_chunker_technical_text(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_technical_text(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking on technical content."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -95,7 +103,9 @@ Climate change affects global temperatures. Data science involves statistical an
             # Check that chunks are from the original text
             assert result.text.strip() in sample_texts["technical"]
 
-    def test_semantic_chunker_coherent_topic(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_coherent_topic(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking on coherent topic text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -107,7 +117,7 @@ Climate change affects global temperatures. Data science involves statistical an
         for result in results:
             assert "Python" in result.text or "python" in result.text
 
-    def test_semantic_chunker_mixed_topics(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_mixed_topics(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test semantic chunking on mixed topic text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -129,7 +139,7 @@ Climate change affects global temperatures. Data science involves statistical an
         # Should identify multiple topics
         assert len(topics_found) >= 2
 
-    def test_semantic_chunker_empty_text(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_empty_text(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test semantic chunking with empty text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -137,7 +147,9 @@ Climate change affects global temperatures. Data science involves statistical an
 
         assert results == []
 
-    def test_semantic_chunker_single_sentence(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_single_sentence(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test semantic chunking with single sentence."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -147,7 +159,7 @@ Climate change affects global temperatures. Data science involves statistical an
         assert results[0].text == sample_texts["single_sentence"]
 
     @pytest.mark.asyncio()
-    async def test_semantic_chunker_async(self, mock_embed_model, sample_texts):
+    async def test_semantic_chunker_async(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test async semantic chunking."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -156,11 +168,13 @@ Climate change affects global temperatures. Data science involves statistical an
         assert isinstance(results, list)
         assert len(results) > 0
 
-    def test_semantic_chunker_metadata_propagation(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_metadata_propagation(
+        self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test that metadata is properly propagated to chunks."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        custom_metadata = {"source": "test_source", "author": "test_author", "timestamp": "2024-01-01"}
+        custom_metadata: dict[str, Any] = {"source": "test_source", "author": "test_author", "timestamp": "2024-01-01"}
 
         results = chunker.chunk_text(sample_texts["simple"], "doc8", custom_metadata)
 
@@ -171,7 +185,7 @@ Climate change affects global temperatures. Data science involves statistical an
             assert metadata["author"] == "test_author"
             assert metadata["timestamp"] == "2024-01-01"
 
-    def test_semantic_chunker_chunk_ids(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_chunk_ids(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test that chunk IDs are properly generated."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -186,7 +200,7 @@ Climate change affects global temperatures. Data science involves statistical an
         for chunk_id in chunk_ids:
             assert chunk_id.startswith("doc9_")
 
-    def test_semantic_chunker_offsets(self, mock_embed_model, sample_texts):
+    def test_semantic_chunker_offsets(self, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]) -> None:
         """Test that character offsets are correct."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -208,7 +222,7 @@ Climate change affects global temperatures. Data science involves statistical an
             # They should at least overlap significantly
             assert len(chunk_text) > 0
 
-    def test_semantic_chunker_config_validation(self, mock_embed_model):
+    def test_semantic_chunker_config_validation(self, mock_embed_model: MockEmbedding) -> None:
         """Test configuration validation."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -221,7 +235,7 @@ Climate change affects global temperatures. Data science involves statistical an
         # Invalid config - percentile out of range
         assert not chunker.validate_config({"breakpoint_percentile_threshold": 101})
 
-    def test_semantic_chunker_estimate_chunks(self, mock_embed_model):
+    def test_semantic_chunker_estimate_chunks(self, mock_embed_model: MockEmbedding) -> None:
         """Test chunk estimation."""
         chunker = create_semantic_chunker(mock_embed_model)
 
@@ -236,17 +250,19 @@ Climate change affects global temperatures. Data science involves statistical an
         assert estimate_large >= 1
 
     @patch("shared.chunking.unified.semantic_strategy.logger")
-    def test_semantic_chunker_error_handling(self, mock_logger, mock_embed_model, sample_texts):
+    def test_semantic_chunker_error_handling(
+        self, mock_logger: Any, mock_embed_model: MockEmbedding, sample_texts: dict[str, str]
+    ) -> None:
         """Test error handling in semantic chunker."""
         chunker = create_semantic_chunker(mock_embed_model)
 
         # Test with invalid document ID
-        results = chunker.chunk_text(sample_texts["simple"], None, {})  # Invalid doc_id
+        results = chunker.chunk_text(sample_texts["simple"], None, {})  # type: ignore[arg-type]  # Invalid doc_id
 
         # Should handle gracefully
         assert isinstance(results, list)
 
-    def test_semantic_chunker_performance(self, mock_embed_model):
+    def test_semantic_chunker_performance(self, mock_embed_model: MockEmbedding) -> None:
         """Test semantic chunker performance with large text."""
         import time
 
@@ -263,7 +279,7 @@ Climate change affects global temperatures. Data science involves statistical an
         assert end_time - start_time < 5.0
         assert len(results) > 0
 
-    def test_semantic_chunker_unicode(self, mock_embed_model):
+    def test_semantic_chunker_unicode(self, mock_embed_model: MockEmbedding) -> None:
         """Test semantic chunker with Unicode text."""
         chunker = create_semantic_chunker(mock_embed_model)
 

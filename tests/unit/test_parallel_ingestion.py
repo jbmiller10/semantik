@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.database.models import DocumentStatus
+from shared.text_processing.parsers import ParseResult
 from webui.tasks import parallel_ingestion as pi
 from webui.tasks.parallel_ingestion import (
     ChunkBatch,
@@ -183,7 +184,7 @@ async def test_extract_and_chunk_handles_no_chunks() -> None:
 
     result = await extract_and_chunk_document(
         doc=doc,
-        extract_fn=lambda _: [("content", {})],
+        extract_fn=lambda _: ParseResult(text="content", metadata={}),
         chunking_service=chunking_service,
         collection={},
         executor_pool=None,
@@ -202,7 +203,7 @@ async def test_extract_and_chunk_rejects_missing_text() -> None:
 
     result = await extract_and_chunk_document(
         doc=doc,
-        extract_fn=lambda _: [("content", {})],
+        extract_fn=lambda _: ParseResult(text="content", metadata={}),
         chunking_service=chunking_service,
         collection={},
         executor_pool=None,
@@ -321,7 +322,9 @@ async def test_result_processor_success(monkeypatch: pytest.MonkeyPatch) -> None
             result_queue=result_queue,
             qdrant_collection_name="collection",
             collection_id="collection-id",
+            collection={"id": "collection-id", "document_count": 0, "vector_count": 0, "total_size_bytes": 0},
             document_repo=doc_repo,
+            collection_repo=None,
             stats=stats,
             stats_lock=asyncio.Lock(),
             db_lock=asyncio.Lock(),
@@ -527,6 +530,7 @@ async def test_process_documents_parallel_orchestrates_workers_and_caps_worker_c
         executor_pool=None,
         new_doc_contents={},
         document_repo=_DummyDocumentRepo(),
+        collection_repo=None,
         qdrant_collection_name="collection",
         embedding_model="model",
         quantization="float16",

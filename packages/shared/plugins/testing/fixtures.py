@@ -13,13 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from .mocks import (
-    MockChunker,
-    MockDocument,
-    MockEmbeddingService,
-    MockExtractor,
-    MockReranker,
-)
+from .mocks import MockChunker, MockDocument, MockEmbeddingService, MockExtractor, MockReranker
 
 # =============================================================================
 # Sample Data Fixtures

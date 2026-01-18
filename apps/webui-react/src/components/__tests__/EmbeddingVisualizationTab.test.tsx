@@ -1446,7 +1446,9 @@ describe('EmbeddingVisualizationTab', () => {
   });
 
   it('switches render modes manually and resolves query selections near the cursor', async () => {
-    setupProjectionApiMocks({ pointCount: 25_000 });
+    // Point count must exceed the DEFAULT_DENSITY_THRESHOLD (200,000 from preferences)
+    // to trigger density mode by default
+    setupProjectionApiMocks({ pointCount: 250_000 });
 
     const { user } = await renderTabAndLoadProjection();
 
@@ -1622,7 +1624,7 @@ describe('EmbeddingVisualizationTab', () => {
 
     const rows = screen.getAllByRole('row').slice(1);
     const widths = rows
-      .map((row) => row.querySelector('td:nth-child(3) .bg-purple-500') as HTMLElement | null)
+      .map((row) => row.querySelector('td:nth-child(3) .bg-blue-500') as HTMLElement | null)
       .filter((bar): bar is HTMLElement => Boolean(bar))
       .map((bar) => bar.style.width);
 

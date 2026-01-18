@@ -44,79 +44,75 @@ async def reset_database_endpoint(
     if not current_user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="Only administrators can reset the database")
 
+    # Get all collections before reset
+    # We need to get all collections, not just for the current user
+    # Since this is an admin function, we'll query all collections
+    result = await db.execute(select(Collection))
+    collections = result.scalars().all()
+
+    # Delete Qdrant collections for all collections
+    async_client: AsyncQdrantClient | None = None
     try:
-        # Get all collections before reset
-        # We need to get all collections, not just for the current user
-        # Since this is an admin function, we'll query all collections
-        result = await db.execute(select(Collection))
-        collections = result.scalars().all()
-
-        # Delete Qdrant collections for all collections
-        async_client: AsyncQdrantClient | None = None
-        try:
-            async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-            for collection in collections:
-                collection_name = str(collection.vector_store_name)
-                try:
-                    await async_client.delete_collection(collection_name)
-                    logger.info("Deleted Qdrant collection: %s", collection_name)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to delete collection %s: %s",
-                        collection_name,
-                        e,
-                        exc_info=True,
-                    )
-
-            # Also delete the metadata collection
+        async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+        for collection in collections:
+            collection_name = str(collection.vector_store_name)
             try:
-                await async_client.delete_collection("_collection_metadata")
-                logger.info("Deleted metadata collection")
+                await async_client.delete_collection(collection_name)
+                logger.info("Deleted Qdrant collection: %s", collection_name)
             except Exception as e:
-                logger.warning("Failed to delete metadata collection: %s", e, exc_info=True)
-        finally:
-            try:
-                if async_client is not None:
-                    await async_client.close()
-            except Exception as e:
-                logger.warning("Failed to close Qdrant client: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to delete collection %s: %s",
+                    collection_name,
+                    e,
+                    exc_info=True,
+                )
 
-        # Delete all parquet files
+        # Also delete the metadata collection
         try:
-            output_path = Path(OUTPUT_DIR)
-            parquet_files = list(output_path.glob("*.parquet"))
-            for pf in parquet_files:
-                pf.unlink()
-                logger.info("Deleted parquet file: %s", pf)
+            await async_client.delete_collection("_collection_metadata")
+            logger.info("Deleted metadata collection")
         except Exception as e:
-            logger.warning("Failed to delete parquet files: %s", e, exc_info=True)
-
-        # Clear all tables in the database
-        # Note: This is a destructive operation and should be protected
-        # We'll delete all records from the tables in the correct order to respect foreign keys
+            logger.warning("Failed to delete metadata collection: %s", e, exc_info=True)
+    finally:
         try:
-            # Delete in order of dependencies (most dependent first)
-            await db.execute(delete(OperationMetrics))
-            await db.execute(delete(CollectionAuditLog))
-            await db.execute(delete(CollectionResourceLimits))
-            await db.execute(delete(CollectionPermission))
-            await db.execute(delete(Operation))
-            await db.execute(delete(Document))
-            await db.execute(delete(CollectionSource))
-            await db.execute(delete(Collection))
-            # Note: We don't delete Users, ApiKeys, or RefreshTokens as they're auth-related
-
-            await db.commit()
-            logger.info("Database tables cleared successfully")
+            if async_client is not None:
+                await async_client.close()
         except Exception as e:
-            await db.rollback()
-            logger.error("Failed to clear database tables: %s", e, exc_info=True)
-            raise
+            logger.warning("Failed to close Qdrant client: %s", e, exc_info=True)
 
-        return {"status": "success", "message": "Database reset successfully"}
+    # Delete all parquet files
+    try:
+        output_path = Path(OUTPUT_DIR)
+        parquet_files = list(output_path.glob("*.parquet"))
+        for pf in parquet_files:
+            pf.unlink()
+            logger.info("Deleted parquet file: %s", pf)
     except Exception as e:
-        logger.error("Failed to reset database: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.warning("Failed to delete parquet files: %s", e, exc_info=True)
+
+    # Clear all tables in the database
+    # Note: This is a destructive operation and should be protected
+    # We'll delete all records from the tables in the correct order to respect foreign keys
+    try:
+        # Delete in order of dependencies (most dependent first)
+        await db.execute(delete(OperationMetrics))
+        await db.execute(delete(CollectionAuditLog))
+        await db.execute(delete(CollectionResourceLimits))
+        await db.execute(delete(CollectionPermission))
+        await db.execute(delete(Operation))
+        await db.execute(delete(Document))
+        await db.execute(delete(CollectionSource))
+        await db.execute(delete(Collection))
+        # Note: We don't delete Users, ApiKeys, or RefreshTokens as they're auth-related
+
+        await db.commit()
+        logger.info("Database tables cleared successfully")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Failed to clear database tables: %s", e, exc_info=True)
+        raise
+
+    return {"status": "success", "message": "Database reset successfully"}
 
 
 @router.get("/stats")

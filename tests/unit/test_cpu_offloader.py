@@ -10,12 +10,9 @@ import torch
 from torch import nn
 
 from vecpipe.cpu_offloader import (
-    GradientCheckpointWrapper,
-    MemoryEfficientInference,
     ModelOffloader,
     OffloadMetadata,
     defragment_cuda_memory,
-    estimate_model_memory,
     get_cuda_memory_fragmentation,
     get_offloader,
 )
@@ -189,20 +186,6 @@ class TestModelOffloader:
         assert "keep_on_gpu parameter is not yet implemented" in caplog.text
 
 
-class TestEstimateModelMemory:
-    """Tests for model memory estimation."""
-
-    def test_estimate_simple_model(self):
-        """Test estimating memory for a simple model."""
-        model = SimpleModel(size=100)
-        estimate = estimate_model_memory(model)
-
-        assert "parameter_mb" in estimate
-        assert "buffer_mb" in estimate
-        assert "total_mb" in estimate
-        assert estimate["total_mb"] >= 0
-
-
 class TestGetOffloader:
     """Tests for singleton offloader."""
 
@@ -243,50 +226,6 @@ class TestModelOffloaderDiscard:
 
         # Second discard returns False (already discarded)
         assert offloader.discard("test_model") is False
-
-
-class TestGradientCheckpointWrapper:
-    """Tests for gradient checkpointing helpers."""
-
-    def test_enable_disable_checkpointing_supported(self):
-        """Enable/disable toggles when supported by model."""
-
-        class _CheckpointModel(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.enabled = False
-
-            def gradient_checkpointing_enable(self):
-                self.enabled = True
-
-            def gradient_checkpointing_disable(self):
-                self.enabled = False
-
-        model = _CheckpointModel()
-        GradientCheckpointWrapper.enable_checkpointing(model)
-        assert model.enabled is True
-        GradientCheckpointWrapper.disable_checkpointing(model)
-        assert model.enabled is False
-
-    def test_enable_checkpointing_warns_when_missing(self, caplog):
-        """Missing checkpointing methods logs a warning."""
-
-        class _NoCheckpointModel(nn.Module):
-            pass
-
-        with caplog.at_level("WARNING"):
-            GradientCheckpointWrapper.enable_checkpointing(_NoCheckpointModel())
-        assert "does not support gradient_checkpointing_enable" in caplog.text
-
-
-class TestMemoryEfficientInference:
-    """Tests for memory-efficient inference context manager."""
-
-    def test_context_no_cuda(self, monkeypatch):
-        """Context manager should work without CUDA available."""
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
-        with MemoryEfficientInference(use_amp=True) as ctx:
-            assert ctx is not None
 
 
 class TestCudaMemoryUtilities:

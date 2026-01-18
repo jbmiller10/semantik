@@ -10,6 +10,7 @@ tests. The implementation leans on utilities consolidated in
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 import uuid
@@ -19,7 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import psutil
-from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
+from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 from shared.config import settings
 from shared.database import pg_connection_manager
@@ -31,9 +32,11 @@ from shared.metrics.collection_metrics import (
     collection_memory_usage_bytes,
     collections_total,
 )
+from shared.plugins.dto_adapters import coerce_to_ingested_document
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 from webui.services.connector_factory import ConnectorFactory
 from webui.services.document_registry_service import DocumentRegistryService
+from webui.tasks.qdrant_utils import build_chunk_point
 
 from . import reindex as reindex_tasks
 from .parallel_ingestion import process_documents_parallel
@@ -53,8 +56,8 @@ from .utils import (
     _update_collection_metrics,
     await_if_awaitable,
     celery_app,
-    extract_and_serialize_thread_safe,
     logger,
+    parse_file_thread_safe,
     resolve_qdrant_manager,
     resolve_qdrant_manager_class,
 )
@@ -105,9 +108,13 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
     try:
         loop = tasks_ns.asyncio.get_event_loop()
         if loop.is_closed():
+            # Reset connection manager to avoid connections bound to closed loop
+            pg_connection_manager.reset()
             loop = tasks_ns.asyncio.new_event_loop()
             tasks_ns.asyncio.set_event_loop(loop)
     except RuntimeError:
+        # Reset connection manager to avoid connections bound to closed loop
+        pg_connection_manager.reset()
         loop = tasks_ns.asyncio.new_event_loop()
         tasks_ns.asyncio.set_event_loop(loop)
 
@@ -215,6 +222,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     # Set user_id on updater for user-channel notifications
                     if operation.get("user_id"):
                         updater.set_user_id(operation["user_id"])
+                    updater.set_collection_id(operation["collection_id"])
 
                     await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
                     await updater.send_update(
@@ -240,7 +248,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
                         "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
                         "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
+                        "document_count": getattr(collection_obj, "document_count", 0),
                         "vector_count": getattr(collection_obj, "vector_count", 0),
+                        "total_size_bytes": getattr(collection_obj, "total_size_bytes", 0) or 0,
                         "extraction_config": getattr(collection_obj, "extraction_config", None),
                         "default_reranker_id": getattr(collection_obj, "default_reranker_id", None),
                     }
@@ -279,6 +289,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                                 collection,
                                 projection_repo,
                                 updater,
+                            )
+                        elif operation["type"] == OperationType.RETRY_DOCUMENTS:
+                            result = await tasks_ns._process_retry_documents_operation(
+                                operation, collection, collection_repo, document_repo, updater
                             )
                         else:  # pragma: no cover - defensive branch
                             raise ValueError(f"Unknown operation type: {operation['type']}")
@@ -359,7 +373,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         collections_total.labels(status=old_status.value).dec()
                         collections_total.labels(status=new_status.value).inc()
 
-                    await updater.send_update("operation_completed", {"status": "completed", "result": result})
+                    await updater.send_update(
+                        "operation_completed",
+                        {
+                            "status": "completed",
+                            "operation_id": operation_id,
+                            "collection_id": collection["id"],
+                            "result": result,
+                        },
+                    )
 
                     logger.info(
                         "Collection operation completed",
@@ -464,7 +486,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             return getattr(obj, name, default)
 
     tasks_ns = _tasks_namespace()
-    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
     chunking_resolver = getattr(
         tasks_ns,
         "resolve_celery_chunking_orchestrator",
@@ -536,18 +558,15 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
         try:
             try:
-                blocks_result = extract_fn(_get(doc, "file_path", ""))
-                blocks = await await_if_awaitable(blocks_result)
+                parse_result = extract_fn(_get(doc, "file_path", ""))
+                parse_result = await await_if_awaitable(parse_result)
             except Exception:
-                blocks = []
+                parse_result = None
 
-            text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
-            metadata: dict[str, Any] = {}
-            for _t, m in blocks or []:
-                if isinstance(m, dict):
-                    metadata.update(m)
+            text = parse_result.text if parse_result else ""
+            metadata: dict[str, Any] = dict(parse_result.metadata) if parse_result else {}
 
-            if not text or not blocks:
+            if not text.strip() or not parse_result:
                 try:
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
@@ -782,12 +801,282 @@ async def _process_index_operation(
 
         await updater.send_update("index_completed", {"qdrant_collection": vector_store_name, "vector_dim": vector_dim})
 
-        return {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
+        # Setup sparse collection if sparse indexing is configured
+        result = {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
+        sparse_config = operation.get("config", {}).get("sparse_index_config")
+        if sparse_config and sparse_config.get("enabled"):
+            try:
+                sparse_result = await _setup_sparse_collection_for_index(
+                    vector_store_name=vector_store_name,
+                    sparse_config=sparse_config,
+                )
+                await updater.send_update("sparse_index_configured", sparse_result)
+                result["sparse_index"] = sparse_result
+            except Exception as sparse_exc:
+                logger.error(
+                    "Failed to setup sparse indexing for %s: %s (continuing with dense-only)",
+                    vector_store_name,
+                    sparse_exc,
+                    exc_info=True,
+                )
+                # Notify user that sparse indexing failed
+                await updater.send_update(
+                    "sparse_index_failed",
+                    {
+                        "collection": vector_store_name,
+                        "error": str(sparse_exc),
+                        "fallback": "dense_only",
+                        "message": "Sparse indexing setup failed. Hybrid search unavailable.",
+                    },
+                )
+                # Don't fail the entire operation - sparse is optional
+
+        return result
 
     except Exception as exc:
         logger.error("Failed to create Qdrant collection: %s", exc, exc_info=True)
         record_qdrant_operation("create_collection", "failed")
         raise
+
+
+async def _setup_sparse_collection_for_index(
+    vector_store_name: str,
+    sparse_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Setup sparse Qdrant collection and store config in metadata.
+
+    This is called during INDEX operation when sparse_index_config is provided.
+    Creates the sparse collection in Qdrant and stores the configuration in
+    collection metadata. Does NOT process documents (that happens in APPEND).
+    """
+    from qdrant_client import AsyncQdrantClient
+
+    from shared.database.collection_metadata import store_sparse_index_config
+    from shared.plugins import load_plugins, plugin_registry
+    from vecpipe.sparse import ensure_sparse_collection, generate_sparse_collection_name
+
+    plugin_id = sparse_config["plugin_id"]
+    model_config = sparse_config.get("model_config_data") or {}
+
+    # Load plugin to get sparse type
+    load_plugins(plugin_types={"sparse_indexer"})
+    plugin_record = plugin_registry.find_by_id(plugin_id)
+    if plugin_record is None:
+        raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
+
+    plugin_cls = plugin_record.plugin_class
+    sparse_type = getattr(plugin_cls, "SPARSE_TYPE", "bm25")
+
+    # Generate sparse collection name
+    sparse_collection_name = generate_sparse_collection_name(vector_store_name, sparse_type)
+
+    # Create async Qdrant client for sparse operations
+    async_qdrant = AsyncQdrantClient(
+        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        api_key=settings.QDRANT_API_KEY,
+    )
+
+    try:
+        # Create sparse Qdrant collection
+        await ensure_sparse_collection(sparse_collection_name, async_qdrant)
+
+        # Build and store sparse config in metadata
+        now = datetime.now(UTC).isoformat()
+        stored_config = {
+            "enabled": True,
+            "plugin_id": plugin_id,
+            "sparse_collection_name": sparse_collection_name,
+            "model_config": model_config,
+            "created_at": now,
+            "document_count": 0,
+            "last_indexed_at": None,
+        }
+
+        stored = await store_sparse_index_config(async_qdrant, vector_store_name, stored_config)
+        if not stored:
+            raise ValueError(
+                f"Failed to store sparse index config for {vector_store_name}. "
+                "Metadata point may not exist. Ensure collection metadata is stored first."
+            )
+
+        logger.info(
+            "Configured sparse indexing for %s: collection=%s, plugin=%s",
+            vector_store_name,
+            sparse_collection_name,
+            plugin_id,
+        )
+
+        return {"sparse_collection_name": sparse_collection_name, "plugin_id": plugin_id}
+    finally:
+        await async_qdrant.close()
+
+
+async def _maybe_generate_sparse_vectors(
+    chunks: list[dict[str, Any]],
+    points: list[Any],
+    qdrant_collection_name: str,
+) -> None:
+    """Generate and upsert sparse vectors for chunks if sparse indexing is enabled.
+
+    This is called during APPEND operation after dense vectors are upserted.
+    Checks if sparse indexing is enabled for the collection and generates
+    sparse vectors using the configured plugin.
+
+    Architecture note:
+    - BM25 runs directly in the worker (CPU-only, no GPU needed)
+    - SPLADE is routed through VecPipe for centralized GPU memory management
+    """
+    from datetime import UTC, datetime
+
+    from qdrant_client import AsyncQdrantClient
+
+    from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
+    from shared.plugins import load_plugins, plugin_registry
+    from vecpipe.sparse import upsert_sparse_vectors
+    from webui.clients.sparse_client import SparseEncodingClient
+
+    # Plugins that run locally (CPU-only, no GPU needed)
+    local_sparse_plugins = {"bm25-local"}
+
+    async_qdrant = AsyncQdrantClient(
+        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        api_key=settings.QDRANT_API_KEY,
+    )
+    try:
+        sparse_config = await get_sparse_index_config(async_qdrant, qdrant_collection_name)
+        if not sparse_config:
+            logger.debug(
+                "No sparse index config found for collection %s, skipping sparse vectors",
+                qdrant_collection_name,
+            )
+            return
+        if not sparse_config.get("enabled"):
+            logger.debug(
+                "Sparse indexing is disabled for collection %s, skipping sparse vectors",
+                qdrant_collection_name,
+            )
+            return
+
+        plugin_id = sparse_config["plugin_id"]
+        model_config = sparse_config.get("model_config", {})
+        sparse_collection_name = sparse_config["sparse_collection_name"]
+
+        # Determine if we should use local plugin or VecPipe
+        use_local_plugin = plugin_id in local_sparse_plugins
+        indexer = None
+        vecpipe_client = None
+
+        if use_local_plugin:
+            # Load and instantiate local plugin (BM25 - CPU only)
+            load_plugins(plugin_types={"sparse_indexer"})
+            plugin_record = plugin_registry.find_by_id(plugin_id)
+            if not plugin_record:
+                logger.error(
+                    "Sparse plugin %s not found, skipping sparse vectors. Hybrid search degraded for collection %s.",
+                    plugin_id,
+                    qdrant_collection_name,
+                )
+                return
+
+            indexer = plugin_record.plugin_class()
+            if hasattr(indexer, "initialize"):
+                # Include collection_name for BM25 IDF persistence
+                init_config = dict(model_config)
+                init_config["collection_name"] = qdrant_collection_name
+                await indexer.initialize(init_config)
+        else:
+            # Use VecPipe for GPU-based plugins (SPLADE)
+            vecpipe_client = SparseEncodingClient()
+            logger.debug("Using VecPipe for sparse encoding (plugin: %s)", plugin_id)
+
+        try:
+            # Prepare documents for encoding using chunk IDs from the points
+            # Keep original_chunk_id for matching with dense search results
+            documents = []
+            point_to_original: dict[str, str] = {}
+            for i, chunk in enumerate(chunks):
+                # Use the point ID as the sparse point ID (valid UUID)
+                point_id = str(points[i].id) if i < len(points) else str(i)
+                # Original chunk_id from chunking (format: {uuid}_{index}) for search matching
+                original_chunk_id = chunk.get("chunk_id", "")
+                point_to_original[point_id] = original_chunk_id
+                documents.append(
+                    {
+                        "content": chunk.get("text") or chunk.get("content", ""),
+                        "chunk_id": point_id,
+                        "metadata": chunk.get("metadata", {}),
+                    }
+                )
+
+            # Encode documents using appropriate method
+            if use_local_plugin and indexer is not None:
+                # Use local plugin (BM25)
+                sparse_vectors = await indexer.encode_documents(documents)
+                # Convert SparseVector objects to Qdrant format
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv.chunk_id,
+                        "indices": list(sv.indices),
+                        "values": list(sv.values),
+                        "metadata": {"original_chunk_id": point_to_original.get(sv.chunk_id, "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            elif vecpipe_client is not None:
+                # Use VecPipe for GPU-based plugins (SPLADE)
+                texts = [doc["content"] for doc in documents]
+                chunk_ids = [doc["chunk_id"] for doc in documents]
+                sparse_vectors = await vecpipe_client.encode_documents(
+                    texts=texts,
+                    chunk_ids=chunk_ids,
+                    plugin_id=plugin_id,
+                    model_config=model_config,
+                )
+                # VecPipe returns dicts, add original_chunk_id to metadata
+                qdrant_vectors = [
+                    {
+                        "chunk_id": sv["chunk_id"],
+                        "indices": sv["indices"],
+                        "values": sv["values"],
+                        "metadata": {"original_chunk_id": point_to_original.get(sv["chunk_id"], "")},
+                    }
+                    for sv in sparse_vectors
+                ]
+            else:
+                logger.error(
+                    "No encoding method available for sparse indexing on %s, skipping. Hybrid search degraded.",
+                    qdrant_collection_name,
+                )
+                return
+
+            await upsert_sparse_vectors(sparse_collection_name, qdrant_vectors, async_qdrant)
+
+            # Update document count in sparse config
+            current_count = sparse_config.get("document_count", 0) or 0
+            sparse_config["document_count"] = current_count + len(qdrant_vectors)
+            sparse_config["last_indexed_at"] = datetime.now(UTC).isoformat()
+            await store_sparse_index_config(async_qdrant, qdrant_collection_name, sparse_config)
+
+            logger.debug(
+                "Generated %d sparse vectors for %s (total: %d)",
+                len(qdrant_vectors),
+                qdrant_collection_name,
+                sparse_config["document_count"],
+            )
+        finally:
+            # Cleanup local plugin if it was loaded
+            if indexer is not None and hasattr(indexer, "cleanup"):
+                await indexer.cleanup()
+    except Exception as exc:
+        logger.error(
+            "Failed to generate sparse vectors for %s: %s (continuing with dense only). "
+            "Hybrid search degraded for this batch.",
+            qdrant_collection_name,
+            exc,
+            exc_info=True,
+        )
+    finally:
+        await async_qdrant.close()
 
 
 async def _process_append_operation_impl(
@@ -816,6 +1105,10 @@ async def _process_append_operation_impl(
     source_type = op_config.get("source_type", "directory")
     source_config = op_config.get("source_config")
 
+    # DEBUG: Log source config to trace path duplication bug
+    logger.info(f"APPEND operation source_config from op_config: {source_config}")
+    logger.info(f"APPEND operation source_path from op_config: {op_config.get('source_path')}")
+
     # Legacy fallback: derive from source_path if new format not present
     legacy_source_path = op_config.get("source_path")
     if source_config is None:
@@ -829,7 +1122,7 @@ async def _process_append_operation_impl(
     display_path = source_config.get("path") or source_config.get("url") or str(source_config)
 
     tasks_ns = _tasks_namespace()
-    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
 
     session = document_repo.session
 
@@ -973,6 +1266,9 @@ async def _process_append_operation_impl(
         documents_iter = load_documents(source_id=source_id) if accepts_source_id else load_documents()
 
         async for ingested_doc in documents_iter:
+            # Convert dict to IngestedDocument for external connectors
+            ingested_doc = coerce_to_ingested_document(ingested_doc)
+
             scan_stats["total_documents_found"] += 1
 
             try:
@@ -1071,6 +1367,50 @@ async def _process_append_operation_impl(
             },
         )
 
+        # Update collection stats immediately after document registration so the UI reflects
+        # newly discovered files even while embedding/indexing is still running.
+        collection_stats: dict[str, int] | None = None
+        try:
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+            document_count = int(doc_stats.get("total_documents") or 0)
+            total_size_bytes = int(doc_stats.get("total_size_bytes") or 0)
+
+            # Vector counts come from Qdrant; during scanning-only phases this may remain unchanged.
+            vector_count = int(collection.get("vector_count") or 0)
+            vector_store_name = collection.get("vector_store_name")
+            if vector_store_name:
+                try:
+                    manager = resolve_qdrant_manager()
+                    qdrant_client = manager.get_client()
+                    qdrant_info = qdrant_client.get_collection(vector_store_name)
+                    vector_count = int(getattr(qdrant_info, "points_count", 0) or 0)
+                except Exception as exc:  # pragma: no cover - best effort only
+                    logger.debug("Failed to refresh Qdrant vector count after scan: %s", exc, exc_info=True)
+
+            await collection_repo.update_stats(
+                collection["id"],
+                document_count=document_count,
+                vector_count=vector_count,
+                total_size_bytes=total_size_bytes,
+            )
+            await session.commit()
+
+            collection["document_count"] = document_count
+            collection["vector_count"] = vector_count
+            collection["total_size_bytes"] = total_size_bytes
+            collection_stats = {
+                "document_count": document_count,
+                "vector_count": vector_count,
+                "total_size_bytes": total_size_bytes,
+            }
+        except Exception as exc:  # pragma: no cover - best effort only
+            logger.debug("Failed to refresh collection stats after scan: %s", exc, exc_info=True)
+            with contextlib.suppress(Exception):  # pragma: no cover
+                await session.rollback()
+
+        if collection_stats:
+            await updater.send_update("collection_stats", {"stats": collection_stats})
+
         for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
         for _ in range(scan_stats["documents_updated"]):
@@ -1135,6 +1475,11 @@ async def _process_append_operation_impl(
             manager = resolve_qdrant_manager()
             qdrant_client = manager.get_client()
 
+            base_vector_count = int(collection.get("vector_count") or 0)
+            stable_document_count = int(collection.get("document_count") or 0)
+            stable_total_size_bytes = int(collection.get("total_size_bytes") or 0)
+            last_stats_update_ts = 0.0
+
             processed_count = 0
             total_vectors_created = 0
 
@@ -1169,6 +1514,7 @@ async def _process_append_operation_impl(
                     executor_pool=executor_pool,
                     new_doc_contents=new_doc_contents,
                     document_repo=document_repo,
+                    collection_repo=collection_repo,
                     qdrant_collection_name=qdrant_collection_name,
                     embedding_model=embedding_model,
                     quantization=quantization,
@@ -1198,7 +1544,7 @@ async def _process_append_operation_impl(
                     else:
                         # Fallback for documents without pre-parsed content (legacy path)
                         try:
-                            text_blocks = await asyncio.wait_for(
+                            parse_result = await asyncio.wait_for(
                                 await_if_awaitable(
                                     loop.run_in_executor(
                                         executor_pool,
@@ -1215,12 +1561,12 @@ async def _process_append_operation_impl(
                                 "Executor returned a reusable coroutine for %s; falling back to direct call",
                                 doc.file_path,
                             )
-                            text_blocks = await asyncio.wait_for(
+                            parse_result = await asyncio.wait_for(
                                 await_if_awaitable(extract_fn(doc.file_path)),
                                 timeout=300,
                             )
 
-                        if not text_blocks:
+                        if not parse_result or not parse_result.text.strip():
                             logger.warning("No text extracted from %s", doc_identifier)
                             # Mark as completed but with 0 chunks so we don't fail the whole batch
                             await document_repo.update_status(
@@ -1232,12 +1578,8 @@ async def _process_append_operation_impl(
                             processed_count += 1
                             continue
 
-                        combined_text = ""
-                        for text, metadata in text_blocks:
-                            if text.strip():
-                                combined_text += text + "\n\n"
-                                if metadata:
-                                    combined_metadata.update(metadata)
+                        combined_text = parse_result.text
+                        combined_metadata = parse_result.metadata
 
                     # Skip if no content
                     if not combined_text.strip():
@@ -1399,18 +1741,16 @@ async def _process_append_operation_impl(
                         await session.commit()
 
                     points = []
+                    total_chunks = len(chunks)
                     for i, chunk in enumerate(chunks):
-                        point = PointStruct(
-                            id=str(uuid.uuid4()),
-                            vector=embeddings[i],
-                            payload={
-                                "collection_id": collection["id"],
-                                "doc_id": doc.id,
-                                "chunk_id": chunk["chunk_id"],
-                                "path": doc_identifier,
-                                "content": chunk["text"],
-                                "metadata": chunk.get("metadata", {}),
-                            },
+                        point = build_chunk_point(
+                            collection_id=collection["id"],
+                            doc_id=doc.id,
+                            chunk=chunk,
+                            chunk_index=chunk.get("chunk_index", i),
+                            total_chunks=total_chunks,
+                            path=doc_identifier,
+                            embedding=embeddings[i],
                         )
                         points.append(point)
 
@@ -1438,6 +1778,13 @@ async def _process_append_operation_impl(
                                     f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
                                 )
 
+                    # Generate sparse vectors if sparse indexing is enabled
+                    await _maybe_generate_sparse_vectors(
+                        chunks=chunks,
+                        points=points,
+                        qdrant_collection_name=qdrant_collection_name,
+                    )
+
                     await document_repo.update_status(
                         doc.id,
                         DocumentStatus.COMPLETED,
@@ -1447,6 +1794,22 @@ async def _process_append_operation_impl(
                     processed_count += 1
                     total_vectors_created += len(chunks)
 
+                    vector_count_estimate = base_vector_count + total_vectors_created
+
+                    # Best-effort periodic persistence for polling-based UIs.
+                    # WebSocket clients also receive the estimate in the payload below.
+                    if processed_count % 10 == 0 or (time.time() - last_stats_update_ts) >= 5.0:
+                        try:
+                            await collection_repo.update_stats(
+                                collection["id"],
+                                vector_count=vector_count_estimate,
+                            )
+                            last_stats_update_ts = time.time()
+                        except Exception as stats_exc:  # pragma: no cover - best effort only
+                            logger.debug(
+                                "Failed to update collection stats during indexing: %s", stats_exc, exc_info=True
+                            )
+
                     await updater.send_update(
                         "document_processed",
                         {
@@ -1454,6 +1817,11 @@ async def _process_append_operation_impl(
                             "failed": failed_count,
                             "total": len(documents),
                             "current_document": doc_identifier,
+                            "stats": {
+                                "document_count": stable_document_count,
+                                "vector_count": vector_count_estimate,
+                                "total_size_bytes": stable_total_size_bytes,
+                            },
                         },
                     )
 
@@ -1491,6 +1859,7 @@ async def _process_append_operation_impl(
                 collection["id"],
                 document_count=current_doc_count,
                 vector_count=current_vector_count,
+                total_size_bytes=doc_stats.get("total_size_bytes", 0),
             )
 
             logger.info(
@@ -1573,9 +1942,7 @@ async def _process_append_operation_impl(
         # Update source sync status
         if source_id is not None:
             try:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
                 source_repo = CollectionSourceRepository(session)
                 status = "success" if success else ("partial" if scan_errors else "failed")
@@ -1609,12 +1976,8 @@ async def _process_append_operation_impl(
         sync_run_id = op_config.get("sync_run_id")
         if sync_run_id is not None:
             try:
-                from shared.database.repositories.collection_repository import (
-                    CollectionRepository as _CollectionRepo,
-                )
-                from shared.database.repositories.collection_sync_run_repository import (
-                    CollectionSyncRunRepository,
-                )
+                from shared.database.repositories.collection_repository import CollectionRepository as _CollectionRepo
+                from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 
                 sync_run_repo = CollectionSyncRunRepository(session)
 
@@ -1685,9 +2048,7 @@ async def _process_append_operation_impl(
         # Update source sync status on failure
         if source_id is not None:
             try:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
                 source_repo = CollectionSourceRepository(session)
                 await source_repo.update_sync_status(
@@ -1709,12 +2070,8 @@ async def _process_append_operation_impl(
         sync_run_id = op_config.get("sync_run_id")
         if sync_run_id is not None:
             try:
-                from shared.database.repositories.collection_repository import (
-                    CollectionRepository as _CollectionRepo,
-                )
-                from shared.database.repositories.collection_sync_run_repository import (
-                    CollectionSyncRunRepository,
-                )
+                from shared.database.repositories.collection_repository import CollectionRepository as _CollectionRepo
+                from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 
                 sync_run_repo = CollectionSyncRunRepository(session)
 
@@ -1756,6 +2113,192 @@ async def _process_append_operation_impl(
                 )
 
         raise
+
+
+async def _process_retry_documents_operation(
+    operation: dict,
+    collection: dict,
+    collection_repo: Any,
+    document_repo: Any,
+    updater: CeleryTaskWithOperationUpdates,
+) -> dict[str, Any]:
+    """Process RETRY_DOCUMENTS operation - Retry pending documents in a collection.
+
+    Processes all documents in PENDING status (reset from FAILED for retry).
+    """
+    from shared.database.models import DocumentStatus
+
+    tasks_ns = _tasks_namespace()
+    extract_fn = getattr(tasks_ns, "parse_file_thread_safe", parse_file_thread_safe)
+
+    collection_id = collection["id"]
+    qdrant_collection_name = collection["vector_store_name"]
+    embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+    quantization = collection.get("quantization", "float16")
+    instruction = collection.get("config", {}).get("instruction")
+    batch_size = getattr(settings, "EMBEDDING_BATCH_SIZE", EMBEDDING_BATCH_SIZE)
+
+    logger.info(
+        "Starting RETRY_DOCUMENTS operation for collection %s",
+        collection_id,
+    )
+
+    config = operation.get("config") if isinstance(operation, dict) else None
+    document_ids: list[str] = []
+    if isinstance(config, dict):
+        for key in ("document_ids", "documents", "document_uuids", "pending_document_ids", "document_id"):
+            value = config.get(key)
+            if not value:
+                continue
+            if isinstance(value, str):
+                document_ids.append(value)
+            elif isinstance(value, list | tuple | set):
+                for item in value:
+                    doc_id: str | None = None
+                    if isinstance(item, dict):
+                        doc_id = item.get("id") or item.get("document_id")
+                    elif item:
+                        doc_id = str(item)
+                    if doc_id:
+                        document_ids.append(doc_id)
+
+    pending_documents: list[Any] = []
+    if document_ids:
+        seen: set[str] = set()
+        for doc_id in document_ids:
+            if not doc_id or doc_id in seen:
+                continue
+            seen.add(doc_id)
+            doc = await document_repo.get_by_id(doc_id)
+            if not doc:
+                continue
+            if str(getattr(doc, "collection_id", "")) != str(collection_id):
+                continue
+            if getattr(doc, "status", None) != DocumentStatus.PENDING.value:
+                continue
+            pending_documents.append(doc)
+    else:
+        # Fetch all PENDING documents in the collection (these are the ones reset for retry)
+        pending_documents, _ = await document_repo.list_by_collection(
+            collection_id=collection_id,
+            status=DocumentStatus.PENDING,
+            offset=0,
+            limit=10000,  # Process up to 10k documents per retry operation
+        )
+
+    if not pending_documents:
+        logger.info("No pending documents to retry in collection %s", collection_id)
+        return {
+            "success": True,
+            "documents_processed": 0,
+            "documents_failed": 0,
+            "vectors_created": 0,
+        }
+
+    logger.info(
+        "Found %d pending documents to retry in collection %s",
+        len(pending_documents),
+        collection_id,
+    )
+
+    await updater.send_update(
+        "processing_progress",
+        {
+            "processed": 0,
+            "failed": 0,
+            "total": len(pending_documents),
+            "message": f"Starting retry of {len(pending_documents)} document(s)",
+        },
+    )
+
+    # Use the parallel ingestion pipeline (same as APPEND)
+    chunking_service = await resolve_celery_chunking_orchestrator(
+        document_repo.session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
+
+    executor_pool = tasks_ns.executor
+
+    # Get parallel ingestion settings
+    num_workers = getattr(settings, "PARALLEL_INGESTION_WORKERS", 0)
+    max_workers = getattr(settings, "PARALLEL_INGESTION_MAX_WORKERS", 8)
+
+    # Load content from artifacts for non-file sources (git, imap, web, etc.)
+    # These sources store content in document_artifacts since there's no local file
+    from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
+
+    artifact_repo = DocumentArtifactRepository(document_repo.session)
+    new_doc_contents: dict[str, str] = {}
+
+    for doc in pending_documents:
+        # Check if this is a non-file source (file_path contains URI scheme like git://)
+        file_path = getattr(doc, "file_path", None)
+        if file_path and isinstance(file_path, str) and "://" in file_path:
+            try:
+                content_data = await artifact_repo.get_content(doc.id)
+                if content_data:
+                    content, _, _ = content_data
+                    if isinstance(content, str):
+                        new_doc_contents[doc.id] = content
+                        logger.debug("Loaded artifact content for document %s", doc.id)
+                    elif isinstance(content, bytes):
+                        new_doc_contents[doc.id] = content.decode("utf-8", errors="replace")
+                        logger.debug("Loaded artifact content (bytes) for document %s", doc.id)
+                else:
+                    logger.warning(
+                        "No artifact found for non-file document %s (file_path=%s), retry will fail",
+                        doc.id,
+                        file_path,
+                    )
+            except Exception as e:
+                logger.warning("Failed to load artifact for document %s: %s", doc.id, e)
+
+    # Always use parallel ingestion pipeline (handles single documents fine)
+    logger.info(
+        "Using parallel ingestion for retry: %d documents",
+        len(pending_documents),
+    )
+
+    parallel_stats = await process_documents_parallel(
+        documents=pending_documents,
+        extract_fn=extract_fn,
+        chunking_service=chunking_service,
+        collection=collection,
+        executor_pool=executor_pool,
+        new_doc_contents=new_doc_contents,
+        document_repo=document_repo,
+        collection_repo=collection_repo,
+        qdrant_collection_name=qdrant_collection_name,
+        embedding_model=embedding_model,
+        quantization=quantization,
+        instruction=instruction,
+        batch_size=batch_size,
+        updater=updater,
+        num_extraction_workers=num_workers if num_workers else None,
+        max_extraction_workers=max_workers,
+    )
+
+    processed_count = parallel_stats["processed"]
+    failed_count = parallel_stats["failed"]
+    total_vectors_created = parallel_stats["vectors"]
+
+    logger.info(
+        "RETRY_DOCUMENTS completed: %d processed, %d failed, %d vectors in collection %s",
+        processed_count,
+        failed_count,
+        total_vectors_created,
+        collection_id,
+    )
+
+    success = failed_count == 0 or processed_count > 0
+
+    return {
+        "success": success,
+        "documents_processed": processed_count,
+        "documents_failed": failed_count,
+        "vectors_created": total_vectors_created,
+    }
 
 
 async def _process_remove_source_operation(
@@ -1954,7 +2497,12 @@ def _handle_task_failure(
         return
 
     try:
+        # Reset connection manager before asyncio.run() as it creates and closes
+        # its own event loop, leaving any connections created on it orphaned.
+        pg_connection_manager.reset()
         asyncio.run(_handle_task_failure_async(operation_id, exc, task_id))
+        # Reset again after asyncio.run() closes its loop
+        pg_connection_manager.reset()
     except Exception as failure_error:  # pragma: no cover - defensive logging
         logger.error("Failed to handle task failure for operation %s: %s", operation_id, failure_error, exc_info=True)
 

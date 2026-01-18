@@ -6,11 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.plugins.compatibility import (
-    check_compatibility,
-    get_semantik_version,
-    is_compatible,
-)
+from shared.plugins.compatibility import check_compatibility, get_semantik_version, is_compatible
 
 
 class TestGetSemantikVersion:

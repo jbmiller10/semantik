@@ -1,14 +1,17 @@
-import React, { useEffect } from 'react';
-import { Search, X, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, X, Loader2, HelpCircle } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { CollectionMultiSelect } from '../CollectionMultiSelect';
 import SearchOptions from './SearchOptions';
+import { SearchModeSelector } from './SearchModeSelector';
 import { searchV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import { sanitizeQuery } from '../../utils/searchValidation';
+import { usePreferences } from '../../hooks/usePreferences';
 
 import type { Collection } from '../../types/collection';
 import type { SearchResult as ApiSearchResult } from '../../services/api/v2/types';
+import type { SearchMode } from '../../types/sparse-index';
 
 interface SearchFormProps {
     collections: Collection[];
@@ -46,10 +49,33 @@ export default function SearchForm({ collections }: SearchFormProps) {
         getValidationError,
         abortController,
         setAbortController,
-        setRerankingMetrics
+        setRerankingMetrics,
+        setHydeUsed,
+        setHydeInfo,
+        rerankingAvailable,
+        rerankingModelsLoading
     } = useSearchStore();
 
     const addToast = useUIStore((state) => state.addToast);
+
+    // User preferences for search defaults
+    const { data: prefs } = usePreferences();
+    const [prefsInitialized, setPrefsInitialized] = useState(false);
+
+    // Initialize search params from user preferences on first load
+    useEffect(() => {
+        if (prefs && !prefsInitialized) {
+            validateAndUpdateSearchParams({
+                topK: prefs.search.top_k,
+                searchMode: prefs.search.mode,
+                useReranker: prefs.search.use_reranker,
+                rrfK: prefs.search.rrf_k,
+                scoreThreshold: prefs.search.similarity_threshold ?? 0.0,
+                useHyde: prefs.search.use_hyde,
+            });
+            setPrefsInitialized(true);
+        }
+    }, [prefs, prefsInitialized, validateAndUpdateSearchParams]);
 
     // Cleanup abort controller on unmount
     useEffect(() => {
@@ -112,6 +138,12 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     search_type: searchParams.searchType,
                     use_reranker: searchParams.useReranker,
                     rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+                    // New sparse/hybrid search parameters
+                    search_mode: searchParams.searchMode,
+                    rrf_k: searchParams.searchMode === 'hybrid' ? searchParams.rrfK : undefined,
+                    // HyDE query expansion
+                    use_hyde: searchParams.useHyde,
+                    // Legacy hybrid parameters (deprecated - kept for backward compatibility)
                     hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
                     hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
                     keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
@@ -128,8 +160,8 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     content: result.text,
                     file_path: result.file_path,
                     file_name: result.file_name,
-                    chunk_index: result.chunk_index || 0,
-                    total_chunks: (result.metadata?.total_chunks as number) || 1,
+                    chunk_index: result.chunk_index ?? 0,
+                    total_chunks: result.total_chunks ?? 1,
                     collection_id: result.collection_id,
                     collection_name: result.collection_name,
                     original_score: result.original_score,
@@ -155,6 +187,17 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         rerankingTimeMs: response.data.reranking_time_ms,
                         original_count: response.data.total_results, // Approximation
                         reranked_count: mappedResults.length
+                    });
+                }
+
+                // Handle HyDE metadata
+                setHydeUsed(response.data.hyde_used);
+                setHydeInfo(response.data.hyde_info ?? null);
+
+                // Show warnings from the backend (e.g., sparse fallback to dense)
+                if (response.data.warnings && response.data.warnings.length > 0) {
+                    response.data.warnings.forEach((warning: string) => {
+                        addToast({ type: 'warning', message: warning, duration: 5000 });
                     });
                 }
             }
@@ -215,10 +258,10 @@ export default function SearchForm({ collections }: SearchFormProps) {
     };
 
     return (
-        <form onSubmit={handleSearch} className="space-y-6">
+        <form onSubmit={handleSearch} className="space-y-8">
             {/* Search Input Group */}
             <div className="space-y-4">
-                <div className="relative">
+                <div className="relative group">
                     <input
                         type="text"
                         value={searchParams.query}
@@ -227,33 +270,36 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             validateAndUpdateSearchParams({ query: e.target.value });
                         }}
                         placeholder="Enter your search query..."
-                        className={`w-full pl-4 pr-12 py-3 text-lg border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${getValidationError('query') ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                        className={`w-full pl-5 pr-12 py-4 text-lg border rounded-xl shadow-sm transition-all duration-200 outline-none
+                            ${getValidationError('query')
+                                ? 'border-red-500/50 bg-red-500/10 focus:ring-2 focus:ring-red-500/20 text-red-600 dark:text-red-200'
+                                : 'input-field text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/20 focus:border-[var(--accent-primary)]'
                             }`}
                         disabled={loading}
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
                         {loading ? (
                             <button
                                 type="button"
                                 onClick={handleCancel}
-                                className="p-1 hover:bg-gray-100 rounded-full text-gray-500"
+                                className="p-1.5 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                                 title="Cancel search"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         ) : (
-                            <Search className="w-5 h-5 text-gray-400" />
+                            <Search className="w-6 h-6 text-[var(--text-muted)] group-focus-within:text-[var(--accent-primary)] transition-colors" />
                         )}
                     </div>
                 </div>
                 {getValidationError('query') && (
-                    <p className="text-sm text-red-600">{getValidationError('query')}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400 font-medium ml-1">{getValidationError('query')}</p>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Collection Selector */}
-                    <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="lg:col-span-2 space-y-1.5">
+                        <label className="block text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
                             Collections
                         </label>
                         <CollectionMultiSelect
@@ -265,14 +311,14 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             }}
                         />
                         {getValidationError('collections') && (
-                            <p className="mt-1 text-sm text-red-600">{getValidationError('collections')}</p>
+                            <p className="text-sm text-red-600 font-medium ml-1">{getValidationError('collections')}</p>
                         )}
                     </div>
 
-                    {/* Search Type Selector */}
-                    <div>
-                        <label htmlFor="search-type" className="block text-sm font-medium text-gray-700 mb-1">
-                            Search Type
+                    {/* Embedding Mode Selector */}
+                    <div className="space-y-1.5">
+                        <label htmlFor="search-type" className="block text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider ml-1">
+                            Embedding Mode
                         </label>
                         <select
                             id="search-type"
@@ -281,87 +327,97 @@ export default function SearchForm({ collections }: SearchFormProps) {
                                 setFieldTouched('searchType', true);
                                 validateAndUpdateSearchParams({ searchType: e.target.value as 'semantic' | 'hybrid' | 'question' | 'code' });
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2.5 input-field rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 focus:border-[var(--accent-primary)] transition-all duration-200"
                             disabled={loading}
                         >
-                            <option value="semantic">Semantic Search</option>
-                            <option value="hybrid">Hybrid Search</option>
-                            {/* Backend supports these, exposing them now */}
+                            <option value="semantic">General</option>
                             <option value="question">Question Answering</option>
                             <option value="code">Code Search</option>
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">
-                            {searchParams.searchType === 'semantic' && 'Finds meaning-based matches'}
-                            {searchParams.searchType === 'hybrid' && 'Combines keyword and semantic search'}
-                            {searchParams.searchType === 'question' && 'Optimized for natural language questions'}
-                            {searchParams.searchType === 'code' && 'Optimized for code snippets'}
+                        <p className="text-xs text-[var(--text-muted)] ml-1">
+                            Controls embedding instruction/prefix
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Hybrid Search Configuration */}
-            {searchParams.searchType === 'hybrid' && (
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-4">
-                    <h4 className="font-medium text-blue-900">Hybrid Search Configuration</h4>
+            <div className="border-t border-[var(--border)] pt-6">
+                {/* Search Mode Selector (Dense/Sparse/Hybrid) */}
+                <SearchModeSelector
+                    searchMode={searchParams.searchMode}
+                    onSearchModeChange={(mode: SearchMode) => validateAndUpdateSearchParams({ searchMode: mode })}
+                    disabled={loading}
+                    sparseAvailable={true}
+                />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-blue-800 mb-1">
-                                Alpha (Semantic Weight): {searchParams.hybridAlpha}
-                            </label>
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                value={searchParams.hybridAlpha}
-                                onChange={(e) => {
-                                    setFieldTouched('hybridAlpha', true);
-                                    validateAndUpdateSearchParams({ hybridAlpha: parseFloat(e.target.value) });
-                                }}
-                                className="w-full"
-                            />
-                            <div className="flex justify-between text-xs text-blue-600">
-                                <span>Keyword (0.0)</span>
-                                <span>Semantic (1.0)</span>
+                {/* Reranking and HyDE Toggles */}
+                <div className="mt-4 grid grid-cols-2 gap-6">
+                    {/* Cross-Encoder Reranking Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-reranker"
+                            checked={searchParams.useReranker}
+                            onChange={(e) => validateAndUpdateSearchParams({ useReranker: e.target.checked })}
+                            disabled={loading || rerankingModelsLoading || !rerankingAvailable}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-reranker" className={`text-sm font-medium ${!rerankingAvailable && !rerankingModelsLoading ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}>
+                            Cross-Encoder Reranking
+                        </label>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Re-scores results using a model that reads query and document together for better ranking.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Increases VRAM and latency
+                                </p>
                             </div>
                         </div>
-
-                        <div>
-                            <label htmlFor="fusion-mode" className="block text-sm font-medium text-blue-800 mb-1">
-                                Fusion Mode
-                            </label>
-                            <select
-                                id="fusion-mode"
-                                value={searchParams.hybridMode}
-                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'weighted' | 'filter' })}
-                                className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm"
-                            >
-                                <option value="weighted">Weighted Sum</option>
-                                <option value="filter">Keyword Filter</option>
-                            </select>
+                    </div>
+                    {/* HyDE Query Expansion Toggle */}
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="use-hyde"
+                            checked={searchParams.useHyde}
+                            onChange={(e) => validateAndUpdateSearchParams({ useHyde: e.target.checked })}
+                            disabled={loading}
+                            className="h-4 w-4 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
+                        />
+                        <label htmlFor="use-hyde" className="text-sm text-[var(--text-primary)] font-medium">
+                            HyDE Query Expansion
+                        </label>
+                        <div className="group relative">
+                            <HelpCircle className="h-3.5 w-3.5 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 p-2.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs rounded-lg shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                <p className="text-[var(--text-secondary)] mb-1.5">
+                                    Uses an LLM to generate a hypothetical answer, then searches with that embedding. Helps when questions don't match document wording.
+                                </p>
+                                <p className="text-amber-500 dark:text-amber-400">
+                                    Requires LLM; increases VRAM and latency
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
 
             {/* Advanced Options */}
-            <SearchOptions />
+            <div className="card bg-[var(--bg-secondary)] rounded-xl p-4 border border-[var(--border)]">
+                <SearchOptions />
+            </div>
 
             {/* Search Button */}
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end pt-2">
                 <button
                     type="submit"
                     disabled={loading}
-                    className={`
-            px-8 py-3 rounded-lg font-medium text-white shadow-sm transition-all
-            flex items-center space-x-2
-            ${loading
-                            ? 'bg-blue-400 cursor-not-allowed'
-                            : 'bg-blue-600 hover:bg-blue-700 hover:shadow-md active:transform active:scale-95'
-                        }
-          `}
+                    className={`btn-primary px-8 py-3.5 rounded-xl font-bold shadow-lg transition-all duration-200
+            flex items-center space-x-2.5 transform hover:-translate-y-0.5
+            ${loading ? 'cursor-not-allowed shadow-none translate-y-0 opacity-50' : 'hover:shadow-lg active:translate-y-0'}`}
                 >
                     {loading ? (
                         <>

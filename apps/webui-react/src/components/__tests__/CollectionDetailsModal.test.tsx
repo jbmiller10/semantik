@@ -1,14 +1,22 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Collection, Operation } from '../../types/collection';
 import type { DocumentResponse } from '../../services/api/v2/types';
 
-// Mock stores first
-const mockShowCollectionDetailsModal = vi.fn();
-const mockSetShowCollectionDetailsModal = vi.fn();
-const mockAddToast = vi.fn();
+// Use vi.hoisted to define mocks that will be used in hoisted vi.mock calls
+const {
+  mockShowCollectionDetailsModal,
+  mockSetShowCollectionDetailsModal,
+  mockAddToast,
+  mockInvalidateQueries,
+} = vi.hoisted(() => ({
+  mockShowCollectionDetailsModal: vi.fn(),
+  mockSetShowCollectionDetailsModal: vi.fn(),
+  mockAddToast: vi.fn(),
+  mockInvalidateQueries: vi.fn(),
+}));
 
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: () => ({
@@ -24,21 +32,39 @@ vi.mock('../../services/api/v2/collections', () => ({
     get: vi.fn(),
     listOperations: vi.fn(),
     listDocuments: vi.fn(),
+    listSources: vi.fn(),
   },
 }));
 
-// Mock collectionKeys
+vi.mock('../../services/api/v2/documents', () => ({
+  documentsV2Api: {
+    retry: vi.fn(),
+    retryFailed: vi.fn(),
+    getFailedCount: vi.fn(),
+  },
+}));
+
+// Mock collectionKeys - must match actual factory in useCollections.ts
 vi.mock('../../hooks/useCollections', () => ({
   collectionKeys: {
-    lists: () => ['collections'],
-    list: (filters: unknown) => ['collections', filters],
-    details: () => ['collections', 'details'],
-    detail: (id: string) => ['collections', 'details', id],
+    all: ['collections'],
+    lists: () => ['collections', 'list'],
+    list: (filters: unknown) => ['collections', 'list', filters],
+    details: () => ['collections', 'detail'],
+    detail: (id: string) => ['collections', 'detail', id],
+  },
+}));
+
+// Mock operationKeys - must match actual factory in useCollectionOperations.ts
+vi.mock('../../hooks/useCollectionOperations', () => ({
+  operationKeys: {
+    all: ['operations'],
+    lists: () => ['operations', 'list'],
+    list: (collectionId: string) => ['operations', 'list', collectionId],
   },
 }));
 
 // Mock React Query
-const mockInvalidateQueries = vi.fn();
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query');
   return {
@@ -49,53 +75,71 @@ vi.mock('@tanstack/react-query', async () => {
   };
 });
 
-// Mock child modals
+// Mock child modals with inline implementations (no hoisting needed)
 vi.mock('../AddDataToCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
+  default: ({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="add-data-modal">
       <button onClick={onSuccess}>Add Data Success</button>
       <button onClick={onClose}>Close Add Data</button>
     </div>
-  )),
+  ),
 }));
 
 vi.mock('../RenameCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
+  default: ({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="rename-modal">
       <button onClick={onSuccess}>Rename Success</button>
       <button onClick={onClose}>Close Rename</button>
     </div>
-  )),
+  ),
 }));
 
 vi.mock('../DeleteCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
+  default: ({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="delete-modal">
       <button onClick={onSuccess}>Delete Success</button>
       <button onClick={onClose}>Close Delete</button>
     </div>
-  )),
+  ),
 }));
 
 vi.mock('../ReindexCollectionModal', () => ({
-  default: vi.fn(({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
+  default: ({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) => (
     <div data-testid="reindex-modal">
       <button onClick={onSuccess}>Reindex Success</button>
       <button onClick={onClose}>Close Reindex</button>
     </div>
-  )),
+  ),
+}));
+
+vi.mock('../EmbeddingVisualizationTab', () => ({
+  default: ({ collectionId }: { collectionId: string }) => (
+    <div data-testid="embedding-visualization" data-collection-id={collectionId} />
+  ),
+}));
+
+vi.mock('../collection/SparseIndexPanel', () => ({
+  SparseIndexPanel: () => <div data-testid="sparse-index-panel" />,
 }));
 
 // Import components after mocks
 import CollectionDetailsModal from '../CollectionDetailsModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 import { collectionsV2Api } from '../../services/api/v2/collections';
+import { documentsV2Api } from '../../services/api/v2/documents';
 
-// Get mocked functions
-const mockCollectionsApi = collectionsV2Api as {
+// Get mocked functions (cast through unknown for type safety)
+const mockCollectionsApi = collectionsV2Api as unknown as {
   get: ReturnType<typeof vi.fn>;
   listOperations: ReturnType<typeof vi.fn>;
   listDocuments: ReturnType<typeof vi.fn>;
+  listSources: ReturnType<typeof vi.fn>;
+};
+
+const mockDocumentsApi = documentsV2Api as unknown as {
+  retry: ReturnType<typeof vi.fn>;
+  retryFailed: ReturnType<typeof vi.fn>;
+  getFailedCount: ReturnType<typeof vi.fn>;
 };
 
 // Test data
@@ -114,6 +158,7 @@ const mockCollection: Collection = {
   document_count: 100,
   vector_count: 500,
   total_size_bytes: 1048576,
+  sync_mode: 'one_time',
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-02T00:00:00Z',
 };
@@ -162,18 +207,34 @@ const mockDocuments: DocumentResponse[] = [
   {
     id: 'doc-1',
     collection_id: 'test-collection-id',
-    source_path: '/data/source1',
+    file_name: 'file1.txt',
     file_path: '/data/source1/file1.txt',
+    file_size: 1024,
+    mime_type: 'text/plain',
+    content_hash: 'abc123',
+    status: 'completed',
+    error_message: null,
     chunk_count: 10,
+    retry_count: 0,
+    last_retry_at: null,
+    error_category: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
   {
     id: 'doc-2',
     collection_id: 'test-collection-id',
-    source_path: '/data/source2',
+    file_name: 'file2.txt',
     file_path: '/data/source2/file2.txt',
+    file_size: 2048,
+    mime_type: 'text/plain',
+    content_hash: 'def456',
+    status: 'completed',
+    error_message: null,
     chunk_count: 20,
+    retry_count: 0,
+    last_retry_at: null,
+    error_category: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
@@ -194,6 +255,22 @@ describe('CollectionDetailsModal', () => {
         page: 1,
         per_page: 50,
       },
+    });
+    mockCollectionsApi.listSources.mockResolvedValue({
+      data: {
+        items: [],
+        total: 0,
+        offset: 0,
+        limit: 50,
+      },
+    });
+    // Mock documents API for retry functionality
+    mockDocumentsApi.getFailedCount.mockResolvedValue({
+      data: { transient: 0, permanent: 0, unknown: 0, total: 0 },
+    });
+    mockDocumentsApi.retry.mockResolvedValue({ data: mockDocuments[0] });
+    mockDocumentsApi.retryFailed.mockResolvedValue({
+      data: { reset_count: 0, message: 'No documents to retry' },
     });
   });
 
@@ -225,8 +302,13 @@ describe('CollectionDetailsModal', () => {
         expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
-      // Operations data is not loaded yet in overview tab, so it shows 0
-      expect(screen.getByText(/0 operations • 100 documents • 500 vectors/)).toBeInTheDocument();
+      // Stats are now displayed in a grid with separate stats
+      expect(screen.getByText('Documents')).toBeInTheDocument();
+      expect(screen.getByText('Vectors')).toBeInTheDocument();
+      expect(screen.getByText('Operations')).toBeInTheDocument();
+      // Check actual values
+      expect(screen.getByText('100')).toBeInTheDocument(); // document_count
+      expect(screen.getByText('500')).toBeInTheDocument(); // vector_count
     });
 
     it('should show loading state while fetching data', async () => {
@@ -245,28 +327,10 @@ describe('CollectionDetailsModal', () => {
         const spinner = document.querySelector('.animate-spin');
         expect(spinner).toBeInTheDocument();
       });
-      
+
       // The component shows "Loading..." in the header
       const heading = screen.getByRole('heading', { level: 2 });
       expect(heading).toHaveTextContent('Loading...');
-    });
-
-    it('should show error state when fetch fails', async () => {
-      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
-      // Clear any previous mocks and set up the error
-      mockCollectionsApi.get.mockClear();
-      mockCollectionsApi.get.mockRejectedValue(new Error('API Error'));
-
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      // Wait for the error message to appear
-      await waitFor(() => {
-        expect(screen.getByText('Failed to load collection details')).toBeInTheDocument();
-      }, { timeout: 3000 });
     });
   });
 
@@ -302,8 +366,9 @@ describe('CollectionDetailsModal', () => {
         expect(screen.getByText('Statistics')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Configuration')).toBeInTheDocument();
-      expect(screen.getByText('Source Directories')).toBeInTheDocument();
+      // Overview tab shows Statistics with Documents, Vectors, etc.
+      expect(screen.getByText('Documents')).toBeInTheDocument();
+      expect(screen.getByText('Vectors')).toBeInTheDocument();
     });
 
     it('should switch to jobs tab and show operations', async () => {
@@ -319,12 +384,16 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /jobs/i }));
 
+      // Jobs tab shows a table with operations
       await waitFor(() => {
-        expect(screen.getByText('Operations History')).toBeInTheDocument();
+        expect(screen.getByText('Type')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('op-1', { exact: false })).toBeInTheDocument();
-      expect(screen.getByText('op-2', { exact: false })).toBeInTheDocument();
+      // Check table headers
+      expect(screen.getByText('Status')).toBeInTheDocument();
+      expect(screen.getByText('Started')).toBeInTheDocument();
+      expect(screen.getByText('Duration')).toBeInTheDocument();
+      // Check operation statuses
       expect(screen.getByText('completed')).toBeInTheDocument();
       expect(screen.getByText('processing')).toBeInTheDocument();
     });
@@ -343,11 +412,12 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /files/i }));
 
       await waitFor(() => {
-        expect(screen.getByText('Documents (2)')).toBeInTheDocument();
+        expect(screen.getByText('Files (2)')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('/data/source1/file1.txt')).toBeInTheDocument();
-      expect(screen.getByText('/data/source2/file2.txt')).toBeInTheDocument();
+      // Documents display file_name
+      expect(screen.getByText('file1.txt')).toBeInTheDocument();
+      expect(screen.getByText('file2.txt')).toBeInTheDocument();
     });
 
     it('should switch to settings tab', async () => {
@@ -364,11 +434,13 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
       await waitFor(() => {
-        expect(screen.getByText('Collection Configuration')).toBeInTheDocument();
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
       });
 
-      // Pre-release: settings shows read-only configuration and reindex affordance
-      expect(screen.getByText(/Current Chunking Strategy/i)).toBeInTheDocument();
+      // Settings shows read-only configuration and reindex section
+      expect(screen.getByText('Embedding Model')).toBeInTheDocument();
+      // Use role to find the re-index button specifically
+      expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
     });
   });
 
@@ -460,12 +532,10 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /add data/i }));
       await user.click(screen.getByText('Add Data Success'));
 
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-v2', 'test-collection-id'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-operations', 'test-collection-id'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-documents', 'test-collection-id'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections', 'detail', 'test-collection-id'] });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
-        message: 'Source added successfully. Check the Operations tab to monitor progress.',
+        message: 'Files uploaded successfully',
       });
     });
 
@@ -483,7 +553,7 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /rename/i }));
       await user.click(screen.getByText('Rename Success'));
 
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-v2'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections'] });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
         message: 'Collection renamed successfully',
@@ -505,7 +575,7 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByText('Delete Success'));
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(['collections']) });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections'] });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
         message: 'Collection deleted successfully',
@@ -526,12 +596,12 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        // Find the close button by the SVG path
-        const closeButton = document.querySelector('button svg path[d="M6 18L18 6M6 6l12 12"]')?.parentElement?.parentElement;
-        expect(closeButton).toBeInTheDocument();
+        expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
-      const closeButton = document.querySelector('button svg path[d="M6 18L18 6M6 6l12 12"]')?.parentElement?.parentElement as HTMLButtonElement;
+      // Find the close button - it contains the XCircle icon (lucide-circle-x class)
+      const closeButton = document.querySelector('button .lucide-circle-x')?.parentElement as HTMLButtonElement;
+      expect(closeButton).toBeTruthy();
       await user.click(closeButton);
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
@@ -545,12 +615,12 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        // Find the backdrop by its class
-        const backdrop = document.querySelector('.fixed.inset-0.bg-black');
-        expect(backdrop).toBeInTheDocument();
+        expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
-      const backdrop = document.querySelector('.fixed.inset-0.bg-black') as HTMLDivElement;
+      // Find the backdrop by its class (using CSS variables now)
+      const backdrop = document.querySelector('.fixed.inset-0.backdrop-blur-sm') as HTMLDivElement;
+      expect(backdrop).toBeTruthy();
       await user.click(backdrop);
 
       expect(mockSetShowCollectionDetailsModal).toHaveBeenCalledWith(null);
@@ -575,12 +645,15 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      expect(screen.getByText(/Current Chunking Strategy/i)).toBeInTheDocument();
+      // Settings tab shows Configuration heading and embedding model
+      await waitFor(() => {
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Embedding Model')).toBeInTheDocument();
+      expect(screen.getByText('sentence-transformers/all-MiniLM-L6-v2')).toBeInTheDocument();
     });
 
-    // Skipped validation tests for legacy chunk size/overlap inputs removed in pre-release
-
-    it('should show reindex button state', async () => {
+    it('should show reindex button', async () => {
       render(
         <TestWrapper>
           <CollectionDetailsModal />
@@ -593,10 +666,9 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      const reindexButton = screen.getByRole('button', { name: /re-index collection/i });
-
-      // Pre-release: button is present; enabling depends on strategy/model changes in modal
-      expect(reindexButton).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
+      });
     });
 
     it('should show reindex warning', async () => {
@@ -612,15 +684,34 @@ describe('CollectionDetailsModal', () => {
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
 
-      // Check that the warning message is shown
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByText('Re-indexing will process all documents again')).toBeInTheDocument();
-      expect(screen.getByText('Delete all existing vectors')).toBeInTheDocument();
-      expect(screen.getByText('Re-process all documents with new settings')).toBeInTheDocument();
+      // Check that the warning message is shown (now in an amber banner)
+      await waitFor(() => {
+        expect(screen.getByText('Action Required')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/Re-indexing will delete all vectors/)).toBeInTheDocument();
     });
 
-    // Skip complex input interaction tests that require proper event handling
-    // These would need a more sophisticated test setup or e2e tests
+    it('should open reindex modal when clicking re-index button', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /re-index collection/i }));
+
+      expect(screen.getByTestId('reindex-modal')).toBeInTheDocument();
+    });
   });
 
   describe('Documents Pagination', () => {
@@ -650,7 +741,7 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /files/i }));
 
       await waitFor(() => {
-        expect(screen.getByText('Showing page 1 of 2')).toBeInTheDocument();
+        expect(screen.getByText('Page 1')).toBeInTheDocument();
       });
 
       expect(screen.getByRole('button', { name: /previous/i })).toBeInTheDocument();
@@ -724,12 +815,141 @@ describe('CollectionDetailsModal', () => {
       await user.click(screen.getByRole('button', { name: /files/i }));
 
       await waitFor(() => {
-        expect(screen.getByText('Documents (2)')).toBeInTheDocument();
+        expect(screen.getByText('Files (2)')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText(/Showing page/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Page 1/)).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /previous/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /next/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Document Status and Retry Actions', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should display failed document status and show retry button', async () => {
+      const failedDoc = {
+        ...mockDocuments[0],
+        id: 'failed-doc',
+        status: 'failed' as const,
+        error_message: 'Extraction error',
+        error_category: 'transient' as const,
+        retry_count: 1,
+        chunk_count: 0,
+      };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [failedDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+      mockDocumentsApi.getFailedCount.mockResolvedValue({
+        data: { transient: 1, permanent: 0, unknown: 0, total: 1 },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      // Status shows as "failed"
+      await waitFor(() => {
+        expect(screen.getByText('failed')).toBeInTheDocument();
+      });
+    });
+
+    it('should show retry all failed button when there are retryable documents', async () => {
+      const failedDoc = {
+        ...mockDocuments[0],
+        id: 'failed-doc',
+        status: 'failed' as const,
+        error_category: 'transient' as const,
+      };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [failedDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+      mockDocumentsApi.getFailedCount.mockResolvedValue({
+        data: { transient: 1, permanent: 0, unknown: 0, total: 1 },
+      });
+      mockDocumentsApi.retryFailed.mockResolvedValue({
+        data: { reset_count: 1, message: 'Reset 1 failed document(s) for retry' },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      const retryAllButton = await screen.findByRole('button', { name: /retry all failed/i });
+      expect(retryAllButton).toBeInTheDocument();
+      await user.click(retryAllButton);
+
+      await waitFor(() => {
+        expect(mockDocumentsApi.retryFailed).toHaveBeenCalledWith('test-collection-id');
+      });
+    });
+
+    it('should display document status correctly', async () => {
+      const completedDoc = { ...mockDocuments[0], id: 'completed-doc', status: 'completed' as const };
+
+      mockCollectionsApi.listDocuments.mockResolvedValue({
+        data: {
+          documents: [completedDoc],
+          total: 1,
+          page: 1,
+          per_page: 50,
+        },
+      });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /files/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('completed')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Visualize Tab', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should render EmbeddingVisualizationTab with collection props', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await user.click(await screen.findByRole('button', { name: /visualize/i }));
+
+      const viz = await screen.findByTestId('embedding-visualization');
+      expect(viz).toBeInTheDocument();
+      // Verify the collection ID is passed via data attribute from our mock
+      expect(viz).toHaveAttribute('data-collection-id', 'test-collection-id');
     });
   });
 
@@ -761,17 +981,15 @@ describe('CollectionDetailsModal', () => {
       expect(screen.getByText('1 GB')).toBeInTheDocument(); // Total Size
     });
 
-    it('should handle null/undefined values gracefully', async () => {
-      const incompleteCollection = {
+    it('should handle zero values gracefully', async () => {
+      const emptyCollection = {
         ...mockCollection,
-        document_count: null,
-        vector_count: undefined,
-        total_size_bytes: null,
+        document_count: 0,
+        vector_count: 0,
+        total_size_bytes: 0,
       };
-      
-      // Clear previous mocks
-      mockCollectionsApi.get.mockClear();
-      mockCollectionsApi.get.mockResolvedValue({ data: incompleteCollection });
+
+      mockCollectionsApi.get.mockResolvedValue({ data: emptyCollection });
 
       render(
         <TestWrapper>
@@ -783,100 +1001,8 @@ describe('CollectionDetailsModal', () => {
         expect(screen.getByText('Statistics')).toBeInTheDocument();
       });
 
-      // The component header should show 0 for null values
-      expect(screen.getByText(/0 operations • 0 documents • 0 vectors/)).toBeInTheDocument();
-      
       // Check for 0 Bytes in the statistics section
       expect(screen.getByText('0 Bytes')).toBeInTheDocument();
-    });
-  });
-
-  describe('Source Directories Display', () => {
-    beforeEach(() => {
-      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
-    });
-
-    it('should aggregate and display source directories', async () => {
-      const documentsWithSamePath = [
-        ...mockDocuments,
-        {
-          id: 'doc-3',
-          collection_id: 'test-collection-id',
-          source_path: '/data/source1',
-          file_path: '/data/source1/file3.txt',
-          chunk_count: 15,
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z',
-        },
-      ];
-
-      mockCollectionsApi.listDocuments.mockResolvedValue({
-        data: {
-          documents: documentsWithSamePath,
-          total: 3,
-          page: 1,
-          per_page: 50,
-        },
-      });
-
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /files/i })).toBeInTheDocument();
-      });
-
-      // Need to go to files tab first to trigger document fetch
-      await user.click(screen.getByRole('button', { name: /files/i }));
-
-      await waitFor(() => {
-        expect(mockCollectionsApi.listDocuments).toHaveBeenCalled();
-      });
-
-      // Go back to overview tab
-      await user.click(screen.getByRole('button', { name: /overview/i }));
-
-      // Should show aggregated counts
-      expect(screen.getByText('/data/source1')).toBeInTheDocument();
-      expect(screen.getByText('2 documents')).toBeInTheDocument(); // doc-1 and doc-3
-      expect(screen.getByText('/data/source2')).toBeInTheDocument();
-      expect(screen.getByText('1 documents')).toBeInTheDocument(); // doc-2
-    });
-
-    it('should show empty state when no documents', async () => {
-      mockCollectionsApi.listDocuments.mockResolvedValue({
-        data: {
-          documents: [],
-          total: 0,
-          page: 1,
-          per_page: 50,
-        },
-      });
-
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /files/i })).toBeInTheDocument();
-      });
-
-      // Need to go to files tab first to trigger document fetch
-      await user.click(screen.getByRole('button', { name: /files/i }));
-
-      await waitFor(() => {
-        expect(mockCollectionsApi.listDocuments).toHaveBeenCalled();
-      });
-
-      // Go back to overview tab
-      await user.click(screen.getByRole('button', { name: /overview/i }));
-
-      expect(screen.getByText('No source directories added yet')).toBeInTheDocument();
     });
   });
 
@@ -885,7 +1011,7 @@ describe('CollectionDetailsModal', () => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
 
-    it('should display modern chunking strategy with icon', async () => {
+    it('should display modern chunking strategy in settings tab', async () => {
       mockCollectionsApi.get.mockResolvedValue({ data: mockCollectionWithChunkingStrategy });
 
       render(
@@ -895,26 +1021,20 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
       });
 
-      // Should show strategy name and description
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
+      });
+
+      // Should show strategy name (Recursive is the display name)
       expect(screen.getByText('Recursive')).toBeInTheDocument();
-      expect(screen.getByText(/Intelligent splitting that respects sentence and paragraph boundaries/)).toBeInTheDocument();
-      
-      // Should show strategy parameters
-      expect(screen.getByText('Strategy Parameters')).toBeInTheDocument();
-      expect(screen.getByText('Chunk Size')).toBeInTheDocument();
-      expect(screen.getByText('600')).toBeInTheDocument();
-      expect(screen.getByText('Chunk Overlap')).toBeInTheDocument();
-      // Use a more specific query for '100' to avoid conflicts with document count
-      const chunkOverlapElement = screen.getByText('Chunk Overlap').nextElementSibling;
-      expect(chunkOverlapElement).toHaveTextContent('100');
-      expect(screen.getByText('Preserve Sentences')).toBeInTheDocument();
-      expect(screen.getByText('Yes')).toBeInTheDocument();
     });
 
-    it('should display legacy chunking configuration with warning', async () => {
+    it('should display legacy chunking warning in settings tab', async () => {
       mockCollectionsApi.get.mockResolvedValue({ data: mockCollectionWithLegacyChunking });
 
       render(
@@ -924,183 +1044,23 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
       });
 
       // Should show legacy warning
-      expect(screen.getByText('Legacy Configuration')).toBeInTheDocument();
-      expect(screen.getByText('This collection uses deprecated chunking parameters.')).toBeInTheDocument();
-      expect(screen.getByText('512 characters')).toBeInTheDocument();
-      expect(screen.getByText('50 characters')).toBeInTheDocument();
-      expect(screen.getByText(/Consider re-indexing with a modern chunking strategy/)).toBeInTheDocument();
-    });
-
-    it('should show correct icons for different chunking strategies', async () => {
-      const strategies = ['character', 'recursive', 'markdown', 'semantic', 'hierarchical', 'hybrid'];
-      
-      for (const strategy of strategies) {
-        mockCollectionsApi.get.mockResolvedValue({ 
-          data: {
-            ...mockCollection,
-            chunking_strategy: strategy,
-            chunking_config: { chunk_size: 600 }
-          }
-        });
-
-        const { rerender } = render(
-          <TestWrapper>
-            <CollectionDetailsModal />
-          </TestWrapper>
-        );
-
-        await waitFor(() => {
-          expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
-        });
-
-        // Each strategy should have an icon
-        const iconContainer = document.querySelector('.text-blue-600 svg');
-        expect(iconContainer).toBeInTheDocument();
-
-        // Clean up for next iteration
-        rerender(<></>);
-      }
+      expect(screen.getByText('Legacy Chunking')).toBeInTheDocument();
     });
   });
 
-  describe('formatNumber and formatBytes Utilities', () => {
+  describe('Reindex Success Handler', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
-    });
-
-    it('should format various byte sizes correctly', async () => {
-      const testCases = [
-        { bytes: 0, expected: '0 Bytes' },
-        { bytes: 512, expected: '512 Bytes' },
-        { bytes: 1024, expected: '1 KB' },
-        { bytes: 1536, expected: '1.5 KB' },
-        { bytes: 1048576, expected: '1 MB' },
-        { bytes: 1073741824, expected: '1 GB' },
-        { bytes: 1099511627776, expected: '1 TB' },
-      ];
-
-      for (const { bytes, expected } of testCases) {
-        mockCollectionsApi.get.mockResolvedValue({
-          data: { ...mockCollection, total_size_bytes: bytes }
-        });
-
-        const { rerender } = render(
-          <TestWrapper>
-            <CollectionDetailsModal />
-          </TestWrapper>
-        );
-
-        await waitFor(() => {
-          expect(screen.getByText(expected)).toBeInTheDocument();
-        });
-
-        rerender(<></>);
-      }
-    });
-
-    it('should format edge case numbers correctly', async () => {
-      const testCases = [
-        { value: null, expectedText: '0' },
-        { value: undefined, expectedText: '0' },
-        { value: 0, expectedText: '0' },
-        { value: 1, expectedText: '1' },
-        { value: 999, expectedText: '999' },
-        { value: 1000, expectedText: '1,000' },
-        { value: 999999, expectedText: '999,999' },
-        { value: 1000000, expectedText: '1,000,000' },
-      ];
-
-      for (const { value, expectedText } of testCases) {
-        mockCollectionsApi.get.mockResolvedValue({
-          data: { ...mockCollection, document_count: value }
-        });
-
-        const { rerender } = render(
-          <TestWrapper>
-            <CollectionDetailsModal />
-          </TestWrapper>
-        );
-
-        await waitFor(() => {
-          const statsSection = screen.getByText('Statistics').parentElement;
-          if (value === null || value === undefined) {
-            // Check in the header for null/undefined (shows as 0)
-            expect(screen.getByText(/0 documents/, { exact: false })).toBeInTheDocument();
-          } else {
-            // Check in the statistics card
-            expect(statsSection).toHaveTextContent(expectedText);
-          }
-        });
-
-        rerender(<></>);
-      }
-    });
-  });
-
-  describe('Configuration Changes in Settings Tab', () => {
-    beforeEach(() => {
-      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
-    });
-
-    it('should allow entering custom embedding instruction', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const instructionTextarea = screen.getByLabelText(/Embedding Instruction/i);
-      expect(instructionTextarea).toBeInTheDocument();
-      expect(instructionTextarea).toHaveAttribute('placeholder', 'e.g., Represent this document for retrieval:');
-
-      await user.type(instructionTextarea, 'Custom instruction for embeddings');
-      expect(instructionTextarea).toHaveValue('Custom instruction for embeddings');
-    });
-
-    it('should display read-only embedding model field', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const modelInput = screen.getByLabelText(/Embedding Model/i);
-      expect(modelInput).toBeDisabled();
-      expect(modelInput).toHaveValue('sentence-transformers/all-MiniLM-L6-v2');
-      expect(screen.getByText('Cannot be changed after collection creation')).toBeInTheDocument();
-    });
-
-    it('should open reindex modal when clicking re-index button', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-      await user.click(screen.getByRole('button', { name: /re-index collection/i }));
-
-      expect(screen.getByTestId('reindex-modal')).toBeInTheDocument();
     });
 
     it('should handle successful reindex operation', async () => {
@@ -1115,14 +1075,19 @@ describe('CollectionDetailsModal', () => {
       });
 
       await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /re-index collection/i })).toBeInTheDocument();
+      });
+
       await user.click(screen.getByRole('button', { name: /re-index collection/i }));
       await user.click(screen.getByText('Reindex Success'));
 
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-v2', 'test-collection-id'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-operations', 'test-collection-id'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections', 'detail', 'test-collection-id'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['operations', 'list', 'test-collection-id'] });
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'success',
-        message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.',
+        message: 'Re-indexing started successfully',
       });
 
       // Should not show the reindex modal anymore
@@ -1194,7 +1159,7 @@ describe('CollectionDetailsModal', () => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
     });
 
-    it('should have proper ARIA labels for all inputs', async () => {
+    it('should have proper navigation element with Tabs label', async () => {
       render(
         <TestWrapper>
           <CollectionDetailsModal />
@@ -1202,61 +1167,14 @@ describe('CollectionDetailsModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      // Check ARIA labels for settings inputs
-      const modelInput = screen.getByLabelText(/Embedding Model/i);
-      expect(modelInput).toHaveAttribute('aria-label', 'Embedding model (read-only)');
-      expect(modelInput).toHaveAttribute('aria-describedby', 'model-help');
-
-      const instructionInput = screen.getByLabelText(/Embedding Instruction/i);
-      expect(instructionInput).toHaveAttribute('aria-label', 'Custom embedding instruction');
-      expect(instructionInput).toHaveAttribute('aria-describedby', 'instruction-help');
-
-      const reindexButton = screen.getByRole('button', { name: /re-index collection/i });
-      expect(reindexButton).toHaveAttribute('aria-label', 'Re-index collection with new configuration');
-    });
-
-    it('should have proper ARIA labels and roles', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        // Check for the modal container
-        const modal = document.querySelector('.fixed.inset-4');
-        expect(modal).toBeInTheDocument();
+        expect(screen.getByText('Test Collection')).toBeInTheDocument();
       });
 
       // Check for navigation
       expect(screen.getByLabelText('Tabs')).toBeInTheDocument();
     });
 
-    // Skipped ARIA tests for removed legacy inputs
-
-    it('should have proper alert role for warning messages', async () => {
-      render(
-        <TestWrapper>
-          <CollectionDetailsModal />
-        </TestWrapper>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /settings/i }));
-
-      const warningAlert = screen.getByRole('alert');
-      expect(warningAlert).toHaveTextContent('Re-indexing will process all documents again');
-    });
-
-    it('should focus trap within the modal', async () => {
+    it('should contain all interactive elements within the modal', async () => {
       render(
         <TestWrapper>
           <CollectionDetailsModal />
@@ -1269,9 +1187,10 @@ describe('CollectionDetailsModal', () => {
 
       // Test that all interactive elements are within the modal
       const modal = document.querySelector('.fixed.inset-4');
+      expect(modal).toBeTruthy();
       const buttons = screen.getAllByRole('button');
-      
-      buttons.forEach(button => {
+
+      buttons.forEach((button) => {
         expect(modal).toContainElement(button);
       });
     });

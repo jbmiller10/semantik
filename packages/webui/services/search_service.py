@@ -3,19 +3,27 @@
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
-from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.user_preferences_repository import UserPreferencesRepository
+from shared.llm.exceptions import LLMError, LLMNotConfiguredError
+from shared.llm.factory import LLMServiceFactory
+from shared.llm.hyde import HyDEConfig, HyDEResult, generate_hyde_expansion
+from shared.llm.types import LLMQualityTier, LLMResponse
+from shared.llm.usage_tracking import record_llm_usage
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
+
+# Type alias for search mode
+SearchMode = Literal["dense", "sparse", "hybrid"]
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +62,7 @@ def _resolve_reranker_id_to_model(reranker_id: str | None) -> str | None:
     capabilities = record.manifest.capabilities
     models = capabilities.get("models", [])
     if models:
-        return models[0]  # Return the first (primary) model
+        return str(models[0])  # Return the first (primary) model
 
     logger.warning("Reranker plugin %s has no models defined", reranker_id)
     return None
@@ -138,7 +146,7 @@ class SearchService:
         k: int,
         search_params: dict[str, Any],
         timeout: httpx.Timeout | None = None,
-    ) -> tuple[Collection, list[dict[str, Any]] | None, str | None]:
+    ) -> tuple[Collection, dict[str, Any] | None, str | None]:
         """Search a single collection and return results.
 
         Args:
@@ -149,7 +157,7 @@ class SearchService:
             timeout: HTTP timeout settings
 
         Returns:
-            Tuple of (collection, results, error_message)
+            Tuple of (collection, search_response, error_message)
         """
         # Skip collections that aren't ready
         if collection.status != CollectionStatus.READY:
@@ -164,11 +172,10 @@ class SearchService:
         if "hybrid_search_mode" in base_params:
             raise ValueError("legacy field 'hybrid_search_mode' is no longer supported")
 
-        if "hybrid_mode" in base_params and base_params["hybrid_mode"] is not None:
-            base_params["hybrid_mode"] = normalize_hybrid_mode(base_params["hybrid_mode"])
-
-        if "keyword_mode" in base_params:
-            base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
+        # Remove any legacy hybrid mode parameters
+        base_params.pop("hybrid_mode", None)
+        base_params.pop("keyword_mode", None)
+        base_params.pop("hybrid_alpha", None)
 
         collection_search_params = {
             **base_params,
@@ -192,8 +199,12 @@ class SearchService:
                 )
                 response.raise_for_status()
 
-            result = response.json()
-            return (collection, result.get("results", []), None)
+            result: dict[str, Any] = response.json()
+            # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+            result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+            if not isinstance(result.get("warnings"), list):
+                result["warnings"] = []
+            return (collection, result, None)
 
         except httpx.ReadTimeout:
             # Retry with longer timeout
@@ -222,8 +233,12 @@ class SearchService:
                     )
                     response.raise_for_status()
 
-                result = response.json()
-                return (collection, result.get("results", []), None)
+                retry_result: dict[str, Any] = response.json()
+                # Preserve sparse/hybrid fallback metadata returned by vecpipe.
+                retry_result.setdefault("search_mode_used", collection_search_params.get("search_mode", "dense"))
+                if not isinstance(retry_result.get("warnings"), list):
+                    retry_result["warnings"] = []
+                return (collection, retry_result, None)
 
             except httpx.HTTPStatusError as e:
                 return self._handle_http_error(e, collection, retry=True)
@@ -279,6 +294,118 @@ class SearchService:
             f"Search failed for collection '{collection.name}'{retry_suffix} (status: {status_code})",
         )
 
+    async def _resolve_hyde_settings(
+        self,
+        user_id: int,
+        use_hyde_override: bool | None,
+    ) -> tuple[bool, LLMQualityTier, int]:
+        """Resolve HyDE settings from user preferences with optional override.
+
+        Args:
+            user_id: User ID for preferences lookup
+            use_hyde_override: Per-request override (None = use preference)
+
+        Returns:
+            Tuple of (should_use_hyde, quality_tier, timeout_seconds)
+        """
+        prefs_repo = UserPreferencesRepository(self.db_session)
+        prefs = await prefs_repo.get_or_create(user_id)
+
+        # Per-request override takes precedence
+        should_use = use_hyde_override if use_hyde_override is not None else prefs.search_use_hyde
+
+        tier = LLMQualityTier.HIGH if prefs.search_hyde_quality_tier == "high" else LLMQualityTier.LOW
+        timeout = prefs.search_hyde_timeout_seconds
+
+        return should_use, tier, timeout
+
+    async def _generate_hyde_if_enabled(
+        self,
+        user_id: int,
+        query: str,
+        use_hyde_override: bool | None,
+    ) -> tuple[HyDEResult | None, LLMResponse | None, float]:
+        """Generate HyDE expansion if enabled for user.
+
+        Args:
+            user_id: User ID for LLM provider and preferences
+            query: Original search query
+            use_hyde_override: Per-request override
+
+        Returns:
+            Tuple of (HyDEResult or None, LLMResponse or None, generation_time_ms)
+        """
+        should_use, tier, timeout = await self._resolve_hyde_settings(user_id, use_hyde_override)
+
+        if not should_use:
+            return None, None, 0.0
+
+        start_time = time.time()
+
+        try:
+            factory = LLMServiceFactory(self.db_session)
+            provider = await factory.create_provider_for_tier(user_id, tier)
+
+            async with provider:
+                config = HyDEConfig(
+                    timeout_seconds=timeout,
+                )
+                result, response = await generate_hyde_expansion(provider, query, config=config)
+
+                # Track usage if we got a response
+                if response is not None:
+                    await record_llm_usage(
+                        self.db_session,
+                        user_id,
+                        response,
+                        feature="hyde",
+                        quality_tier=tier.value,
+                    )
+
+                generation_time = (time.time() - start_time) * 1000
+                return result, response, generation_time
+
+        except LLMNotConfiguredError:
+            logger.debug("HyDE skipped: LLM not configured for user %s", user_id)
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning="HyDE skipped: LLM not configured",
+                ),
+                None,
+                0.0,
+            )
+
+        except LLMError as e:
+            logger.warning("HyDE generation failed for user %s: %s", user_id, e)
+            generation_time = (time.time() - start_time) * 1000
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning=f"HyDE generation failed: {type(e).__name__}",
+                ),
+                None,
+                generation_time,
+            )
+
+        except Exception as e:
+            logger.warning("Unexpected error during HyDE generation for user %s: %s", user_id, e)
+            generation_time = (time.time() - start_time) * 1000
+            return (
+                HyDEResult(
+                    expanded_query=query,
+                    original_query=query,
+                    success=False,
+                    warning=f"HyDE generation failed: {type(e).__name__}",
+                ),
+                None,
+                generation_time,
+            )
+
     async def multi_collection_search(
         self,
         user_id: int,
@@ -286,14 +413,14 @@ class SearchService:
         query: str,
         k: int = 10,
         search_type: str = "semantic",
+        search_mode: SearchMode = "dense",
+        rrf_k: int = 60,
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
-        hybrid_alpha: float = 0.7,
-        hybrid_mode: str = "weighted",
-        keyword_mode: str = "any",
+        use_hyde: bool | None = None,
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -302,27 +429,39 @@ class SearchService:
             collection_uuids: List of collection UUIDs to search
             query: Search query
             k: Number of results to return
-            search_type: Type of search (semantic, hybrid, etc.)
+            search_type: Type of search (semantic, question, code)
+            search_mode: Search mode (dense, sparse, hybrid)
+            rrf_k: RRF constant k for hybrid mode ranking
             score_threshold: Minimum score threshold for results
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use reranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
-            hybrid_alpha: Weight for hybrid search
-            hybrid_mode: Mode for hybrid search
-            keyword_mode: Keyword matching mode when using hybrid search
+            use_hyde: Enable HyDE query expansion (None = use user preference)
 
         Returns:
             Dictionary with search results and metadata
         """
         start_time = time.time()
+        warnings: list[str] = []
+        search_mode_used: SearchMode = search_mode
+        search_modes_used: set[SearchMode] = set()
+        warning_set: set[str] = set()
 
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
-        # Validate requested hybrid/keyword modes
-        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
-        keyword_mode = normalize_keyword_mode(keyword_mode)
+        # Generate HyDE expansion if enabled
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(user_id, query, use_hyde)
+
+        # Determine the query to use for dense embedding
+        dense_query: str | None = None
+        if hyde_result is not None:
+            if hyde_result.success:
+                dense_query = hyde_result.expanded_query
+            elif hyde_result.warning and hyde_result.warning not in warning_set:
+                warning_set.add(hyde_result.warning)
+                warnings.append(hyde_result.warning)
 
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
@@ -332,23 +471,16 @@ class SearchService:
                 effective_rerank_model = resolved_model
 
         # Build common search parameters
-        search_params = {
+        search_params: dict[str, Any] = {
             "search_type": search_type,
+            "search_mode": search_mode,
+            "rrf_k": rrf_k,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
+            "dense_query": dense_query,  # HyDE expanded query for embedding (None if HyDE disabled/failed)
         }
-
-        # Add hybrid search parameters if applicable
-        if search_type == "hybrid":
-            search_params.update(
-                {
-                    "hybrid_alpha": hybrid_alpha,
-                    "hybrid_mode": hybrid_mode,
-                    "keyword_mode": keyword_mode,
-                }
-            )
 
         # Create timeout for searches
         timeout = self.default_timeout
@@ -365,7 +497,7 @@ class SearchService:
         collection_results = []
         errors = []
 
-        for collection, results, error in search_results:
+        for collection, response, error in search_results:
             if error:
                 errors.append(error)
                 collection_results.append(
@@ -377,6 +509,22 @@ class SearchService:
                     }
                 )
             else:
+                response = response or {}
+                collection_warnings = response.get("warnings", [])
+                if isinstance(collection_warnings, list):
+                    for warning in collection_warnings:
+                        if isinstance(warning, str) and warning and warning not in warning_set:
+                            warning_set.add(warning)
+                            warnings.append(warning)
+
+                collection_search_mode_used = response.get("search_mode_used", search_mode)
+                if collection_search_mode_used in ("dense", "sparse", "hybrid"):
+                    search_modes_used.add(collection_search_mode_used)
+
+                results = response.get("results", [])
+                if not isinstance(results, list):
+                    results = []
+
                 if results:
                     # Add collection info to each result
                     for result in results:
@@ -393,8 +541,23 @@ class SearchService:
                         "collection_id": collection.id,
                         "collection_name": collection.name,
                         "result_count": len(results) if results else 0,
+                        "search_mode_used": collection_search_mode_used,
+                        "warnings": collection_warnings if isinstance(collection_warnings, list) else [],
                     }
                 )
+
+        # If sparse/hybrid search was requested, vecpipe may fall back to dense per collection.
+        # Report the most conservative mode when collection modes differ.
+        if search_modes_used:
+            if len(search_modes_used) == 1:
+                search_mode_used = next(iter(search_modes_used))
+            else:
+                if "dense" in search_modes_used:
+                    search_mode_used = "dense"
+                elif "hybrid" in search_modes_used:
+                    search_mode_used = "hybrid"
+                else:
+                    search_mode_used = "sparse"
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
         all_results.sort(key=self._result_sort_key, reverse=True)
@@ -404,6 +567,18 @@ class SearchService:
 
         processing_time = time.time() - start_time
 
+        # Build HyDE metadata for response
+        hyde_used = hyde_result is not None and hyde_result.success
+        hyde_info: dict[str, Any] | None = None
+        if hyde_used and hyde_result is not None:
+            hyde_info = {
+                "expanded_query": hyde_result.expanded_query,
+                "generation_time_ms": hyde_time_ms,
+                "tokens_used": hyde_response.total_tokens if hyde_response else None,
+                "provider": hyde_response.provider if hyde_response else None,
+                "model": hyde_response.model if hyde_response else None,
+            }
+
         return {
             "results": final_results,
             "metadata": {
@@ -412,6 +587,10 @@ class SearchService:
                 "collection_details": collection_results,
                 "processing_time": processing_time,
                 "errors": errors if errors else None,
+                "search_mode_used": search_mode_used,
+                "warnings": warnings,
+                "hyde_used": hyde_used,
+                "hyde_info": hyde_info,
             },
         }
 
@@ -422,15 +601,15 @@ class SearchService:
         query: str,
         k: int = 10,
         search_type: str = "semantic",
+        search_mode: SearchMode = "dense",
+        rrf_k: int = 60,
         score_threshold: float | None = None,
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
         reranker_id: str | None = None,
-        hybrid_alpha: float = 0.7,
-        hybrid_mode: str = "weighted",
-        keyword_mode: str = "any",
         include_content: bool = True,
+        use_hyde: bool | None = None,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
 
@@ -439,27 +618,37 @@ class SearchService:
             collection_uuid: UUID of the collection to search
             query: Search query
             k: Number of results to return
-            search_type: Type of search
+            search_type: Type of search (semantic, question, code)
+            search_mode: Search mode (dense, sparse, hybrid)
+            rrf_k: RRF constant k for hybrid mode ranking
             score_threshold: Minimum score threshold
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use re-ranking
             rerank_model: Optional reranker model name
             reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
-            hybrid_alpha: Weight for hybrid search
-            hybrid_mode: Mode for hybrid search
-            keyword_mode: Keyword matching mode when using hybrid search
             include_content: Whether to include document content
+            use_hyde: Enable HyDE query expansion (None = use user preference)
 
         Returns:
             Dictionary with search results
         """
+        warnings: list[str] = []
+        search_mode_used: SearchMode = search_mode
+
         # Validate collection access
         collections = await self.validate_collection_access([collection_uuid], user_id)
         collection = collections[0]
 
-        # Build search parameters
-        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
-        keyword_mode = normalize_keyword_mode(keyword_mode)
+        # Generate HyDE expansion if enabled
+        hyde_result, hyde_response, hyde_time_ms = await self._generate_hyde_if_enabled(user_id, query, use_hyde)
+
+        # Determine the query to use for dense embedding
+        dense_query: str | None = None
+        if hyde_result is not None:
+            if hyde_result.success:
+                dense_query = hyde_result.expanded_query
+            elif hyde_result.warning:
+                warnings.append(hyde_result.warning)
 
         # Resolve reranker_id to model name if provided (takes precedence)
         effective_rerank_model = rerank_model
@@ -468,29 +657,22 @@ class SearchService:
             if resolved_model:
                 effective_rerank_model = resolved_model
 
-        search_params = {
+        search_params: dict[str, Any] = {
             "query": query,
             "k": k,
             "collection": collection.vector_store_name,
             "model_name": collection.embedding_model,
             "quantization": collection.quantization,
             "search_type": search_type,
+            "search_mode": search_mode,
+            "rrf_k": rrf_k,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
             "rerank_model": effective_rerank_model,
             "include_content": include_content,
+            "dense_query": dense_query,  # HyDE expanded query for embedding
         }
-
-        # Add hybrid search parameters if applicable
-        if search_type == "hybrid":
-            search_params.update(
-                {
-                    "hybrid_alpha": hybrid_alpha,
-                    "hybrid_mode": hybrid_mode,
-                    "keyword_mode": keyword_mode,
-                }
-            )
 
         try:
             # Use a longer timeout for single collection searches
@@ -508,6 +690,29 @@ class SearchService:
                 response.raise_for_status()
 
             result: dict[str, Any] = response.json()
+            # Add search_mode metadata to result
+            result["search_mode_used"] = result.get("search_mode_used", search_mode_used)
+
+            # Merge warnings from HyDE and vecpipe
+            vecpipe_warnings = result.get("warnings", [])
+            if not isinstance(vecpipe_warnings, list):
+                vecpipe_warnings = []
+            result["warnings"] = warnings + vecpipe_warnings
+
+            # Add HyDE metadata to result
+            hyde_used = hyde_result is not None and hyde_result.success
+            result["hyde_used"] = hyde_used
+            if hyde_used and hyde_result is not None:
+                result["hyde_info"] = {
+                    "expanded_query": hyde_result.expanded_query,
+                    "generation_time_ms": hyde_time_ms,
+                    "tokens_used": hyde_response.total_tokens if hyde_response else None,
+                    "provider": hyde_response.provider if hyde_response else None,
+                    "model": hyde_response.model if hyde_response else None,
+                }
+            else:
+                result["hyde_info"] = None
+
             return result
 
         except httpx.HTTPStatusError as e:

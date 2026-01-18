@@ -7,12 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from shared.plugins.validation import (
-    PLUGIN_ID_MAX_LENGTH,
-    PLUGIN_ID_REGEX,
-    validate_git_ref,
-    validate_plugin_id,
-)
+from shared.plugins.validation import PLUGIN_ID_MAX_LENGTH, PLUGIN_ID_REGEX, validate_git_ref, validate_plugin_id
 
 
 class PluginManifestSchema(BaseModel):

@@ -42,7 +42,7 @@ export function ConnectorForm({
 
   if (!definition) {
     return (
-      <div className="text-sm text-red-600">
+      <div className="text-sm text-red-400">
         Unknown connector type: {connectorType}
       </div>
     );
@@ -69,7 +69,7 @@ export function ConnectorForm({
   const showPreviewButton = hasPreviewEndpoint && connectorType !== 'directory';
 
   return (
-    <div className="space-y-4 mt-4 border-t pt-4">
+    <div className="space-y-4 mt-4 border-t border-white/10 pt-4">
       {/* Configuration Fields */}
       {visibleFields.map((field) => (
         <DynamicField
@@ -84,8 +84,8 @@ export function ConnectorForm({
 
       {/* Secret Fields */}
       {visibleSecrets.length > 0 && (
-        <div className="border-t pt-4 mt-4">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">
+        <div className="border-t border-white/10 pt-4 mt-4">
+          <h4 className="text-sm font-medium text-gray-300 mb-3">
             Authentication
           </h4>
           {visibleSecrets.map((secret) => (
@@ -104,12 +104,12 @@ export function ConnectorForm({
 
       {/* Preview/Test Connection Button */}
       {showPreviewButton && onPreview && (
-        <div className="border-t pt-4 mt-4">
+        <div className="border-t border-white/10 pt-4 mt-4">
           <button
             type="button"
             onClick={onPreview}
             disabled={disabled || isPreviewLoading}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center px-4 py-2 border border-[var(--border)] rounded-md shadow-sm text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPreviewLoading ? (
               <>
@@ -148,15 +148,15 @@ function PreviewResultDisplay({
 }: PreviewResultDisplayProps) {
   if (result.valid) {
     return (
-      <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+      <div className="rounded-lg bg-green-500/10 border border-green-500/30 p-4">
         <div className="flex">
-          <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+          <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-green-800">
+            <h3 className="text-sm font-medium text-green-300">
               Connection successful!
             </h3>
             {connectorType === 'git' && 'refs_found' in result && (
-              <div className="mt-2 text-sm text-green-700">
+              <div className="mt-2 text-sm text-green-400">
                 <p className="font-medium">Available branches/tags:</p>
                 <ul className="mt-1 list-disc list-inside">
                   {(result as GitPreviewResponse).refs_found
@@ -165,7 +165,7 @@ function PreviewResultDisplay({
                       <li key={ref}>{ref}</li>
                     ))}
                   {(result as GitPreviewResponse).refs_found.length > 5 && (
-                    <li className="text-green-600">
+                    <li className="text-green-500">
                       +{(result as GitPreviewResponse).refs_found.length - 5} more
                     </li>
                   )}
@@ -173,7 +173,7 @@ function PreviewResultDisplay({
               </div>
             )}
             {connectorType === 'imap' && 'mailboxes_found' in result && (
-              <div className="mt-2 text-sm text-green-700">
+              <div className="mt-2 text-sm text-green-400">
                 <p className="font-medium">Available mailboxes:</p>
                 <ul className="mt-1 list-disc list-inside">
                   {(result as ImapPreviewResponse).mailboxes_found
@@ -182,7 +182,7 @@ function PreviewResultDisplay({
                       <li key={mailbox}>{mailbox}</li>
                     ))}
                   {(result as ImapPreviewResponse).mailboxes_found.length > 5 && (
-                    <li className="text-green-600">
+                    <li className="text-green-500">
                       +{(result as ImapPreviewResponse).mailboxes_found.length - 5}{' '}
                       more
                     </li>
@@ -197,13 +197,13 @@ function PreviewResultDisplay({
   }
 
   return (
-    <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+    <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4">
       <div className="flex">
-        <XCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+        <XCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
         <div className="ml-3">
-          <h3 className="text-sm font-medium text-red-800">Connection failed</h3>
+          <h3 className="text-sm font-medium text-red-300">Connection failed</h3>
           {result.error && (
-            <p className="mt-1 text-sm text-red-700">{result.error}</p>
+            <p className="mt-1 text-sm text-red-400">{result.error}</p>
           )}
         </div>
       </div>

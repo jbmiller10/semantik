@@ -55,7 +55,7 @@ from webui.services.chunking_error_handler import ChunkingErrorHandler
 from webui.services.factory import get_redis_manager
 from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 from webui.services.type_guards import ensure_sync_redis
-from webui.tasks import executor as chunk_executor, extract_and_serialize_thread_safe
+from webui.tasks import executor as chunk_executor, parse_file_thread_safe
 from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)
@@ -503,19 +503,6 @@ def _should_process_document(document: Any) -> bool:
     return True
 
 
-def _combine_text_blocks(blocks: Sequence[tuple[str, dict[str, Any]]]) -> tuple[str, dict[str, Any]]:
-    """Combine extracted text blocks into a single payload."""
-
-    combined_text_parts: list[str] = []
-    combined_metadata: dict[str, Any] = {}
-    for text, metadata in blocks:
-        if isinstance(text, str) and text.strip():
-            combined_text_parts.append(text)
-        if isinstance(metadata, dict):
-            combined_metadata.update(metadata)
-    return "\n\n".join(combined_text_parts).strip(), combined_metadata
-
-
 def _build_chunk_rows(
     collection_id: str,
     document_id: str,
@@ -585,13 +572,12 @@ async def _process_document_chunking(
 
     loop = asyncio.get_running_loop()
     file_path = getattr(document, "file_path", "")
-    text_blocks = await loop.run_in_executor(chunk_executor, extract_and_serialize_thread_safe, file_path)
-    if not text_blocks:
+    parse_result = await loop.run_in_executor(chunk_executor, parse_file_thread_safe, file_path)
+    if not parse_result.text.strip():
         raise ValueError(f"No text content extracted for document {getattr(document, 'id', file_path)}")
 
-    combined_text, metadata = _combine_text_blocks(text_blocks)
-    if not combined_text:
-        raise ValueError(f"Extracted content empty for document {getattr(document, 'id', file_path)}")
+    combined_text = parse_result.text
+    metadata = parse_result.metadata
 
     file_type = file_path.rsplit(".", 1)[-1] if "." in file_path else None
 

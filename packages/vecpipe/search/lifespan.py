@@ -21,10 +21,12 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
 from shared.plugins.state import get_disabled_plugin_ids
 from vecpipe.governed_model_manager import GovernedModelManager
+from vecpipe.llm_model_manager import LLMModelManager
 from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources
+from vecpipe.sparse_model_manager import SparseModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +115,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         # Build memory budget from settings using factory for auto-detection
         budget = create_memory_budget(
             total_gpu_mb=None,  # Auto-detect GPU memory via factory
-            gpu_reserve_percent=settings.GPU_MEMORY_RESERVE_PERCENT,
             gpu_max_percent=settings.GPU_MEMORY_MAX_PERCENT,
-            cpu_reserve_percent=settings.CPU_MEMORY_RESERVE_PERCENT,
             cpu_max_percent=settings.CPU_MEMORY_MAX_PERCENT,
         )
 
@@ -147,8 +147,35 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
 
     pool = ThreadPoolExecutor(max_workers=4)
 
+    # Initialize sparse model manager with shared governor (if available)
+    governor = model_mgr._governor if hasattr(model_mgr, "_governor") else None
+    sparse_mgr = SparseModelManager(governor=governor)
+    if governor:
+        logger.info("Initialized SparseModelManager with shared memory governor")
+    else:
+        logger.info("Initialized SparseModelManager without memory governor")
+
+    # Initialize LLM model manager (optional, controlled by ENABLE_LOCAL_LLM)
+    llm_mgr: LLMModelManager | None = None
+    if settings.ENABLE_LOCAL_LLM:
+        llm_mgr = LLMModelManager(governor=governor)
+        if governor:
+            logger.info("Initialized LLMModelManager with shared memory governor")
+        else:
+            logger.info("Initialized LLMModelManager without memory governor")
+    else:
+        logger.info("Local LLM support disabled (ENABLE_LOCAL_LLM=false)")
+
     # embed_service is None - ModelManager now manages providers internally
-    set_resources(qdrant=qdrant, model_mgr=model_mgr, embed_service=None, pool=pool, qdrant_sdk=qdrant_sdk)
+    set_resources(
+        qdrant=qdrant,
+        model_mgr=model_mgr,
+        embed_service=None,
+        pool=pool,
+        qdrant_sdk=qdrant_sdk,
+        sparse_mgr=sparse_mgr,
+        llm_mgr=llm_mgr,
+    )
 
     # Touch metrics to ensure registered
     search_requests.labels(endpoint="startup", search_type="health").inc()
@@ -158,6 +185,11 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     finally:
         await qdrant.aclose()
         await qdrant_sdk.close()
+        # Shutdown LLM model manager first (it may hold references to models)
+        if llm_mgr is not None:
+            await llm_mgr.shutdown()
+        # Shutdown sparse model manager (it may hold references to models)
+        await sparse_mgr.shutdown()
         # Use async shutdown for GovernedModelManager to avoid deadlock
         if hasattr(model_mgr, "shutdown_async"):
             await model_mgr.shutdown_async()

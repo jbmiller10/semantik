@@ -187,10 +187,10 @@ describe('ReindexCollectionModal', () => {
 
   it('handles API errors appropriately', async () => {
     const user = userEvent.setup();
-    
+
     // Mock 403 Forbidden error
     mockReindexError(mockCollection.id, 403);
-    
+
     renderComponent();
 
     const confirmInput = screen.getByLabelText('Confirmation text for re-indexing');
@@ -198,20 +198,20 @@ describe('ReindexCollectionModal', () => {
     await user.click(screen.getByRole('button', { name: /re-index collection/i }));
 
     await waitFor(() => {
-      // The hook will show an error toast
+      // The hook will show an error toast with user-friendly message
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'error',
-        message: expect.stringContaining('403'),
+        message: expect.stringContaining('Forbidden'),
       });
     }, { timeout: 3000 });
   });
 
   it('handles 404 Not Found error', async () => {
     const user = userEvent.setup();
-    
+
     // Mock 404 Not Found error
     mockReindexError(mockCollection.id, 404);
-    
+
     renderComponent();
 
     const confirmInput = screen.getByLabelText('Confirmation text for re-indexing');
@@ -219,20 +219,20 @@ describe('ReindexCollectionModal', () => {
     await user.click(screen.getByRole('button', { name: /re-index collection/i }));
 
     await waitFor(() => {
-      // The hook will show an error toast
+      // The hook will show an error toast with user-friendly message
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'error',
-        message: expect.stringContaining('404'),
+        message: expect.stringContaining('Not Found'),
       });
     }, { timeout: 3000 });
   });
 
   it('handles 409 Conflict error', async () => {
     const user = userEvent.setup();
-    
+
     // Mock 409 Conflict error
     mockReindexError(mockCollection.id, 409);
-    
+
     renderComponent();
 
     const confirmInput = screen.getByLabelText('Confirmation text for re-indexing');
@@ -240,10 +240,10 @@ describe('ReindexCollectionModal', () => {
     await user.click(screen.getByRole('button', { name: /re-index collection/i }));
 
     await waitFor(() => {
-      // The hook will show an error toast
+      // The hook will show an error toast with user-friendly message
       expect(mockAddToast).toHaveBeenCalledWith({
         type: 'error',
-        message: expect.stringContaining('409'),
+        message: expect.stringContaining('Conflict'),
       });
     }, { timeout: 3000 });
   });
@@ -332,8 +332,8 @@ describe('ReindexCollectionModal', () => {
     const user = userEvent.setup();
     renderComponent();
 
-    // Find the overlay by its class
-    const overlay = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+    // Find the overlay by its class (using backdrop-blur-sm as identifier)
+    const overlay = document.querySelector('.fixed.inset-0.backdrop-blur-sm');
     expect(overlay).toBeInTheDocument();
 
     await user.click(overlay!);
@@ -344,7 +344,8 @@ describe('ReindexCollectionModal', () => {
   it('closes modal when Escape key is pressed', () => {
     renderComponent();
 
-    const modalContent = document.querySelector('.relative.bg-white.rounded-lg');
+    // Modal uses bg-[var(--bg-primary)] rounded-2xl - find by test content
+    const modalContent = screen.getByText(`Re-index Collection: ${mockCollection.name}`).closest('div');
     expect(modalContent).toBeInTheDocument();
 
     fireEvent.keyDown(modalContent!, { key: 'Escape' });

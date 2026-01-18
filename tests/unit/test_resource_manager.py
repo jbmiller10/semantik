@@ -206,115 +206,6 @@ class TestResourceManager:
 
             assert result is False
 
-    # --- estimate_resources Tests ---
-
-    @pytest.mark.asyncio()
-    async def test_estimate_resources_for_file(self, resource_manager, tmp_path) -> None:
-        """Test estimate_resources for a single file."""
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("Test content" * 1000)
-
-        result = await resource_manager.estimate_resources(str(test_file), "test-model")
-
-        assert result.memory_mb > 0
-        assert result.storage_gb >= 0
-        assert result.cpu_cores >= 1.0
-
-    @pytest.mark.asyncio()
-    async def test_estimate_resources_for_directory(self, resource_manager, tmp_path) -> None:
-        """Test estimate_resources for a directory."""
-        # Create test files
-        for i in range(5):
-            (tmp_path / f"file{i}.txt").write_text("Content" * 1000)
-
-        result = await resource_manager.estimate_resources(str(tmp_path), "test-model")
-
-        assert result.memory_mb > 0
-        assert result.cpu_cores >= 1.0
-
-    @pytest.mark.asyncio()
-    async def test_estimate_resources_with_known_model(self, resource_manager, tmp_path) -> None:
-        """Test estimate_resources uses model-specific memory."""
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("Test content")
-
-        result = await resource_manager.estimate_resources(str(test_file), "BAAI/bge-base-en-v1.5")
-
-        # Should use 400MB for this model
-        assert result.memory_mb >= 400
-
-    @pytest.mark.asyncio()
-    async def test_estimate_resources_error_returns_defaults(self, resource_manager) -> None:
-        """Test estimate_resources returns defaults on error."""
-        # Force an error by passing None which will cause an exception
-        with patch("webui.services.resource_manager.Path") as mock_path:
-            mock_path.side_effect = Exception("Path error")
-
-            result = await resource_manager.estimate_resources("/nonexistent/path", "test-model")
-
-            assert result.memory_mb == 2000
-            assert result.storage_gb == 1.0
-            assert result.cpu_cores == 1.0
-
-    # --- reserve_for_reindex Tests ---
-
-    @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_success(self, resource_manager, mock_collection_repo, sample_collection) -> None:
-        """Test reserve_for_reindex successfully reserves resources."""
-        mock_collection_repo.get_by_uuid.return_value = sample_collection
-
-        with patch("webui.services.resource_manager.psutil") as mock_psutil:
-            mock_psutil.virtual_memory.return_value = MagicMock(available=10 * 1024 * 1024 * 1024)
-            mock_psutil.disk_usage.return_value = MagicMock(free=100 * 1024 * 1024 * 1024)
-
-            result = await resource_manager.reserve_for_reindex(sample_collection.id)
-
-            assert result is True
-            assert f"reindex_{sample_collection.id}" in resource_manager._reserved_resources
-
-    @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_collection_not_found(self, resource_manager, mock_collection_repo) -> None:
-        """Test reserve_for_reindex returns False for missing collection."""
-        mock_collection_repo.get_by_uuid.return_value = None
-
-        result = await resource_manager.reserve_for_reindex(str(uuid4()))
-
-        assert result is False
-
-    @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_insufficient_resources(
-        self, resource_manager, mock_collection_repo, sample_collection
-    ) -> None:
-        """Test reserve_for_reindex returns False when insufficient resources."""
-        sample_collection.total_size_bytes = 100 * 1024 * 1024 * 1024  # 100GB
-        mock_collection_repo.get_by_uuid.return_value = sample_collection
-
-        with patch("webui.services.resource_manager.psutil") as mock_psutil:
-            mock_psutil.virtual_memory.return_value = MagicMock(available=100 * 1024 * 1024)  # 100MB
-            mock_psutil.disk_usage.return_value = MagicMock(free=100 * 1024 * 1024)  # 100MB
-
-            result = await resource_manager.reserve_for_reindex(sample_collection.id)
-
-            assert result is False
-
-    # --- release_reindex_reservation Tests ---
-
-    @pytest.mark.asyncio()
-    async def test_release_reindex_reservation_success(self, resource_manager, sample_collection) -> None:
-        """Test release_reindex_reservation removes reservation."""
-        collection_id = sample_collection.id
-        resource_manager._reserved_resources[f"reindex_{collection_id}"] = ResourceEstimate()
-
-        await resource_manager.release_reindex_reservation(collection_id)
-
-        assert f"reindex_{collection_id}" not in resource_manager._reserved_resources
-
-    @pytest.mark.asyncio()
-    async def test_release_reindex_reservation_no_reservation(self, resource_manager) -> None:
-        """Test release_reindex_reservation handles missing reservation gracefully."""
-        # Should not raise error
-        await resource_manager.release_reindex_reservation(str(uuid4()))
-
     # --- get_resource_usage Tests ---
 
     @pytest.mark.asyncio()
@@ -477,13 +368,6 @@ class TestResourceManager:
             result = await resource_manager._check_system_resources(estimate)
 
             assert result is False
-
-    # --- _is_gpu_model Tests ---
-
-    def test_is_gpu_model_returns_true(self, resource_manager) -> None:
-        """Test _is_gpu_model returns True for any model."""
-        assert resource_manager._is_gpu_model("any-model") is True
-        assert resource_manager._is_gpu_model("BAAI/bge-base-en-v1.5") is True
 
     # --- _get_collection_value Tests ---
 

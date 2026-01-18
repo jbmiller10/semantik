@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import Any
 
 from .manifest import PluginManifest
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +22,14 @@ def manifest_from_embedding_plugin(
     definition: Any,
 ) -> PluginManifest:
     """Build a plugin manifest for an embedding provider."""
+    if isinstance(definition, Mapping):
+        from .dto_adapters import ValidationError, dict_to_embedding_provider_definition
+
+        try:
+            definition = dict_to_embedding_provider_definition(dict(definition))
+        except ValidationError as exc:  # pragma: no cover - defensive
+            raise ValueError(f"Invalid embedding provider definition dict: {exc}") from exc
+
     metadata = getattr(plugin_cls, "METADATA", {}) or {}
     display_name = _metadata_value(metadata, "display_name", definition.display_name or definition.api_id)
     description = _metadata_value(metadata, "description", definition.description or "")
@@ -195,3 +201,54 @@ def get_config_schema(plugin_cls: type) -> dict[str, Any] | None:
     if isinstance(schema, dict):
         return schema
     return None
+
+
+def manifest_from_sparse_indexer_plugin(plugin_cls: type, plugin_id: str) -> PluginManifest:
+    """Build a plugin manifest for a sparse indexer plugin.
+
+    Args:
+        plugin_cls: The sparse indexer plugin class.
+        plugin_id: The plugin ID.
+
+    Returns:
+        PluginManifest for the sparse indexer plugin.
+    """
+    metadata = getattr(plugin_cls, "METADATA", {}) or {}
+    display_name = _metadata_value(metadata, "display_name", plugin_id.replace("-", " ").title())
+    description = _metadata_value(metadata, "description", "")
+
+    # Extract sparse_type from class variable
+    sparse_type = getattr(plugin_cls, "SPARSE_TYPE", None)
+
+    # Get capabilities from the class method if available
+    capabilities_data: dict[str, Any] = {}
+    if hasattr(plugin_cls, "get_capabilities") and callable(plugin_cls.get_capabilities):
+        try:
+            caps = plugin_cls.get_capabilities()
+            # Convert dataclass to dict via asdict or direct attribute access
+            if hasattr(caps, "__dataclass_fields__"):
+                from dataclasses import asdict
+
+                capabilities_data = asdict(caps)
+            elif isinstance(caps, dict):
+                capabilities_data = dict(caps)
+        except Exception as exc:
+            logger.warning("Failed to get capabilities for sparse indexer plugin '%s': %s", plugin_id, exc)
+
+    # Ensure sparse_type is in capabilities
+    if sparse_type and "sparse_type" not in capabilities_data:
+        capabilities_data["sparse_type"] = sparse_type
+
+    return PluginManifest(
+        id=plugin_id,
+        type="sparse_indexer",
+        version=getattr(plugin_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=str(display_name),
+        description=str(description),
+        author=_metadata_value(metadata, "author"),
+        license=_metadata_value(metadata, "license"),
+        homepage=_metadata_value(metadata, "homepage"),
+        requires=list(_metadata_value(metadata, "requires", [])),
+        semantik_version=_metadata_value(metadata, "semantik_version"),
+        capabilities=capabilities_data,
+    )

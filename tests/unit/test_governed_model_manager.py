@@ -29,9 +29,7 @@ def memory_budget():
     return MemoryBudget(
         total_gpu_mb=8000,
         total_cpu_mb=16000,
-        gpu_reserve_percent=0.10,
         gpu_max_percent=0.90,
-        cpu_reserve_percent=0.20,
         cpu_max_percent=0.50,
     )
 

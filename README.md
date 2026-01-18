@@ -19,6 +19,7 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Connectors**: pluggable ingestion sources — built-ins so far are directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
 - **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
 - **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
+- **MCP Integration**: connect AI assistants (Claude Desktop, Cursor) to search your collections via the Model Context Protocol. See `docs/MCP.md`.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
 - **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
@@ -144,11 +145,12 @@ make dev
 - Test Postgres profile: `docker compose --profile testing up -d postgres_test` (port 55432).
 
 ## Docs
-There’s a lot of detail in `docs/`:
+There's a lot of detail in `docs/`:
 - `docs/DOCUMENTATION_INDEX.md` – map of all docs.
 - `docs/ARCH.md` – full system architecture.
 - `docs/SEARCH_SYSTEM.md`, `docs/RERANKING.md`, `docs/CHUNKING_FEATURE_OVERVIEW.md` – retrieval/chunking deep dives.
 - `docs/WEBSOCKET_API.md`, `docs/API_REFERENCE.md` – API contracts.
+- `docs/MCP.md` – MCP integration for AI assistants.
 
 ## Roadmap / Ideas
 - Integrated benchmarking tools

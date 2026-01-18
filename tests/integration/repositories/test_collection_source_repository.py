@@ -12,11 +12,7 @@ from uuid import uuid4
 
 import pytest
 
-from shared.database.exceptions import (
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import EntityAlreadyExistsError, EntityNotFoundError, ValidationError
 from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
 if TYPE_CHECKING:

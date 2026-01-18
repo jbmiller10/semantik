@@ -2,6 +2,7 @@
 
 import asyncio
 import functools
+import inspect
 import logging
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
@@ -41,6 +42,27 @@ def _is_retryable_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in RETRYABLE_ERROR_PATTERNS)
 
 
+def _calculate_next_delay(current: float, backoff: float, max_delay: float) -> float:
+    """Calculate next delay with exponential backoff, capped at max_delay."""
+    return min(current * backoff, max_delay)
+
+
+def _should_retry(error: Exception, attempt: int, max_retries: int) -> bool:
+    """Determine if operation should be retried based on error and attempt count."""
+    return _is_retryable_error(error) and attempt < max_retries
+
+
+def _log_retry(attempt: int, max_retries: int, error: Exception) -> None:
+    """Log a retry attempt with consistent formatting."""
+    logger.warning(
+        "Retryable database error (attempt %d/%d): %s",
+        attempt + 1,
+        max_retries + 1,
+        error,
+        exc_info=True,
+    )
+
+
 def with_db_retry(
     retries: int = 3,
     delay: float = 1.0,
@@ -67,20 +89,13 @@ def with_db_retry(
                 try:
                     return await func(*args, **kwargs)
                 except OperationalError as e:
-                    if not _is_retryable_error(e) or attempt == retries:
+                    if not _should_retry(e, attempt, retries):
                         raise
 
                     last_exception = e
-                    logger.warning(
-                        "Retryable database error (attempt %d/%d): %s",
-                        attempt + 1,
-                        retries + 1,
-                        e,
-                        exc_info=True,
-                    )
-
+                    _log_retry(attempt, retries, e)
                     await asyncio.sleep(current_delay)
-                    current_delay = min(current_delay * backoff, max_delay)
+                    current_delay = _calculate_next_delay(current_delay, backoff, max_delay)
 
             # This should never be reached, but just in case
             if last_exception:
@@ -89,6 +104,8 @@ def with_db_retry(
 
         @functools.wraps(func)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+            import time
+
             current_delay = delay
             last_exception = None
 
@@ -96,22 +113,13 @@ def with_db_retry(
                 try:
                     return func(*args, **kwargs)
                 except OperationalError as e:
-                    if not _is_retryable_error(e) or attempt == retries:
+                    if not _should_retry(e, attempt, retries):
                         raise
 
                     last_exception = e
-                    logger.warning(
-                        "Retryable database error (attempt %d/%d): %s",
-                        attempt + 1,
-                        retries + 1,
-                        e,
-                        exc_info=True,
-                    )
-
-                    import time
-
+                    _log_retry(attempt, retries, e)
                     time.sleep(current_delay)
-                    current_delay = min(current_delay * backoff, max_delay)
+                    current_delay = _calculate_next_delay(current_delay, backoff, max_delay)
 
             # This should never be reached, but just in case
             if last_exception:
@@ -119,7 +127,7 @@ def with_db_retry(
             raise RuntimeError("Unexpected retry loop exit")
 
         # Return appropriate wrapper based on function type
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 

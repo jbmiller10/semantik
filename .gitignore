@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.pyc
 
+reports/**
+
 # Log files
 *.log
 logs/
@@ -193,8 +195,9 @@ dev-debug.log
 
 # Task files
 tasks.json
-tasks/ 
+tasks/
 !packages/webui/tasks/
+!tests/webui/tasks/
 tickets/
 TICKET*
 ticket_*
@@ -266,3 +269,8 @@ nginx.conf.example
 # Code review chunks (generated files only - scripts and guide are tracked)
 review-chunk-*.txt
 .code/
+
+# Codebase review outputs
+reviews/
+
+research_papers/

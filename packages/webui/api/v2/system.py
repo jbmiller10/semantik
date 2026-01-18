@@ -1,19 +1,31 @@
 """
 System status and capabilities API endpoints.
 
-This module provides endpoints for checking system capabilities like GPU availability
-and supported features by querying the vecpipe service.
+This module provides endpoints for checking system capabilities like GPU availability,
+supported features, and service health information.
 """
 
+import asyncio
 import logging
+import sys
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends
 
+from shared.config import settings as shared_settings
+from webui.api.health import _check_database_health, _check_qdrant_health, _check_redis_health, _check_search_api_health
 from webui.auth import get_current_user
+from webui.config.rate_limits import RateLimitConfig
 
 logger = logging.getLogger(__name__)
+
+# Version from pyproject.toml via package metadata
+try:
+    APP_VERSION = version("semantik")
+except PackageNotFoundError:
+    APP_VERSION = "0.0.0-dev"
 
 router = APIRouter(prefix="/api/v2/system", tags=["system-v2"])
 
@@ -77,3 +89,58 @@ async def get_system_status(
             "cuda_device_count": 0,
             "cuda_device_name": None,
         }
+
+
+@router.get("/info")
+async def get_system_info() -> dict[str, Any]:
+    """
+    Get system information including version, environment, and limits.
+
+    This endpoint does not require authentication for transparency.
+    Returns static configuration information about the system.
+    """
+    return {
+        "version": APP_VERSION,
+        "environment": shared_settings.ENVIRONMENT,
+        "python_version": sys.version.split()[0],
+        "limits": {
+            "max_collections_per_user": shared_settings.MAX_COLLECTIONS_PER_USER,
+            "max_storage_gb_per_user": shared_settings.MAX_STORAGE_GB_PER_USER,
+        },
+        "rate_limits": {
+            "chunking_preview": RateLimitConfig.PREVIEW_RATE,
+            "plugin_install": RateLimitConfig.PLUGIN_INSTALL_RATE,
+            "llm_test": RateLimitConfig.LLM_TEST_RATE,
+        },
+    }
+
+
+@router.get("/health")
+async def get_system_health() -> dict[str, Any]:
+    """
+    Get health status for all backend services.
+
+    Always returns 200 with per-service status. This allows the frontend
+    to display partial results even when some services are unhealthy.
+
+    Checks: PostgreSQL, Redis, Qdrant, VecPipe
+    """
+    # Run all health checks concurrently
+    results = await asyncio.gather(
+        _check_database_health(),
+        _check_redis_health(),
+        _check_qdrant_health(),
+        _check_search_api_health(),
+        return_exceptions=True,
+    )
+
+    service_names = ["postgres", "redis", "qdrant", "vecpipe"]
+    services: dict[str, dict[str, Any]] = {}
+
+    for name, result in zip(service_names, results, strict=True):
+        if isinstance(result, BaseException):
+            services[name] = {"status": "unhealthy", "message": f"Health check failed: {result!s}"}
+        else:
+            services[name] = result
+
+    return services

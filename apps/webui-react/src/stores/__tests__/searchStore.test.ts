@@ -39,13 +39,13 @@ describe('searchStore', () => {
         selectedCollections: [],
         topK: 10,
         scoreThreshold: 0.0,
-        searchType: 'vector',
+        searchType: 'semantic',
         useReranker: false,
         hybridMode: 'weighted',
         keywordMode: 'any',
-        rerankModel: undefined,
-        rerankQuantization: undefined,
-        hybridAlpha: undefined,
+        hybridAlpha: 0.7,
+        searchMode: 'dense',
+        rrfK: 60,
       })
       result.current.setCollections([])
     })
@@ -141,16 +141,23 @@ describe('searchStore', () => {
   describe('search parameters', () => {
     it('has correct default search params', () => {
       const { result } = renderHook(() => useSearchStore())
-      
+
       expect(result.current.searchParams).toEqual({
         query: '',
         selectedCollections: [],
         topK: 10,
         scoreThreshold: 0.0,
-        searchType: 'vector',
+        searchType: 'semantic',
         useReranker: false,
         hybridMode: 'weighted',
         keywordMode: 'any',
+        // New sparse/hybrid search params
+        searchMode: 'dense',
+        rrfK: 60,
+        // HyDE query expansion
+        useHyde: false,
+        // Legacy params (deprecated)
+        hybridAlpha: 0.7,
       })
     })
 
@@ -168,7 +175,7 @@ describe('searchStore', () => {
       expect(result.current.searchParams.selectedCollections).toEqual(['my-collection'])
       // Other params should remain unchanged
       expect(result.current.searchParams.topK).toBe(10)
-      expect(result.current.searchParams.searchType).toBe('vector')
+      expect(result.current.searchParams.searchType).toBe('semantic')
     })
 
     it('updates hybrid search params', () => {
