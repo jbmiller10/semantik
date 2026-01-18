@@ -128,6 +128,7 @@ class OperationType(str, enum.Enum):
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
     RETRY_DOCUMENTS = "retry_documents"
+    BENCHMARK = "benchmark"
 
     @classmethod
     def _missing_(cls, value: Any) -> "OperationType | None":
@@ -153,6 +154,58 @@ class ProjectionRunStatus(str, enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class BenchmarkStatus(str, enum.Enum):
+    """Status of a benchmark."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "BenchmarkStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("BenchmarkStatus | None", result)
+        return None
+
+
+class BenchmarkRunStatus(str, enum.Enum):
+    """Status of an individual benchmark run."""
+
+    PENDING = "pending"
+    INDEXING = "indexing"
+    EVALUATING = "evaluating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "BenchmarkRunStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("BenchmarkRunStatus | None", result)
+        return None
+
+
+class MappingStatus(str, enum.Enum):
+    """Status of dataset-collection mapping resolution."""
+
+    PENDING = "pending"
+    RESOLVED = "resolved"
+    PARTIAL = "partial"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "MappingStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("MappingStatus | None", result)
+        return None
 
 
 class User(Base):
@@ -191,6 +244,8 @@ class User(Base):
         uselist=False,  # One-to-one
         cascade="all, delete-orphan",
     )
+    benchmark_datasets = relationship("BenchmarkDataset", back_populates="owner", cascade="all, delete-orphan")
+    benchmarks = relationship("Benchmark", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Collection(Base):
@@ -1295,3 +1350,312 @@ class SystemSettings(Base):
 
     # Relationships
     user = relationship("User", foreign_keys=[updated_by])
+
+
+# =============================================================================
+# Benchmark Models
+# =============================================================================
+
+
+class BenchmarkDataset(Base):
+    """Ground truth dataset for benchmark evaluation.
+
+    Stores the benchmark dataset definition including queries and
+    their relevance judgments. Datasets are reusable across multiple
+    benchmarks and can be mapped to different collections.
+    """
+
+    __tablename__ = "benchmark_datasets"
+
+    id = Column(String, primary_key=True)  # UUID
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    query_count = Column(Integer, nullable=False, default=0)
+    raw_file_path = Column(String(512), nullable=True)
+    schema_version = Column(String(32), nullable=False, default="1.0")
+    meta = Column("metadata", JSON, nullable=True)  # 'metadata' in DB, 'meta' in Python
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="benchmark_datasets")
+    queries = relationship("BenchmarkQuery", back_populates="dataset", cascade="all, delete-orphan")
+    mappings = relationship("BenchmarkDatasetMapping", back_populates="dataset", cascade="all, delete-orphan")
+
+
+class BenchmarkDatasetMapping(Base):
+    """Mapping between a benchmark dataset and a collection.
+
+    Links datasets to collections and tracks the resolution status
+    of document references. A dataset can be mapped to multiple
+    collections for evaluation.
+    """
+
+    __tablename__ = "benchmark_dataset_mappings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(String, ForeignKey("benchmark_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    mapping_status = Column(String(32), nullable=False, default="pending")
+    mapped_count = Column(Integer, nullable=False, default=0)
+    total_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    dataset = relationship("BenchmarkDataset", back_populates="mappings")
+    collection = relationship("Collection")
+    relevance_judgments = relationship("BenchmarkRelevance", back_populates="mapping", cascade="all, delete-orphan")
+    benchmarks = relationship("Benchmark", back_populates="mapping")
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "collection_id", name="uq_benchmark_dataset_mappings_dataset_collection"),
+        CheckConstraint(
+            "mapping_status IN ('pending', 'resolved', 'partial')",
+            name="ck_benchmark_dataset_mappings_status",
+        ),
+    )
+
+
+class BenchmarkQuery(Base):
+    """Individual query within a benchmark dataset.
+
+    Stores the query text and its identifier within the dataset.
+    Queries are associated with relevance judgments that define
+    the expected relevant documents.
+    """
+
+    __tablename__ = "benchmark_queries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(String, ForeignKey("benchmark_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    query_key = Column(String(255), nullable=False)
+    query_text = Column(Text, nullable=False)
+    query_metadata = Column(JSON, nullable=True)
+
+    # Relationships
+    dataset = relationship("BenchmarkDataset", back_populates="queries")
+    relevance_judgments = relationship("BenchmarkRelevance", back_populates="query", cascade="all, delete-orphan")
+    results = relationship("BenchmarkQueryResult", back_populates="query", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("dataset_id", "query_key", name="uq_benchmark_queries_dataset_key"),)
+
+
+class BenchmarkRelevance(Base):
+    """Query-document relevance judgment.
+
+    Stores the ground truth relevance between a query and a document.
+    Uses a graded relevance scale (0-3) for nuanced evaluation:
+    - 0: Not relevant
+    - 1: Marginally relevant
+    - 2: Relevant
+    - 3: Highly relevant
+
+    The doc_ref contains the original document reference from the dataset
+    (e.g., file path, URL). resolved_document_id links to the actual
+    document in the collection once mapping is resolved.
+    """
+
+    __tablename__ = "benchmark_relevance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    benchmark_query_id = Column(
+        Integer,
+        ForeignKey("benchmark_queries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mapping_id = Column(
+        Integer,
+        ForeignKey("benchmark_dataset_mappings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    doc_ref_hash = Column(String(64), nullable=False, index=True)
+    doc_ref = Column(JSON, nullable=False)
+    resolved_document_id = Column(
+        String,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    relevance_grade = Column(Integer, nullable=False)
+    relevance_metadata = Column(JSON, nullable=True)
+
+    # Relationships
+    query = relationship("BenchmarkQuery", back_populates="relevance_judgments")
+    mapping = relationship("BenchmarkDatasetMapping", back_populates="relevance_judgments")
+    document = relationship("Document")
+
+    __table_args__ = (
+        CheckConstraint(
+            "relevance_grade >= 0 AND relevance_grade <= 3",
+            name="ck_benchmark_relevance_grade",
+        ),
+    )
+
+
+class Benchmark(Base):
+    """Benchmark definition with configuration matrix.
+
+    Represents a benchmark evaluation run with a specific configuration
+    matrix. Each benchmark creates multiple runs, one for each
+    configuration combination in the matrix.
+
+    The config_matrix defines the parameter space to explore:
+    {
+        "embedding_model": ["model-a", "model-b"],
+        "chunking_strategy": ["recursive", "semantic"],
+        "top_k": [5, 10, 20]
+    }
+    """
+
+    __tablename__ = "benchmarks"
+
+    id = Column(String, primary_key=True)  # UUID
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mapping_id = Column(
+        Integer,
+        ForeignKey("benchmark_dataset_mappings.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    operation_uuid = Column(String, ForeignKey("operations.uuid", ondelete="SET NULL"), nullable=True)
+    evaluation_unit = Column(String(32), nullable=False, default="query")
+    config_matrix = Column(JSON, nullable=False)
+    config_matrix_hash = Column(String(64), nullable=False)
+    limits = Column(JSON, nullable=True)
+    collection_snapshot_hash = Column(String(64), nullable=True)
+    reproducibility_metadata = Column(JSON, nullable=True)
+    top_k = Column(Integer, nullable=False, default=10)
+    metrics_to_compute = Column(JSON, nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    total_runs = Column(Integer, nullable=False, default=0)
+    completed_runs = Column(Integer, nullable=False, default=0)
+    failed_runs = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    owner = relationship("User", back_populates="benchmarks")
+    mapping = relationship("BenchmarkDatasetMapping", back_populates="benchmarks")
+    operation = relationship("Operation")
+    runs = relationship("BenchmarkRun", back_populates="benchmark", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_benchmarks_owner_status", "owner_id", "status"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_benchmarks_status",
+        ),
+        CheckConstraint(
+            "top_k >= 1 AND top_k <= 100",
+            name="ck_benchmarks_top_k",
+        ),
+    )
+
+
+class BenchmarkRun(Base):
+    """Individual configuration run within a benchmark.
+
+    Each run evaluates a specific configuration from the config matrix.
+    Stores timing information and status for the indexing and
+    evaluation phases.
+    """
+
+    __tablename__ = "benchmark_runs"
+
+    id = Column(String, primary_key=True)  # UUID
+    benchmark_id = Column(String, ForeignKey("benchmarks.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_order = Column(Integer, nullable=False)
+    config_hash = Column(String(64), nullable=False)
+    config = Column(JSON, nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    status_message = Column(Text, nullable=True)
+    indexing_duration_ms = Column(Integer, nullable=True)
+    evaluation_duration_ms = Column(Integer, nullable=True)
+    total_duration_ms = Column(Integer, nullable=True)
+    dense_collection_name = Column(String(255), nullable=True)
+    sparse_collection_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    # Relationships
+    benchmark = relationship("Benchmark", back_populates="runs")
+    metrics = relationship("BenchmarkRunMetric", back_populates="run", cascade="all, delete-orphan")
+    query_results = relationship("BenchmarkQueryResult", back_populates="run", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_benchmark_runs_benchmark_status", "benchmark_id", "status"),
+        UniqueConstraint("benchmark_id", "run_order", name="uq_benchmark_runs_benchmark_order"),
+        CheckConstraint(
+            "status IN ('pending', 'indexing', 'evaluating', 'completed', 'failed')",
+            name="ck_benchmark_runs_status",
+        ),
+    )
+
+
+class BenchmarkRunMetric(Base):
+    """Aggregate metric value for a benchmark run.
+
+    Stores computed metrics like precision@k, recall@k, MRR, NDCG
+    at various k values for a specific run configuration.
+    """
+
+    __tablename__ = "benchmark_run_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey("benchmark_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric_name = Column(String(64), nullable=False)
+    k_value = Column(Integer, nullable=True)
+    metric_value = Column(Float, nullable=False)
+
+    # Relationships
+    run = relationship("BenchmarkRun", back_populates="metrics")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "metric_name", "k_value", name="uq_benchmark_run_metrics_run_metric_k"),
+    )
+
+
+class BenchmarkQueryResult(Base):
+    """Per-query detailed results for a benchmark run.
+
+    Stores the retrieved documents and per-query metrics for
+    detailed analysis and debugging. Includes timing information
+    for search and reranking phases.
+    """
+
+    __tablename__ = "benchmark_query_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey("benchmark_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    benchmark_query_id = Column(
+        Integer,
+        ForeignKey("benchmark_queries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    retrieved_doc_ids = Column(JSON, nullable=False)
+    retrieved_debug = Column(JSON, nullable=True)
+    precision_at_k = Column(Float, nullable=True)
+    recall_at_k = Column(Float, nullable=True)
+    reciprocal_rank = Column(Float, nullable=True)
+    ndcg_at_k = Column(Float, nullable=True)
+    search_time_ms = Column(Integer, nullable=True)
+    rerank_time_ms = Column(Integer, nullable=True)
+
+    # Relationships
+    run = relationship("BenchmarkRun", back_populates="query_results")
+    query = relationship("BenchmarkQuery", back_populates="results")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "benchmark_query_id", name="uq_benchmark_query_results_run_query"),
+    )
