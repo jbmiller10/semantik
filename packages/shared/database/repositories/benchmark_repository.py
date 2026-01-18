@@ -10,12 +10,7 @@ from uuid import uuid4
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import selectinload
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    DatabaseOperationError,
-    EntityNotFoundError,
-    ValidationError,
-)
+from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import (
     Benchmark,
     BenchmarkDatasetMapping,
@@ -98,9 +93,7 @@ class BenchmarkRepository:
 
         # Verify mapping exists
         mapping_exists = await self.session.scalar(
-            select(func.count())
-            .select_from(BenchmarkDatasetMapping)
-            .where(BenchmarkDatasetMapping.id == mapping_id)
+            select(func.count()).select_from(BenchmarkDatasetMapping).where(BenchmarkDatasetMapping.id == mapping_id)
         )
         if not mapping_exists:
             raise EntityNotFoundError("benchmark_dataset_mapping", str(mapping_id))
@@ -609,9 +602,7 @@ class BenchmarkRepository:
 
         # Verify query exists
         query_exists = await self.session.scalar(
-            select(func.count())
-            .select_from(BenchmarkQuery)
-            .where(BenchmarkQuery.id == query_id)
+            select(func.count()).select_from(BenchmarkQuery).where(BenchmarkQuery.id == query_id)
         )
         if not query_exists:
             raise EntityNotFoundError("benchmark_query", str(query_id))
@@ -663,9 +654,7 @@ class BenchmarkRepository:
         )
         results = list((await self.session.execute(stmt)).scalars().all())
 
-        count_stmt = select(func.count(BenchmarkQueryResult.id)).where(
-            BenchmarkQueryResult.run_id == run_id
-        )
+        count_stmt = select(func.count(BenchmarkQueryResult.id)).where(BenchmarkQueryResult.run_id == run_id)
         total = await self.session.scalar(count_stmt) or 0
 
         return results, total

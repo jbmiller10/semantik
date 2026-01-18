@@ -77,9 +77,7 @@ class BenchmarkDatasetRepository:
             raise ValidationError("Dataset name is required", "name")
 
         # Verify owner exists
-        user_exists = await self.session.scalar(
-            select(func.count()).select_from(User).where(User.id == owner_id)
-        )
+        user_exists = await self.session.scalar(select(func.count()).select_from(User).where(User.id == owner_id))
         if not user_exists:
             raise EntityNotFoundError("user", str(owner_id))
 
@@ -181,9 +179,7 @@ class BenchmarkDatasetRepository:
             datasets = list((await self.session.execute(stmt)).scalars().all())
 
             # Get total count
-            count_stmt = select(func.count(BenchmarkDataset.id)).where(
-                BenchmarkDataset.owner_id == user_id
-            )
+            count_stmt = select(func.count(BenchmarkDataset.id)).where(BenchmarkDataset.owner_id == user_id)
             total = await self.session.scalar(count_stmt) or 0
 
             return datasets, total
@@ -475,9 +471,7 @@ class BenchmarkDatasetRepository:
             List of BenchmarkQuery instances
         """
         stmt: Select[tuple[BenchmarkQuery]] = (
-            select(BenchmarkQuery)
-            .where(BenchmarkQuery.dataset_id == dataset_id)
-            .order_by(BenchmarkQuery.id)
+            select(BenchmarkQuery).where(BenchmarkQuery.dataset_id == dataset_id).order_by(BenchmarkQuery.id)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -523,9 +517,7 @@ class BenchmarkDatasetRepository:
             import hashlib
             import json
 
-            doc_ref_hash = hashlib.sha256(
-                json.dumps(doc_ref, sort_keys=True).encode()
-            ).hexdigest()
+            doc_ref_hash = hashlib.sha256(json.dumps(doc_ref, sort_keys=True).encode()).hexdigest()
 
         relevance = BenchmarkRelevance(
             benchmark_query_id=query_id,

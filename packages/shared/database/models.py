@@ -1656,6 +1656,4 @@ class BenchmarkQueryResult(Base):
     run = relationship("BenchmarkRun", back_populates="query_results")
     query = relationship("BenchmarkQuery", back_populates="results")
 
-    __table_args__ = (
-        UniqueConstraint("run_id", "benchmark_query_id", name="uq_benchmark_query_results_run_query"),
-    )
+    __table_args__ = (UniqueConstraint("run_id", "benchmark_query_id", name="uq_benchmark_query_results_run_query"),)
