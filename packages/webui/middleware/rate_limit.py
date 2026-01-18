@@ -50,6 +50,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limiter = getattr(request.app.state, "limiter", None)
         inject_headers = False
 
+        if limiter is None:
+            # Some unit tests mount this middleware without configuring a limiter.
+            # In that case, we still want JWT-based user extraction to work so
+            # downstream code can rely on `request.state.user` when present.
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+                if _looks_like_jwt(token):
+                    try:
+                        user = await self.get_user_from_token(request, token)
+                        if user:
+                            request.state.user = user
+                    except Exception as e:
+                        logger.debug(f"Could not extract user from token for rate limiting: {e}")
+
+            return await call_next(request)
+
         if limiter:
             ensure_limiter_runtime_state(limiter)
             if not limiter.enabled:
