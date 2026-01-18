@@ -49,6 +49,8 @@ from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
     api_keys as v2_api_keys,
+    benchmark_datasets as v2_benchmark_datasets,
+    benchmarks as v2_benchmarks,
     chunking as v2_chunking,
     collections as v2_collections,
     connectors as v2_connectors,
@@ -360,6 +362,8 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_system_settings.router)
     app.include_router(v2_llm_settings.router)
     app.include_router(v2_user_preferences.router)
+    app.include_router(v2_benchmark_datasets.router)
+    app.include_router(v2_benchmarks.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution
