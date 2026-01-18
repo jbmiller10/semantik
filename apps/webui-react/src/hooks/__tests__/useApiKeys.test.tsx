@@ -213,16 +213,23 @@ describe('useApiKeys hooks', () => {
         wrapper: createWrapper(queryClient),
       });
 
-      await expect(
-        act(async () => {
+      await act(async () => {
+        try {
           await result.current.mutateAsync({
             name: 'duplicate-name',
           });
-        })
-      ).rejects.toThrow();
+        } catch {
+          // Expected to throw
+        }
+      });
 
-      // 409 is handled by the form, no toast shown
-      expect(mockAddToast).not.toHaveBeenCalled();
+      // 409 shows toast (form may also show field-level error for better UX)
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'API key with this name already exists',
+        });
+      });
     });
 
     it('should handle 400 limit reached error', async () => {

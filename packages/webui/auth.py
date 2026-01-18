@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, EmailStr, field_validator
@@ -177,7 +177,7 @@ def _api_key_result_to_user_dict(api_key_data: dict[str, Any]) -> dict[str, Any]
     Returns:
         User dict compatible with get_current_user() return format
     """
-    user_info = api_key_data.get("user", {})
+    user_info = api_key_data.get("user") or {}
     now = datetime.now(UTC).isoformat()
 
     return {
@@ -196,28 +196,33 @@ def _api_key_result_to_user_dict(api_key_data: dict[str, Any]) -> dict[str, Any]
     }
 
 
-async def _verify_api_key_auth(token: str) -> dict[str, Any] | None:
-    """Verify an API key and return user dict if valid.
+async def _verify_api_key(token: str, *, update_last_used: bool = True) -> dict[str, Any] | None:
+    """Verify an API key and return API key data if valid.
 
     Args:
-        token: API key string (expected format: smtk_<prefix>_<secret>)
+        token: API key string (supports legacy formats; new keys are `smtk_<prefix>_<secret>`)
+        update_last_used: Whether to update last_used_at when verification succeeds.
 
     Returns:
-        User dict if valid, None otherwise
+        API key data dict if valid, None otherwise
     """
-    # Quick format check - API keys must start with smtk_
-    if not token.startswith("smtk_"):
+    token = token.strip()
+    if not token:
+        return None
+    # Avoid DB lookups for obviously invalid/short tokens. All supported API key formats
+    # (legacy token_urlsafe secrets and new `smtk_...` keys) are comfortably above this.
+    if len(token) < 20:
         return None
 
     try:
         async for session in get_db_session():
             api_key_repo = PostgreSQLApiKeyRepository(session)
-            api_key_data = await api_key_repo.verify_api_key(token)
+            api_key_data = await api_key_repo.verify_api_key(token, update_last_used=update_last_used)
 
             if api_key_data is None:
                 return None
 
-            return _api_key_result_to_user_dict(api_key_data)
+            return cast(dict[str, Any], api_key_data)
     except Exception as e:
         logger.warning(f"API key verification failed: {e}")
         return None
@@ -225,8 +230,19 @@ async def _verify_api_key_auth(token: str) -> dict[str, Any] | None:
     return None
 
 
+async def _verify_api_key_auth(token: str) -> dict[str, Any] | None:
+    """Verify an API key and return user dict if valid."""
+    api_key_data = await _verify_api_key(token, update_last_used=True)
+    if api_key_data is None:
+        return None
+    return _api_key_result_to_user_dict(api_key_data)
+
+
 # FastAPI dependency
-async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict[str, Any]:
     """Get current authenticated user"""
     if settings.DISABLE_AUTH and (settings.ENVIRONMENT or "").lower() == "production":
         raise HTTPException(
@@ -289,16 +305,22 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database connection failed")
 
     # API key authentication path
-    user = await _verify_api_key_auth(token)
+    api_key_data = getattr(request.state, "api_key_auth", None)
+    api_key_checked = bool(getattr(request.state, "api_key_auth_checked", False))
 
-    if user is None:
+    if not api_key_checked:
+        api_key_data = await _verify_api_key(token, update_last_used=True)
+        request.state.api_key_auth = api_key_data
+        request.state.api_key_auth_checked = True
+
+    if api_key_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return user
+    return _api_key_result_to_user_dict(api_key_data)
 
 
 # Removed unused function: get_current_admin_user

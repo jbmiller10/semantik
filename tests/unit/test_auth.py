@@ -12,6 +12,7 @@ import jwt
 import pytest
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.requests import Request
 
 from webui.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -25,6 +26,17 @@ from webui.auth import (
     verify_password,
     verify_token,
 )
+
+
+def _make_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+        }
+    )
 
 
 class TestUserModels:
@@ -336,7 +348,7 @@ class TestGetCurrentUser:
         """Test get_current_user when auth is disabled"""
         mock_settings.DISABLE_AUTH = True
 
-        result = await get_current_user(None)
+        result = await get_current_user(_make_request(), None)
 
         assert result["username"] == "dev_user"
         assert result["email"] == "dev@example.com"
@@ -349,7 +361,7 @@ class TestGetCurrentUser:
         mock_settings.ENVIRONMENT = "production"
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(None)
+            await get_current_user(_make_request(), None)
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "DISABLE_AUTH cannot be enabled in production" in str(exc_info.value.detail)
@@ -361,7 +373,7 @@ class TestGetCurrentUser:
         mock_settings.DISABLE_AUTH = False
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(None)
+            await get_current_user(_make_request(), None)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "Not authenticated"
@@ -378,7 +390,7 @@ class TestGetCurrentUser:
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "Invalid authentication credentials"
@@ -407,7 +419,7 @@ class TestGetCurrentUser:
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "User not found"
@@ -440,7 +452,7 @@ class TestGetCurrentUser:
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
         assert exc_info.value.detail == "Inactive user"
@@ -473,7 +485,7 @@ class TestGetCurrentUser:
         # Use a JWT-like token (has 2 dots) so it's routed to JWT path
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
-        result = await get_current_user(credentials)
+        result = await get_current_user(_make_request(), credentials)
 
         assert result["username"] == "test_user"
         assert result["email"] == "test@example.com"
@@ -623,7 +635,7 @@ class TestEdgeCases:
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -649,7 +661,7 @@ class TestEdgeCases:
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(credentials)
+            await get_current_user(_make_request(), credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc_info.value.detail == "Invalid API key"
