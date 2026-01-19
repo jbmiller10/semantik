@@ -79,75 +79,46 @@ export function ConfigMatrixBuilder({
     return modes * rerankerOptions * topKCount + rrfVariations;
   }, [value]);
 
-  const toggleSearchMode = (mode: SearchMode) => {
-    const current = new Set(value.search_modes);
-    if (current.has(mode)) {
-      // Prevent removing the last item
-      if (current.size > 1) {
-        current.delete(mode);
+  // Helper to toggle an item in a set while preventing removal of the last item
+  const toggleInSet = <T,>(set: Set<T>, item: T): Set<T> => {
+    const updated = new Set(set);
+    if (updated.has(item)) {
+      if (updated.size > 1) {
+        updated.delete(item);
       }
     } else {
-      current.add(mode);
+      updated.add(item);
     }
-    onChange({
-      ...value,
-      search_modes: Array.from(current) as SearchMode[],
-    });
+    return updated;
+  };
+
+  const toggleSearchMode = (mode: SearchMode) => {
+    const updated = toggleInSet(new Set(value.search_modes), mode);
+    onChange({ ...value, search_modes: Array.from(updated) as SearchMode[] });
   };
 
   const toggleReranker = (useReranker: boolean) => {
-    const current = new Set(value.use_reranker);
-    if (current.has(useReranker)) {
-      // Prevent removing the last item
-      if (current.size > 1) {
-        current.delete(useReranker);
-      }
-    } else {
-      current.add(useReranker);
-    }
-    onChange({
-      ...value,
-      use_reranker: Array.from(current),
-    });
+    const updated = toggleInSet(new Set(value.use_reranker), useReranker);
+    onChange({ ...value, use_reranker: Array.from(updated) });
   };
 
   const toggleTopK = (k: number) => {
-    const current = new Set(value.top_k_values);
-    if (current.has(k)) {
-      // Prevent removing the last item
-      if (current.size > 1) {
-        current.delete(k);
-      }
-    } else {
-      current.add(k);
-    }
-    onChange({
-      ...value,
-      top_k_values: Array.from(current).sort((a, b) => a - b),
-    });
+    const updated = toggleInSet(new Set(value.top_k_values), k);
+    onChange({ ...value, top_k_values: Array.from(updated).sort((a, b) => a - b) });
   };
 
   const toggleRrfK = (k: number) => {
-    const current = new Set(value.rrf_k_values);
-    if (current.has(k)) {
-      // Prevent removing the last item
-      if (current.size > 1) {
-        current.delete(k);
-      }
-    } else {
-      current.add(k);
-    }
-    onChange({
-      ...value,
-      rrf_k_values: Array.from(current).sort((a, b) => a - b),
-    });
+    const updated = toggleInSet(new Set(value.rrf_k_values), k);
+    onChange({ ...value, rrf_k_values: Array.from(updated).sort((a, b) => a - b) });
   };
 
   const applyPreset = (preset: Preset) => {
     // Adjust preset based on available features
     const config = { ...preset.config };
     if (!hasSparseIndex) {
-      config.search_modes = config.search_modes.filter((m) => m === 'dense');
+      const filtered = config.search_modes.filter((m) => m === 'dense');
+      // Ensure at least 'dense' remains if preset had only sparse/hybrid modes
+      config.search_modes = filtered.length > 0 ? filtered : ['dense'];
     }
     if (!hasReranker) {
       config.use_reranker = [false];

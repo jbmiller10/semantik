@@ -112,13 +112,9 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
 
     if (configMatrix.search_modes.length === 0) {
       newErrors.config = 'Select at least one search mode';
-    }
-
-    if (configMatrix.use_reranker.length === 0) {
+    } else if (configMatrix.use_reranker.length === 0) {
       newErrors.config = 'Select at least one reranker option';
-    }
-
-    if (configMatrix.top_k_values.length === 0) {
+    } else if (configMatrix.top_k_values.length === 0) {
       newErrors.config = 'Select at least one Top-K value';
     }
 
