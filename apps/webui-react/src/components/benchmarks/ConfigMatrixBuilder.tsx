@@ -17,6 +17,8 @@ interface ConfigMatrixBuilderProps {
 const TOP_K_OPTIONS = [5, 10, 20, 50, 100];
 const RRF_K_OPTIONS = [20, 40, 60, 80, 100];
 
+type CountWarningLevel = 'ok' | 'warning' | 'error';
+
 interface Preset {
   name: string;
   description: string;
@@ -126,8 +128,11 @@ export function ConfigMatrixBuilder({
     onChange(config);
   };
 
-  const countWarning =
-    configCount > 50 ? 'error' : configCount > 25 ? 'warning' : 'ok';
+  const countWarning: CountWarningLevel = (() => {
+    if (configCount > 50) return 'error';
+    if (configCount > 25) return 'warning';
+    return 'ok';
+  })();
 
   return (
     <div className="space-y-5">
@@ -348,52 +353,55 @@ export function ConfigMatrixBuilder({
       </div>
 
       {/* Configuration Count */}
-      <div
-        className={`
-          flex items-start gap-3 p-3 rounded-lg border
-          ${countWarning === 'error'
-            ? 'bg-red-500/10 border-red-500/30'
-            : countWarning === 'warning'
-            ? 'bg-amber-500/10 border-amber-500/30'
-            : 'bg-[var(--bg-tertiary)] border-[var(--border)]'
-          }
-        `}
-      >
-        {countWarning !== 'ok' && (
-          <AlertTriangle
-            className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
-              countWarning === 'error' ? 'text-red-400' : 'text-amber-400'
-            }`}
-          />
-        )}
-        <div className="text-sm">
-          <p
-            className={`font-medium ${
-              countWarning === 'error'
-                ? 'text-red-300'
-                : countWarning === 'warning'
-                ? 'text-amber-300'
-                : 'text-[var(--text-primary)]'
-            }`}
-          >
-            {configCount} configuration{configCount !== 1 ? 's' : ''} selected
-          </p>
-          <p
-            className={`mt-0.5 ${
-              countWarning === 'error'
-                ? 'text-red-400/80'
-                : countWarning === 'warning'
-                ? 'text-amber-400/80'
-                : 'text-[var(--text-muted)]'
-            }`}
-          >
-            {countWarning === 'error'
-              ? 'Too many configurations. Please reduce selections to 50 or fewer.'
-              : countWarning === 'warning'
-              ? 'Large number of configurations may take a while to run.'
-              : 'Each configuration will be evaluated against all queries.'}
-          </p>
-        </div>
+      <ConfigCountBanner configCount={configCount} countWarning={countWarning} />
+    </div>
+  );
+}
+
+interface ConfigCountBannerProps {
+  configCount: number;
+  countWarning: CountWarningLevel;
+}
+
+function ConfigCountBanner({ configCount, countWarning }: ConfigCountBannerProps) {
+  const containerStyles: Record<CountWarningLevel, string> = {
+    error: 'bg-red-500/10 border-red-500/30',
+    warning: 'bg-amber-500/10 border-amber-500/30',
+    ok: 'bg-[var(--bg-tertiary)] border-[var(--border)]',
+  };
+
+  const titleStyles: Record<CountWarningLevel, string> = {
+    error: 'text-red-300',
+    warning: 'text-amber-300',
+    ok: 'text-[var(--text-primary)]',
+  };
+
+  const descStyles: Record<CountWarningLevel, string> = {
+    error: 'text-red-400/80',
+    warning: 'text-amber-400/80',
+    ok: 'text-[var(--text-muted)]',
+  };
+
+  const descMessages: Record<CountWarningLevel, string> = {
+    error: 'Too many configurations. Please reduce selections to 50 or fewer.',
+    warning: 'Large number of configurations may take a while to run.',
+    ok: 'Each configuration will be evaluated against all queries.',
+  };
+
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-lg border ${containerStyles[countWarning]}`}>
+      {countWarning !== 'ok' && (
+        <AlertTriangle
+          className={`h-5 w-5 flex-shrink-0 mt-0.5 ${countWarning === 'error' ? 'text-red-400' : 'text-amber-400'}`}
+        />
+      )}
+      <div className="text-sm">
+        <p className={`font-medium ${titleStyles[countWarning]}`}>
+          {configCount} configuration{configCount !== 1 ? 's' : ''} selected
+        </p>
+        <p className={`mt-0.5 ${descStyles[countWarning]}`}>
+          {descMessages[countWarning]}
+        </p>
       </div>
     </div>
   );

@@ -208,15 +208,13 @@ function MetricValue({ value }: { value: number | null }) {
     return <span className="text-[var(--text-muted)]">-</span>;
   }
 
-  // Color code based on value
-  let colorClass = 'text-[var(--text-secondary)]';
-  if (value >= 0.8) {
-    colorClass = 'text-green-400';
-  } else if (value >= 0.5) {
-    colorClass = 'text-amber-400';
-  } else if (value > 0) {
-    colorClass = 'text-red-400';
-  }
-
+  const colorClass = getMetricColorClass(value);
   return <span className={`text-sm ${colorClass}`}>{value.toFixed(3)}</span>;
+}
+
+function getMetricColorClass(value: number): string {
+  if (value >= 0.8) return 'text-green-400';
+  if (value >= 0.5) return 'text-amber-400';
+  if (value > 0) return 'text-red-400';
+  return 'text-[var(--text-secondary)]';
 }

@@ -1,13 +1,14 @@
+import hashlib
 import json
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 
 from shared.database.exceptions import ValidationError
-from shared.database.models import Document, DocumentStatus, Operation, OperationType
+from shared.database.models import BenchmarkRelevance, Document, DocumentStatus, Operation, OperationType
 from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
@@ -376,3 +377,212 @@ async def test_resolve_mapping_enqueues_when_wall_clock_exceeded(
     assert isinstance(result["operation_uuid"], str)
     assert result["mapping_status"] == "pending"
     assert sent["name"] == "webui.tasks.benchmark_mapping.resolve_mapping"
+
+
+@pytest.mark.asyncio()
+async def test_upload_dataset_supports_legacy_fields_and_scalar_judgments(db_session, test_user_db, monkeypatch) -> None:
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_UPLOAD_BYTES", 10_000)
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_QUERIES", 10)
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY", 10)
+
+    service = BenchmarkDatasetService(
+        db_session=db_session,
+        benchmark_dataset_repo=BenchmarkDatasetRepository(db_session),
+        collection_repo=CollectionRepository(db_session),
+        document_repo=DocumentRepository(db_session),
+        operation_repo=OperationRepository(db_session),
+    )
+
+    payload = {
+        "schema_version": "1.0",
+        "queries": [
+            {
+                "query_id": "q-1",
+                "query": "hello",
+                "relevant_doc_refs": [
+                    "file:///tmp/a.txt",
+                    {"doc_ref": "file:///tmp/b.txt", "relevance_grade": "3"},
+                ],
+            }
+        ],
+    }
+
+    uploaded = await service.upload_dataset(
+        user_id=test_user_db.id,
+        name="legacy",
+        description=None,
+        file_content=json.dumps(payload).encode("utf-8"),
+    )
+    assert uploaded["query_count"] == 1
+
+    queries = await BenchmarkDatasetRepository(db_session).get_queries_for_dataset(str(uploaded["id"]))
+    assert len(queries) == 1
+    qmeta = queries[0].query_metadata or {}
+    pending = qmeta.get("_pending_relevance", [])
+    assert len(pending) == 2
+    assert pending[0]["doc_ref"] == {"uri": "file:///tmp/a.txt"}
+    assert pending[1]["doc_ref"] == {"uri": "file:///tmp/b.txt"}
+    assert pending[1]["relevance_grade"] == 3
+
+
+@pytest.mark.asyncio()
+async def test_resolve_mapping_with_progress_streams_updates_and_marks_partial(
+    db_session, test_user_db, collection_factory
+) -> None:
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Documents for resolution (unique uri/content_hash per collection)
+    doc_a = Document(
+        id=str(uuid4()),
+        collection_id=collection.id,
+        file_path="/tmp/a.txt",
+        file_name="a.txt",
+        file_size=1,
+        mime_type="text/plain",
+        content_hash=uuid4().hex,
+        status=DocumentStatus.COMPLETED,
+        chunk_count=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        uri="file:///tmp/a.txt",
+    )
+    doc_unique = Document(
+        id=str(uuid4()),
+        collection_id=collection.id,
+        file_path="/tmp/unique.txt",
+        file_name="unique.txt",
+        file_size=1,
+        mime_type="text/plain",
+        content_hash=uuid4().hex,
+        status=DocumentStatus.COMPLETED,
+        chunk_count=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        uri="file:///tmp/unique.txt",
+    )
+    dup_name = "dup.txt"
+    doc_dup_1 = Document(
+        id=str(uuid4()),
+        collection_id=collection.id,
+        file_path="/tmp/dup1.txt",
+        file_name=dup_name,
+        file_size=1,
+        mime_type="text/plain",
+        content_hash=uuid4().hex,
+        status=DocumentStatus.COMPLETED,
+        chunk_count=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        uri="file:///tmp/dup1.txt",
+    )
+    doc_dup_2 = Document(
+        id=str(uuid4()),
+        collection_id=collection.id,
+        file_path="/tmp/dup2.txt",
+        file_name=dup_name,
+        file_size=1,
+        mime_type="text/plain",
+        content_hash=uuid4().hex,
+        status=DocumentStatus.COMPLETED,
+        chunk_count=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        uri="file:///tmp/dup2.txt",
+    )
+    db_session.add_all([doc_a, doc_unique, doc_dup_1, doc_dup_2])
+    await db_session.commit()
+
+    dataset_repo = BenchmarkDatasetRepository(db_session)
+    dataset = await dataset_repo.create(
+        name="progress-ds",
+        owner_id=test_user_db.id,
+        query_count=0,
+        description=None,
+        schema_version="1.0",
+        metadata={},
+    )
+    mapping = await dataset_repo.create_mapping(dataset_id=str(dataset.id), collection_id=collection.id)
+    query = await dataset_repo.add_query(dataset_id=str(dataset.id), query_key="q1", query_text="hello", metadata={})
+
+    # Resolved via document_id
+    await dataset_repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"document_id": doc_a.id},
+        relevance_grade=2,
+    )
+    # Resolved via uri
+    await dataset_repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"uri": doc_a.uri},
+        relevance_grade=2,
+    )
+    # Resolved via file_name unique
+    await dataset_repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"file_name": doc_unique.file_name},
+        relevance_grade=2,
+    )
+    # Ambiguous via duplicated file_name
+    await dataset_repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"file_name": dup_name},
+        relevance_grade=2,
+    )
+    # Unresolved: invalid doc_ref JSON type
+    raw_doc_ref: object = "not-a-dict"
+    doc_ref_hash = hashlib.sha256(json.dumps(raw_doc_ref, sort_keys=True).encode()).hexdigest()
+    db_session.add(
+        BenchmarkRelevance(
+            benchmark_query_id=int(query.id),
+            mapping_id=int(mapping.id),
+            doc_ref_hash=doc_ref_hash,
+            doc_ref=raw_doc_ref,
+            relevance_grade=2,
+            relevance_metadata=None,
+        )
+    )
+    await db_session.commit()
+
+    class FakeProgress:
+        def __init__(self):
+            self.collection_id: str | None = None
+            self.updates: list[tuple[str, dict]] = []
+
+        def set_collection_id(self, collection_id: str | None) -> None:
+            self.collection_id = collection_id
+
+        async def send_update(self, update_type: str, data: dict) -> None:
+            self.updates.append((update_type, data))
+
+    progress = FakeProgress()
+
+    service = BenchmarkDatasetService(
+        db_session=db_session,
+        benchmark_dataset_repo=dataset_repo,
+        collection_repo=CollectionRepository(db_session),
+        document_repo=DocumentRepository(db_session),
+        operation_repo=OperationRepository(db_session),
+    )
+
+    result = await service.resolve_mapping_with_progress(
+        mapping_id=int(mapping.id),
+        user_id=test_user_db.id,
+        operation_uuid="op-1",
+        progress_reporter=cast(Any, progress),
+    )
+
+    assert result["mapping_id"] == int(mapping.id)
+    assert result["operation_uuid"] == "op-1"
+    assert result["total_count"] == 5
+    assert result["mapped_count"] == 3
+    assert result["mapping_status"] == "partial"
+
+    stages = [data["stage"] for (_t, data) in progress.updates]
+    assert stages[0] == "starting"
+    assert "loading_documents" in stages
+    assert "resolving" in stages
+    assert stages[-1] == "completed"

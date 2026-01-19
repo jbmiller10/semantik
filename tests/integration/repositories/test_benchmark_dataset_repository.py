@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, ValidationError
+from shared.database.models import MappingStatus
 from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
 
 
@@ -66,3 +68,116 @@ async def test_add_relevance_computes_hash_and_list_unresolved_is_stable(
 
     after_id = unresolved_ids[-1]
     assert await repo.list_unresolved_relevance_for_mapping(int(mapping.id), after_id=after_id, limit=100) == []
+
+
+@pytest.mark.asyncio()
+async def test_dataset_update_merges_metadata_and_trims_name(db_session, test_user_db) -> None:
+    repo = BenchmarkDatasetRepository(db_session)
+    dataset = await repo.create(
+        name=" ds ",
+        owner_id=test_user_db.id,
+        query_count=1,
+        description=None,
+        schema_version="1.0",
+        metadata={"a": 1},
+    )
+    await db_session.commit()
+
+    updated = await repo.update(str(dataset.id), name="  ds2  ", metadata={"b": 2})
+    await db_session.commit()
+    assert updated.name == "ds2"
+    assert updated.meta == {"a": 1, "b": 2}
+
+    with pytest.raises(ValidationError):
+        await repo.update(str(dataset.id), name="   ")
+
+
+@pytest.mark.asyncio()
+async def test_get_by_uuid_for_user_enforces_ownership(db_session, test_user_db, other_user_db) -> None:
+    repo = BenchmarkDatasetRepository(db_session)
+    dataset = await repo.create(
+        name="ds-ownership",
+        owner_id=test_user_db.id,
+        query_count=0,
+        description=None,
+        schema_version="1.0",
+        metadata={},
+    )
+    await db_session.commit()
+
+    with pytest.raises(AccessDeniedError):
+        await repo.get_by_uuid_for_user(str(dataset.id), other_user_db.id)
+
+
+@pytest.mark.asyncio()
+async def test_create_mapping_rejects_duplicates_and_update_sets_resolved_at(
+    db_session, test_user_db, collection_factory
+) -> None:
+    repo = BenchmarkDatasetRepository(db_session)
+    dataset = await repo.create(
+        name="ds-map",
+        owner_id=test_user_db.id,
+        query_count=0,
+        description=None,
+        schema_version="1.0",
+        metadata={},
+    )
+    collection = await collection_factory(owner_id=test_user_db.id)
+    mapping = await repo.create_mapping(dataset_id=str(dataset.id), collection_id=collection.id)
+    await db_session.commit()
+
+    with pytest.raises(EntityAlreadyExistsError):
+        await repo.create_mapping(dataset_id=str(dataset.id), collection_id=collection.id)
+
+    updated = await repo.update_mapping_status(int(mapping.id), MappingStatus.RESOLVED, mapped_count=1, total_count=1)
+    await db_session.commit()
+    assert updated.mapping_status == MappingStatus.RESOLVED.value
+    assert updated.resolved_at is not None
+
+
+@pytest.mark.asyncio()
+async def test_relevance_count_helpers(db_session, test_user_db, collection_factory, document_factory) -> None:
+    repo = BenchmarkDatasetRepository(db_session)
+    dataset = await repo.create(
+        name="ds-counts",
+        owner_id=test_user_db.id,
+        query_count=0,
+        description=None,
+        schema_version="1.0",
+        metadata={},
+    )
+    collection = await collection_factory(owner_id=test_user_db.id)
+    mapping = await repo.create_mapping(dataset_id=str(dataset.id), collection_id=collection.id)
+    query = await repo.add_query(dataset_id=str(dataset.id), query_key="q1", query_text="hello", metadata={})
+
+    rel_a = await repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"uri": "file:///tmp/a.txt"},
+        relevance_grade=2,
+    )
+    rel_b = await repo.add_relevance(
+        query_id=int(query.id),
+        mapping_id=int(mapping.id),
+        doc_ref={"uri": "file:///tmp/b.txt"},
+        relevance_grade=1,
+    )
+    await db_session.commit()
+
+    assert await repo.count_relevance_for_mapping(int(mapping.id)) == 2
+    assert await repo.count_resolved_relevance_for_mapping(int(mapping.id)) == 0
+
+    document = await document_factory(collection_id=collection.id)
+    await repo.resolve_relevance(relevance_id=int(rel_a.id), document_id=str(document.id))
+    await db_session.commit()
+
+    assert await repo.count_resolved_relevance_for_mapping(int(mapping.id)) == 1
+
+    relevances = await repo.get_relevance_for_mapping(int(mapping.id))
+    assert {int(r.id) for r in relevances} == {int(rel_a.id), int(rel_b.id)}
+
+    by_query = await repo.get_relevance_for_query(int(query.id), int(mapping.id))
+    assert [int(r.relevance_grade) for r in by_query] == sorted(
+        [int(r.relevance_grade) for r in by_query],
+        reverse=True,
+    )
