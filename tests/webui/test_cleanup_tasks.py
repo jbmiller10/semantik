@@ -3,8 +3,11 @@
 from collections import namedtuple
 from collections.abc import Generator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from webui.tasks import (
     _audit_collection_deletions_batch,
@@ -398,3 +401,640 @@ class TestCleanupStuckOperations:
         # Verify threshold was passed to async function
         mock_async.assert_awaited_once_with(30)
         assert result["cleaned"] == 2
+
+
+class TestCleanupStuckOperationsAsync:
+    """Test suite for _cleanup_stuck_operations_async function."""
+
+    @pytest.fixture
+    def mock_operation(self) -> MagicMock:
+        """Create a mock operation."""
+        op = MagicMock()
+        op.id = 1
+        op.task_id = "task-123"
+        return op
+
+    @pytest.fixture
+    def mock_operation_no_task(self) -> MagicMock:
+        """Create a mock operation without task_id."""
+        op = MagicMock()
+        op.id = 2
+        op.task_id = None
+        return op
+
+    @staticmethod
+    def _create_mock_session_factory(mock_session: AsyncMock) -> MagicMock:
+        """Create a callable mock session factory that returns an async context manager."""
+
+        @asynccontextmanager
+        async def session_context() -> Generator[Any, None, None]:
+            yield mock_session
+
+        factory = MagicMock()
+        factory.return_value = session_context()
+        # Make the factory callable return a new context manager each time
+        factory.side_effect = lambda: session_context()
+        return factory
+
+    async def test_no_stuck_candidates(self) -> None:
+        """Test when repository returns no stuck operations."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 0
+        assert result["skipped"] == 0
+        assert result["operation_ids"] == []
+
+    async def test_task_still_running_started(self, mock_operation: MagicMock) -> None:
+        """Test that operations with STARTED tasks are skipped."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation]
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        mock_async_result = MagicMock()
+        mock_async_result.state = "STARTED"
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "celery.result.AsyncResult",
+                return_value=mock_async_result,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 0
+        assert result["skipped"] == 1
+        assert result["operation_ids"] == []
+
+    async def test_task_still_running_retry(self, mock_operation: MagicMock) -> None:
+        """Test that operations with RETRY tasks are skipped."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation]
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        mock_async_result = MagicMock()
+        mock_async_result.state = "RETRY"
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "celery.result.AsyncResult",
+                return_value=mock_async_result,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 0
+        assert result["skipped"] == 1
+        assert result["operation_ids"] == []
+
+    async def test_task_still_running_received(self, mock_operation: MagicMock) -> None:
+        """Test that operations with RECEIVED tasks are skipped."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation]
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        mock_async_result = MagicMock()
+        mock_async_result.state = "RECEIVED"
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "celery.result.AsyncResult",
+                return_value=mock_async_result,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 0
+        assert result["skipped"] == 1
+        assert result["operation_ids"] == []
+
+    async def test_orphaned_no_task_id(self, mock_operation_no_task: MagicMock) -> None:
+        """Test that operations without task_id are marked as orphaned."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation_no_task]
+        mock_repo.mark_operations_failed.return_value = 1
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 1
+        assert result["skipped"] == 0
+        assert result["operation_ids"] == ["2"]
+        mock_repo.mark_operations_failed.assert_called_once()
+
+    async def test_orphaned_task_pending(self, mock_operation: MagicMock) -> None:
+        """Test that PENDING state is treated as orphaned (dispatch failure)."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation]
+        mock_repo.mark_operations_failed.return_value = 1
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        mock_async_result = MagicMock()
+        mock_async_result.state = "PENDING"
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "celery.result.AsyncResult",
+                return_value=mock_async_result,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        assert result["cleaned"] == 1
+        assert result["skipped"] == 0
+        assert result["operation_ids"] == ["1"]
+
+    async def test_mixed_active_and_orphaned(
+        self, mock_operation: MagicMock, mock_operation_no_task: MagicMock
+    ) -> None:
+        """Test handling of mixed active and orphaned operations."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation, mock_operation_no_task]
+        mock_repo.mark_operations_failed.return_value = 1
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        mock_async_result = MagicMock()
+        mock_async_result.state = "STARTED"
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "celery.result.AsyncResult",
+                return_value=mock_async_result,
+            ),
+        ):
+            result = await _cleanup_stuck_operations_async(15)
+
+        # First op is STARTED (skipped), second has no task_id (orphaned)
+        assert result["cleaned"] == 1
+        assert result["skipped"] == 1
+        assert result["operation_ids"] == ["2"]
+
+    async def test_marks_failed_with_message(self, mock_operation_no_task: MagicMock) -> None:
+        """Test that orphaned operations are marked with the correct error message."""
+        from webui.tasks.cleanup import _cleanup_stuck_operations_async
+
+        mock_repo = AsyncMock()
+        mock_repo.get_stuck_operations.return_value = [mock_operation_no_task]
+        mock_repo.mark_operations_failed.return_value = 1
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        with (
+            patch(
+                "webui.tasks.cleanup._resolve_session_factory",
+                AsyncMock(return_value=mock_session_factory),
+            ),
+            patch(
+                "shared.database.repositories.operation_repository.OperationRepository",
+                return_value=mock_repo,
+            ),
+        ):
+            await _cleanup_stuck_operations_async(15)
+
+        mock_repo.mark_operations_failed.assert_called_once_with(
+            [2],
+            error_message="Operation orphaned - task dispatch failed or worker crashed",
+        )
+        mock_session.commit.assert_called_once()
+
+
+class TestCleanupStaleBenchmarksAsync:
+    """Test suite for _cleanup_stale_benchmarks_async function."""
+
+    @pytest.fixture
+    def mock_stale_benchmark(self) -> MagicMock:
+        """Create a mock stale benchmark."""
+        benchmark = MagicMock()
+        benchmark.id = "benchmark-123"
+        benchmark.status = "running"
+        benchmark.started_at = datetime.now(UTC) - timedelta(hours=48)
+        return benchmark
+
+    @staticmethod
+    def _create_mock_session_factory(mock_session: AsyncMock) -> MagicMock:
+        """Create a callable mock session factory that returns an async context manager."""
+
+        @asynccontextmanager
+        async def session_context() -> Generator[Any, None, None]:
+            yield mock_session
+
+        factory = MagicMock()
+        factory.side_effect = lambda: session_context()
+        return factory
+
+    async def test_no_stale_benchmarks(self) -> None:
+        """Test when no stale benchmarks exist."""
+        from webui.tasks.cleanup import _cleanup_stale_benchmarks_async
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        # Mock empty result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        with patch(
+            "webui.tasks.cleanup._resolve_session_factory",
+            AsyncMock(return_value=mock_session_factory),
+        ):
+            result = await _cleanup_stale_benchmarks_async(24)
+
+        assert result["benchmarks_cleaned"] == 0
+        assert result["runs_cleaned"] == 0
+        assert result["benchmark_ids"] == []
+
+    async def test_stale_benchmark_marked_failed(self, mock_stale_benchmark: MagicMock) -> None:
+        """Test that stale benchmarks are marked as FAILED."""
+        from webui.tasks.cleanup import _cleanup_stale_benchmarks_async
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        # Mock benchmark query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_stale_benchmark]
+        # Mock run update result
+        mock_run_result = MagicMock()
+        mock_run_result.rowcount = 2
+        mock_session.execute.side_effect = [mock_result, mock_run_result]
+
+        with patch(
+            "webui.tasks.cleanup._resolve_session_factory",
+            AsyncMock(return_value=mock_session_factory),
+        ):
+            result = await _cleanup_stale_benchmarks_async(24)
+
+        assert result["benchmarks_cleaned"] == 1
+        assert result["runs_cleaned"] == 2
+        assert result["benchmark_ids"] == ["benchmark-123"]
+        # Verify benchmark status was updated
+        assert mock_stale_benchmark.status == "failed"
+        mock_session.commit.assert_called_once()
+
+    async def test_multiple_stale_benchmarks(self) -> None:
+        """Test cleanup of multiple stale benchmarks."""
+        from webui.tasks.cleanup import _cleanup_stale_benchmarks_async
+
+        mock_benchmark_1 = MagicMock()
+        mock_benchmark_1.id = "benchmark-1"
+        mock_benchmark_1.status = "running"
+
+        mock_benchmark_2 = MagicMock()
+        mock_benchmark_2.id = "benchmark-2"
+        mock_benchmark_2.status = "running"
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        # Mock benchmark query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_benchmark_1, mock_benchmark_2]
+        # Mock run update results (2 runs for first benchmark, 1 for second)
+        mock_run_result_1 = MagicMock()
+        mock_run_result_1.rowcount = 2
+        mock_run_result_2 = MagicMock()
+        mock_run_result_2.rowcount = 1
+        mock_session.execute.side_effect = [mock_result, mock_run_result_1, mock_run_result_2]
+
+        with patch(
+            "webui.tasks.cleanup._resolve_session_factory",
+            AsyncMock(return_value=mock_session_factory),
+        ):
+            result = await _cleanup_stale_benchmarks_async(24)
+
+        assert result["benchmarks_cleaned"] == 2
+        assert result["runs_cleaned"] == 3
+        assert set(result["benchmark_ids"]) == {"benchmark-1", "benchmark-2"}
+        assert mock_benchmark_1.status == "failed"
+        assert mock_benchmark_2.status == "failed"
+
+    async def test_incomplete_runs_cleaned(self, mock_stale_benchmark: MagicMock) -> None:
+        """Test that incomplete runs (PENDING/INDEXING/EVALUATING) are cleaned."""
+        from webui.tasks.cleanup import _cleanup_stale_benchmarks_async
+
+        mock_session = AsyncMock()
+        mock_session_factory = self._create_mock_session_factory(mock_session)
+
+        # Mock benchmark query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_stale_benchmark]
+        # Mock run update result - 5 incomplete runs cleaned
+        mock_run_result = MagicMock()
+        mock_run_result.rowcount = 5
+        mock_session.execute.side_effect = [mock_result, mock_run_result]
+
+        with patch(
+            "webui.tasks.cleanup._resolve_session_factory",
+            AsyncMock(return_value=mock_session_factory),
+        ):
+            result = await _cleanup_stale_benchmarks_async(24)
+
+        assert result["runs_cleaned"] == 5
+        # Verify session.execute was called (once for benchmark select, once for run update)
+        assert mock_session.execute.call_count == 2
+
+
+class TestCleanupStaleBenchmarksTask:
+    """Test suite for cleanup_stale_benchmarks Celery task."""
+
+    def test_no_stale_benchmarks(self) -> None:
+        """Test cleanup when no stale benchmarks exist."""
+        from webui.tasks import cleanup_stale_benchmarks
+
+        with patch(
+            "webui.tasks.cleanup._cleanup_stale_benchmarks_async",
+            new=AsyncMock(return_value={"benchmarks_cleaned": 0, "runs_cleaned": 0, "benchmark_ids": []}),
+        ):
+            result = cleanup_stale_benchmarks(stale_threshold_hours=24)
+
+        assert result["benchmarks_cleaned"] == 0
+        assert result["runs_cleaned"] == 0
+        assert result["benchmark_ids"] == []
+        assert "timestamp" in result
+
+    def test_cleans_stale_benchmarks(self) -> None:
+        """Test successful cleanup of stale benchmarks."""
+        from webui.tasks import cleanup_stale_benchmarks
+
+        with patch(
+            "webui.tasks.cleanup._cleanup_stale_benchmarks_async",
+            new=AsyncMock(
+                return_value={
+                    "benchmarks_cleaned": 3,
+                    "runs_cleaned": 7,
+                    "benchmark_ids": ["b-1", "b-2", "b-3"],
+                }
+            ),
+        ):
+            result = cleanup_stale_benchmarks(stale_threshold_hours=24)
+
+        assert result["benchmarks_cleaned"] == 3
+        assert result["runs_cleaned"] == 7
+        assert len(result["benchmark_ids"]) == 3
+
+    def test_threshold_passed_correctly(self) -> None:
+        """Test threshold parameter is passed to async implementation."""
+        from webui.tasks import cleanup_stale_benchmarks
+
+        with patch(
+            "webui.tasks.cleanup._cleanup_stale_benchmarks_async",
+            new=AsyncMock(return_value={"benchmarks_cleaned": 1, "runs_cleaned": 2, "benchmark_ids": ["b-1"]}),
+        ) as mock_async:
+            result = cleanup_stale_benchmarks(stale_threshold_hours=48)
+
+        mock_async.assert_awaited_once_with(48)
+        assert result["benchmarks_cleaned"] == 1
+
+    def test_handles_error_gracefully(self) -> None:
+        """Test cleanup handles errors gracefully."""
+        from webui.tasks import cleanup_stale_benchmarks
+
+        with patch(
+            "webui.tasks.cleanup._cleanup_stale_benchmarks_async",
+            new=AsyncMock(side_effect=Exception("Database connection error")),
+        ):
+            result = cleanup_stale_benchmarks(stale_threshold_hours=24)
+
+        assert result["benchmarks_cleaned"] == 0
+        assert "Database connection error" in result["errors"][0]
+
+
+class TestCleanupOldResultsDatabase:
+    """Test suite for cleanup_old_results database operations."""
+
+    def test_cleanup_deletes_old_operations(self) -> None:
+        """Test that old operations are deleted."""
+        from webui.tasks import cleanup_old_results
+
+        mock_session = AsyncMock()
+
+        # Mock audit update result
+        mock_audit_result = MagicMock()
+        mock_audit_result.rowcount = 5
+
+        # Mock delete result
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 10
+
+        mock_session.execute.side_effect = [mock_audit_result, mock_delete_result]
+
+        @asynccontextmanager
+        async def mock_session_maker() -> Generator[Any, None, None]:
+            yield mock_session
+
+        with (
+            patch("webui.tasks.cleanup._resolve_session_factory", AsyncMock(return_value=mock_session_maker)),
+            patch("webui.tasks.cleanup.celery_app") as mock_celery,
+        ):
+            mock_celery.backend = None  # Skip Celery backend cleanup
+            result = cleanup_old_results(days_to_keep=30)
+
+        assert result["old_operations_deleted"] == 10
+        assert result["audit_logs_cleared"] == 5
+        mock_session.commit.assert_called_once()
+
+    def test_clears_audit_log_references(self) -> None:
+        """Test that audit log operation_id references are cleared."""
+        from webui.tasks import cleanup_old_results
+
+        mock_session = AsyncMock()
+
+        # Mock audit update result - 3 audit logs updated
+        mock_audit_result = MagicMock()
+        mock_audit_result.rowcount = 3
+
+        # Mock delete result
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 5
+
+        mock_session.execute.side_effect = [mock_audit_result, mock_delete_result]
+
+        @asynccontextmanager
+        async def mock_session_maker() -> Generator[Any, None, None]:
+            yield mock_session
+
+        with (
+            patch("webui.tasks.cleanup._resolve_session_factory", AsyncMock(return_value=mock_session_maker)),
+            patch("webui.tasks.cleanup.celery_app") as mock_celery,
+        ):
+            mock_celery.backend = None
+            result = cleanup_old_results(days_to_keep=30)
+
+        assert result["audit_logs_cleared"] == 3
+
+    def test_celery_backend_cleanup_called(self) -> None:
+        """Test that Celery backend cleanup is called."""
+        from webui.tasks import cleanup_old_results
+
+        mock_session = AsyncMock()
+        mock_audit_result = MagicMock()
+        mock_audit_result.rowcount = 0
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 0
+        mock_session.execute.side_effect = [mock_audit_result, mock_delete_result]
+
+        @asynccontextmanager
+        async def mock_session_maker() -> Generator[Any, None, None]:
+            yield mock_session
+
+        mock_backend = MagicMock()
+        mock_backend.cleanup.return_value = 25
+
+        with (
+            patch("webui.tasks.cleanup._resolve_session_factory", AsyncMock(return_value=mock_session_maker)),
+            patch("webui.tasks.cleanup.celery_app") as mock_celery,
+        ):
+            mock_celery.backend = mock_backend
+            result = cleanup_old_results(days_to_keep=30)
+
+        mock_backend.cleanup.assert_called_once()
+        assert result["celery_results_deleted"] == 25
+
+    def test_minimum_days_enforced(self) -> None:
+        """Test that minimum days_to_keep is enforced (max(1, days))."""
+        from webui.tasks import cleanup_old_results
+
+        mock_session = AsyncMock()
+        mock_audit_result = MagicMock()
+        mock_audit_result.rowcount = 0
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 0
+        mock_session.execute.side_effect = [mock_audit_result, mock_delete_result]
+
+        @asynccontextmanager
+        async def mock_session_maker() -> Generator[Any, None, None]:
+            yield mock_session
+
+        with (
+            patch("webui.tasks.cleanup._resolve_session_factory", AsyncMock(return_value=mock_session_maker)),
+            patch("webui.tasks.cleanup.celery_app") as mock_celery,
+        ):
+            mock_celery.backend = None
+            # Pass 0 or negative - should be clamped to 1
+            result = cleanup_old_results(days_to_keep=0)
+
+        # Test passes if no error (min days enforced internally)
+        assert result["errors"] == []
+
+    def test_handles_celery_backend_error(self) -> None:
+        """Test that Celery backend errors are handled gracefully."""
+        from webui.tasks import cleanup_old_results
+
+        mock_session = AsyncMock()
+        mock_audit_result = MagicMock()
+        mock_audit_result.rowcount = 0
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 0
+        mock_session.execute.side_effect = [mock_audit_result, mock_delete_result]
+
+        @asynccontextmanager
+        async def mock_session_maker() -> Generator[Any, None, None]:
+            yield mock_session
+
+        mock_backend = MagicMock()
+        mock_backend.cleanup.side_effect = Exception("Redis connection error")
+
+        with (
+            patch("webui.tasks.cleanup._resolve_session_factory", AsyncMock(return_value=mock_session_maker)),
+            patch("webui.tasks.cleanup.celery_app") as mock_celery,
+        ):
+            mock_celery.backend = mock_backend
+            # Should not raise even if backend cleanup fails
+            result = cleanup_old_results(days_to_keep=30)
+
+        # DB operations should still succeed
+        assert result["old_operations_deleted"] == 0
+        assert result["celery_results_deleted"] == 0
