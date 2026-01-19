@@ -88,6 +88,11 @@ def _build_base_config() -> dict[str, Any]:
                 "task": "webui.tasks.cleanup_stuck_operations",
                 "schedule": 900.0,  # Every 15 minutes
             },
+            "cleanup-stale-benchmarks": {
+                "task": "webui.tasks.cleanup_stale_benchmarks",
+                "schedule": 21600.0,  # Every 6 hours
+                "args": (24,),  # 24 hour threshold
+            },
         },
     }
 

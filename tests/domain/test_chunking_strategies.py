@@ -264,6 +264,17 @@ More text after the code."""
         assert chunks[0].metadata.end_offset == len(text)
         assert chunks[0].metadata.token_count > 0
 
+    def test_does_not_drop_small_header_or_tail(self, strategy) -> None:
+        """Recursive strategy must not drop small leading/trailing fragments."""
+        config = ChunkConfig(strategy_name="recursive", min_tokens=15, max_tokens=20, overlap_tokens=0)
+        text = "Header\n\n" + ("word " * 200)
+
+        chunks = strategy.chunk(text, config)
+        combined_words = " ".join(chunk.content for chunk in chunks).split()
+
+        assert "Header" in combined_words
+        assert combined_words.count("word") == 200
+
 
 class TestSemanticChunkingStrategy:
     """Test suite for SemanticChunkingStrategy."""

@@ -31,10 +31,11 @@ function Layout() {
     navigate('/login');
   };
 
-  type TabId = 'search' | 'collections' | 'operations';
+  type TabId = 'search' | 'collections' | 'operations' | 'benchmarks';
   const tabs: { id: TabId; label: string }[] = [
     { id: 'collections', label: 'Collections' },
     { id: 'operations', label: 'Active Operations' },
+    { id: 'benchmarks', label: 'Benchmarks' },
     { id: 'search', label: 'Search' },
   ];
 

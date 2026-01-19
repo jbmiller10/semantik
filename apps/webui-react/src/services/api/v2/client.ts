@@ -9,9 +9,6 @@ import { getApiBaseUrl } from '../baseUrl';
  */
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Token refresh state

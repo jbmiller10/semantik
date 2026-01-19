@@ -64,12 +64,7 @@ class TestParserTaskBoundaries:
 
     def test_worker_result_types_have_no_parse_result(self) -> None:
         """Verify _WorkerResult types don't include ParseResult."""
-        from shared.connectors.local import (
-            _WorkerError,
-            _WorkerSkipped,
-            _WorkerSuccess,
-            _WorkerSuccessData,
-        )
+        from shared.connectors.local import _WorkerError, _WorkerSkipped, _WorkerSuccess, _WorkerSuccessData
 
         # Check annotations don't reference ParseResult
         success_data_annotations = _WorkerSuccessData.__annotations__

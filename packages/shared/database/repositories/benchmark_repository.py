@@ -1,0 +1,975 @@
+"""Repository implementation for Benchmark and related models."""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
+
+from sqlalchemy import Select, delete, func, select, update
+from sqlalchemy.orm import selectinload
+
+from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
+from shared.database.models import (
+    Benchmark,
+    BenchmarkDatasetMapping,
+    BenchmarkQuery,
+    BenchmarkQueryResult,
+    BenchmarkRun,
+    BenchmarkRunMetric,
+    BenchmarkRunStatus,
+    BenchmarkStatus,
+)
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+def _get_benchmark_full_load() -> tuple[Any, ...]:
+    """Get selectinload options for full benchmark loading."""
+    return (
+        selectinload(Benchmark.owner),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
+        selectinload(Benchmark.runs),
+    )
+
+
+def _get_benchmark_list_load() -> tuple[Any, ...]:
+    """Get selectinload options for benchmark listing."""
+    return (
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
+    )
+
+
+class BenchmarkRepository:
+    """Repository for Benchmark and related models."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize with database session."""
+        self.session = session
+
+    # =========================================================================
+    # Benchmark CRUD
+    # =========================================================================
+
+    async def create(
+        self,
+        *,
+        name: str,
+        owner_id: int,
+        mapping_id: int,
+        config_matrix: dict[str, Any],
+        config_matrix_hash: str,
+        metrics_to_compute: list[str],
+        top_k: int = 10,
+        description: str | None = None,
+        evaluation_unit: str = "query",
+        limits: dict[str, Any] | None = None,
+        collection_snapshot_hash: str | None = None,
+        reproducibility_metadata: dict[str, Any] | None = None,
+    ) -> Benchmark:
+        """Create a new benchmark.
+
+        Args:
+            name: Benchmark name
+            owner_id: ID of the user creating the benchmark
+            mapping_id: ID of the dataset-collection mapping
+            config_matrix: Configuration matrix for the benchmark
+            config_matrix_hash: Hash of the config matrix
+            metrics_to_compute: List of metrics to compute
+            top_k: Number of results to consider
+            description: Optional description
+            evaluation_unit: Unit of evaluation ("query" or "document")
+            limits: Optional resource limits
+            collection_snapshot_hash: Hash of the collection state
+            reproducibility_metadata: Metadata for reproducibility
+
+        Returns:
+            Created Benchmark instance
+
+        Raises:
+            ValidationError: If validation fails
+            EntityNotFoundError: If mapping not found
+            DatabaseOperationError: For database errors
+        """
+        if not name or not name.strip():
+            raise ValidationError("Benchmark name is required", "name")
+
+        if top_k < 1 or top_k > 100:
+            raise ValidationError("top_k must be between 1 and 100", "top_k")
+
+        if not config_matrix:
+            raise ValidationError("Config matrix is required", "config_matrix")
+
+        if not metrics_to_compute:
+            raise ValidationError("At least one metric is required", "metrics_to_compute")
+
+        # Verify mapping exists
+        mapping_exists = await self.session.scalar(
+            select(func.count()).select_from(BenchmarkDatasetMapping).where(BenchmarkDatasetMapping.id == mapping_id)
+        )
+        if not mapping_exists:
+            raise EntityNotFoundError("benchmark_dataset_mapping", str(mapping_id))
+
+        benchmark = Benchmark(
+            id=str(uuid4()),
+            name=name.strip(),
+            description=description,
+            owner_id=owner_id,
+            mapping_id=mapping_id,
+            evaluation_unit=evaluation_unit,
+            config_matrix=config_matrix,
+            config_matrix_hash=config_matrix_hash,
+            limits=limits,
+            collection_snapshot_hash=collection_snapshot_hash,
+            reproducibility_metadata=reproducibility_metadata,
+            top_k=top_k,
+            metrics_to_compute=metrics_to_compute,
+            status=BenchmarkStatus.PENDING.value,
+            total_runs=0,
+            completed_runs=0,
+            failed_runs=0,
+        )
+
+        try:
+            self.session.add(benchmark)
+            await self.session.flush()
+            logger.info("Created benchmark %s for user %d", benchmark.id, owner_id)
+            return benchmark
+        except Exception as exc:
+            logger.error("Failed to create benchmark: %s", exc)
+            raise DatabaseOperationError("create", "benchmark", str(exc)) from exc
+
+    async def exists(self, benchmark_uuid: str) -> bool:
+        """Check if a benchmark exists by UUID.
+
+        Lightweight check that avoids loading relationships.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+
+        Returns:
+            True if benchmark exists, False otherwise
+        """
+        result = await self.session.scalar(select(func.count(Benchmark.id)).where(Benchmark.id == benchmark_uuid))
+        return bool(result)
+
+    async def get_by_uuid(self, benchmark_uuid: str) -> Benchmark | None:
+        """Get a benchmark by UUID.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+
+        Returns:
+            Benchmark instance or None if not found
+        """
+        stmt: Select[tuple[Benchmark]] = (
+            select(Benchmark).where(Benchmark.id == benchmark_uuid).options(*_get_benchmark_full_load())
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_uuid_for_user(
+        self,
+        benchmark_uuid: str,
+        user_id: int,
+    ) -> Benchmark:
+        """Get a benchmark by UUID with ownership check.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            user_id: ID of the user requesting access
+
+        Returns:
+            Benchmark instance
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+            AccessDeniedError: If user doesn't own the benchmark
+        """
+        benchmark = await self.get_by_uuid(benchmark_uuid)
+
+        if not benchmark:
+            raise EntityNotFoundError("benchmark", benchmark_uuid)
+
+        if benchmark.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "benchmark", benchmark_uuid)
+
+        return benchmark
+
+    async def list_for_user(
+        self,
+        user_id: int,
+        offset: int = 0,
+        limit: int = 50,
+        status_filter: BenchmarkStatus | None = None,
+    ) -> tuple[list[Benchmark], int]:
+        """List benchmarks owned by a user.
+
+        Args:
+            user_id: ID of the user
+            offset: Pagination offset
+            limit: Maximum number of results
+            status_filter: Optional status filter
+
+        Returns:
+            Tuple of (benchmarks list, total count)
+        """
+        try:
+            # Build query
+            stmt: Select[tuple[Benchmark]] = (
+                select(Benchmark)
+                .where(Benchmark.owner_id == user_id)
+                .options(*_get_benchmark_list_load())
+                .order_by(Benchmark.created_at.desc())
+            )
+
+            if status_filter is not None:
+                stmt = stmt.where(Benchmark.status == status_filter.value)
+
+            # Get total count
+            count_stmt = select(func.count(Benchmark.id)).where(Benchmark.owner_id == user_id)
+            if status_filter is not None:
+                count_stmt = count_stmt.where(Benchmark.status == status_filter.value)
+            total = await self.session.scalar(count_stmt) or 0
+
+            # Apply pagination
+            stmt = stmt.offset(offset).limit(limit)
+            benchmarks = list((await self.session.execute(stmt)).scalars().all())
+
+            return benchmarks, total
+        except Exception as exc:
+            logger.error("Failed to list benchmarks: %s", exc)
+            raise DatabaseOperationError("list", "benchmarks", str(exc)) from exc
+
+    async def update_status(
+        self,
+        benchmark_uuid: str,
+        status: BenchmarkStatus,
+        completed_runs: int | None = None,
+        failed_runs: int | None = None,
+    ) -> Benchmark:
+        """Update benchmark status.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            status: New status
+            completed_runs: Number of completed runs (optional)
+            failed_runs: Number of failed runs (optional)
+
+        Returns:
+            Updated Benchmark instance
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+        """
+        values = self._build_status_update_values(status, completed_runs, failed_runs)
+
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid)
+
+        # Prevent overwriting CANCELLED with non-cancelled statuses
+        if status != BenchmarkStatus.CANCELLED:
+            stmt = stmt.where(Benchmark.status != BenchmarkStatus.CANCELLED.value)
+
+        stmt = stmt.values(**values).returning(Benchmark)
+        result = await self.session.execute(stmt)
+        benchmark = result.scalar_one_or_none()
+
+        if benchmark is not None:
+            logger.info("Updated benchmark %s status to %s", benchmark_uuid, status.value)
+            return benchmark
+
+        # Update returned no rows - check if benchmark exists or was already cancelled
+        return await self._handle_update_no_rows(benchmark_uuid, status)
+
+    def _build_status_update_values(
+        self,
+        status: BenchmarkStatus,
+        completed_runs: int | None,
+        failed_runs: int | None,
+    ) -> dict[str, Any]:
+        """Build UPDATE values dict for status transition."""
+        now = datetime.now(UTC)
+        values: dict[str, Any] = {"status": status.value}
+
+        # Map status to timestamp field, using coalesce to preserve existing values
+        timestamp_map = {
+            BenchmarkStatus.RUNNING: ("started_at", Benchmark.started_at),
+            BenchmarkStatus.COMPLETED: ("completed_at", Benchmark.completed_at),
+            BenchmarkStatus.FAILED: ("completed_at", Benchmark.completed_at),
+            BenchmarkStatus.CANCELLED: ("cancelled_at", Benchmark.cancelled_at),
+        }
+        if status in timestamp_map:
+            field, column = timestamp_map[status]
+            values[field] = func.coalesce(column, now)
+
+        if completed_runs is not None:
+            values["completed_runs"] = completed_runs
+        if failed_runs is not None:
+            values["failed_runs"] = failed_runs
+
+        return values
+
+    async def _handle_update_no_rows(
+        self,
+        benchmark_uuid: str,
+        status: BenchmarkStatus,
+    ) -> Benchmark:
+        """Handle case where UPDATE returned no rows.
+
+        Either benchmark doesn't exist or was already CANCELLED.
+        """
+        stmt: Select[tuple[Benchmark]] = (
+            select(Benchmark).where(Benchmark.id == benchmark_uuid).execution_options(populate_existing=True)
+        )
+        existing = (await self.session.execute(stmt)).scalar_one_or_none()
+
+        if existing is None:
+            raise EntityNotFoundError("benchmark", benchmark_uuid)
+
+        if cast(str, existing.status) == BenchmarkStatus.CANCELLED.value and status != BenchmarkStatus.CANCELLED:
+            logger.info(
+                "Skipped benchmark %s status update to %s (already cancelled)",
+                benchmark_uuid,
+                status.value,
+            )
+        return existing
+
+    async def get_status_value(
+        self,
+        benchmark_uuid: str,
+    ) -> str | None:
+        """Return the current status string for a benchmark.
+
+        This uses a scalar SELECT of the status column to avoid identity-map
+        staleness when sessions are configured with expire_on_commit=False.
+        """
+        stmt = select(Benchmark.status).where(Benchmark.id == benchmark_uuid)
+        return cast(str | None, await self.session.scalar(stmt))
+
+    async def set_operation(
+        self,
+        benchmark_uuid: str,
+        operation_uuid: str | None,
+    ) -> None:
+        """Link the benchmark to a backing operation.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            operation_uuid: UUID of the operation (or None to unlink)
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+        """
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid).values(operation_uuid=operation_uuid)
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
+            raise EntityNotFoundError("benchmark", benchmark_uuid)
+
+    async def transition_status_atomically(
+        self,
+        benchmark_uuid: str,
+        from_status: BenchmarkStatus,
+        to_status: BenchmarkStatus,
+        operation_uuid: str | None = None,
+    ) -> Benchmark | None:
+        """Atomically transition benchmark status with race protection.
+
+        Uses UPDATE...WHERE for atomic conditional update. The WHERE clause
+        includes the current status, so the update only succeeds if the
+        benchmark is still in the expected state. This prevents TOCTOU race
+        conditions where two concurrent requests both check PENDING, then
+        both try to transition to RUNNING.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            from_status: Expected current status (update fails if not matched)
+            to_status: Target status to transition to
+            operation_uuid: Optional operation UUID to set atomically
+
+        Returns:
+            Updated Benchmark instance if transition succeeded, None if
+            the benchmark was not in the expected status (race lost)
+
+        Raises:
+            EntityNotFoundError: If benchmark not found at all
+        """
+        now = datetime.now(UTC)
+
+        # Build update values
+        values: dict[str, Any] = {
+            "status": to_status.value,
+        }
+
+        # Set timestamps based on target status
+        if to_status == BenchmarkStatus.RUNNING:
+            values["started_at"] = now
+        elif to_status in (BenchmarkStatus.COMPLETED, BenchmarkStatus.FAILED):
+            values["completed_at"] = now
+        elif to_status == BenchmarkStatus.CANCELLED:
+            values["cancelled_at"] = now
+
+        if operation_uuid is not None:
+            values["operation_uuid"] = operation_uuid
+
+        # Atomic conditional update
+        stmt = (
+            update(Benchmark)
+            .where(
+                Benchmark.id == benchmark_uuid,
+                Benchmark.status == from_status.value,
+            )
+            .values(**values)
+            .returning(Benchmark)
+        )
+
+        result = await self.session.execute(stmt)
+        benchmark = result.scalar_one_or_none()
+
+        if benchmark is None:
+            # Check if benchmark exists at all
+            if not await self.exists(benchmark_uuid):
+                raise EntityNotFoundError("benchmark", benchmark_uuid)
+            # Benchmark exists but wasn't in expected status (race lost)
+            logger.warning(
+                "Atomic transition failed for benchmark %s: expected status %s",
+                benchmark_uuid,
+                from_status.value,
+            )
+            return None
+
+        logger.info(
+            "Atomically transitioned benchmark %s from %s to %s",
+            benchmark_uuid,
+            from_status.value,
+            to_status.value,
+        )
+        return benchmark
+
+    async def set_total_runs(
+        self,
+        benchmark_uuid: str,
+        total_runs: int,
+    ) -> None:
+        """Set the total number of runs for a benchmark.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            total_runs: Total number of runs
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+        """
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid).values(total_runs=total_runs)
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
+            raise EntityNotFoundError("benchmark", benchmark_uuid)
+
+    async def delete(
+        self,
+        benchmark_uuid: str,
+        user_id: int,
+    ) -> None:
+        """Delete a benchmark.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark to delete
+            user_id: ID of the user requesting deletion
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+            AccessDeniedError: If user doesn't own the benchmark
+        """
+        benchmark = await self.get_by_uuid_for_user(benchmark_uuid, user_id)
+
+        stmt = delete(Benchmark).where(Benchmark.id == benchmark.id)
+        await self.session.execute(stmt)
+        await self.session.flush()
+        logger.info("Deleted benchmark %s", benchmark_uuid)
+
+    # =========================================================================
+    # Run CRUD
+    # =========================================================================
+
+    async def create_run(
+        self,
+        benchmark_id: str,
+        run_order: int,
+        config_hash: str,
+        config: dict[str, Any],
+    ) -> BenchmarkRun:
+        """Create a new benchmark run.
+
+        Args:
+            benchmark_id: UUID of the benchmark
+            run_order: Order of the run within the benchmark
+            config_hash: Hash of the configuration
+            config: Configuration for this run
+
+        Returns:
+            Created BenchmarkRun instance
+
+        Raises:
+            EntityNotFoundError: If benchmark not found
+            DatabaseOperationError: For database errors
+        """
+        # Verify benchmark exists
+        if not await self.exists(benchmark_id):
+            raise EntityNotFoundError("benchmark", benchmark_id)
+
+        run = BenchmarkRun(
+            id=str(uuid4()),
+            benchmark_id=benchmark_id,
+            run_order=run_order,
+            config_hash=config_hash,
+            config=config,
+            status=BenchmarkRunStatus.PENDING.value,
+        )
+
+        try:
+            self.session.add(run)
+            await self.session.flush()
+            logger.debug("Created run %s for benchmark %s", run.id, benchmark_id)
+            return run
+        except Exception as exc:
+            logger.error("Failed to create benchmark run: %s", exc)
+            raise DatabaseOperationError("create", "benchmark_run", str(exc)) from exc
+
+    async def get_run(self, run_id: str) -> BenchmarkRun | None:
+        """Get a benchmark run by ID.
+
+        Args:
+            run_id: UUID of the run
+
+        Returns:
+            BenchmarkRun instance or None
+        """
+        stmt: Select[tuple[BenchmarkRun]] = (
+            select(BenchmarkRun)
+            .where(BenchmarkRun.id == run_id)
+            .options(
+                selectinload(BenchmarkRun.benchmark),
+                selectinload(BenchmarkRun.metrics),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_runs_for_benchmark(
+        self,
+        benchmark_id: str,
+    ) -> list[BenchmarkRun]:
+        """Get all runs for a benchmark.
+
+        Args:
+            benchmark_id: UUID of the benchmark
+
+        Returns:
+            List of BenchmarkRun instances
+        """
+        stmt: Select[tuple[BenchmarkRun]] = (
+            select(BenchmarkRun)
+            .where(BenchmarkRun.benchmark_id == benchmark_id)
+            .options(selectinload(BenchmarkRun.metrics))
+            .order_by(BenchmarkRun.run_order)
+            .execution_options(populate_existing=True)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def update_run_status(
+        self,
+        run_id: str,
+        status: BenchmarkRunStatus,
+        *,
+        status_message: str | None = None,
+        indexing_duration_ms: int | None = None,
+        evaluation_duration_ms: int | None = None,
+        total_duration_ms: int | None = None,
+        error_message: str | None = None,
+        dense_collection_name: str | None = None,
+        sparse_collection_name: str | None = None,
+    ) -> BenchmarkRun:
+        """Update a run's status and timing information.
+
+        Args:
+            run_id: UUID of the run
+            status: New status
+            status_message: Optional status message
+            indexing_duration_ms: Indexing phase duration
+            evaluation_duration_ms: Evaluation phase duration
+            total_duration_ms: Total duration
+            error_message: Error message (for failed runs)
+            dense_collection_name: Name of the dense Qdrant collection
+            sparse_collection_name: Name of the sparse Qdrant collection
+
+        Returns:
+            Updated BenchmarkRun instance
+
+        Raises:
+            EntityNotFoundError: If run not found
+        """
+        run = await self.get_run(run_id)
+        if not run:
+            raise EntityNotFoundError("benchmark_run", run_id)
+
+        now = datetime.now(UTC)
+        run.status = status.value
+
+        if status == BenchmarkRunStatus.INDEXING and run.started_at is None:
+            run.started_at = now
+        elif status in (BenchmarkRunStatus.COMPLETED, BenchmarkRunStatus.FAILED):
+            run.completed_at = now
+
+        if status_message is not None:
+            run.status_message = status_message
+        if indexing_duration_ms is not None:
+            run.indexing_duration_ms = indexing_duration_ms
+        if evaluation_duration_ms is not None:
+            run.evaluation_duration_ms = evaluation_duration_ms
+        if total_duration_ms is not None:
+            run.total_duration_ms = total_duration_ms
+        if error_message is not None:
+            run.error_message = error_message
+        if dense_collection_name is not None:
+            run.dense_collection_name = dense_collection_name
+        if sparse_collection_name is not None:
+            run.sparse_collection_name = sparse_collection_name
+
+        await self.session.flush()
+        return run
+
+    # =========================================================================
+    # Metrics CRUD
+    # =========================================================================
+
+    async def add_run_metric(
+        self,
+        run_id: str,
+        metric_name: str,
+        metric_value: float,
+        k_value: int | None = None,
+    ) -> BenchmarkRunMetric:
+        """Add a metric to a benchmark run.
+
+        Args:
+            run_id: UUID of the run
+            metric_name: Name of the metric (e.g., "precision", "recall")
+            metric_value: Computed metric value
+            k_value: k value for @k metrics (optional)
+
+        Returns:
+            Created BenchmarkRunMetric instance
+
+        Raises:
+            EntityNotFoundError: If run not found
+        """
+        run = await self.get_run(run_id)
+        if not run:
+            raise EntityNotFoundError("benchmark_run", run_id)
+
+        metric = BenchmarkRunMetric(
+            run_id=run_id,
+            metric_name=metric_name,
+            k_value=k_value,
+            metric_value=metric_value,
+        )
+
+        try:
+            self.session.add(metric)
+            await self.session.flush()
+            return metric
+        except Exception as exc:
+            logger.error("Failed to add metric to run %s: %s", run_id, exc)
+            raise DatabaseOperationError("create", "benchmark_run_metric", str(exc)) from exc
+
+    async def get_metrics_for_run(
+        self,
+        run_id: str,
+    ) -> list[BenchmarkRunMetric]:
+        """Get all metrics for a run.
+
+        Args:
+            run_id: UUID of the run
+
+        Returns:
+            List of BenchmarkRunMetric instances
+        """
+        stmt: Select[tuple[BenchmarkRunMetric]] = (
+            select(BenchmarkRunMetric)
+            .where(BenchmarkRunMetric.run_id == run_id)
+            .order_by(BenchmarkRunMetric.metric_name, BenchmarkRunMetric.k_value)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    # =========================================================================
+    # Query Results CRUD
+    # =========================================================================
+
+    async def add_query_result(
+        self,
+        run_id: str,
+        query_id: int,
+        retrieved_doc_ids: list[str],
+        *,
+        retrieved_debug: dict[str, Any] | None = None,
+        precision_at_k: float | None = None,
+        recall_at_k: float | None = None,
+        reciprocal_rank: float | None = None,
+        ndcg_at_k: float | None = None,
+        search_time_ms: int | None = None,
+        rerank_time_ms: int | None = None,
+    ) -> BenchmarkQueryResult:
+        """Add a query result to a benchmark run.
+
+        Args:
+            run_id: UUID of the run
+            query_id: ID of the benchmark query
+            retrieved_doc_ids: List of retrieved document IDs
+            retrieved_debug: Optional debug information
+            precision_at_k: Precision at k
+            recall_at_k: Recall at k
+            reciprocal_rank: Reciprocal rank
+            ndcg_at_k: NDCG at k
+            search_time_ms: Search execution time
+            rerank_time_ms: Reranking time
+
+        Returns:
+            Created BenchmarkQueryResult instance
+
+        Raises:
+            EntityNotFoundError: If run or query not found
+        """
+        # Verify run exists
+        run = await self.get_run(run_id)
+        if not run:
+            raise EntityNotFoundError("benchmark_run", run_id)
+
+        # Verify query exists
+        query_exists = await self.session.scalar(
+            select(func.count()).select_from(BenchmarkQuery).where(BenchmarkQuery.id == query_id)
+        )
+        if not query_exists:
+            raise EntityNotFoundError("benchmark_query", str(query_id))
+
+        result = BenchmarkQueryResult(
+            run_id=run_id,
+            benchmark_query_id=query_id,
+            retrieved_doc_ids=retrieved_doc_ids,
+            retrieved_debug=retrieved_debug,
+            precision_at_k=precision_at_k,
+            recall_at_k=recall_at_k,
+            reciprocal_rank=reciprocal_rank,
+            ndcg_at_k=ndcg_at_k,
+            search_time_ms=search_time_ms,
+            rerank_time_ms=rerank_time_ms,
+        )
+
+        try:
+            self.session.add(result)
+            await self.session.flush()
+            return result
+        except Exception as exc:
+            logger.error("Failed to add query result: %s", exc)
+            raise DatabaseOperationError("create", "benchmark_query_result", str(exc)) from exc
+
+    async def get_query_results_for_run(
+        self,
+        run_id: str,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[BenchmarkQueryResult], int]:
+        """Get query results for a run with pagination.
+
+        Args:
+            run_id: UUID of the run
+            offset: Pagination offset
+            limit: Maximum number of results
+
+        Returns:
+            Tuple of (results list, total count)
+        """
+        stmt: Select[tuple[BenchmarkQueryResult]] = (
+            select(BenchmarkQueryResult)
+            .where(BenchmarkQueryResult.run_id == run_id)
+            .options(selectinload(BenchmarkQueryResult.query))
+            .order_by(BenchmarkQueryResult.benchmark_query_id)
+            .offset(offset)
+            .limit(limit)
+        )
+        results = list((await self.session.execute(stmt)).scalars().all())
+
+        count_stmt = select(func.count(BenchmarkQueryResult.id)).where(BenchmarkQueryResult.run_id == run_id)
+        total = await self.session.scalar(count_stmt) or 0
+
+        return results, total
+
+    # =========================================================================
+    # Aggregation Helpers
+    # =========================================================================
+
+    async def get_aggregated_results(
+        self,
+        benchmark_id: str,
+    ) -> dict[str, Any]:
+        """Get aggregated results for a benchmark.
+
+        Aggregates metrics across all completed runs for comparison.
+
+        Args:
+            benchmark_id: UUID of the benchmark
+
+        Returns:
+            Dictionary with benchmark_id, primary_k, k_values_for_metrics,
+            runs (list of run data with metrics), and summary.
+        """
+        benchmark = await self.get_by_uuid(benchmark_id)
+        if not benchmark:
+            raise EntityNotFoundError("benchmark", benchmark_id)
+
+        runs = await self.get_runs_for_benchmark(benchmark_id)
+        config_matrix = cast(dict[str, Any], benchmark.config_matrix) or {}
+
+        primary_k = self._parse_primary_k(config_matrix)
+        k_values = self._parse_k_values(config_matrix, primary_k)
+
+        runs_data, best_run_id, best_metric_value = self._aggregate_runs(runs, primary_k)
+
+        return {
+            "benchmark_id": benchmark_id,
+            "primary_k": primary_k,
+            "k_values_for_metrics": k_values,
+            "runs": runs_data,
+            "summary": {
+                "total_runs": benchmark.total_runs,
+                "completed_runs": benchmark.completed_runs,
+                "failed_runs": benchmark.failed_runs,
+                "best_run": best_run_id,
+                "best_primary_metric": best_metric_value if best_run_id is not None else None,
+            },
+        }
+
+    def _parse_primary_k(self, config_matrix: dict[str, Any]) -> int:
+        """Extract and validate primary_k from config matrix."""
+        try:
+            primary_k = int(config_matrix.get("primary_k", 10))
+        except (TypeError, ValueError):
+            primary_k = 10
+        return primary_k if primary_k > 0 else 10
+
+    def _parse_k_values(self, config_matrix: dict[str, Any], primary_k: int) -> list[int]:
+        """Extract and validate k_values_for_metrics from config matrix."""
+        raw_k_values = config_matrix.get("k_values_for_metrics")
+        if not raw_k_values:
+            return [primary_k]
+
+        values: set[int] = set()
+        for raw_value in cast(list[Any], raw_k_values):
+            try:
+                k_int = int(raw_value)
+                if k_int > 0:
+                    values.add(k_int)
+            except (TypeError, ValueError):
+                continue
+
+        if not values:
+            return [primary_k]
+
+        # Ensure primary_k is included
+        values.add(primary_k)
+        return sorted(values)
+
+    def _aggregate_runs(
+        self,
+        runs: list[BenchmarkRun],
+        primary_k: int,
+    ) -> tuple[list[dict[str, Any]], str | None, float]:
+        """Aggregate run data and find best run."""
+        runs_data: list[dict[str, Any]] = []
+        best_run_id: str | None = None
+        best_metric_value = float("-inf")
+
+        for run in runs:
+            metrics_flat, metrics_structured = self._process_run_metrics(run.metrics)
+            metrics_primary = self._extract_primary_metrics(metrics_structured, primary_k)
+
+            run_data = {
+                "run_id": run.id,
+                "run_order": run.run_order,
+                "config": run.config,
+                "config_hash": run.config_hash,
+                "status": run.status,
+                "error_message": run.error_message,
+                "metrics": metrics_structured,
+                "metrics_flat": metrics_flat,
+                "metrics_primary": metrics_primary,
+                "timing": {
+                    "indexing_ms": run.indexing_duration_ms,
+                    "evaluation_ms": run.evaluation_duration_ms,
+                    "total_ms": run.total_duration_ms,
+                },
+            }
+            runs_data.append(run_data)
+
+            # Track best run by nDCG, falling back to MRR
+            primary_metric = metrics_primary.get("ndcg") or metrics_primary.get("mrr")
+            if primary_metric is not None and primary_metric > best_metric_value:
+                best_metric_value = primary_metric
+                best_run_id = run.id
+
+        return runs_data, best_run_id, best_metric_value
+
+    def _process_run_metrics(
+        self,
+        metrics: list[BenchmarkRunMetric],
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        """Process metrics into flat and structured formats."""
+        metrics_flat: dict[str, float] = {}
+        metrics_structured: dict[str, Any] = {
+            "mrr": None,
+            "ap": None,
+            "precision": {},
+            "recall": {},
+            "ndcg": {},
+        }
+
+        for metric in metrics:
+            # Build flat key (e.g., "precision@5")
+            key = metric.metric_name
+            if metric.k_value is not None:
+                key = f"{metric.metric_name}@{metric.k_value}"
+            metrics_flat[key] = metric.metric_value
+
+            # Build structured format
+            if metric.metric_name in ("precision", "recall", "ndcg") and metric.k_value is not None:
+                metrics_structured[metric.metric_name][int(metric.k_value)] = metric.metric_value
+            elif metric.metric_name in ("mrr", "ap") and metric.k_value is None:
+                metrics_structured[metric.metric_name] = metric.metric_value
+
+        # Remove empty dicts and None values
+        for key in ("precision", "recall", "ndcg"):
+            if not metrics_structured[key]:
+                del metrics_structured[key]
+        if metrics_structured.get("ap") is None:
+            metrics_structured.pop("ap", None)
+
+        return metrics_flat, metrics_structured
+
+    def _extract_primary_metrics(
+        self,
+        metrics_structured: dict[str, Any],
+        primary_k: int,
+    ) -> dict[str, float | None]:
+        """Extract primary metrics at the specified k value."""
+        return {
+            "mrr": cast(float | None, metrics_structured.get("mrr")),
+            "precision": cast(dict[int, float], metrics_structured.get("precision", {})).get(primary_k),
+            "recall": cast(dict[int, float], metrics_structured.get("recall", {})).get(primary_k),
+            "ndcg": cast(dict[int, float], metrics_structured.get("ndcg", {})).get(primary_k),
+        }

@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
-
 reports/**
 
 # Log files
@@ -274,3 +273,7 @@ review-chunk-*.txt
 reviews/
 
 research_papers/
+
+# Test data (benchmark datasets)
+test_data/
+documents/

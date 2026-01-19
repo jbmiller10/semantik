@@ -591,11 +591,137 @@ async def _cleanup_stuck_operations_async(stuck_threshold_minutes: int) -> dict[
         }
 
 
+@celery_app.task(name="webui.tasks.cleanup_stale_benchmarks")
+def cleanup_stale_benchmarks(stale_threshold_hours: int = 24) -> dict[str, Any]:
+    """Clean up benchmarks stuck in RUNNING state for too long.
+
+    This task finds benchmarks that have been in RUNNING state longer than
+    the threshold and marks them as FAILED. It also marks any incomplete
+    runs (PENDING/INDEXING/EVALUATING) as FAILED.
+
+    Args:
+        stale_threshold_hours: Hours after which a running benchmark is considered stale
+
+    Returns:
+        Dictionary with cleanup statistics:
+        {
+            "benchmarks_cleaned": 2,
+            "runs_cleaned": 5,
+            "benchmark_ids": ["...", "..."],
+            "errors": []
+        }
+    """
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+
+    stats: dict[str, Any] = {
+        "benchmarks_cleaned": 0,
+        "runs_cleaned": 0,
+        "benchmark_ids": [],
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        log.info("Starting cleanup of stale benchmarks (threshold: %s hours)", stale_threshold_hours)
+
+        result = cast(dict[str, Any], resolve_awaitable_sync(_cleanup_stale_benchmarks_async(stale_threshold_hours)))
+        stats.update(result)
+
+        log.info(
+            "Stale benchmarks cleanup completed: %d benchmarks, %d runs",
+            stats["benchmarks_cleaned"],
+            stats["runs_cleaned"],
+        )
+
+        return stats
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        log.error("Stale benchmarks cleanup failed: %s", exc, exc_info=True)
+        stats["errors"].append(str(exc))
+        return stats
+
+
+async def _cleanup_stale_benchmarks_async(stale_threshold_hours: int) -> dict[str, Any]:
+    """Async implementation of stale benchmark cleanup."""
+    from shared.database.models import Benchmark, BenchmarkRun, BenchmarkRunStatus, BenchmarkStatus
+
+    session_factory = await _resolve_session_factory()
+    async with session_factory() as session:
+        from sqlalchemy import select, update
+
+        # Calculate cutoff time
+        cutoff_time = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
+
+        # Find stale benchmarks (RUNNING with started_at before cutoff)
+        stmt = (
+            select(Benchmark)
+            .where(Benchmark.status == BenchmarkStatus.RUNNING.value)
+            .where(Benchmark.started_at < cutoff_time)
+        )
+        result = await session.execute(stmt)
+        stale_benchmarks = list(result.scalars().all())
+
+        if not stale_benchmarks:
+            logger.debug("No stale benchmarks found")
+            return {
+                "benchmarks_cleaned": 0,
+                "runs_cleaned": 0,
+                "benchmark_ids": [],
+            }
+
+        cleaned_benchmark_ids: list[str] = []
+        total_runs_cleaned = 0
+
+        for benchmark in stale_benchmarks:
+            benchmark_id = str(benchmark.id)
+            cleaned_benchmark_ids.append(benchmark_id)
+
+            # Mark incomplete runs as FAILED
+            incomplete_statuses = [
+                BenchmarkRunStatus.PENDING.value,
+                BenchmarkRunStatus.INDEXING.value,
+                BenchmarkRunStatus.EVALUATING.value,
+            ]
+            run_update_stmt = (
+                update(BenchmarkRun)
+                .where(BenchmarkRun.benchmark_id == benchmark_id)
+                .where(BenchmarkRun.status.in_(incomplete_statuses))
+                .values(
+                    status=BenchmarkRunStatus.FAILED.value,
+                    error_message="Benchmark cleanup: run was stale",
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            run_result = await session.execute(run_update_stmt)
+            runs_cleaned = run_result.rowcount or 0
+            total_runs_cleaned += runs_cleaned
+
+            # Mark benchmark as FAILED
+            benchmark.status = BenchmarkStatus.FAILED.value
+            benchmark.completed_at = datetime.now(UTC)
+
+            logger.info(
+                "Marked stale benchmark %s as FAILED (%d runs cleaned)",
+                benchmark_id,
+                runs_cleaned,
+            )
+
+        await session.commit()
+
+        return {
+            "benchmarks_cleaned": len(cleaned_benchmark_ids),
+            "runs_cleaned": total_runs_cleaned,
+            "benchmark_ids": cleaned_benchmark_ids,
+        }
+
+
 __all__ = [
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
     "cleanup_stuck_operations",
+    "cleanup_stale_benchmarks",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
 ]

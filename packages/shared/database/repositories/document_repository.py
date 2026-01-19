@@ -338,6 +338,124 @@ class DocumentRepository:
             logger.error("Failed to list duplicate documents: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "duplicate documents", str(e)) from e
 
+    async def count_by_collection(self, collection_id: str) -> int:
+        """Return the total number of documents in a collection."""
+        try:
+            result = await self.session.scalar(
+                select(func.count()).select_from(Document).where(Document.collection_id == collection_id)
+            )
+            return int(result or 0)
+        except Exception as exc:
+            logger.error("Failed to count documents for collection %s: %s", collection_id, exc, exc_info=True)
+            raise DatabaseOperationError("count", "documents", str(exc)) from exc
+
+    async def get_existing_ids_in_collection(self, collection_id: str, document_ids: set[str]) -> set[str]:
+        """Return the subset of document IDs that exist in a collection."""
+        if not document_ids:
+            return set()
+
+        try:
+            rows = await self.session.execute(
+                select(Document.id).where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.id.in_(document_ids),
+                    )
+                )
+            )
+            return {str(row[0]) for row in rows.all()}
+        except Exception as exc:
+            logger.error(
+                "Failed to bulk-check document ids for collection %s: %s",
+                collection_id,
+                exc,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("get", "document", str(exc)) from exc
+
+    async def get_doc_ids_by_uri_bulk(self, collection_id: str, uris: set[str]) -> dict[str, str]:
+        """Return a mapping from uri -> document_id for URIs present in the collection."""
+        if not uris:
+            return {}
+
+        try:
+            rows = await self.session.execute(
+                select(Document.uri, Document.id).where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.uri.in_(uris),
+                    )
+                )
+            )
+            result: dict[str, str] = {}
+            for uri, doc_id in rows.all():
+                if uri is None:
+                    continue
+                result[str(uri)] = str(doc_id)
+            return result
+        except Exception as exc:
+            logger.error(
+                "Failed to bulk-get documents by uri for collection %s: %s",
+                collection_id,
+                exc,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("get", "document", str(exc)) from exc
+
+    async def get_doc_ids_by_content_hash_bulk(self, collection_id: str, hashes: set[str]) -> dict[str, list[str]]:
+        """Return a mapping from content_hash -> [document_id, ...] for hashes present in the collection."""
+        if not hashes:
+            return {}
+
+        try:
+            rows = await self.session.execute(
+                select(Document.content_hash, Document.id).where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.content_hash.in_(hashes),
+                    )
+                )
+            )
+            result: dict[str, list[str]] = {}
+            for content_hash, doc_id in rows.all():
+                result.setdefault(str(content_hash), []).append(str(doc_id))
+            return result
+        except Exception as exc:
+            logger.error(
+                "Failed to bulk-get documents by content_hash for collection %s: %s",
+                collection_id,
+                exc,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("get", "document", str(exc)) from exc
+
+    async def get_doc_ids_by_file_name_bulk(self, collection_id: str, file_names: set[str]) -> dict[str, list[str]]:
+        """Return a mapping from file_name -> [document_id, ...] for file names present in the collection."""
+        if not file_names:
+            return {}
+
+        try:
+            rows = await self.session.execute(
+                select(Document.file_name, Document.id).where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.file_name.in_(file_names),
+                    )
+                )
+            )
+            result: dict[str, list[str]] = {}
+            for file_name, doc_id in rows.all():
+                result.setdefault(str(file_name), []).append(str(doc_id))
+            return result
+        except Exception as exc:
+            logger.error(
+                "Failed to bulk-get documents by file_name for collection %s: %s",
+                collection_id,
+                exc,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("get", "document", str(exc)) from exc
+
     async def update_status(
         self,
         document_id: str,

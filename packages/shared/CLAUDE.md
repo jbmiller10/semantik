@@ -31,13 +31,19 @@
       - ProjectionRun (embedding visualization)
       - ChunkingConfig, ChunkingConfigProfile, ChunkingStrategy
       - PluginConfig (external plugin configuration)
+      - BenchmarkDataset, BenchmarkQuery, BenchmarkRelevance (ground truth)
+      - BenchmarkDatasetMapping (dataset-collection bindings)
+      - Benchmark, BenchmarkRun, BenchmarkRunMetric, BenchmarkQueryResult
     </key-models>
     <enums>
       - CollectionStatus: PENDING -> READY -> PROCESSING -> ERROR/DEGRADED
       - OperationStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/CANCELLED
-      - OperationType: INDEX, APPEND, REINDEX, DELETE, REMOVE_SOURCE, PROJECTION_BUILD
+      - OperationType: INDEX, APPEND, REINDEX, DELETE, REMOVE_SOURCE, PROJECTION_BUILD, BENCHMARK
       - DocumentStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/DELETED
       - ProjectionRunStatus: PENDING -> RUNNING -> COMPLETED/FAILED/CANCELLED
+      - BenchmarkStatus: PENDING -> RUNNING -> COMPLETED/FAILED/CANCELLED
+      - BenchmarkRunStatus: PENDING -> INDEXING -> EVALUATING -> COMPLETED/FAILED
+      - MappingStatus: PENDING -> RESOLVED/PARTIAL
     </enums>
     <partitioning>
       Chunks table uses LIST partitioning with 100 partitions.
@@ -57,6 +63,8 @@
       - ProjectionRunRepository: Embedding projection lifecycle
       - ChunkingConfigProfileRepository: User-scoped chunking presets
       - CollectionSyncRunRepository: Sync run tracking
+      - BenchmarkRepository: Benchmark CRUD, run management, results aggregation
+      - BenchmarkDatasetRepository: Dataset CRUD, query listing, mapping management
     </repositories>
   </module>
 
@@ -321,6 +329,50 @@
       - No API key required for local provider
     </local-provider-specifics>
   </module>
+
+  <module path="benchmarks/">
+    <purpose>Search quality benchmarking with standard IR metrics</purpose>
+    <structure>
+      - __init__.py: Module exports with usage examples
+      - metrics.py: Core metric functions (precision, recall, MRR, nDCG, AP)
+      - evaluator.py: QueryEvaluator and ConfigurationEvaluator classes
+      - types.py: TypedDicts for structured results (RetrievedChunk, RelevanceJudgment, etc.)
+      - exceptions.py: BenchmarkError hierarchy
+    </structure>
+    <metrics>
+      - collapse_chunks_to_documents: First-hit deduplication for doc-level evaluation
+      - precision_at_k: Fraction of top-k slots that are relevant
+      - recall_at_k: Fraction of relevant documents found in top-k
+      - mean_reciprocal_rank: 1/rank of first relevant document
+      - ndcg_at_k: Normalized DCG with graded relevance (0-3)
+      - average_precision: Mean precision at each relevant position
+      - compute_all_metrics: Convenience function for all metrics at multiple k values
+    </metrics>
+    <evaluators>
+      - QueryEvaluator: Evaluates single query with timing and metrics
+      - ConfigurationEvaluator: Evaluates all queries for a configuration
+    </evaluators>
+    <usage>
+      from shared.benchmarks import (
+          QueryEvaluator, compute_all_metrics,
+          RetrievedChunk, SearchTiming
+      )
+
+      evaluator = QueryEvaluator()
+      result = evaluator.evaluate(
+          query_id=1,
+          retrieved_chunks=chunks,
+          relevance_judgments=judgments,
+          k_values=[5, 10],
+          timing=SearchTiming(search_time_ms=50),
+      )
+    </usage>
+    <key-concepts>
+      - Document-level evaluation: chunks collapsed to unique docs before metrics
+      - Graded relevance: 0=not relevant, 1=marginally, 2=relevant, 3=highly relevant
+      - Binary threshold: grade > 0 treated as relevant for precision/recall/MRR/AP
+    </key-concepts>
+  </module>
 </modules>
 
 <repository-pattern>
@@ -376,6 +428,13 @@
     +-- LLMTimeoutError: Request timed out
     +-- LLMContextLengthError: Input exceeds model context window
   </llm-hierarchy>
+  <benchmark-hierarchy path="benchmarks/exceptions.py">
+    BenchmarkError (base)
+    +-- BenchmarkMetricError: Error computing metrics
+    +-- BenchmarkEvaluationError: Error during query evaluation
+    +-- BenchmarkValidationError: Invalid benchmark configuration
+    +-- BenchmarkCancelledError: Benchmark execution cancelled
+  </benchmark-hierarchy>
   <translation>
     Use chunking/infrastructure/exception_translator.py to convert between layers
   </translation>

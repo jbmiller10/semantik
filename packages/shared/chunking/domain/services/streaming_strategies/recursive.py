@@ -90,9 +90,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
 
         # If final, flush current chunk
         if is_final and self._current_chunk:
-            chunk = self._create_chunk_from_buffer(config)
-            if chunk:
-                chunks.append(chunk)
+            chunks.extend(self._create_chunks_from_buffer(config))
 
         return chunks
 
@@ -118,9 +116,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
             # Check if adding sentence would exceed max tokens
             if self._current_chunk_size + sentence_tokens > config.max_tokens and self._current_chunk:
                 # Emit current chunk
-                chunk = self._create_chunk_from_buffer(config)
-                if chunk:
-                    chunks.append(chunk)
+                chunks.extend(self._create_chunks_from_buffer(config))
 
                 # Start new chunk with overlap
                 self._apply_overlap(config)
@@ -131,9 +127,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
 
         # Check if we should emit chunk based on size
         if self._current_chunk_size >= config.max_tokens * 0.9:
-            chunk = self._create_chunk_from_buffer(config)
-            if chunk:
-                chunks.append(chunk)
+            chunks.extend(self._create_chunks_from_buffer(config))
             self._apply_overlap(config)
 
         return chunks
@@ -217,79 +211,115 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
 
         return sentences
 
-    def _create_chunk_from_buffer(self, config: ChunkConfig) -> Chunk | None:
+    def _split_to_token_limit(self, text: str, max_tokens: int) -> list[str]:
         """
-        Create a chunk from the current buffer.
+        Split text into chunks that fit within max_tokens, using the streaming
+        strategy's approximate token counting.
+        """
+        if not text or max_tokens <= 0:
+            return []
+
+        if self.count_tokens(text) <= max_tokens:
+            return [text]
+
+        parts: list[str] = []
+        words = text.split()
+        current_words: list[str] = []
+        current_tokens = 0
+
+        for word in words:
+            word_tokens = max(1, self.count_tokens(word))
+
+            # Handle extremely long "words" (URLs, base64, minified code) by splitting by character budget.
+            if word_tokens > max_tokens:
+                if current_words:
+                    parts.append(" ".join(current_words))
+                    current_words = []
+                    current_tokens = 0
+
+                max_chars = max(1, max_tokens * 4)
+                for i in range(0, len(word), max_chars):
+                    segment = word[i : i + max_chars]
+                    if segment:
+                        parts.append(segment)
+                continue
+
+            effective_tokens = word_tokens + (1 if current_words else 0)
+
+            if current_tokens + effective_tokens > max_tokens and current_words:
+                parts.append(" ".join(current_words))
+                current_words = [word]
+                current_tokens = word_tokens
+            else:
+                current_words.append(word)
+                current_tokens += effective_tokens
+
+        if current_words:
+            parts.append(" ".join(current_words))
+
+        return parts
+
+    def _create_chunks_from_buffer(self, config: ChunkConfig) -> list[Chunk]:
+        """
+        Create one or more chunks from the current buffer.
 
         Args:
             config: Chunk configuration
 
         Returns:
-            Chunk if buffer has content, None otherwise
+            List of chunks produced from the buffer (may be empty)
         """
         if not self._current_chunk:
-            return None
+            return []
 
         # Join sentences/paragraphs
         chunk_text = " ".join(self._current_chunk)
         chunk_text = self.clean_chunk_text(chunk_text)
 
         if not chunk_text:
-            return None
+            return []
 
-        # Create metadata
-        token_count = self.count_tokens(chunk_text)
+        parts = self._split_to_token_limit(chunk_text, config.max_tokens)
+        produced: list[Chunk] = []
 
-        # Validate chunk size doesn't exceed max_tokens
-        if token_count > config.max_tokens:
-            # If chunk exceeds max tokens, truncate it
-            # This shouldn't happen with proper sentence splitting, but adds safety
-            words = chunk_text.split()
-            truncated_text = ""
-            current_tokens = 0
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
 
-            for word in words:
-                word_tokens = self.count_tokens(word)
-                if current_tokens + word_tokens > config.max_tokens:
-                    break
-                truncated_text += word + " "
-                current_tokens += word_tokens
+            token_count = self.count_tokens(part)
+            effective_min_tokens = max(1, min(config.min_tokens, token_count))
 
-            chunk_text = truncated_text.strip()
-            token_count = current_tokens
+            metadata = ChunkMetadata(
+                chunk_id=str(uuid4()),
+                document_id="doc",
+                chunk_index=self._chunk_index,
+                start_offset=self._char_offset,
+                end_offset=self._char_offset + len(part),
+                token_count=token_count,
+                strategy_name=self.name,
+                semantic_density=0.6,  # Medium density for recursive
+                confidence_score=0.85,
+                created_at=datetime.now(tz=UTC),
+            )
 
-        effective_min_tokens = min(config.min_tokens, token_count, 1)
+            produced.append(
+                Chunk(
+                    content=part,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+            )
 
-        metadata = ChunkMetadata(
-            chunk_id=str(uuid4()),
-            document_id="doc",
-            chunk_index=self._chunk_index,
-            start_offset=self._char_offset,
-            end_offset=self._char_offset + len(chunk_text),
-            token_count=token_count,
-            strategy_name=self.name,
-            semantic_density=0.6,  # Medium density for recursive
-            confidence_score=0.85,
-            created_at=datetime.now(tz=UTC),
-        )
+            self._chunk_index += 1
+            self._char_offset += len(part)
 
-        # Create chunk
-        chunk = Chunk(
-            content=chunk_text,
-            metadata=metadata,
-            min_tokens=effective_min_tokens,
-            max_tokens=config.max_tokens,
-        )
-
-        # Update state
-        self._chunk_index += 1
-        self._char_offset += len(chunk_text)
-
-        # Clear buffer
+        # Clear buffer after emitting all parts
         self._current_chunk = []
         self._current_chunk_size = 0
 
-        return chunk
+        return produced
 
     def _apply_overlap(self, config: ChunkConfig) -> None:
         """
@@ -332,9 +362,7 @@ class StreamingRecursiveStrategy(StreamingChunkingStrategy):
 
         # Flush current chunk
         if self._current_chunk:
-            chunk = self._create_chunk_from_buffer(config)
-            if chunk:
-                chunks.append(chunk)
+            chunks.extend(self._create_chunks_from_buffer(config))
 
         self._is_finalized = True
         return chunks
