@@ -94,4 +94,3 @@ class TestBenchmarkExecutorCancellation:
             and call.kwargs.get("error_message") == "cancelled by user"
             for call in benchmark_repo.update_run_status.call_args_list
         )
-

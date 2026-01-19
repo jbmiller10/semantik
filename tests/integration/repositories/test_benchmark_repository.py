@@ -15,7 +15,9 @@ from shared.database.repositories.benchmark_repository import BenchmarkRepositor
 
 class TestBenchmarkRepositoryStatusGuards:
     @pytest.mark.asyncio()
-    async def test_cancelled_benchmark_status_is_not_overwritten(self, db_session, test_user_db, collection_factory) -> None:
+    async def test_cancelled_benchmark_status_is_not_overwritten(
+        self, db_session, test_user_db, collection_factory
+    ) -> None:
         collection = await collection_factory(owner_id=test_user_db.id)
 
         dataset = BenchmarkDataset(
@@ -73,4 +75,3 @@ class TestBenchmarkRepositoryStatusGuards:
         await db_session.commit()
 
         assert await repo.get_status_value(benchmark.id) == BenchmarkStatus.CANCELLED.value
-

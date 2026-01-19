@@ -277,9 +277,7 @@ class BenchmarkRepository:
         if benchmark is None:
             # Either not found, or was CANCELLED and we tried to overwrite it.
             existing_stmt: Select[tuple[Benchmark]] = (
-                select(Benchmark)
-                .where(Benchmark.id == benchmark_uuid)
-                .execution_options(populate_existing=True)
+                select(Benchmark).where(Benchmark.id == benchmark_uuid).execution_options(populate_existing=True)
             )
             existing = (await self.session.execute(existing_stmt)).scalar_one_or_none()
             if existing is None:

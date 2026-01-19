@@ -32,4 +32,3 @@ def downgrade() -> None:
         "ix_benchmark_relevance_mapping_id_id",
         table_name="benchmark_relevance",
     )
-

@@ -1,8 +1,8 @@
 """Search Service for managing search-related business logic."""
 
-import random
 import asyncio
 import logging
+import random
 import time
 from dataclasses import dataclass
 from typing import Any, Literal

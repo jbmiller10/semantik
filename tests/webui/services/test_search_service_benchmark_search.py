@@ -89,4 +89,3 @@ class TestSearchServiceBenchmarkSearch:
 
             assert mock_client.post.call_count == 1
             mock_sleep.assert_not_awaited()
-
