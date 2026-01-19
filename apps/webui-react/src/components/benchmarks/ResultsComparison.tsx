@@ -389,7 +389,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
 function SortableHeader({
   field,
   currentSort,
-  direction: _direction,
+  direction,
   onSort,
   align = 'left',
   children,
@@ -409,6 +409,7 @@ function SortableHeader({
         align === 'right' ? 'text-right' : 'text-left'
       }`}
       onClick={() => onSort(field)}
+      aria-sort={isActive ? (direction === 'asc' ? 'ascending' : 'descending') : undefined}
     >
       <span className="inline-flex items-center gap-1">
         {children}
