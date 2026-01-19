@@ -21,6 +21,7 @@ from .utils import (
     OPERATION_HARD_TIME_LIMIT,
     OPERATION_SOFT_TIME_LIMIT,
     CeleryTaskWithOperationUpdates,
+    await_if_awaitable,
     celery_app,
     logger,
     resolve_awaitable_sync,
@@ -235,8 +236,9 @@ async def _run_benchmark_async(
                 )
 
         finally:
-            # Ensure progress reporter is closed
-            await progress_reporter.close()
+            # Ensure progress reporter is closed (close() may return None or coroutine)
+            close_result = progress_reporter.close()
+            await await_if_awaitable(close_result)
 
     return result
 
