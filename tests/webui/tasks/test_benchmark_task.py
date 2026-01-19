@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -26,7 +26,7 @@ class MockUpdater:
     def set_user_id(self, user_id: int | None) -> None:
         self.user_id = user_id
 
-    async def __aenter__(self) -> "MockUpdater":
+    async def __aenter__(self) -> MockUpdater:
         return self
 
     async def __aexit__(self, *_args: Any) -> None:
@@ -52,7 +52,9 @@ def _make_session_factory(session: Any):
 @pytest.mark.asyncio()
 async def test_run_benchmark_returns_failed_when_operation_missing(monkeypatch) -> None:
     session = SimpleNamespace(commit=AsyncMock())
-    monkeypatch.setattr(benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session)))
+    monkeypatch.setattr(
+        benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session))
+    )
     monkeypatch.setattr(benchmark_module, "CeleryTaskWithOperationUpdates", MockUpdater)
 
     op_repo = AsyncMock()
@@ -73,7 +75,9 @@ async def test_run_benchmark_returns_failed_when_operation_missing(monkeypatch) 
         "shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository",
         lambda _s: AsyncMock(),
     )
-    monkeypatch.setattr("shared.database.repositories.collection_repository.CollectionRepository", lambda _s: AsyncMock())
+    monkeypatch.setattr(
+        "shared.database.repositories.collection_repository.CollectionRepository", lambda _s: AsyncMock()
+    )
     monkeypatch.setattr("webui.services.search_service.SearchService", lambda **_kw: AsyncMock())
     monkeypatch.setattr("webui.services.benchmark_executor.BenchmarkExecutor", lambda **_kw: AsyncMock())
 
@@ -85,7 +89,9 @@ async def test_run_benchmark_returns_failed_when_operation_missing(monkeypatch) 
 @pytest.mark.asyncio()
 async def test_run_benchmark_updates_operation_completed_on_success(monkeypatch) -> None:
     session = SimpleNamespace(commit=AsyncMock())
-    monkeypatch.setattr(benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session)))
+    monkeypatch.setattr(
+        benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session))
+    )
     monkeypatch.setattr(benchmark_module, "CeleryTaskWithOperationUpdates", MockUpdater)
 
     operation = SimpleNamespace(user_id=123)
@@ -107,7 +113,9 @@ async def test_run_benchmark_updates_operation_completed_on_success(monkeypatch)
         async def set_task_id(self, uuid: str, task_id: str):  # noqa: ANN001
             return await operation_repo.set_task_id(uuid, task_id)
 
-        async def update_status(self, uuid: str, status: OperationStatus, error_message: str | None = None):  # noqa: ANN001
+        async def update_status(
+            self, uuid: str, status: OperationStatus, error_message: str | None = None
+        ):  # noqa: ANN001
             return await operation_repo.update_status(uuid, status, error_message=error_message)
 
     class FakeBenchmarkRepo:
@@ -158,7 +166,9 @@ async def test_run_benchmark_updates_operation_completed_on_success(monkeypatch)
 @pytest.mark.asyncio()
 async def test_run_benchmark_updates_operation_failed_on_executor_exception(monkeypatch) -> None:
     session = SimpleNamespace(commit=AsyncMock())
-    monkeypatch.setattr(benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session)))
+    monkeypatch.setattr(
+        benchmark_module, "_resolve_session_factory", AsyncMock(return_value=_make_session_factory(session))
+    )
     monkeypatch.setattr(benchmark_module, "CeleryTaskWithOperationUpdates", MockUpdater)
 
     operation = SimpleNamespace(user_id=123)
@@ -181,7 +191,9 @@ async def test_run_benchmark_updates_operation_failed_on_executor_exception(monk
         async def set_task_id(self, uuid: str, task_id: str):  # noqa: ANN001
             return await operation_repo.set_task_id(uuid, task_id)
 
-        async def update_status(self, uuid: str, status: OperationStatus, error_message: str | None = None):  # noqa: ANN001
+        async def update_status(
+            self, uuid: str, status: OperationStatus, error_message: str | None = None
+        ):  # noqa: ANN001
             return await operation_repo.update_status(uuid, status, error_message=error_message)
 
     class FakeBenchmarkRepo:

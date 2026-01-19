@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from shared.database.exceptions import AccessDeniedError, ValidationError
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from shared.database.models import (
     Benchmark,
     BenchmarkDataset,
@@ -19,7 +19,6 @@ from shared.database.models import (
     MappingStatus,
 )
 from shared.database.repositories.benchmark_repository import BenchmarkRepository
-from shared.database.exceptions import EntityNotFoundError
 
 
 class TestBenchmarkRepositoryStatusGuards:
@@ -294,7 +293,9 @@ async def test_create_validates_inputs_and_requires_mapping(db_session, test_use
 
 
 @pytest.mark.asyncio()
-async def test_get_by_uuid_for_user_enforces_ownership(db_session, test_user_db, other_user_db, collection_factory) -> None:
+async def test_get_by_uuid_for_user_enforces_ownership(
+    db_session, test_user_db, other_user_db, collection_factory
+) -> None:
     collection = await collection_factory(owner_id=test_user_db.id)
 
     dataset = BenchmarkDataset(
@@ -414,7 +415,9 @@ async def test_get_aggregated_results_formats_metrics_and_selects_best_run(
         total_duration_ms=3,
     )
 
-    await repo.update_run_status(run2.id, BenchmarkRunStatus.COMPLETED, dense_collection_name="dense", sparse_collection_name="sparse")
+    await repo.update_run_status(
+        run2.id, BenchmarkRunStatus.COMPLETED, dense_collection_name="dense", sparse_collection_name="sparse"
+    )
 
     await repo.add_run_metric(run1.id, "ndcg", 0.2, k_value=5)
     await repo.add_run_metric(run2.id, "mrr", 0.7)

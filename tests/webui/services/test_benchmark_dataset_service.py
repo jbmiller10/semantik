@@ -380,7 +380,9 @@ async def test_resolve_mapping_enqueues_when_wall_clock_exceeded(
 
 
 @pytest.mark.asyncio()
-async def test_upload_dataset_supports_legacy_fields_and_scalar_judgments(db_session, test_user_db, monkeypatch) -> None:
+async def test_upload_dataset_supports_legacy_fields_and_scalar_judgments(
+    db_session, test_user_db, monkeypatch
+) -> None:
     monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_UPLOAD_BYTES", 10_000)
     monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_QUERIES", 10)
     monkeypatch.setattr("shared.config.settings.BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY", 10)
