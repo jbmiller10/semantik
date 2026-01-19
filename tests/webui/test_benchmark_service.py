@@ -141,7 +141,9 @@ async def test_start_benchmark_dispatches_task(stub_celery_send_task) -> None:
 
     benchmark_repo = AsyncMock()
     benchmark_repo.get_by_uuid_for_user.return_value = benchmark
-    benchmark_repo.transition_status_atomically.return_value = SimpleNamespace(id="bench-1", status=BenchmarkStatus.RUNNING.value)
+    benchmark_repo.transition_status_atomically.return_value = SimpleNamespace(
+        id="bench-1", status=BenchmarkStatus.RUNNING.value
+    )
 
     benchmark_dataset_repo = AsyncMock()
     benchmark_dataset_repo.get_mapping.return_value = mapping
@@ -168,7 +170,9 @@ async def test_start_benchmark_dispatches_task(stub_celery_send_task) -> None:
 @pytest.mark.asyncio()
 async def test_cancel_benchmark_rejects_non_cancellable_states() -> None:
     benchmark_repo = AsyncMock()
-    benchmark_repo.get_by_uuid_for_user.return_value = SimpleNamespace(id="bench-1", status=BenchmarkStatus.COMPLETED.value)
+    benchmark_repo.get_by_uuid_for_user.return_value = SimpleNamespace(
+        id="bench-1", status=BenchmarkStatus.COMPLETED.value
+    )
 
     service = BenchmarkService(
         db_session=AsyncMock(),

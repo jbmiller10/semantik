@@ -406,7 +406,7 @@ class TestCleanupStuckOperations:
 class TestCleanupStuckOperationsAsync:
     """Test suite for _cleanup_stuck_operations_async function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_operation(self) -> MagicMock:
         """Create a mock operation."""
         op = MagicMock()
@@ -414,7 +414,7 @@ class TestCleanupStuckOperationsAsync:
         op.task_id = "task-123"
         return op
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_operation_no_task(self) -> MagicMock:
         """Create a mock operation without task_id."""
         op = MagicMock()
@@ -693,7 +693,7 @@ class TestCleanupStuckOperationsAsync:
 class TestCleanupStaleBenchmarksAsync:
     """Test suite for _cleanup_stale_benchmarks_async function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_stale_benchmark(self) -> MagicMock:
         """Create a mock stale benchmark."""
         benchmark = MagicMock()

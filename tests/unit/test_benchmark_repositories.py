@@ -68,7 +68,9 @@ async def test_benchmark_dataset_repository_update_mapping_status_sets_resolved_
     )
     repo.get_mapping = AsyncMock(return_value=mapping)
 
-    updated = await repo.update_mapping_status(mapping_id=10, status=MappingStatus.RESOLVED, mapped_count=1, total_count=2)
+    updated = await repo.update_mapping_status(
+        mapping_id=10, status=MappingStatus.RESOLVED, mapped_count=1, total_count=2
+    )
     assert updated.mapping_status == MappingStatus.RESOLVED.value
     assert updated.mapped_count == 1
     assert updated.total_count == 2
@@ -86,7 +88,9 @@ async def test_benchmark_dataset_repository_add_relevance_hash_and_errors() -> N
     with pytest.raises(ValidationError):
         await repo.add_relevance(query_id=1, mapping_id=2, doc_ref={"uri": "x"}, relevance_grade=99)
 
-    created = await repo.add_relevance(query_id=1, mapping_id=2, doc_ref={"uri": "x"}, relevance_grade=2, doc_ref_hash=None)
+    created = await repo.add_relevance(
+        query_id=1, mapping_id=2, doc_ref={"uri": "x"}, relevance_grade=2, doc_ref_hash=None
+    )
     assert created.doc_ref_hash is not None
 
     session.flush = AsyncMock(side_effect=RuntimeError("boom"))

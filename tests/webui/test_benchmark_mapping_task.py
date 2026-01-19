@@ -32,7 +32,7 @@ class _FakeProgressReporter:
 
 
 @pytest.mark.asyncio()
-async def test_resolve_mapping_async_returns_failed_when_operation_missing(monkeypatch) -> None:
+async def test_resolve_mapping_async_returns_failed_when_operation_missing() -> None:
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -48,7 +48,10 @@ async def test_resolve_mapping_async_returns_failed_when_operation_missing(monke
     with (
         patch.object(benchmark_mapping, "_resolve_session_factory", AsyncMock(return_value=session_factory)),
         patch("shared.database.repositories.operation_repository.OperationRepository", return_value=operation_repo),
-        patch("shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository", return_value=AsyncMock()),
+        patch(
+            "shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository",
+            return_value=AsyncMock(),
+        ),
         patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=AsyncMock()),
         patch("shared.database.repositories.document_repository.DocumentRepository", return_value=AsyncMock()),
         patch.object(benchmark_mapping, "CeleryTaskWithOperationUpdates", _FakeProgressReporter),
@@ -65,7 +68,7 @@ async def test_resolve_mapping_async_returns_failed_when_operation_missing(monke
 
 
 @pytest.mark.asyncio()
-async def test_resolve_mapping_async_marks_completed_and_returns_result(monkeypatch) -> None:
+async def test_resolve_mapping_async_marks_completed_and_returns_result() -> None:
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -83,17 +86,24 @@ async def test_resolve_mapping_async_marks_completed_and_returns_result(monkeypa
     operation_repo.update_status = AsyncMock()
 
     service_instance = AsyncMock()
-    service_instance.resolve_mapping_with_progress.return_value = {"mapping_id": 10, "mapped_count": 1, "total_count": 2}
+    service_instance.resolve_mapping_with_progress.return_value = {
+        "mapping_id": 10,
+        "mapped_count": 1,
+        "total_count": 2,
+    }
 
-    BenchmarkDatasetService = Mock(return_value=service_instance)
+    mock_dataset_service = Mock(return_value=service_instance)
 
     with (
         patch.object(benchmark_mapping, "_resolve_session_factory", AsyncMock(return_value=session_factory)),
         patch("shared.database.repositories.operation_repository.OperationRepository", return_value=operation_repo),
-        patch("shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository", return_value=AsyncMock()),
+        patch(
+            "shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository",
+            return_value=AsyncMock(),
+        ),
         patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=AsyncMock()),
         patch("shared.database.repositories.document_repository.DocumentRepository", return_value=AsyncMock()),
-        patch("webui.services.benchmark_dataset_service.BenchmarkDatasetService", BenchmarkDatasetService),
+        patch("webui.services.benchmark_dataset_service.BenchmarkDatasetService", mock_dataset_service),
         patch.object(benchmark_mapping, "CeleryTaskWithOperationUpdates", _FakeProgressReporter),
     ):
         result = await benchmark_mapping._resolve_mapping_async(
@@ -128,15 +138,18 @@ async def test_resolve_mapping_async_sets_failed_status_on_exception() -> None:
 
     service_instance = AsyncMock()
     service_instance.resolve_mapping_with_progress.side_effect = RuntimeError("boom")
-    BenchmarkDatasetService = Mock(return_value=service_instance)
+    mock_dataset_service = Mock(return_value=service_instance)
 
     with (
         patch.object(benchmark_mapping, "_resolve_session_factory", AsyncMock(return_value=session_factory)),
         patch("shared.database.repositories.operation_repository.OperationRepository", return_value=operation_repo),
-        patch("shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository", return_value=AsyncMock()),
+        patch(
+            "shared.database.repositories.benchmark_dataset_repository.BenchmarkDatasetRepository",
+            return_value=AsyncMock(),
+        ),
         patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=AsyncMock()),
         patch("shared.database.repositories.document_repository.DocumentRepository", return_value=AsyncMock()),
-        patch("webui.services.benchmark_dataset_service.BenchmarkDatasetService", BenchmarkDatasetService),
+        patch("webui.services.benchmark_dataset_service.BenchmarkDatasetService", mock_dataset_service),
         patch.object(benchmark_mapping, "CeleryTaskWithOperationUpdates", _FakeProgressReporter),
     ):
         result = await benchmark_mapping._resolve_mapping_async(
@@ -149,4 +162,3 @@ async def test_resolve_mapping_async_sets_failed_status_on_exception() -> None:
     assert result["status"] == "failed"
     assert result["error"] == "boom"
     operation_repo.update_status.assert_any_await("op-1", OperationStatus.FAILED, error_message="boom"[:1000])
-

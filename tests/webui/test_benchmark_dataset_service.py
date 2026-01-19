@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from shared.config import settings
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
+from shared.database.exceptions import AccessDeniedError, ValidationError
 from shared.database.models import MappingStatus
 from webui.services.benchmark_dataset_service import BenchmarkDatasetService
 
@@ -108,7 +108,9 @@ async def test_upload_dataset_parses_and_stores_pending_relevance(monkeypatch) -
 @pytest.mark.asyncio()
 async def test_upload_dataset_rejects_missing_query_fields() -> None:
     repo = AsyncMock()
-    repo.create.return_value = SimpleNamespace(id="ds-1", name="ds", description=None, query_count=1, schema_version="1.0")
+    repo.create.return_value = SimpleNamespace(
+        id="ds-1", name="ds", description=None, query_count=1, schema_version="1.0"
+    )
 
     service = BenchmarkDatasetService(
         db_session=AsyncMock(),
