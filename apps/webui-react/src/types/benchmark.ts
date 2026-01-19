@@ -60,6 +60,7 @@ export interface MappingCreateRequest {
 
 export interface MappingResolveResponse {
   id: number;
+  operation_uuid: string | null;
   mapping_status: MappingStatus;
   mapped_count: number;
   total_count: number;

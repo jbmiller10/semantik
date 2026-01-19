@@ -2,10 +2,11 @@
  * MappingManagementPanel - Panel for managing dataset-collection mappings
  */
 
-import { useState } from 'react';
-import { ArrowLeft, Link2, CheckCircle, AlertCircle, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowLeft, Link2, CheckCircle, AlertCircle, Loader2, Plus, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useDatasetMappings, useCreateMapping, useResolveMapping } from '../../hooks/useBenchmarks';
 import { useCollections } from '../../hooks/useCollections';
+import { useMappingResolutionProgress } from '../../hooks/useMappingResolutionProgress';
 import type { BenchmarkDataset, DatasetMapping, MappingStatus } from '../../types/benchmark';
 
 interface MappingManagementPanelProps {
@@ -42,11 +43,26 @@ function getStatusBadge(status: MappingStatus) {
 export function MappingManagementPanel({ dataset, onBack }: MappingManagementPanelProps) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
+  const [activeResolution, setActiveResolution] = useState<{ mappingId: number; operationUuid: string } | null>(null);
 
   const { data: mappings, isLoading } = useDatasetMappings(dataset.id);
   const { data: collections } = useCollections();
   const createMappingMutation = useCreateMapping();
   const resolveMappingMutation = useResolveMapping();
+
+  const progressOptions = useMemo(() => {
+    if (!activeResolution) return null;
+    return {
+      datasetId: dataset.id,
+      onComplete: () => setActiveResolution(null),
+      onError: () => setActiveResolution(null),
+    };
+  }, [activeResolution, dataset.id]);
+
+  const { progress: resolutionProgress, isConnected: isResolutionConnected } = useMappingResolutionProgress(
+    activeResolution?.operationUuid ?? null,
+    progressOptions
+  );
 
   // Filter out collections that already have a mapping
   const mappedCollectionIds = new Set(mappings?.map((m) => m.collection_id) ?? []);
@@ -69,10 +85,15 @@ export function MappingManagementPanel({ dataset, onBack }: MappingManagementPan
 
   const handleResolve = async (mapping: DatasetMapping) => {
     try {
-      await resolveMappingMutation.mutateAsync({
+      const result = await resolveMappingMutation.mutateAsync({
         datasetId: dataset.id,
         mappingId: mapping.id,
       });
+      if (result.operation_uuid) {
+        setActiveResolution({ mappingId: mapping.id, operationUuid: result.operation_uuid });
+      } else {
+        setActiveResolution(null);
+      }
     } catch {
       // Error handled by mutation
     }
@@ -192,11 +213,16 @@ export function MappingManagementPanel({ dataset, onBack }: MappingManagementPan
                     {mapping.mapping_status !== 'resolved' && (
                       <button
                         onClick={() => handleResolve(mapping)}
-                        disabled={resolveMappingMutation.isPending}
+                        disabled={resolveMappingMutation.isPending || activeResolution?.mappingId === mapping.id}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors disabled:opacity-50"
                       >
                         {resolveMappingMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : activeResolution?.mappingId === mapping.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Resolving...
+                          </>
                         ) : (
                           <>
                             <RefreshCw className="h-4 w-4" />
@@ -222,6 +248,48 @@ export function MappingManagementPanel({ dataset, onBack }: MappingManagementPan
                         }`}
                         style={{
                           width: `${(mapping.mapped_count / mapping.total_count) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Live resolution progress (async) */}
+                {activeResolution?.mappingId === mapping.id && (
+                  <div className="mt-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[var(--text-muted)]">
+                        {resolutionProgress.stage.replace('_', ' ')}
+                      </span>
+                      <span
+                        className={`flex items-center gap-1 ${
+                          isResolutionConnected ? 'text-green-400' : 'text-amber-400'
+                        }`}
+                      >
+                        {isResolutionConnected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                        {isResolutionConnected ? 'Live' : 'Reconnecting...'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+                      <span>
+                        {resolutionProgress.processedRefs} / {resolutionProgress.totalRefs} processed
+                      </span>
+                      <span>
+                        {resolutionProgress.resolvedRefs} resolved • {resolutionProgress.ambiguousRefs} ambiguous •{' '}
+                        {resolutionProgress.unresolvedRefs} unmatched
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 transition-all duration-200"
+                        style={{
+                          width:
+                            resolutionProgress.totalRefs > 0
+                              ? `${Math.min(
+                                  100,
+                                  (resolutionProgress.processedRefs / resolutionProgress.totalRefs) * 100
+                                )}%`
+                              : '0%',
                         }}
                       />
                     </div>

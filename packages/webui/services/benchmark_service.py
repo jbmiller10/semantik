@@ -139,6 +139,39 @@ class BenchmarkService:
         if primary_k not in k_values_for_metrics:
             k_values_for_metrics = sorted({*k_values_for_metrics, primary_k})
 
+        required_top_k = max(k_values_for_metrics)
+        raw_top_k_values = config_matrix.get("top_k_values", [top_k])
+        if not isinstance(raw_top_k_values, list) or not raw_top_k_values:
+            raise ValidationError(
+                "config_matrix.top_k_values must be a non-empty list",
+                "config_matrix",
+            )
+        bad_top_k_values: list[Any] = []
+        too_small_top_k_values: list[int] = []
+        for raw_value in raw_top_k_values:
+            try:
+                k_int = int(raw_value)
+            except (TypeError, ValueError):
+                bad_top_k_values.append(raw_value)
+                continue
+            if k_int <= 0:
+                bad_top_k_values.append(raw_value)
+                continue
+            if k_int < required_top_k:
+                too_small_top_k_values.append(k_int)
+
+        if bad_top_k_values:
+            raise ValidationError(
+                f"config_matrix.top_k_values must be positive integers; invalid values: {bad_top_k_values}",
+                "config_matrix",
+            )
+        if too_small_top_k_values:
+            raise ValidationError(
+                "All top_k_values must be >= max(k_values_for_metrics) "
+                f"({required_top_k}); invalid values: {sorted(set(too_small_top_k_values))}",
+                "config_matrix",
+            )
+
         config_matrix = dict(config_matrix)
         config_matrix["primary_k"] = primary_k
         config_matrix["k_values_for_metrics"] = k_values_for_metrics
@@ -331,7 +364,7 @@ class BenchmarkService:
             collection_id=cast(str, mapping.collection_id),
             user_id=user_id,
             operation_type=OperationType.BENCHMARK,
-            config={"benchmark_id": benchmark_id},
+            config={"kind": "benchmark_run", "benchmark_id": benchmark_id},
         )
 
         # Atomically transition PENDING → RUNNING and link operation

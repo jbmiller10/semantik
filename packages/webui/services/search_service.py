@@ -1,5 +1,6 @@
 """Search Service for managing search-related business logic."""
 
+import random
 import asyncio
 import logging
 import time
@@ -779,73 +780,92 @@ class SearchService:
         # Note: Reranker model selection is handled by vecpipe based on the embedding model
         # We don't override it here for benchmark consistency
 
+        max_retries = 3
+        backoff_base_s = 0.5
+        backoff_factor = 2.0
+        backoff_max_s = 5.0
+
+        transient_http_statuses = {429, 500, 502, 503, 504}
+
+        attempt = 0
         start = time.perf_counter()
 
-        try:
-            headers = _vecpipe_headers()
-            async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-                response = await client.post(
-                    f"{settings.SEARCH_API_URL}/search",
-                    json=search_params,
-                    headers=headers,
+        headers = _vecpipe_headers()
+        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
+            while True:
+                try:
+                    response = await client.post(
+                        f"{settings.SEARCH_API_URL}/search",
+                        json=search_params,
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+
+                    elapsed_ms = int((time.perf_counter() - start) * 1000)
+                    data: dict[str, Any] = response.json()
+
+                    # Extract timing from response metadata if available
+                    metadata = data.get("metadata", {})
+                    rerank_time_ms: int | None = metadata.get("rerank_time_ms")
+                    search_time_ms = elapsed_ms - (rerank_time_ms or 0)
+
+                    # Format chunks for metrics calculation
+                    # Each result has document_id, chunk_id, and score
+                    chunks: list[dict[str, Any]] = []
+                    for r in data.get("results", []):
+                        chunks.append(
+                            {
+                                "doc_id": r.get("document_id"),
+                                "chunk_id": r.get("chunk_id"),
+                                "score": r.get("score", 0.0),
+                            }
+                        )
+
+                    return BenchmarkSearchResult(
+                        chunks=chunks,
+                        search_time_ms=search_time_ms,
+                        rerank_time_ms=rerank_time_ms,
+                        total_results=len(chunks),
+                    )
+
+                except httpx.HTTPStatusError as exc:
+                    status_code = exc.response.status_code
+                    should_retry = status_code in transient_http_statuses and attempt < max_retries
+
+                    if not should_retry:
+                        body_preview = ""
+                        try:
+                            body_preview = (exc.response.text or "")[:300]
+                        except Exception:
+                            body_preview = ""
+                        extra = f" body={body_preview!r}" if body_preview else ""
+                        raise RuntimeError(
+                            "Benchmark search failed "
+                            f"(collection={collection.name!r}, status={status_code}, attempt={attempt}/{max_retries})."
+                            f"{extra}"
+                        ) from exc
+
+                except httpx.RequestError as exc:
+                    should_retry = attempt < max_retries
+                    if not should_retry:
+                        raise RuntimeError(
+                            "Benchmark search failed "
+                            f"(collection={collection.name!r}, attempt={attempt}/{max_retries}): {exc}"
+                        ) from exc
+
+                # Retry backoff (for transient HTTP or request errors)
+                delay_s = min(backoff_base_s * (backoff_factor**attempt), backoff_max_s)
+                # Add jitter so concurrent benchmarks don't synchronize retries.
+                delay_s += random.uniform(0.0, min(0.25, delay_s / 2.0))
+                logger.warning(
+                    "Benchmark search retrying (collection=%s, attempt=%s/%s, sleep=%.2fs)",
+                    collection.name,
+                    attempt + 1,
+                    max_retries,
+                    delay_s,
                 )
-                response.raise_for_status()
-
-            elapsed_ms = int((time.perf_counter() - start) * 1000)
-            data: dict[str, Any] = response.json()
-
-            # Extract timing from response metadata if available
-            metadata = data.get("metadata", {})
-            rerank_time_ms: int | None = metadata.get("rerank_time_ms")
-            search_time_ms = elapsed_ms - (rerank_time_ms or 0)
-
-            # Format chunks for metrics calculation
-            # Each result has document_id, chunk_id, and score
-            chunks: list[dict[str, Any]] = []
-            for r in data.get("results", []):
-                chunks.append(
-                    {
-                        "doc_id": r.get("document_id"),
-                        "chunk_id": r.get("chunk_id"),
-                        "score": r.get("score", 0.0),
-                    }
-                )
-
-            return BenchmarkSearchResult(
-                chunks=chunks,
-                search_time_ms=search_time_ms,
-                rerank_time_ms=rerank_time_ms,
-                total_results=len(chunks),
-            )
-
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "Benchmark search failed for collection %s with status %s",
-                collection.name,
-                e.response.status_code,
-                exc_info=True,
-            )
-            # Return empty result on error
-            return BenchmarkSearchResult(
-                chunks=[],
-                search_time_ms=int((time.perf_counter() - start) * 1000),
-                rerank_time_ms=None,
-                total_results=0,
-            )
-
-        except Exception as e:
-            logger.error(
-                "Benchmark search failed for collection %s: %s",
-                collection.name,
-                e,
-                exc_info=True,
-            )
-            return BenchmarkSearchResult(
-                chunks=[],
-                search_time_ms=int((time.perf_counter() - start) * 1000),
-                rerank_time_ms=None,
-                total_results=0,
-            )
+                await asyncio.sleep(delay_s)
+                attempt += 1
 
 
 @dataclass

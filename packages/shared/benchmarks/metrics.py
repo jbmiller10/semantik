@@ -46,10 +46,11 @@ def precision_at_k(
     relevant_doc_ids: set[str],
     k: int,
 ) -> float:
-    """Calculate Precision@K: fraction of top-k results that are relevant.
+    """Calculate Precision@K: fraction of top-k slots that are relevant.
 
-    Precision@K measures how many of the retrieved documents are actually
-    relevant. It answers: "Of the documents I retrieved, how many were useful?"
+    Precision@K measures how many of the top-k ranked positions are filled by
+    relevant documents. If fewer than k documents are retrieved, the missing
+    slots are treated as non-relevant (denominator stays k).
 
     Args:
         retrieved_doc_ids: Ordered list of retrieved document IDs.
@@ -67,11 +68,8 @@ def precision_at_k(
         return 0.0
 
     top_k = retrieved_doc_ids[:k]
-    if not top_k:
-        return 0.0
-
     relevant_count = sum(1 for doc_id in top_k if doc_id in relevant_doc_ids)
-    return relevant_count / len(top_k)
+    return relevant_count / k
 
 
 def recall_at_k(
@@ -264,9 +262,9 @@ def compute_all_metrics(
         >>> results = compute_all_metrics(['a', 'b'], {'a': 3, 'c': 2}, k_values=[5])
         >>> for r in results:
         ...     print(f"{r.name}@{r.k_value}: {r.value:.3f}")
-        precision@5: 0.500
+        precision@5: 0.200
         recall@5: 0.500
-        ndcg@5: 0.613
+        ndcg@5: 0.704
         mrr@None: 1.000
         ap@None: 0.500
     """

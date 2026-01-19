@@ -87,8 +87,8 @@ class TestPrecisionAtK:
         """K is larger than number of retrieved docs."""
         retrieved = ["a", "b"]
         relevant = {"a", "b"}
-        # Should use actual number of results
-        assert precision_at_k(retrieved, relevant, k=10) == 1.0
+        # Missing results count as non-relevant (denominator stays k)
+        assert precision_at_k(retrieved, relevant, k=10) == pytest.approx(0.2)
 
     def test_k_zero(self) -> None:
         """K=0 should return 0."""

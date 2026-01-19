@@ -587,6 +587,56 @@ class BenchmarkDatasetRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def count_relevance_for_mapping(self, mapping_id: int) -> int:
+        """Count total relevance judgments for a mapping."""
+        try:
+            total = await self.session.scalar(
+                select(func.count(BenchmarkRelevance.id)).where(BenchmarkRelevance.mapping_id == mapping_id)
+            )
+            return int(total or 0)
+        except Exception as exc:
+            logger.error("Failed to count relevance for mapping %s: %s", mapping_id, exc, exc_info=True)
+            raise DatabaseOperationError("count", "benchmark_relevance", str(exc)) from exc
+
+    async def count_resolved_relevance_for_mapping(self, mapping_id: int) -> int:
+        """Count resolved relevance judgments for a mapping."""
+        try:
+            total = await self.session.scalar(
+                select(func.count(BenchmarkRelevance.id)).where(
+                    BenchmarkRelevance.mapping_id == mapping_id,
+                    BenchmarkRelevance.resolved_document_id.is_not(None),
+                )
+            )
+            return int(total or 0)
+        except Exception as exc:
+            logger.error("Failed to count resolved relevance for mapping %s: %s", mapping_id, exc, exc_info=True)
+            raise DatabaseOperationError("count", "benchmark_relevance", str(exc)) from exc
+
+    async def list_unresolved_relevance_for_mapping(
+        self,
+        mapping_id: int,
+        *,
+        after_id: int = 0,
+        limit: int = 1000,
+    ) -> list[BenchmarkRelevance]:
+        """List unresolved relevance judgments for a mapping in a stable order.
+
+        This is intended for batch processing; it returns only rows with
+        resolved_document_id IS NULL.
+        """
+        stmt: Select[tuple[BenchmarkRelevance]] = (
+            select(BenchmarkRelevance)
+            .where(
+                BenchmarkRelevance.mapping_id == mapping_id,
+                BenchmarkRelevance.resolved_document_id.is_(None),
+                BenchmarkRelevance.id > after_id,
+            )
+            .order_by(BenchmarkRelevance.id)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_relevance_for_query(
         self,
         query_id: int,

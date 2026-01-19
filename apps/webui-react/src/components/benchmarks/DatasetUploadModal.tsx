@@ -15,11 +15,74 @@ interface DatasetUploadModalProps {
 interface ParsedQuery {
   query_key: string;
   query_text: string;
-  relevant_doc_refs: Array<{ doc_ref: string }>;
+  relevant_docs?: Array<{ doc_ref: Record<string, unknown>; relevance_grade?: number }>;
 }
 
-interface ParsedDataset {
+interface CanonicalDataset {
+  schema_version: string;
   queries: ParsedQuery[];
+  metadata?: Record<string, unknown>;
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  const pushField = () => {
+    row.push(field);
+    field = '';
+  };
+
+  const pushRow = () => {
+    // Trim and keep rows with at least one non-empty cell
+    const cleaned = row.map((cell) => cell.trim());
+    if (cleaned.some((cell) => cell.length > 0)) {
+      rows.push(cleaned);
+    }
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === ',') {
+      pushField();
+      continue;
+    }
+    if (ch === '\n') {
+      pushField();
+      pushRow();
+      continue;
+    }
+    if (ch === '\r') {
+      continue;
+    }
+    field += ch;
+  }
+
+  pushField();
+  pushRow();
+
+  return rows;
 }
 
 export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalProps) {
@@ -27,6 +90,7 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [parsedPreview, setParsedPreview] = useState<ParsedQuery[] | null>(null);
+  const [canonicalDataset, setCanonicalDataset] = useState<CanonicalDataset | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
@@ -51,52 +115,98 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
   const parseFile = useCallback(async (f: File) => {
     setParseError(null);
     setParsedPreview(null);
+    setCanonicalDataset(null);
 
     try {
       const text = await f.text();
-      let data: ParsedDataset;
+      let dataset: CanonicalDataset;
 
       if (f.name.endsWith('.json')) {
-        data = JSON.parse(text) as ParsedDataset;
-      } else if (f.name.endsWith('.csv')) {
-        // Simple CSV parsing (expects: query_key,query_text,doc_refs)
-        const lines = text.trim().split('\n');
-        const queries: ParsedQuery[] = [];
-
-        // Skip header
-        for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(',');
-          if (parts.length >= 3) {
-            queries.push({
-              query_key: parts[0].trim(),
-              query_text: parts[1].trim(),
-              relevant_doc_refs: parts.slice(2).map(ref => ({ doc_ref: ref.trim() })),
-            });
-          }
+        const raw = JSON.parse(text) as Record<string, unknown>;
+        const rawQueries = raw.queries;
+        if (!Array.isArray(rawQueries)) {
+          throw new Error('Invalid dataset format: missing "queries" array');
         }
-        data = { queries };
+
+        const queries: ParsedQuery[] = rawQueries.map((q, idx) => {
+          if (!q || typeof q !== 'object') {
+            throw new Error(`Query ${idx + 1} must be an object`);
+          }
+          const query = q as Record<string, unknown>;
+          const query_key = String(query.query_key ?? query.query_id ?? '');
+          const query_text = String(query.query_text ?? query.query ?? '');
+          if (!query_key || !query_text) {
+            throw new Error(`Query ${idx + 1} missing required fields (query_key, query_text)`);
+          }
+
+          const rawJudgments = (query.relevant_docs ?? query.relevant_doc_refs ?? []) as unknown;
+          if (!Array.isArray(rawJudgments)) {
+            throw new Error(`Query ${query_key} has invalid relevant_docs (expected array)`);
+          }
+
+          const relevant_docs = rawJudgments
+            .filter((j) => j != null)
+            .map((j) => {
+              if (typeof j === 'string') {
+                return { doc_ref: { uri: j }, relevance_grade: 2 };
+              }
+              if (typeof j === 'object') {
+                const obj = j as Record<string, unknown>;
+                const grade = typeof obj.relevance_grade === 'number' ? obj.relevance_grade : 2;
+                const docRefRaw = obj.doc_ref ?? obj;
+                if (typeof docRefRaw === 'string') {
+                  return { doc_ref: { uri: docRefRaw }, relevance_grade: grade };
+                }
+                if (typeof docRefRaw === 'object' && docRefRaw) {
+                  return { doc_ref: docRefRaw as Record<string, unknown>, relevance_grade: grade };
+                }
+              }
+              return { doc_ref: { uri: String(j) }, relevance_grade: 2 };
+            });
+
+          return { query_key, query_text, relevant_docs };
+        });
+
+        dataset = {
+          schema_version: String(raw.schema_version ?? '1.0'),
+          queries,
+          metadata: (raw.metadata as Record<string, unknown> | undefined) ?? undefined,
+        };
+      } else if (f.name.endsWith('.csv')) {
+        const rows = parseCsv(text);
+        if (rows.length === 0) {
+          throw new Error('CSV contains no rows');
+        }
+
+        const header = rows[0].map((c) => c.trim().toLowerCase());
+        const hasHeader = header.includes('query_key') || header.includes('query_text') || header.includes('query');
+        const startIdx = hasHeader ? 1 : 0;
+
+        const queries: ParsedQuery[] = [];
+        for (let i = startIdx; i < rows.length; i++) {
+          const row = rows[i];
+          if (row.length < 2) continue;
+          const query_key = row[0]?.trim();
+          const query_text = row[1]?.trim();
+          if (!query_key || !query_text) continue;
+
+          const refs = row.slice(2).map((r) => r.trim()).filter((r) => r.length > 0);
+          const relevant_docs = refs.map((ref) => ({ doc_ref: { uri: ref }, relevance_grade: 2 }));
+
+          queries.push({ query_key, query_text, relevant_docs });
+        }
+
+        if (queries.length === 0) {
+          throw new Error('CSV contains no valid queries (expected at least query_key and query_text)');
+        }
+
+        dataset = { schema_version: '1.0', queries };
       } else {
         throw new Error('Unsupported file format. Please use JSON or CSV.');
       }
 
-      if (!data.queries || !Array.isArray(data.queries)) {
-        throw new Error('Invalid dataset format: missing "queries" array');
-      }
-
-      if (data.queries.length === 0) {
-        throw new Error('Dataset contains no queries');
-      }
-
-      // Validate query structure
-      for (let i = 0; i < Math.min(5, data.queries.length); i++) {
-        const q = data.queries[i];
-        if (!q.query_key || !q.query_text) {
-          throw new Error(`Query ${i + 1} missing required fields (query_key, query_text)`);
-        }
-      }
-
-      // Show preview of first 10 queries
-      setParsedPreview(data.queries.slice(0, 10));
+      setCanonicalDataset(dataset);
+      setParsedPreview(dataset.queries.slice(0, 10));
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Failed to parse file');
     }
@@ -157,14 +267,18 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateForm() || !file) {
+    if (!validateForm() || !file || !canonicalDataset) {
       return;
     }
 
     try {
+      const baseName = name.trim() || file.name.replace(/\.(json|csv)$/i, '') || 'dataset';
+      const jsonBlob = new Blob([JSON.stringify(canonicalDataset)], { type: 'application/json' });
+      const uploadFile = new File([jsonBlob], `${baseName}.json`, { type: 'application/json' });
+
       const result = await uploadMutation.mutateAsync({
         data: { name: name.trim(), description: description.trim() || undefined },
-        file,
+        file: uploadFile,
       });
 
       // Optionally create mapping if collection selected
@@ -271,7 +385,7 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
                       <p className="font-medium text-[var(--text-primary)]">{file.name}</p>
                       <p className="text-sm text-[var(--text-muted)]">
                         {(file.size / 1024).toFixed(1)} KB
-                        {parsedPreview && ` • ${parsedPreview.length}+ queries`}
+                        {canonicalDataset && ` • ${canonicalDataset.queries.length} queries`}
                       </p>
                     </div>
                   </div>
@@ -325,7 +439,7 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
                             {q.query_text}
                           </td>
                           <td className="px-3 py-2 text-[var(--text-muted)]">
-                            {q.relevant_doc_refs?.length ?? 0}
+                            {q.relevant_docs?.length ?? 0}
                           </td>
                         </tr>
                       ))}
@@ -371,7 +485,7 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !file || !!parseError}
+              disabled={isSubmitting || !file || !canonicalDataset || !!parseError}
               className="px-6 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

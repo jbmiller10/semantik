@@ -13,7 +13,7 @@ Error Handling:
 from datetime import datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
 
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.benchmark_schemas import (
@@ -319,6 +319,7 @@ async def resolve_mapping(
     request: Request,
     dataset_id: str,
     mapping_id: int,
+    response: Response,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: BenchmarkDatasetService = Depends(get_benchmark_dataset_service),
 ) -> MappingResolveResponse:
@@ -341,8 +342,12 @@ async def resolve_mapping(
         user_id=int(current_user["id"]),
     )
 
+    if result.get("operation_uuid"):
+        response.status_code = status.HTTP_202_ACCEPTED
+
     return MappingResolveResponse(
         id=result["id"],
+        operation_uuid=result.get("operation_uuid"),
         mapping_status=result["mapping_status"],
         mapped_count=result["mapped_count"],
         total_count=result["total_count"],

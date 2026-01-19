@@ -323,12 +323,14 @@ def create_benchmark_dataset_service(db: AsyncSession) -> BenchmarkDatasetServic
     benchmark_dataset_repo = BenchmarkDatasetRepository(db)
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
+    operation_repo = OperationRepository(db)
 
     return BenchmarkDatasetService(
         db_session=db,
         benchmark_dataset_repo=benchmark_dataset_repo,
         collection_repo=collection_repo,
         document_repo=document_repo,
+        operation_repo=operation_repo,
     )
 
 

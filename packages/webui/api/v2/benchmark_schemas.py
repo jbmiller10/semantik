@@ -104,6 +104,10 @@ class MappingResolveResponse(BaseModel):
     """Response schema for mapping resolution."""
 
     id: int = Field(..., description="Mapping ID")
+    operation_uuid: str | None = Field(
+        default=None,
+        description="Operation UUID if resolution is running asynchronously (null for synchronous resolution)",
+    )
     mapping_status: str = Field(..., description="Resolution status after resolve attempt")
     mapped_count: int = Field(..., description="Number of successfully resolved references")
     total_count: int = Field(..., description="Total number of references")

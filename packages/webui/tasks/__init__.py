@@ -17,6 +17,7 @@ import httpx
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from .benchmark import run_benchmark
+from .benchmark_mapping import resolve_mapping as resolve_benchmark_mapping
 from .cleanup import (
     cleanup_old_collections,
     cleanup_old_results,
@@ -99,6 +100,7 @@ __all__ = [
     "reindex_handler",
     # Benchmark tasks
     "run_benchmark",
+    "resolve_benchmark_mapping",
     # Cleanup tasks
     "cleanup_old_results",
     "cleanup_old_collections",
@@ -150,7 +152,16 @@ def _load_module(name: str) -> Any:
 
 
 _PROXY_MODULES = tuple(
-    _load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "benchmark", "utils")
+    _load_module(name)
+    for name in (
+        "ingestion",
+        "projection",
+        "reindex",
+        "cleanup",
+        "benchmark",
+        "benchmark_mapping",
+        "utils",
+    )
 )
 
 

@@ -209,14 +209,21 @@ export function useResolveMapping() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: datasetKeys.mappings(data.datasetId) });
-      const message =
-        data.mapping_status === 'resolved'
-          ? `Mapping resolved: ${data.mapped_count}/${data.total_count} documents matched`
-          : `Mapping partially resolved: ${data.mapped_count}/${data.total_count} documents matched`;
-      addToast({
-        type: data.mapping_status === 'resolved' ? 'success' : 'warning',
-        message,
-      });
+      if (data.operation_uuid) {
+        addToast({
+          type: 'info',
+          message: 'Mapping resolution queued. Progress will stream live while it runs.',
+        });
+      } else {
+        const message =
+          data.mapping_status === 'resolved'
+            ? `Mapping resolved: ${data.mapped_count}/${data.total_count} documents matched`
+            : `Mapping partially resolved: ${data.mapped_count}/${data.total_count} documents matched`;
+        addToast({
+          type: data.mapping_status === 'resolved' ? 'success' : 'warning',
+          message,
+        });
+      }
     },
     onError: (error) => {
       const errorMessage = handleApiError(error);
