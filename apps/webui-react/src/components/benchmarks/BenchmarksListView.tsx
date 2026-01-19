@@ -15,7 +15,7 @@ import { CreateBenchmarkModal } from './CreateBenchmarkModal';
 import type { BenchmarkStatus } from '../../types/benchmark';
 
 interface BenchmarksListViewProps {
-  onViewResults: (benchmarkId: string) => void;
+  onViewResults: (benchmarkId: string, status: BenchmarkStatus) => void;
 }
 
 const STATUS_FILTERS: Array<{ value: BenchmarkStatus | 'all'; label: string }> = [
@@ -146,7 +146,7 @@ export function BenchmarksListView({ onViewResults }: BenchmarksListViewProps) {
               benchmark={benchmark}
               onStart={() => handleStart(benchmark.id)}
               onCancel={() => handleCancel(benchmark.id)}
-              onViewResults={() => onViewResults(benchmark.id)}
+              onViewResults={() => onViewResults(benchmark.id, benchmark.status)}
               onDelete={() => handleDelete(benchmark.id)}
               isStarting={startMutation.isPending && startMutation.variables === benchmark.id}
               isCancelling={cancelMutation.isPending && cancelMutation.variables === benchmark.id}

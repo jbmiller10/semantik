@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from .exceptions import BenchmarkEvaluationError, BenchmarkValidationError
+from .exceptions import BenchmarkCancelledError, BenchmarkEvaluationError, BenchmarkValidationError
 from .metrics import collapse_chunks_to_documents, compute_all_metrics
 from .types import (
     ConfigurationEvaluationResult,
@@ -240,6 +240,8 @@ class ConfigurationEvaluator:
                             await progress_callback(completed_queries, total_queries)
 
             except Exception as e:
+                if isinstance(e, BenchmarkCancelledError):
+                    raise
                 raise BenchmarkEvaluationError(
                     f"Search or evaluation failed: {e}",
                     query_id=query_id,

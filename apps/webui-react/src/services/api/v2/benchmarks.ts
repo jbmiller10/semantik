@@ -121,7 +121,7 @@ export const benchmarksApi = {
    * Cancel a running benchmark
    */
   cancel: (id: string) =>
-    apiClient.post<void>(`/api/v2/benchmarks/${id}/cancel`),
+    apiClient.post<Benchmark>(`/api/v2/benchmarks/${id}/cancel`),
 
   /**
    * Get benchmark results

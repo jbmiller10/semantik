@@ -16,7 +16,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, cast
 
 from shared.benchmarks.evaluator import ConfigurationEvaluator
-from shared.benchmarks.exceptions import BenchmarkEvaluationError
+from shared.benchmarks.exceptions import BenchmarkCancelledError, BenchmarkEvaluationError
 from shared.benchmarks.types import (
     ConfigurationEvaluationResult,
     MetricResult,
@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 BENCHMARK_PROGRESS_INTERVAL_QUERIES = 5
 BENCHMARK_PROGRESS_INTERVAL_MS = 500
+CANCELLED_RUN_ERROR_MESSAGE = "cancelled by user"
 
 
 class BenchmarkExecutor:
@@ -114,7 +115,32 @@ class BenchmarkExecutor:
         if not benchmark:
             raise BenchmarkEvaluationError(f"Benchmark not found: {benchmark_id}")
 
-        # Update status to RUNNING
+        # Respect cancellation if it happened before the worker started.
+        if await self._check_cancellation(benchmark_id):
+            runs = await self.benchmark_repo.get_runs_for_benchmark(benchmark_id)
+            completed_count = sum(1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.COMPLETED.value)
+            failed_count = sum(1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.FAILED.value)
+
+            if runs:
+                failed_count = await self._mark_remaining_runs_cancelled(
+                    benchmark_id=benchmark_id,
+                    completed_runs=completed_count,
+                    runs=runs,
+                    starting_from_run_id=str(runs[0].id),
+                    existing_failed_count=failed_count,
+                )
+
+            return {
+                "benchmark_id": benchmark_id,
+                "status": BenchmarkStatus.CANCELLED.value,
+                "total_runs": len(runs),
+                "completed_runs": completed_count,
+                "failed_runs": failed_count,
+                "skipped_runs": 0,
+                "error": "Benchmark was cancelled",
+            }
+
+        # Update status to RUNNING (idempotent; guarded against overwriting CANCELLED).
         await self.benchmark_repo.update_status(benchmark_id, BenchmarkStatus.RUNNING)
         await self.db_session.commit()
 
@@ -168,6 +194,13 @@ class BenchmarkExecutor:
             # Check for cancellation
             if await self._check_cancellation(benchmark_id):
                 logger.info("Benchmark %s cancelled, stopping execution", benchmark_id)
+                failed_count = await self._mark_remaining_runs_cancelled(
+                    benchmark_id=benchmark_id,
+                    completed_runs=completed_count,
+                    runs=runs,
+                    starting_from_run_id=str(run.id),
+                    existing_failed_count=failed_count,
+                )
                 break
 
             # Skip completed/failed runs for idempotency
@@ -197,6 +230,18 @@ class BenchmarkExecutor:
                     failed_runs=failed_count,
                 )
                 completed_count += 1
+            except BenchmarkCancelledError:
+                logger.info("Benchmark %s cancelled during run %s", benchmark_id, run.id)
+
+                # Mark the current run + all remaining runs as failed("cancelled by user")
+                failed_count = await self._mark_remaining_runs_cancelled(
+                    benchmark_id=benchmark_id,
+                    completed_runs=completed_count,
+                    runs=runs,
+                    starting_from_run_id=str(run.id),
+                    existing_failed_count=failed_count,
+                )
+                break
             except Exception as exc:
                 logger.error("Run %s failed: %s", run.id, exc, exc_info=True)
                 failed_count += 1
@@ -228,7 +273,7 @@ class BenchmarkExecutor:
                     stage="evaluating",
                 )
 
-            # Update benchmark progress
+            # Update benchmark progress (guarded against overwriting CANCELLED)
             await self.benchmark_repo.update_status(
                 benchmark_id,
                 BenchmarkStatus.RUNNING,
@@ -362,6 +407,7 @@ class BenchmarkExecutor:
 
         # Create search function for the evaluator
         search_func = self._create_search_func(
+            benchmark_id=str(benchmark.id),
             collection=collection,
             search_mode=search_mode,
             use_reranker=use_reranker,
@@ -483,6 +529,7 @@ class BenchmarkExecutor:
 
     def _create_search_func(
         self,
+        benchmark_id: str,
         collection: Collection,
         search_mode: str,
         use_reranker: bool,
@@ -504,6 +551,9 @@ class BenchmarkExecutor:
 
         async def search_func(query_text: str, top_k: int) -> tuple[list[RetrievedChunk], SearchTiming]:
             """Execute search and return formatted results."""
+            if await self._check_cancellation(benchmark_id):
+                raise BenchmarkCancelledError(CANCELLED_RUN_ERROR_MESSAGE)
+
             result = await self.search_service.benchmark_search(
                 collection=collection,
                 query=query_text,
@@ -758,12 +808,9 @@ class BenchmarkExecutor:
         Returns:
             True if cancelled, False otherwise
         """
-        # Refresh benchmark from database
-        benchmark = await self.benchmark_repo.get_by_uuid(benchmark_id)
-        if not benchmark:
+        status_str = await self.benchmark_repo.get_status_value(benchmark_id)
+        if status_str is None:
             return True  # Treat as cancelled if not found
-
-        status_str = cast(str, benchmark.status)
         return bool(status_str == BenchmarkStatus.CANCELLED.value)
 
     async def _determine_final_status(
@@ -792,6 +839,56 @@ class BenchmarkExecutor:
 
         # At least some completed -> COMPLETED
         return BenchmarkStatus.COMPLETED
+
+    async def _mark_remaining_runs_cancelled(
+        self,
+        *,
+        benchmark_id: str,
+        completed_runs: int,
+        runs: list[Any],
+        starting_from_run_id: str,
+        existing_failed_count: int,
+    ) -> int:
+        """Mark the current and remaining runs as failed due to cancellation.
+
+        The BenchmarkRunStatus enum does not include a CANCELLED state, so we
+        represent cancellation as FAILED with a clear error message.
+        """
+        started = False
+        newly_failed = 0
+
+        for run in runs:
+            run_id = str(run.id)
+            if run_id == starting_from_run_id:
+                started = True
+            if not started:
+                continue
+
+            run_status = cast(str, run.status)
+            if run_status in (BenchmarkRunStatus.COMPLETED.value, BenchmarkRunStatus.FAILED.value):
+                continue
+
+            await self.benchmark_repo.update_run_status(
+                run_id=run_id,
+                status=BenchmarkRunStatus.FAILED,
+                status_message="Cancelled by user",
+                error_message=CANCELLED_RUN_ERROR_MESSAGE,
+            )
+            newly_failed += 1
+
+        await self.db_session.commit()
+
+        failed_count = existing_failed_count + newly_failed
+
+        await self.benchmark_repo.update_status(
+            benchmark_id,
+            BenchmarkStatus.CANCELLED,
+            completed_runs=completed_runs,
+            failed_runs=failed_count,
+        )
+        await self.db_session.commit()
+
+        return failed_count
 
 
 __all__ = ["BenchmarkExecutor"]

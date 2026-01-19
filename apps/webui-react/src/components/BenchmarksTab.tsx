@@ -10,6 +10,7 @@ import { BenchmarksListView } from './benchmarks/BenchmarksListView';
 import { ResultsView } from './benchmarks/ResultsView';
 import { useBenchmark } from '../hooks/useBenchmarks';
 import { BenchmarkProgress } from './benchmarks/BenchmarkProgress';
+import type { BenchmarkStatus } from '../types/benchmark';
 
 type BenchmarkSubTab = 'datasets' | 'benchmarks' | 'results';
 
@@ -93,11 +94,11 @@ function BenchmarksTab() {
         {activeSubTab === 'datasets' && <DatasetsView />}
         {activeSubTab === 'benchmarks' && (
           <BenchmarksListView
-            onViewResults={(benchmarkId) => {
+            onViewResults={(benchmarkId: string, status: BenchmarkStatus) => {
               setSelectedBenchmarkId(benchmarkId);
               // Check if benchmark is running - if so, stay on benchmarks tab to show progress
               // Otherwise switch to results tab
-              if (selectedBenchmark?.status !== 'running') {
+              if (status !== 'running') {
                 setActiveSubTab('results');
               }
             }}

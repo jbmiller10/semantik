@@ -46,9 +46,17 @@ class BenchmarkValidationError(BenchmarkError):
         super().__init__(f"Validation error: {message}")
 
 
+class BenchmarkCancelledError(BenchmarkError):
+    """Raised when a benchmark is cancelled during execution."""
+
+    def __init__(self, message: str = "Benchmark cancelled") -> None:
+        super().__init__(message)
+
+
 __all__ = [
     "BenchmarkError",
     "BenchmarkMetricError",
     "BenchmarkEvaluationError",
     "BenchmarkValidationError",
+    "BenchmarkCancelledError",
 ]

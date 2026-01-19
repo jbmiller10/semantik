@@ -377,12 +377,14 @@ export function useCancelBenchmark() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      await benchmarksApi.cancel(id);
-      return id;
+      const response = await benchmarksApi.cancel(id);
+      return response.data;
     },
-    onSuccess: (id) => {
-      queryClient.invalidateQueries({ queryKey: benchmarkKeys.detail(id) });
+    onSuccess: (benchmark) => {
+      // Update cache with returned benchmark data
+      queryClient.setQueryData(benchmarkKeys.detail(benchmark.id), benchmark);
       queryClient.invalidateQueries({ queryKey: benchmarkKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: benchmarkKeys.results(benchmark.id) });
       addToast({
         type: 'info',
         message: 'Benchmark cancelled',

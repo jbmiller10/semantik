@@ -246,28 +246,67 @@ class BenchmarkRepository:
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        benchmark = await self.get_by_uuid(benchmark_uuid)
-        if not benchmark:
-            raise EntityNotFoundError("benchmark", benchmark_uuid)
-
         now = datetime.now(UTC)
-        benchmark.status = status.value
+        values: dict[str, Any] = {
+            "status": status.value,
+        }
 
-        if status == BenchmarkStatus.RUNNING and benchmark.started_at is None:
-            benchmark.started_at = now
+        if status == BenchmarkStatus.RUNNING:
+            values["started_at"] = func.coalesce(Benchmark.started_at, now)
         elif status in (BenchmarkStatus.COMPLETED, BenchmarkStatus.FAILED):
-            benchmark.completed_at = now
+            values["completed_at"] = func.coalesce(Benchmark.completed_at, now)
         elif status == BenchmarkStatus.CANCELLED:
-            benchmark.cancelled_at = now
+            values["cancelled_at"] = func.coalesce(Benchmark.cancelled_at, now)
 
         if completed_runs is not None:
-            benchmark.completed_runs = completed_runs
+            values["completed_runs"] = completed_runs
         if failed_runs is not None:
-            benchmark.failed_runs = failed_runs
+            values["failed_runs"] = failed_runs
 
-        await self.session.flush()
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid)
+
+        # Prevent overwriting CANCELLED with non-cancelled statuses.
+        if status != BenchmarkStatus.CANCELLED:
+            stmt = stmt.where(Benchmark.status != BenchmarkStatus.CANCELLED.value)
+
+        stmt = stmt.values(**values).returning(Benchmark)
+
+        result = await self.session.execute(stmt)
+        benchmark = result.scalar_one_or_none()
+
+        if benchmark is None:
+            # Either not found, or was CANCELLED and we tried to overwrite it.
+            existing_stmt: Select[tuple[Benchmark]] = (
+                select(Benchmark)
+                .where(Benchmark.id == benchmark_uuid)
+                .execution_options(populate_existing=True)
+            )
+            existing = (await self.session.execute(existing_stmt)).scalar_one_or_none()
+            if existing is None:
+                raise EntityNotFoundError("benchmark", benchmark_uuid)
+
+            if cast(str, existing.status) == BenchmarkStatus.CANCELLED.value and status != BenchmarkStatus.CANCELLED:
+                logger.info(
+                    "Skipped benchmark %s status update to %s (already cancelled)",
+                    benchmark_uuid,
+                    status.value,
+                )
+            return existing
+
         logger.info("Updated benchmark %s status to %s", benchmark_uuid, status.value)
         return benchmark
+
+    async def get_status_value(
+        self,
+        benchmark_uuid: str,
+    ) -> str | None:
+        """Return the current status string for a benchmark.
+
+        This uses a scalar SELECT of the status column to avoid identity-map
+        staleness when sessions are configured with expire_on_commit=False.
+        """
+        stmt = select(Benchmark.status).where(Benchmark.id == benchmark_uuid)
+        return cast(str | None, await self.session.scalar(stmt))
 
     async def set_operation(
         self,
