@@ -270,3 +270,109 @@ async def test_resolve_mapping_routes_large_jobs_to_async(
     operation = (await db_session.execute(select(Operation).where(Operation.uuid == operation_uuid))).scalar_one()
     assert operation.type == OperationType.BENCHMARK
     assert cast(dict[str, object], operation.config)["kind"] == "mapping_resolve"
+
+
+@pytest.mark.asyncio()
+async def test_create_mapping_copies_pending_relevance_to_mapping(db_session, test_user_db, collection_factory) -> None:
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    dataset_service = BenchmarkDatasetService(
+        db_session=db_session,
+        benchmark_dataset_repo=BenchmarkDatasetRepository(db_session),
+        collection_repo=CollectionRepository(db_session),
+        document_repo=DocumentRepository(db_session),
+        operation_repo=OperationRepository(db_session),
+    )
+
+    dataset_payload = {
+        "schema_version": "1.0",
+        "queries": [
+            {
+                "query_key": "q1",
+                "query_text": "test",
+                "relevant_docs": [
+                    {"doc_ref": {"uri": "file:///tmp/a.txt"}, "relevance_grade": 2},
+                    {"doc_ref": {"uri": "file:///tmp/b.txt"}, "relevance_grade": 1},
+                ],
+            }
+        ],
+    }
+
+    dataset = await dataset_service.upload_dataset(
+        user_id=test_user_db.id,
+        name="copy-relevance",
+        description=None,
+        file_content=json.dumps(dataset_payload).encode("utf-8"),
+    )
+
+    mapping = await dataset_service.create_mapping(
+        dataset_id=str(dataset["id"]),
+        collection_id=collection.id,
+        user_id=test_user_db.id,
+    )
+
+    assert mapping["total_count"] == 2
+
+    mapping_id = int(mapping["id"])
+    relevances = await BenchmarkDatasetRepository(db_session).get_relevance_for_mapping(mapping_id)
+    assert len(relevances) == 2
+    assert all(r.doc_ref_hash for r in relevances)
+
+
+@pytest.mark.asyncio()
+async def test_resolve_mapping_enqueues_when_wall_clock_exceeded(
+    db_session, test_user_db, collection_factory, monkeypatch
+) -> None:
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS", 10_000)
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS", 50_000)
+    monkeypatch.setattr("shared.config.settings.BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS", 0)
+
+    sent: dict[str, object] = {}
+
+    def _fake_send_task(name: str, *, kwargs: dict[str, object]) -> None:  # noqa: ANN001
+        sent["name"] = name
+        sent["kwargs"] = kwargs
+
+    monkeypatch.setattr("webui.celery_app.celery_app.send_task", _fake_send_task)
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    dataset_service = BenchmarkDatasetService(
+        db_session=db_session,
+        benchmark_dataset_repo=BenchmarkDatasetRepository(db_session),
+        collection_repo=CollectionRepository(db_session),
+        document_repo=DocumentRepository(db_session),
+        operation_repo=OperationRepository(db_session),
+    )
+
+    dataset_payload = {
+        "schema_version": "1.0",
+        "queries": [
+            {
+                "query_key": "q1",
+                "query_text": "test",
+                "relevant_docs": [
+                    {"doc_ref": {"uri": "file:///tmp/x.txt"}, "relevance_grade": 2},
+                ],
+            }
+        ],
+    }
+
+    dataset = await dataset_service.upload_dataset(
+        user_id=test_user_db.id,
+        name="wall-budget",
+        description=None,
+        file_content=json.dumps(dataset_payload).encode("utf-8"),
+    )
+
+    mapping = await dataset_service.create_mapping(
+        dataset_id=str(dataset["id"]),
+        collection_id=collection.id,
+        user_id=test_user_db.id,
+    )
+
+    result = await dataset_service.resolve_mapping(mapping_id=int(mapping["id"]), user_id=test_user_db.id)
+
+    assert isinstance(result["operation_uuid"], str)
+    assert result["mapping_status"] == "pending"
+    assert sent["name"] == "webui.tasks.benchmark_mapping.resolve_mapping"

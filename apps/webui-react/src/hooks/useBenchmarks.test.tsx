@@ -15,9 +15,11 @@ import {
   useBenchmarkDatasets,
   useDatasetMappings,
   useUploadDataset,
+  useDeleteDataset,
   useCreateMapping,
   useResolveMapping,
   useCreateBenchmark,
+  useDeleteBenchmark,
   useStartBenchmark,
   useCancelBenchmark,
   useBenchmarkResults,
@@ -333,5 +335,70 @@ describe('useBenchmarks hooks', () => {
     const { result: resultsHook } = renderHook(() => useBenchmarkResults(benchmarkId as string), { wrapper });
     await waitFor(() => expect(resultsHook.current.isSuccess).toBe(true));
     expect(resultsHook.current.data?.benchmark_id).toBe(benchmarkId);
+  });
+
+  it('shows queued toast when mapping resolution returns an operation_uuid', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = createWrapper(queryClient);
+
+    vi.mocked(benchmarkDatasetsApi.resolveMapping).mockResolvedValue({
+      data: {
+        id: 1,
+        operation_uuid: 'op-queued',
+        mapping_status: 'pending',
+        mapped_count: 0,
+        total_count: 10,
+        unresolved: [],
+      },
+    } as MockAxiosResponse<MappingResolveResponse>);
+
+    const { result: resolveMapping } = renderHook(() => useResolveMapping(), { wrapper });
+    await act(async () => {
+      await resolveMapping.current.mutateAsync({ datasetId: 'ds-1', mappingId: 1 });
+    });
+
+    expect(addToast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'info', message: expect.stringMatching(/queued/i) })
+    );
+  });
+
+  it('restores cached list data when dataset deletion fails', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = createWrapper(queryClient);
+
+    const previous = { datasets: [], total: 0, page: 1, per_page: 50 };
+    queryClient.setQueryData(datasetKeys.lists(), previous);
+    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
+
+    vi.mocked(benchmarkDatasetsApi.delete).mockRejectedValue(new Error('nope'));
+
+    const { result } = renderHook(() => useDeleteDataset(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('ds-1').catch(() => undefined);
+    });
+
+    expect(setQueryDataSpy).toHaveBeenCalledWith(datasetKeys.lists(), previous);
+    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('restores cached list data when benchmark deletion fails', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = createWrapper(queryClient);
+
+    const previous = { benchmarks: [], total: 0, page: 1, per_page: 50 };
+    queryClient.setQueryData(benchmarkKeys.lists(), previous);
+    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
+
+    vi.mocked(benchmarksApi.delete).mockRejectedValue(new Error('nope'));
+
+    const { result } = renderHook(() => useDeleteBenchmark(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync('bench-1').catch(() => undefined);
+    });
+
+    expect(setQueryDataSpy).toHaveBeenCalledWith(benchmarkKeys.lists(), previous);
+    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
   });
 });

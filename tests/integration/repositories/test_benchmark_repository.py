@@ -11,6 +11,7 @@ import pytest
 
 from shared.database.models import Benchmark, BenchmarkDataset, BenchmarkDatasetMapping, BenchmarkStatus, MappingStatus
 from shared.database.repositories.benchmark_repository import BenchmarkRepository
+from shared.database.exceptions import EntityNotFoundError
 
 
 class TestBenchmarkRepositoryStatusGuards:
@@ -75,3 +76,147 @@ class TestBenchmarkRepositoryStatusGuards:
         await db_session.commit()
 
         assert await repo.get_status_value(benchmark.id) == BenchmarkStatus.CANCELLED.value
+
+
+class TestBenchmarkRepositoryAtomicTransitions:
+    @pytest.mark.asyncio()
+    async def test_transition_status_atomically_succeeds_and_sets_operation(
+        self, db_session, test_user_db, collection_factory, operation_factory
+    ) -> None:
+        collection = await collection_factory(owner_id=test_user_db.id)
+        await operation_factory(user_id=test_user_db.id, collection_id=collection.id, uuid="op-1")
+
+        dataset = BenchmarkDataset(
+            id=str(uuid4()),
+            name="Dataset",
+            description=None,
+            owner_id=test_user_db.id,
+            query_count=0,
+            raw_file_path=None,
+            schema_version="1.0",
+            meta=None,
+        )
+        db_session.add(dataset)
+        await db_session.commit()
+
+        mapping = BenchmarkDatasetMapping(
+            dataset_id=dataset.id,
+            collection_id=collection.id,
+            mapping_status=MappingStatus.RESOLVED.value,
+            mapped_count=0,
+            total_count=0,
+        )
+        db_session.add(mapping)
+        await db_session.commit()
+        await db_session.refresh(mapping)
+
+        benchmark = Benchmark(
+            id=str(uuid4()),
+            name="Bench",
+            description=None,
+            owner_id=test_user_db.id,
+            mapping_id=mapping.id,
+            operation_uuid=None,
+            evaluation_unit="query",
+            config_matrix={"search_modes": ["dense"], "top_k_values": [10]},
+            config_matrix_hash="hash",
+            limits=None,
+            collection_snapshot_hash=None,
+            reproducibility_metadata=None,
+            top_k=10,
+            metrics_to_compute=["precision"],
+            status=BenchmarkStatus.PENDING.value,
+            total_runs=0,
+            completed_runs=0,
+            failed_runs=0,
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(benchmark)
+        await db_session.commit()
+
+        repo = BenchmarkRepository(db_session)
+        transitioned = await repo.transition_status_atomically(
+            benchmark_uuid=benchmark.id,
+            from_status=BenchmarkStatus.PENDING,
+            to_status=BenchmarkStatus.RUNNING,
+            operation_uuid="op-1",
+        )
+        assert transitioned is not None
+        await db_session.commit()
+
+        refreshed = await repo.get_by_uuid(benchmark.id)
+        assert refreshed is not None
+        assert refreshed.status == BenchmarkStatus.RUNNING.value
+        assert refreshed.operation_uuid == "op-1"
+        assert refreshed.started_at is not None
+
+    @pytest.mark.asyncio()
+    async def test_transition_status_atomically_returns_none_when_status_mismatch(
+        self, db_session, test_user_db, collection_factory
+    ) -> None:
+        collection = await collection_factory(owner_id=test_user_db.id)
+
+        dataset = BenchmarkDataset(
+            id=str(uuid4()),
+            name="Dataset",
+            description=None,
+            owner_id=test_user_db.id,
+            query_count=0,
+            raw_file_path=None,
+            schema_version="1.0",
+            meta=None,
+        )
+        db_session.add(dataset)
+        await db_session.commit()
+
+        mapping = BenchmarkDatasetMapping(
+            dataset_id=dataset.id,
+            collection_id=collection.id,
+            mapping_status=MappingStatus.RESOLVED.value,
+            mapped_count=0,
+            total_count=0,
+        )
+        db_session.add(mapping)
+        await db_session.commit()
+        await db_session.refresh(mapping)
+
+        benchmark = Benchmark(
+            id=str(uuid4()),
+            name="Bench",
+            description=None,
+            owner_id=test_user_db.id,
+            mapping_id=mapping.id,
+            operation_uuid=None,
+            evaluation_unit="query",
+            config_matrix={"search_modes": ["dense"], "top_k_values": [10]},
+            config_matrix_hash="hash",
+            limits=None,
+            collection_snapshot_hash=None,
+            reproducibility_metadata=None,
+            top_k=10,
+            metrics_to_compute=["precision"],
+            status=BenchmarkStatus.RUNNING.value,
+            total_runs=0,
+            completed_runs=0,
+            failed_runs=0,
+            created_at=datetime.now(UTC),
+            started_at=datetime.now(UTC),
+        )
+        db_session.add(benchmark)
+        await db_session.commit()
+
+        repo = BenchmarkRepository(db_session)
+        transitioned = await repo.transition_status_atomically(
+            benchmark_uuid=benchmark.id,
+            from_status=BenchmarkStatus.PENDING,
+            to_status=BenchmarkStatus.RUNNING,
+            operation_uuid="op-1",
+        )
+        assert transitioned is None
+
+
+@pytest.mark.asyncio()
+async def test_update_status_raises_for_missing_benchmark(db_session) -> None:
+    repo = BenchmarkRepository(db_session)
+    with pytest.raises(EntityNotFoundError):
+        await repo.update_status("missing", BenchmarkStatus.RUNNING)
