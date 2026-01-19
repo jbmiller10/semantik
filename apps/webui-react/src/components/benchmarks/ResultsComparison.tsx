@@ -391,7 +391,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                       value={metricAtK(run.metrics?.recall, activeK)}
                       best={bestValues.recall_at_k}
                     />
-                    <MetricCell value={run.metrics?.mrr} best={bestValues.mrr} />
+                    <MetricCell value={run.metrics?.mrr ?? undefined} best={bestValues.mrr} />
                     <MetricCell value={metricAtK(run.metrics?.ndcg, activeK)} best={bestValues.ndcg} />
                     <td className="px-4 py-3 text-right">
                       <span
