@@ -16,10 +16,12 @@ import httpx
 
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
+from .benchmark import run_benchmark
 from .cleanup import (
     cleanup_old_collections,
     cleanup_old_results,
     cleanup_qdrant_collections,
+    cleanup_stale_benchmarks,
     monitor_partition_health,
     refresh_collection_chunking_stats,
 )
@@ -95,10 +97,13 @@ __all__ = [
     "_cleanup_staging_resources",
     "_validate_reindex",
     "reindex_handler",
+    # Benchmark tasks
+    "run_benchmark",
     # Cleanup tasks
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
+    "cleanup_stale_benchmarks",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
     # Utilities & shared constants
@@ -144,7 +149,9 @@ def _load_module(name: str) -> Any:
     return import_module(f"webui.tasks.{name}")
 
 
-_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "utils"))
+_PROXY_MODULES = tuple(
+    _load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "benchmark", "utils")
+)
 
 
 def __getattr__(name: str) -> Any:  # noqa: N807
