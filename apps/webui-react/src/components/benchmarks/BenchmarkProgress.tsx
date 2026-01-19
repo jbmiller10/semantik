@@ -26,7 +26,9 @@ export function BenchmarkProgress({ benchmark, onComplete }: BenchmarkProgressPr
   // Use WebSocket progress if available, otherwise fall back to benchmark data
   const totalRuns = progress.totalRuns || benchmark.total_runs;
   const completedRuns = progress.completedRuns || benchmark.completed_runs;
-  const overallProgress = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
+  const failedRuns = progress.failedRuns || benchmark.failed_runs;
+  const doneRuns = completedRuns + failedRuns;
+  const overallProgress = totalRuns > 0 ? Math.round((doneRuns / totalRuns) * 100) : 0;
 
   const currentQueryProgress =
     progress.currentQueries.total > 0
@@ -46,6 +48,12 @@ export function BenchmarkProgress({ benchmark, onComplete }: BenchmarkProgressPr
     if (config.use_reranker) parts.push('rerank');
     if (config.top_k) parts.push(`k=${config.top_k}`);
     return parts.join(', ') || 'default';
+  };
+
+  const metricAtK = (values: Record<string, number> | undefined, k: number) => {
+    if (!values) return null;
+    const val = values[String(k)];
+    return typeof val === 'number' ? val : null;
   };
 
   return (
@@ -99,7 +107,12 @@ export function BenchmarkProgress({ benchmark, onComplete }: BenchmarkProgressPr
         <div className="flex items-center justify-between text-sm mb-2">
           <span className="text-[var(--text-secondary)]">Overall Progress</span>
           <span className="font-medium text-[var(--text-primary)]">
-            {completedRuns} / {totalRuns} runs ({overallProgress}%)
+            {doneRuns} / {totalRuns} runs ({overallProgress}%)
+            {failedRuns > 0 && (
+              <span className="ml-2 text-xs text-red-400">
+                ({failedRuns} failed)
+              </span>
+            )}
           </span>
         </div>
         <div className="h-3 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
@@ -183,17 +196,17 @@ export function BenchmarkProgress({ benchmark, onComplete }: BenchmarkProgressPr
                       {formatConfig(run.config)}
                     </td>
                     <td className="py-2 px-3 text-right text-[var(--text-secondary)]">
-                      {run.metrics.mrr?.toFixed(3) ?? '-'}
+                      {run.metrics.mrr != null ? run.metrics.mrr.toFixed(3) : '-'}
                     </td>
                     <td className="py-2 px-3 text-right text-[var(--text-secondary)]">
-                      {run.metrics.ndcg?.toFixed(3) ?? '-'}
+                      {metricAtK(run.metrics.ndcg, progress.primaryK)?.toFixed(3) ?? '-'}
                     </td>
                     <td className="py-2 px-3 text-right text-[var(--text-secondary)]">
-                      {run.metrics.precision_at_k?.toFixed(3) ?? '-'}
+                      {metricAtK(run.metrics.precision, progress.primaryK)?.toFixed(3) ?? '-'}
                     </td>
                     <td className="py-2 px-3 text-right text-[var(--text-muted)]">
-                      {run.timing.search_ms != null
-                        ? `${run.timing.search_ms.toFixed(0)}ms`
+                      {run.timing.total_ms != null
+                        ? `${run.timing.total_ms.toFixed(0)}ms`
                         : '-'}
                     </td>
                   </tr>
@@ -211,7 +224,7 @@ export function BenchmarkProgress({ benchmark, onComplete }: BenchmarkProgressPr
           <div>
             <p className="font-medium text-green-300">Benchmark Complete</p>
             <p className="text-sm text-green-400/80">
-              All {completedRuns} runs have finished. View results in the Results tab.
+              All {doneRuns} runs have finished. View results in the Results tab.
             </p>
           </div>
         </div>

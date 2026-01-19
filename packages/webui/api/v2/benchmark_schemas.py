@@ -157,6 +157,20 @@ class ConfigMatrixItem(BaseModel):
         description="Score thresholds (null = no threshold)",
         json_schema_extra={"example": [None, 0.5]},
     )
+    primary_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Default k value used for UI summaries and per-query stored metrics",
+        json_schema_extra={"example": 10},
+    )
+    k_values_for_metrics: list[int] = Field(
+        default=[10],
+        min_length=1,
+        max_length=10,
+        description="All k values to compute metrics for (must include primary_k)",
+        json_schema_extra={"example": [5, 10, 20]},
+    )
 
     model_config = ConfigDict(
         extra="forbid",
@@ -167,6 +181,8 @@ class ConfigMatrixItem(BaseModel):
                 "top_k_values": [10],
                 "rrf_k_values": [60],
                 "score_thresholds": [None],
+                "primary_k": 10,
+                "k_values_for_metrics": [10],
             }
         },
     )
@@ -304,6 +320,18 @@ class RunTimingResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RunMetricsResponse(BaseModel):
+    """Canonical structured metrics for a benchmark run."""
+
+    mrr: float | None = Field(default=None, description="Mean Reciprocal Rank")
+    ap: float | None = Field(default=None, description="Average Precision")
+    precision: dict[int, float] = Field(default_factory=dict, description="Precision@k keyed by k")
+    recall: dict[int, float] = Field(default_factory=dict, description="Recall@k keyed by k")
+    ndcg: dict[int, float] = Field(default_factory=dict, description="nDCG@k keyed by k")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class BenchmarkRunResponse(BaseModel):
     """Response schema for a benchmark run."""
 
@@ -313,7 +341,10 @@ class BenchmarkRunResponse(BaseModel):
     config: dict[str, Any] = Field(..., description="Run configuration")
     status: str = Field(..., description="Run status")
     error_message: str | None = Field(default=None, description="Error message if failed")
-    metrics: dict[str, float] = Field(default_factory=dict, description="Computed metrics")
+    metrics: RunMetricsResponse = Field(..., description="Canonical structured metrics")
+    metrics_flat: dict[str, float] = Field(
+        default_factory=dict, description="Compatibility flat metric keys (metric@k)"
+    )
     timing: RunTimingResponse = Field(..., description="Timing information")
 
     model_config = ConfigDict(from_attributes=True)
@@ -323,6 +354,8 @@ class BenchmarkResultsResponse(BaseModel):
     """Response schema for benchmark results."""
 
     benchmark_id: str = Field(..., description="Benchmark UUID")
+    primary_k: int = Field(..., description="Default k value used by the UI for summary metrics")
+    k_values_for_metrics: list[int] = Field(..., description="All k values computed for metrics")
     runs: list[BenchmarkRunResponse] = Field(..., description="List of benchmark runs with results")
     summary: dict[str, Any] = Field(..., description="Summary statistics")
     total_runs: int = Field(..., description="Total number of runs")

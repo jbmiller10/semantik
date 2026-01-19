@@ -111,6 +111,38 @@ class BenchmarkService:
         # Note: Sparse/hybrid search mode validation is done at runtime during search
         # If the collection doesn't have sparse vectors, vecpipe will fall back to dense
 
+        # Ensure metrics k-values are explicit and stored for reproducibility.
+        # These keys are treated as benchmark-level evaluation settings, even though they live
+        # inside config_matrix for now.
+        raw_primary_k = config_matrix.get("primary_k", 10)
+        try:
+            primary_k = int(raw_primary_k)
+        except (TypeError, ValueError):
+            primary_k = 10
+        if primary_k <= 0:
+            primary_k = 10
+
+        raw_k_values = config_matrix.get("k_values_for_metrics")
+        if not raw_k_values:
+            k_values_for_metrics = [primary_k]
+        else:
+            k_values_set: set[int] = set()
+            for raw_value in cast(list[Any], raw_k_values):
+                try:
+                    k_int = int(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                if k_int > 0:
+                    k_values_set.add(k_int)
+            k_values_for_metrics = sorted(k_values_set) if k_values_set else [primary_k]
+
+        if primary_k not in k_values_for_metrics:
+            k_values_for_metrics = sorted({*k_values_for_metrics, primary_k})
+
+        config_matrix = dict(config_matrix)
+        config_matrix["primary_k"] = primary_k
+        config_matrix["k_values_for_metrics"] = k_values_for_metrics
+
         # Compute config matrix hash for deduplication
         config_matrix_hash = hashlib.sha256(json.dumps(config_matrix, sort_keys=True).encode()).hexdigest()[:16]
 

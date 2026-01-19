@@ -8,24 +8,31 @@ import { useAuthStore } from '../stores/authStore';
 import { useWebSocket } from './useWebSocket';
 import { benchmarkKeys } from './useBenchmarks';
 import { operationsV2Api } from '../services/api/v2/operations';
+import type { BenchmarkRunMetrics, BenchmarkStatus } from '../types/benchmark';
 
 export interface BenchmarkProgressState {
   totalRuns: number;
   completedRuns: number;
+  failedRuns: number;
+  primaryK: number;
+  kValuesForMetrics: number[];
   currentRunOrder: number;
   currentRunConfig: Record<string, unknown> | null;
-  stage: 'pending' | 'indexing' | 'evaluating' | 'completed' | 'failed';
+  status: BenchmarkStatus;
+  stage: 'pending' | 'starting' | 'indexing' | 'evaluating' | 'completed' | 'failed' | 'cancelled';
   currentQueries: {
     total: number;
     processed: number;
   };
   recentMetrics: Array<{
+    runId: string;
     runOrder: number;
     config: Record<string, unknown>;
-    metrics: Record<string, number>;
+    metrics: BenchmarkRunMetrics;
     timing: {
       search_ms: number | null;
       rerank_ms: number | null;
+      total_ms: number | null;
     };
   }>;
 }
@@ -46,8 +53,12 @@ export function useBenchmarkProgress(
   const [progress, setProgress] = useState<BenchmarkProgressState>({
     totalRuns: 0,
     completedRuns: 0,
+    failedRuns: 0,
+    primaryK: 10,
+    kValuesForMetrics: [10],
     currentRunOrder: 0,
     currentRunConfig: null,
+    status: 'pending',
     stage: 'pending',
     currentQueries: { total: 0, processed: 0 },
     recentMetrics: [],
@@ -84,6 +95,81 @@ export function useBenchmarkProgress(
 
         // Handle different message types
         switch (type) {
+          case 'benchmark_progress': {
+            const currentRun = data.current_run ?? null;
+            const lastCompletedRun = data.last_completed_run ?? null;
+
+            setProgress((prev) => {
+              const nextTotalRuns = data.total_runs ?? prev.totalRuns;
+              const nextCompletedRuns = data.completed_runs ?? prev.completedRuns;
+              const nextFailedRuns = data.failed_runs ?? prev.failedRuns;
+              const nextPrimaryK = data.primary_k ?? prev.primaryK;
+              const nextKValues = data.k_values_for_metrics ?? prev.kValuesForMetrics;
+
+              let nextRecentMetrics = prev.recentMetrics;
+              if (lastCompletedRun?.run_id) {
+                const newEntry = {
+                  runId: String(lastCompletedRun.run_id),
+                  runOrder: Number(lastCompletedRun.run_order ?? 0),
+                  config: (lastCompletedRun.config as Record<string, unknown>) ?? {},
+                  metrics: (lastCompletedRun.metrics as BenchmarkRunMetrics) ?? { mrr: null },
+                  timing: {
+                    search_ms: lastCompletedRun.timing?.search_ms ?? null,
+                    rerank_ms: lastCompletedRun.timing?.rerank_ms ?? null,
+                    total_ms: lastCompletedRun.timing?.total_ms ?? null,
+                  },
+                };
+
+                // Dedupe by runId to avoid repeated inserts on reconnects
+                const without = prev.recentMetrics.filter((m) => m.runId !== newEntry.runId);
+                nextRecentMetrics = [...without.slice(-9), newEntry];
+              }
+
+              return {
+                ...prev,
+                totalRuns: Number(nextTotalRuns),
+                completedRuns: Number(nextCompletedRuns),
+                failedRuns: Number(nextFailedRuns),
+                primaryK: Number(nextPrimaryK),
+                kValuesForMetrics: Array.isArray(nextKValues) ? nextKValues.map(Number) : prev.kValuesForMetrics,
+                status: (data.status as BenchmarkStatus) ?? prev.status,
+                stage: (data.stage as BenchmarkProgressState['stage']) ?? prev.stage,
+                currentRunOrder: currentRun?.run_order ? Number(currentRun.run_order) : 0,
+                currentRunConfig: (currentRun?.config as Record<string, unknown>) ?? null,
+                currentQueries: {
+                  total: currentRun?.total_queries ? Number(currentRun.total_queries) : 0,
+                  processed: currentRun?.completed_queries ? Number(currentRun.completed_queries) : 0,
+                },
+                recentMetrics: nextRecentMetrics,
+              };
+            });
+
+            // Invalidate results cache when a run completes
+            if (benchmarkId && lastCompletedRun?.run_id) {
+              queryClient.invalidateQueries({
+                queryKey: benchmarkKeys.results(benchmarkId),
+              });
+            }
+
+            const status = data.status as BenchmarkStatus | undefined;
+            if (status === 'completed' || status === 'cancelled') {
+              queryClient.invalidateQueries({ queryKey: benchmarkKeys.lists() });
+              if (benchmarkId) {
+                queryClient.invalidateQueries({ queryKey: benchmarkKeys.detail(benchmarkId) });
+                queryClient.invalidateQueries({ queryKey: benchmarkKeys.results(benchmarkId) });
+              }
+              options.onComplete?.();
+            } else if (status === 'failed') {
+              queryClient.invalidateQueries({ queryKey: benchmarkKeys.lists() });
+              if (benchmarkId) {
+                queryClient.invalidateQueries({ queryKey: benchmarkKeys.detail(benchmarkId) });
+              }
+              options.onError?.(data.error_message || 'Benchmark failed');
+            }
+
+            break;
+          }
+
           case 'benchmark_started':
             setProgress((prev) => ({
               ...prev,
@@ -115,12 +201,14 @@ export function useBenchmarkProgress(
           case 'benchmark_run_completed':
             setProgress((prev) => {
               const newMetric = {
+                runId: String(data.run_id ?? `${data.run_order ?? prev.currentRunOrder}`),
                 runOrder: data.run_order || prev.currentRunOrder,
                 config: data.config || prev.currentRunConfig || {},
-                metrics: data.metrics || {},
+                metrics: (data.metrics as BenchmarkRunMetrics) || { mrr: null },
                 timing: {
                   search_ms: data.timing?.search_ms ?? null,
                   rerank_ms: data.timing?.rerank_ms ?? null,
+                  total_ms: data.timing?.total_ms ?? null,
                 },
               };
 
@@ -178,19 +266,19 @@ export function useBenchmarkProgress(
             break;
 
           default:
-            // Handle generic progress updates
-            if (data.progress !== undefined || data.progress_percent !== undefined) {
-              const progressPercent = data.progress ?? data.progress_percent;
-              if (progress.totalRuns > 0) {
-                const estimatedCompleted = Math.floor(
-                  (progressPercent / 100) * progress.totalRuns
-                );
-                setProgress((prev) => ({
-                  ...prev,
-                  completedRuns: Math.max(prev.completedRuns, estimatedCompleted),
-                }));
-              }
+          // Handle generic progress updates
+          if (data.progress !== undefined || data.progress_percent !== undefined) {
+            const progressPercent = data.progress ?? data.progress_percent;
+            if (progress.totalRuns > 0) {
+              const estimatedCompleted = Math.floor(
+                (progressPercent / 100) * progress.totalRuns
+              );
+              setProgress((prev) => ({
+                ...prev,
+                completedRuns: Math.max(prev.completedRuns, estimatedCompleted),
+              }));
             }
+          }
         }
       } catch (error) {
         console.error('Failed to parse benchmark progress message:', error);
@@ -210,8 +298,12 @@ export function useBenchmarkProgress(
     setProgress({
       totalRuns: 0,
       completedRuns: 0,
+      failedRuns: 0,
+      primaryK: 10,
+      kValuesForMetrics: [10],
       currentRunOrder: 0,
       currentRunConfig: null,
+      status: 'pending',
       stage: 'pending',
       currentQueries: { total: 0, processed: 0 },
       recentMetrics: [],

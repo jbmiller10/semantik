@@ -5,6 +5,8 @@ and the ConfigurationEvaluator for running and aggregating results across
 multiple queries for a benchmark configuration.
 """
 
+import contextlib
+import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -106,6 +108,10 @@ class QueryEvaluator:
 # Type alias for the search function
 SearchFunc = Callable[[str, int], Awaitable[tuple[list[RetrievedChunk], SearchTiming]]]
 
+# Callback invoked as configuration evaluation progresses.
+# Receives (completed_queries, total_queries).
+ProgressCallback = Callable[[int, int], Awaitable[None]]
+
 
 class ConfigurationEvaluator:
     """Evaluates all queries for a benchmark configuration.
@@ -151,6 +157,9 @@ class ConfigurationEvaluator:
         k_values: list[int],
         top_k: int = 100,
         include_debug: bool = False,
+        progress_callback: ProgressCallback | None = None,
+        progress_interval_queries: int | None = None,
+        progress_interval_ms: int | None = None,
     ) -> ConfigurationEvaluationResult:
         """Run all queries and aggregate metrics.
 
@@ -179,6 +188,9 @@ class ConfigurationEvaluator:
         per_query_results: list[QueryEvaluationResult] = []
         total_search_time_ms = 0
         total_rerank_time_ms = 0
+        total_queries = len(queries)
+
+        last_progress_time = time.monotonic()
 
         for query in queries:
             query_id = query["id"]
@@ -205,6 +217,27 @@ class ConfigurationEvaluator:
                 total_search_time_ms += result.search_time_ms
                 if result.rerank_time_ms is not None:
                     total_rerank_time_ms += result.rerank_time_ms
+
+                if progress_callback is not None:
+                    should_emit = False
+                    completed_queries = len(per_query_results)
+
+                    if progress_interval_queries is not None and progress_interval_queries > 0:
+                        should_emit = should_emit or (completed_queries % progress_interval_queries == 0)
+
+                    if progress_interval_ms is not None and progress_interval_ms > 0:
+                        now = time.monotonic()
+                        elapsed_ms = (now - last_progress_time) * 1000.0
+                        if elapsed_ms >= progress_interval_ms:
+                            should_emit = True
+                            last_progress_time = now
+
+                    if completed_queries == total_queries:
+                        should_emit = True
+
+                    if should_emit:
+                        with contextlib.suppress(Exception):
+                            await progress_callback(completed_queries, total_queries)
 
             except Exception as e:
                 raise BenchmarkEvaluationError(
@@ -260,4 +293,5 @@ __all__ = [
     "QueryEvaluator",
     "ConfigurationEvaluator",
     "SearchFunc",
+    "ProgressCallback",
 ]

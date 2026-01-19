@@ -11,7 +11,7 @@ Error Handling:
 """
 
 import contextlib
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
@@ -24,6 +24,7 @@ from webui.api.v2.benchmark_schemas import (
     BenchmarkResultsResponse,
     BenchmarkRunResponse,
     BenchmarkStartResponse,
+    RunMetricsResponse,
     RunQueryResultsResponse,
     RunTimingResponse,
 )
@@ -301,7 +302,8 @@ async def get_results(
                 config=run_data["config"],
                 status=run_data["status"],
                 error_message=run_data.get("error_message"),
-                metrics=run_data.get("metrics", {}),
+                metrics=RunMetricsResponse(**(run_data.get("metrics") or {})),
+                metrics_flat=run_data.get("metrics_flat", {}),
                 timing=RunTimingResponse(
                     indexing_ms=run_data.get("timing", {}).get("indexing_ms"),
                     evaluation_ms=run_data.get("timing", {}).get("evaluation_ms"),
@@ -312,6 +314,8 @@ async def get_results(
 
     return BenchmarkResultsResponse(
         benchmark_id=results["benchmark_id"],
+        primary_k=cast(int, results.get("primary_k", 10)),
+        k_values_for_metrics=cast(list[int], results.get("k_values_for_metrics", [10])),
         runs=formatted_runs,
         summary=results.get("summary", {}),
         total_runs=len(formatted_runs),

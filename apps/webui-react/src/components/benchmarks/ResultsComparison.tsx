@@ -37,9 +37,20 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(true);
+  const [selectedK, setSelectedK] = useState<number | null>(null);
 
   const { data: benchmark } = useBenchmark(benchmarkId);
   const { data: results, isLoading, error } = useBenchmarkResults(benchmarkId);
+
+  const primaryK = results?.primary_k ?? 10;
+  const activeK = selectedK ?? primaryK;
+  const availableKValues = results?.k_values_for_metrics ?? [primaryK];
+
+  const metricAtK = (values: Record<string, number> | undefined, k: number) => {
+    if (!values) return undefined;
+    const val = values[String(k)];
+    return typeof val === 'number' ? val : undefined;
+  };
 
   // Sort and process runs
   const sortedRuns = useMemo(() => {
@@ -59,20 +70,20 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
             ? aVal.localeCompare(bVal)
             : bVal.localeCompare(aVal);
         case 'precision_at_k':
-          aVal = a.metrics?.precision_at_k ?? 0;
-          bVal = b.metrics?.precision_at_k ?? 0;
+          aVal = metricAtK(a.metrics?.precision, activeK) ?? 0;
+          bVal = metricAtK(b.metrics?.precision, activeK) ?? 0;
           break;
         case 'recall_at_k':
-          aVal = a.metrics?.recall_at_k ?? 0;
-          bVal = b.metrics?.recall_at_k ?? 0;
+          aVal = metricAtK(a.metrics?.recall, activeK) ?? 0;
+          bVal = metricAtK(b.metrics?.recall, activeK) ?? 0;
           break;
         case 'mrr':
           aVal = a.metrics?.mrr ?? 0;
           bVal = b.metrics?.mrr ?? 0;
           break;
         case 'ndcg':
-          aVal = a.metrics?.ndcg ?? 0;
-          bVal = b.metrics?.ndcg ?? 0;
+          aVal = metricAtK(a.metrics?.ndcg, activeK) ?? 0;
+          bVal = metricAtK(b.metrics?.ndcg, activeK) ?? 0;
           break;
         case 'latency':
           aVal = a.timing?.total_ms ?? 0;
@@ -84,31 +95,31 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
         ? (aVal as number) - (bVal as number)
         : (bVal as number) - (aVal as number);
     });
-  }, [results?.runs, sortField, sortDirection]);
+  }, [results?.runs, sortField, sortDirection, activeK]);
 
   // Find best values for highlighting
   const bestValues = useMemo(() => {
     if (sortedRuns.length === 0) return {};
 
     return {
-      precision_at_k: Math.max(...sortedRuns.map((r) => r.metrics?.precision_at_k ?? 0)),
-      recall_at_k: Math.max(...sortedRuns.map((r) => r.metrics?.recall_at_k ?? 0)),
+      precision_at_k: Math.max(...sortedRuns.map((r) => metricAtK(r.metrics?.precision, activeK) ?? 0)),
+      recall_at_k: Math.max(...sortedRuns.map((r) => metricAtK(r.metrics?.recall, activeK) ?? 0)),
       mrr: Math.max(...sortedRuns.map((r) => r.metrics?.mrr ?? 0)),
-      ndcg: Math.max(...sortedRuns.map((r) => r.metrics?.ndcg ?? 0)),
+      ndcg: Math.max(...sortedRuns.map((r) => metricAtK(r.metrics?.ndcg, activeK) ?? 0)),
       latency: Math.min(...sortedRuns.map((r) => r.timing?.total_ms ?? Infinity)),
     };
-  }, [sortedRuns]);
+  }, [sortedRuns, activeK]);
 
   // Chart data
   const chartData = useMemo(() => {
     return sortedRuns.slice(0, 10).map((run) => ({
       name: formatConfigShort(run.config),
-      'P@K': run.metrics?.precision_at_k ?? 0,
-      'R@K': run.metrics?.recall_at_k ?? 0,
+      [`P@${activeK}`]: metricAtK(run.metrics?.precision, activeK) ?? 0,
+      [`R@${activeK}`]: metricAtK(run.metrics?.recall, activeK) ?? 0,
       MRR: run.metrics?.mrr ?? 0,
-      nDCG: run.metrics?.ndcg ?? 0,
+      [`nDCG@${activeK}`]: metricAtK(run.metrics?.ndcg, activeK) ?? 0,
     }));
-  }, [sortedRuns]);
+  }, [sortedRuns, activeK]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -132,14 +143,22 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
       mimeType = 'application/json';
     } else {
       // CSV format
-      const headers = ['Run', 'Config', 'P@K', 'R@K', 'MRR', 'nDCG', 'Latency (ms)'];
+      const headers = [
+        'Run',
+        'Config',
+        `P@${activeK}`,
+        `R@${activeK}`,
+        'MRR',
+        `nDCG@${activeK}`,
+        'Latency (ms)',
+      ];
       const rows = sortedRuns.map((run) => [
         run.run_order,
         formatConfig(run.config),
-        run.metrics?.precision_at_k?.toFixed(4) ?? '',
-        run.metrics?.recall_at_k?.toFixed(4) ?? '',
+        metricAtK(run.metrics?.precision, activeK)?.toFixed(4) ?? '',
+        metricAtK(run.metrics?.recall, activeK)?.toFixed(4) ?? '',
         run.metrics?.mrr?.toFixed(4) ?? '',
-        run.metrics?.ndcg?.toFixed(4) ?? '',
+        metricAtK(run.metrics?.ndcg, activeK)?.toFixed(4) ?? '',
         run.timing?.total_ms?.toFixed(0) ?? '',
       ]);
 
@@ -205,6 +224,19 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {availableKValues.length > 1 && (
+            <select
+              value={activeK}
+              onChange={(e) => setSelectedK(Number(e.target.value))}
+              className="px-3 py-1.5 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-secondary)]"
+            >
+              {availableKValues.map((k) => (
+                <option key={k} value={k}>
+                  K={k}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => exportResults('csv')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
@@ -256,10 +288,10 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                 labelStyle={{ color: 'var(--text-primary)' }}
               />
               <Legend />
-              <Bar dataKey="P@K" fill="#3b82f6" />
-              <Bar dataKey="R@K" fill="#10b981" />
+              <Bar dataKey={`P@${activeK}`} fill="#3b82f6" />
+              <Bar dataKey={`R@${activeK}`} fill="#10b981" />
               <Bar dataKey="MRR" fill="#f59e0b" />
-              <Bar dataKey="nDCG" fill="#8b5cf6" />
+              <Bar dataKey={`nDCG@${activeK}`} fill="#8b5cf6" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -286,7 +318,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                   onSort={handleSort}
                   align="right"
                 >
-                  P@K
+                  P@{activeK}
                 </SortableHeader>
                 <SortableHeader
                   field="recall_at_k"
@@ -295,7 +327,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                   onSort={handleSort}
                   align="right"
                 >
-                  R@K
+                  R@{activeK}
                 </SortableHeader>
                 <SortableHeader
                   field="mrr"
@@ -313,7 +345,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                   onSort={handleSort}
                   align="right"
                 >
-                  nDCG
+                  nDCG@{activeK}
                 </SortableHeader>
                 <SortableHeader
                   field="latency"
@@ -330,7 +362,7 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
               {sortedRuns.map((run) => {
                 const isBestOverall =
                   run.metrics?.mrr === bestValues.mrr &&
-                  run.metrics?.ndcg === bestValues.ndcg;
+                  (metricAtK(run.metrics?.ndcg, activeK) ?? 0) === bestValues.ndcg;
 
                 return (
                   <tr
@@ -352,15 +384,15 @@ export function ResultsComparison({ benchmarkId, onBack }: ResultsComparisonProp
                       </div>
                     </td>
                     <MetricCell
-                      value={run.metrics?.precision_at_k}
+                      value={metricAtK(run.metrics?.precision, activeK)}
                       best={bestValues.precision_at_k}
                     />
                     <MetricCell
-                      value={run.metrics?.recall_at_k}
+                      value={metricAtK(run.metrics?.recall, activeK)}
                       best={bestValues.recall_at_k}
                     />
                     <MetricCell value={run.metrics?.mrr} best={bestValues.mrr} />
-                    <MetricCell value={run.metrics?.ndcg} best={bestValues.ndcg} />
+                    <MetricCell value={metricAtK(run.metrics?.ndcg, activeK)} best={bestValues.ndcg} />
                     <td className="px-4 py-3 text-right">
                       <span
                         className={`text-sm ${

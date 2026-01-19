@@ -76,6 +76,8 @@ export interface ConfigMatrixItem {
   top_k_values: number[];
   rrf_k_values: number[];
   score_thresholds: Array<number | null>;
+  primary_k?: number;
+  k_values_for_metrics?: number[];
 }
 
 // =============================================================================
@@ -131,6 +133,14 @@ export interface RunTiming {
   total_ms: number | null;
 }
 
+export interface BenchmarkRunMetrics {
+  mrr: number | null;
+  ap?: number | null;
+  precision?: Record<string, number>;
+  recall?: Record<string, number>;
+  ndcg?: Record<string, number>;
+}
+
 export interface BenchmarkRun {
   id: string;
   run_order: number;
@@ -138,12 +148,15 @@ export interface BenchmarkRun {
   config: Record<string, unknown>;
   status: BenchmarkRunStatus;
   error_message: string | null;
-  metrics: Record<string, number>;
+  metrics: BenchmarkRunMetrics;
+  metrics_flat: Record<string, number>;
   timing: RunTiming;
 }
 
 export interface BenchmarkResultsResponse {
   benchmark_id: string;
+  primary_k: number;
+  k_values_for_metrics: number[];
   runs: BenchmarkRun[];
   summary: Record<string, unknown>;
   total_runs: number;

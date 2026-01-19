@@ -102,6 +102,13 @@ interface BenchmarkResultCardProps {
 function BenchmarkResultCard({ benchmark, onClick }: BenchmarkResultCardProps) {
   // Fetch results summary for preview
   const { data: results } = useBenchmarkResults(benchmark.id);
+  const primaryK = results?.primary_k ?? 10;
+
+  const metricAtK = (values: Record<string, number> | undefined, k: number) => {
+    if (!values) return undefined;
+    const val = values[String(k)];
+    return typeof val === 'number' ? val : undefined;
+  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown';
@@ -158,23 +165,27 @@ function BenchmarkResultCard({ benchmark, onClick }: BenchmarkResultCardProps) {
               <div className="text-right">
                 <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">MRR</p>
                 <p className="text-lg font-medium text-[var(--text-primary)]">
-                  {bestRun.metrics.mrr.toFixed(3)}
+                  {bestRun.metrics.mrr?.toFixed(3) ?? '-'}
                 </p>
               </div>
             )}
-            {bestRun.metrics?.ndcg !== undefined && (
+            {metricAtK(bestRun.metrics?.ndcg, primaryK) !== undefined && (
               <div className="text-right">
-                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">nDCG</p>
+                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
+                  nDCG@{primaryK}
+                </p>
                 <p className="text-lg font-medium text-[var(--text-primary)]">
-                  {bestRun.metrics.ndcg.toFixed(3)}
+                  {metricAtK(bestRun.metrics?.ndcg, primaryK)?.toFixed(3) ?? '-'}
                 </p>
               </div>
             )}
-            {bestRun.metrics?.precision_at_k !== undefined && (
+            {metricAtK(bestRun.metrics?.precision, primaryK) !== undefined && (
               <div className="text-right">
-                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">P@K</p>
+                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">
+                  P@{primaryK}
+                </p>
                 <p className="text-lg font-medium text-[var(--text-primary)]">
-                  {bestRun.metrics.precision_at_k.toFixed(3)}
+                  {metricAtK(bestRun.metrics?.precision, primaryK)?.toFixed(3) ?? '-'}
                 </p>
               </div>
             )}

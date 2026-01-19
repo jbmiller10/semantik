@@ -27,8 +27,8 @@ const DEFAULT_CONFIG: ConfigMatrixItem = {
 };
 
 const AVAILABLE_METRICS = [
-  { id: 'precision_at_k', label: 'Precision@K', description: 'Fraction of retrieved docs that are relevant' },
-  { id: 'recall_at_k', label: 'Recall@K', description: 'Fraction of relevant docs that were retrieved' },
+  { id: 'precision', label: 'Precision@K', description: 'Fraction of retrieved docs that are relevant' },
+  { id: 'recall', label: 'Recall@K', description: 'Fraction of relevant docs that were retrieved' },
   { id: 'mrr', label: 'MRR', description: 'Mean Reciprocal Rank of first relevant result' },
   { id: 'ndcg', label: 'nDCG@K', description: 'Normalized Discounted Cumulative Gain' },
 ];
@@ -40,7 +40,7 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
   const [selectedMappingId, setSelectedMappingId] = useState<number | null>(null);
   const [configMatrix, setConfigMatrix] = useState<ConfigMatrixItem>(DEFAULT_CONFIG);
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(
-    new Set(['precision_at_k', 'recall_at_k', 'mrr', 'ndcg'])
+    new Set(['precision', 'recall', 'mrr', 'ndcg'])
   );
   const [topK, setTopK] = useState<number>(10);
   const [errors, setErrors] = useState<Record<string, string>>({});

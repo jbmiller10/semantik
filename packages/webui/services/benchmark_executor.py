@@ -17,7 +17,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 from shared.benchmarks.evaluator import ConfigurationEvaluator
 from shared.benchmarks.exceptions import BenchmarkEvaluationError
-from shared.benchmarks.types import ConfigurationEvaluationResult, RelevanceJudgment, RetrievedChunk, SearchTiming
+from shared.benchmarks.types import (
+    ConfigurationEvaluationResult,
+    MetricResult,
+    RelevanceJudgment,
+    RetrievedChunk,
+    SearchTiming,
+)
 from shared.database.models import Benchmark, BenchmarkRunStatus, BenchmarkStatus, Collection
 
 if TYPE_CHECKING:
@@ -31,6 +37,9 @@ if TYPE_CHECKING:
     from .search_service import SearchService
 
 logger = logging.getLogger(__name__)
+
+BENCHMARK_PROGRESS_INTERVAL_QUERIES = 5
+BENCHMARK_PROGRESS_INTERVAL_MS = 500
 
 
 class BenchmarkExecutor:
@@ -129,8 +138,7 @@ class BenchmarkExecutor:
         # Convert queries to format expected by evaluator
         query_dicts = [{"id": q.id, "query_text": q.query_text} for q in queries]
 
-        # Get k values for metrics (from config_matrix or default)
-        k_values = self._get_k_values(benchmark)
+        primary_k, k_values = self._get_metrics_k_values(benchmark)
         top_k = cast(int, benchmark.top_k) or 10
 
         # Load runs
@@ -143,10 +151,15 @@ class BenchmarkExecutor:
 
         # Send initial progress
         await self._send_progress_update(
-            benchmark_id=benchmark_id,
+            benchmark_id=str(benchmark.id),
+            status=BenchmarkStatus.RUNNING,
             total_runs=total_runs,
             completed_runs=0,
+            failed_runs=0,
+            primary_k=primary_k,
+            k_values_for_metrics=k_values,
             current_run=None,
+            last_completed_run=None,
             stage="starting",
         )
 
@@ -177,9 +190,11 @@ class BenchmarkExecutor:
                     queries=query_dicts,
                     relevance_by_query=relevance_by_query,
                     k_values=k_values,
+                    primary_k=primary_k,
                     top_k=top_k,
                     total_runs=total_runs,
-                    completed_so_far=completed_count + failed_count,
+                    completed_runs=completed_count,
+                    failed_runs=failed_count,
                 )
                 completed_count += 1
             except Exception as exc:
@@ -193,6 +208,25 @@ class BenchmarkExecutor:
                     error_message=str(exc)[:1000],  # Truncate long errors
                 )
                 await self.db_session.commit()
+
+                await self._send_progress_update(
+                    benchmark_id=str(benchmark.id),
+                    status=BenchmarkStatus.RUNNING,
+                    total_runs=total_runs,
+                    completed_runs=completed_count,
+                    failed_runs=failed_count,
+                    primary_k=primary_k,
+                    k_values_for_metrics=k_values,
+                    current_run=None,
+                    last_completed_run={
+                        "run_id": str(run.id),
+                        "run_order": int(run.run_order),
+                        "config": cast(dict[str, Any], run.config) or {},
+                        "status": BenchmarkRunStatus.FAILED.value,
+                        "error_message": str(exc)[:1000],
+                    },
+                    stage="evaluating",
+                )
 
             # Update benchmark progress
             await self.benchmark_repo.update_status(
@@ -217,10 +251,15 @@ class BenchmarkExecutor:
 
         # Send completion progress
         await self._send_progress_update(
-            benchmark_id=benchmark_id,
+            benchmark_id=str(benchmark.id),
+            status=final_status,
             total_runs=total_runs,
-            completed_runs=completed_count + failed_count,
+            completed_runs=completed_count,
+            failed_runs=failed_count,
+            primary_k=primary_k,
+            k_values_for_metrics=k_values,
             current_run=None,
+            last_completed_run=None,
             stage="completed",
         )
 
@@ -248,9 +287,11 @@ class BenchmarkExecutor:
         queries: list[dict[str, Any]],
         relevance_by_query: dict[int, list[RelevanceJudgment]],
         k_values: list[int],
+        primary_k: int,
         top_k: int,
         total_runs: int,
-        completed_so_far: int,
+        completed_runs: int,
+        failed_runs: int,
     ) -> None:
         """Execute a single benchmark run.
 
@@ -291,15 +332,23 @@ class BenchmarkExecutor:
         # Send progress update
         await self._send_progress_update(
             benchmark_id=str(benchmark.id),
+            status=BenchmarkStatus.RUNNING,
             total_runs=total_runs,
-            completed_runs=completed_so_far,
+            completed_runs=completed_runs,
+            failed_runs=failed_runs,
+            primary_k=primary_k,
+            k_values_for_metrics=k_values,
             current_run={
                 "run_id": run_id,
+                "run_order": int(run.run_order),
+                "config": run_config,
                 "config_summary": config_summary,
                 "total_queries": len(queries),
                 "completed_queries": 0,
                 "stage": "indexing",
             },
+            last_completed_run=None,
+            stage="indexing",
         )
 
         # Update to EVALUATING
@@ -325,34 +374,69 @@ class BenchmarkExecutor:
         # Send evaluating progress
         await self._send_progress_update(
             benchmark_id=str(benchmark.id),
+            status=BenchmarkStatus.RUNNING,
             total_runs=total_runs,
-            completed_runs=completed_so_far,
+            completed_runs=completed_runs,
+            failed_runs=failed_runs,
+            primary_k=primary_k,
+            k_values_for_metrics=k_values,
             current_run={
                 "run_id": run_id,
+                "run_order": int(run.run_order),
+                "config": run_config,
                 "config_summary": config_summary,
                 "total_queries": len(queries),
                 "completed_queries": 0,
                 "stage": "evaluating",
             },
+            last_completed_run=None,
+            stage="evaluating",
         )
 
         # Run evaluation
         config_hash = cast(str, run.config_hash)
+        effective_top_k = max(int(run_top_k), max(k_values) if k_values else int(run_top_k))
+
+        async def _progress_callback(completed_queries: int, total_queries: int) -> None:
+            await self._send_progress_update(
+                benchmark_id=str(benchmark.id),
+                status=BenchmarkStatus.RUNNING,
+                total_runs=total_runs,
+                completed_runs=completed_runs,
+                failed_runs=failed_runs,
+                primary_k=primary_k,
+                k_values_for_metrics=k_values,
+                current_run={
+                    "run_id": run_id,
+                    "run_order": int(run.run_order),
+                    "config": run_config,
+                    "config_summary": config_summary,
+                    "total_queries": total_queries,
+                    "completed_queries": completed_queries,
+                    "stage": "evaluating",
+                },
+                last_completed_run=None,
+                stage="evaluating",
+            )
+
         eval_result = await self.evaluator.evaluate_configuration(
             config_hash=config_hash,
             queries=queries,
             relevance_by_query=relevance_by_query,
             search_func=search_func,
             k_values=k_values,
-            top_k=run_top_k,
+            top_k=effective_top_k,
             include_debug=False,
+            progress_callback=_progress_callback,
+            progress_interval_queries=BENCHMARK_PROGRESS_INTERVAL_QUERIES,
+            progress_interval_ms=BENCHMARK_PROGRESS_INTERVAL_MS,
         )
 
         eval_duration = int((time.perf_counter() - eval_start) * 1000)
         total_duration = int((time.perf_counter() - start_time) * 1000)
 
         # Store results
-        await self._store_run_results(run_id, eval_result, k_values)
+        await self._store_run_results(run_id, eval_result, primary_k)
 
         # Update run status to COMPLETED
         await self.benchmark_repo.update_run_status(
@@ -369,6 +453,32 @@ class BenchmarkExecutor:
             run_id,
             eval_result.total_queries,
             total_duration,
+        )
+
+        await self._send_progress_update(
+            benchmark_id=str(benchmark.id),
+            status=BenchmarkStatus.RUNNING,
+            total_runs=total_runs,
+            completed_runs=completed_runs + 1,
+            failed_runs=failed_runs,
+            primary_k=primary_k,
+            k_values_for_metrics=k_values,
+            current_run=None,
+            last_completed_run={
+                "run_id": run_id,
+                "run_order": int(run.run_order),
+                "config": run_config,
+                "config_summary": config_summary,
+                "status": BenchmarkRunStatus.COMPLETED.value,
+                "metrics": self._metrics_to_structured_dict(eval_result.aggregate_metrics),
+                "metrics_flat": self._metrics_to_flat_dict(eval_result.aggregate_metrics),
+                "timing": {
+                    "search_ms": eval_result.total_search_time_ms,
+                    "rerank_ms": eval_result.total_rerank_time_ms,
+                    "total_ms": total_duration,
+                },
+            },
+            stage="evaluating",
         )
 
     def _create_search_func(
@@ -428,14 +538,14 @@ class BenchmarkExecutor:
         self,
         run_id: str,
         eval_result: ConfigurationEvaluationResult,
-        k_values: list[int],
+        primary_k: int,
     ) -> None:
         """Persist evaluation results to the database.
 
         Args:
             run_id: UUID of the run
             eval_result: ConfigurationEvaluationResult from evaluator
-            k_values: k values used for metrics
+            primary_k: k value used for stored per-query metrics
         """
         # Store aggregate metrics
         for metric in eval_result.aggregate_metrics:
@@ -448,9 +558,6 @@ class BenchmarkExecutor:
 
         # Store per-query results (with individual metrics)
         for query_result in eval_result.per_query_results:
-            # Extract per-query metrics at the primary k value
-            primary_k = k_values[0] if k_values else 10
-
             precision_at_k = None
             recall_at_k = None
             ndcg_at_k = None
@@ -511,22 +618,40 @@ class BenchmarkExecutor:
 
         return dict(relevance_by_query)
 
-    def _get_k_values(self, benchmark: Benchmark) -> list[int]:
-        """Extract k values for metrics from benchmark configuration.
+    def _get_metrics_k_values(self, benchmark: Benchmark) -> tuple[int, list[int]]:
+        """Return (primary_k, k_values_for_metrics) for this benchmark.
 
-        Args:
-            benchmark: Benchmark instance
-
-        Returns:
-            List of k values (e.g., [5, 10, 20])
+        primary_k defaults to 10. k_values_for_metrics defaults to [primary_k].
+        Ensures primary_k is included and values are positive integers.
         """
         config_matrix = cast(dict[str, Any], benchmark.config_matrix) or {}
-        k_values = config_matrix.get("k_values_for_metrics", [5, 10, 20])
 
-        if not k_values:
-            k_values = [5, 10, 20]
+        raw_primary_k = config_matrix.get("primary_k", 10)
+        try:
+            primary_k = int(raw_primary_k)
+        except (TypeError, ValueError):
+            primary_k = 10
+        if primary_k <= 0:
+            primary_k = 10
 
-        return cast(list[int], k_values)
+        raw_k_values = config_matrix.get("k_values_for_metrics")
+        if not raw_k_values:
+            k_values = [primary_k]
+        else:
+            k_values_set: set[int] = set()
+            for value in cast(list[Any], raw_k_values):
+                try:
+                    k_int = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if k_int > 0:
+                    k_values_set.add(k_int)
+            k_values = sorted(k_values_set) if k_values_set else [primary_k]
+
+        if primary_k not in k_values:
+            k_values = sorted({*k_values, primary_k})
+
+        return primary_k, k_values
 
     def _get_config_summary(self, config: dict[str, Any]) -> str:
         """Create a human-readable summary of the run configuration.
@@ -554,9 +679,14 @@ class BenchmarkExecutor:
     async def _send_progress_update(
         self,
         benchmark_id: str,
+        status: BenchmarkStatus,
         total_runs: int,
         completed_runs: int,
+        failed_runs: int,
+        primary_k: int,
+        k_values_for_metrics: list[int],
         current_run: dict[str, Any] | None,
+        last_completed_run: dict[str, Any] | None,
         stage: str = "evaluating",
     ) -> None:
         """Send progress update via Redis pub/sub.
@@ -570,13 +700,54 @@ class BenchmarkExecutor:
         """
         progress_data = {
             "benchmark_id": benchmark_id,
+            "status": status.value,
             "total_runs": total_runs,
             "completed_runs": completed_runs,
+            "failed_runs": failed_runs,
+            "primary_k": primary_k,
+            "k_values_for_metrics": k_values_for_metrics,
             "current_run": current_run,
+            "last_completed_run": last_completed_run,
             "stage": stage,
         }
 
         await self.progress_reporter.send_update("benchmark_progress", progress_data)
+
+    def _metrics_to_flat_dict(self, metrics: list[MetricResult]) -> dict[str, float]:
+        flat: dict[str, float] = {}
+        for metric in metrics:
+            key = metric.name
+            if metric.k_value is not None:
+                key = f"{metric.name}@{metric.k_value}"
+            flat[key] = metric.value
+        return flat
+
+    def _metrics_to_structured_dict(self, metrics: list[MetricResult]) -> dict[str, Any]:
+        structured: dict[str, Any] = {
+            "mrr": None,
+            "ap": None,
+            "precision": {},
+            "recall": {},
+            "ndcg": {},
+        }
+
+        for metric in metrics:
+            if metric.name in ("precision", "recall", "ndcg") and metric.k_value is not None:
+                structured[metric.name][int(metric.k_value)] = metric.value
+            elif metric.name in ("mrr", "ap") and metric.k_value is None:
+                structured[metric.name] = metric.value
+
+        # Drop empty metric maps so JSON payloads stay compact
+        if not structured["precision"]:
+            structured.pop("precision", None)
+        if not structured["recall"]:
+            structured.pop("recall", None)
+        if not structured["ndcg"]:
+            structured.pop("ndcg", None)
+        if structured.get("ap") is None:
+            structured.pop("ap", None)
+
+        return structured
 
     async def _check_cancellation(self, benchmark_id: str) -> bool:
         """Check if the benchmark has been cancelled.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from sqlalchemy import Select, delete, func, select, update
@@ -792,20 +792,73 @@ class BenchmarkRepository:
 
         runs = await self.get_runs_for_benchmark(benchmark_id)
 
-        runs_data = []
-        best_run_id = None
-        best_metric_value = -1.0
+        config_matrix = cast(dict[str, Any], benchmark.config_matrix) or {}
+        try:
+            primary_k = int(config_matrix.get("primary_k", 10))
+        except (TypeError, ValueError):
+            primary_k = 10
+        if primary_k <= 0:
+            primary_k = 10
+
+        raw_k_values = config_matrix.get("k_values_for_metrics")
+        if not raw_k_values:
+            k_values_for_metrics = [primary_k]
+        else:
+            values: set[int] = set()
+            for raw_value in cast(list[Any], raw_k_values):
+                try:
+                    k_int = int(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                if k_int > 0:
+                    values.add(k_int)
+            k_values_for_metrics = sorted(values) if values else [primary_k]
+
+        if primary_k not in k_values_for_metrics:
+            k_values_for_metrics = sorted({*k_values_for_metrics, primary_k})
+
+        runs_data: list[dict[str, Any]] = []
+        best_run_id: str | None = None
+        best_metric_value = float("-inf")
 
         for run in runs:
             metrics = await self.get_metrics_for_run(run.id)
 
-            # Build metrics dict
-            metrics_dict: dict[str, float] = {}
-            for m in metrics:
-                key = m.metric_name
-                if m.k_value is not None:
-                    key = f"{m.metric_name}@{m.k_value}"
-                metrics_dict[key] = m.metric_value
+            metrics_flat: dict[str, float] = {}
+            metrics_structured: dict[str, Any] = {
+                "mrr": None,
+                "ap": None,
+                "precision": {},
+                "recall": {},
+                "ndcg": {},
+            }
+
+            for metric in metrics:
+                key = metric.metric_name
+                if metric.k_value is not None:
+                    key = f"{metric.metric_name}@{metric.k_value}"
+                metrics_flat[key] = metric.metric_value
+
+                if metric.metric_name in ("precision", "recall", "ndcg") and metric.k_value is not None:
+                    metrics_structured[metric.metric_name][int(metric.k_value)] = metric.metric_value
+                elif metric.metric_name in ("mrr", "ap") and metric.k_value is None:
+                    metrics_structured[metric.metric_name] = metric.metric_value
+
+            if not metrics_structured["precision"]:
+                metrics_structured.pop("precision", None)
+            if not metrics_structured["recall"]:
+                metrics_structured.pop("recall", None)
+            if not metrics_structured["ndcg"]:
+                metrics_structured.pop("ndcg", None)
+            if metrics_structured.get("ap") is None:
+                metrics_structured.pop("ap", None)
+
+            metrics_primary: dict[str, float | None] = {
+                "mrr": cast(float | None, metrics_structured.get("mrr")),
+                "precision": cast(dict[int, float], metrics_structured.get("precision", {})).get(primary_k),
+                "recall": cast(dict[int, float], metrics_structured.get("recall", {})).get(primary_k),
+                "ndcg": cast(dict[int, float], metrics_structured.get("ndcg", {})).get(primary_k),
+            }
 
             run_data = {
                 "run_id": run.id,
@@ -814,7 +867,9 @@ class BenchmarkRepository:
                 "config_hash": run.config_hash,
                 "status": run.status,
                 "error_message": run.error_message,
-                "metrics": metrics_dict,
+                "metrics": metrics_structured,
+                "metrics_flat": metrics_flat,
+                "metrics_primary": metrics_primary,
                 "timing": {
                     "indexing_ms": run.indexing_duration_ms,
                     "evaluation_ms": run.evaluation_duration_ms,
@@ -823,20 +878,24 @@ class BenchmarkRepository:
             }
             runs_data.append(run_data)
 
-            # Track best run by primary metric (ndcg@10 or first available)
-            primary_metric = metrics_dict.get("ndcg@10") or metrics_dict.get("ndcg@5")
-            if primary_metric and primary_metric > best_metric_value:
+            primary_metric = metrics_primary.get("ndcg")
+            if primary_metric is None:
+                primary_metric = metrics_primary.get("mrr")
+
+            if primary_metric is not None and primary_metric > best_metric_value:
                 best_metric_value = primary_metric
                 best_run_id = run.id
 
         return {
             "benchmark_id": benchmark_id,
+            "primary_k": primary_k,
+            "k_values_for_metrics": k_values_for_metrics,
             "runs": runs_data,
             "summary": {
                 "total_runs": benchmark.total_runs,
                 "completed_runs": benchmark.completed_runs,
                 "failed_runs": benchmark.failed_runs,
                 "best_run": best_run_id,
-                "best_primary_metric": best_metric_value if best_metric_value >= 0 else None,
+                "best_primary_metric": best_metric_value if best_run_id is not None else None,
             },
         }
