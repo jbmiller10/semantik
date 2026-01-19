@@ -79,9 +79,7 @@ class BenchmarkDatasetRepository:
             raise ValidationError("Dataset name is required", "name")
 
         # Verify owner exists
-        user_exists = await self.session.scalar(
-            select(func.count(User.id)).where(User.id == owner_id)
-        )
+        user_exists = await self.session.scalar(select(func.count(User.id)).where(User.id == owner_id))
         if not user_exists:
             raise EntityNotFoundError("user", str(owner_id))
 
@@ -606,9 +604,7 @@ class BenchmarkDatasetRepository:
         Returns:
             Count of relevance judgments
         """
-        stmt = select(func.count(BenchmarkRelevance.id)).where(
-            BenchmarkRelevance.mapping_id == mapping_id
-        )
+        stmt = select(func.count(BenchmarkRelevance.id)).where(BenchmarkRelevance.mapping_id == mapping_id)
         if resolved_only:
             stmt = stmt.where(BenchmarkRelevance.resolved_document_id.is_not(None))
         try:

@@ -22,7 +22,6 @@ from shared.database.models import (
     BenchmarkStatus,
 )
 
-
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,9 +156,7 @@ class BenchmarkRepository:
         Returns:
             True if benchmark exists, False otherwise
         """
-        result = await self.session.scalar(
-            select(func.count(Benchmark.id)).where(Benchmark.id == benchmark_uuid)
-        )
+        result = await self.session.scalar(select(func.count(Benchmark.id)).where(Benchmark.id == benchmark_uuid))
         return bool(result)
 
     async def get_by_uuid(self, benchmark_uuid: str) -> Benchmark | None:
@@ -369,11 +366,7 @@ class BenchmarkRepository:
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        stmt = (
-            update(Benchmark)
-            .where(Benchmark.id == benchmark_uuid)
-            .values(operation_uuid=operation_uuid)
-        )
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid).values(operation_uuid=operation_uuid)
         result = await self.session.execute(stmt)
         if result.rowcount == 0:
             raise EntityNotFoundError("benchmark", benchmark_uuid)
@@ -472,11 +465,7 @@ class BenchmarkRepository:
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        stmt = (
-            update(Benchmark)
-            .where(Benchmark.id == benchmark_uuid)
-            .values(total_runs=total_runs)
-        )
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid).values(total_runs=total_runs)
         result = await self.session.execute(stmt)
         if result.rowcount == 0:
             raise EntityNotFoundError("benchmark", benchmark_uuid)

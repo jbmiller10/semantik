@@ -250,9 +250,7 @@ class BenchmarkExecutor:
         await self._process_runs(data, ctx)
 
         # Finalize benchmark
-        final_status = await self._determine_final_status(
-            benchmark_id, ctx.completed_runs, ctx.failed_runs
-        )
+        final_status = await self._determine_final_status(benchmark_id, ctx.completed_runs, ctx.failed_runs)
         await self.benchmark_repo.update_status(
             benchmark_id,
             final_status,
@@ -268,12 +266,8 @@ class BenchmarkExecutor:
     async def _handle_pre_start_cancellation(self, benchmark_id: str) -> dict[str, Any]:
         """Handle cancellation that occurred before the worker started."""
         runs = await self.benchmark_repo.get_runs_for_benchmark(benchmark_id)
-        completed_count = sum(
-            1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.COMPLETED.value
-        )
-        failed_count = sum(
-            1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.FAILED.value
-        )
+        completed_count = sum(1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.COMPLETED.value)
+        failed_count = sum(1 for r in runs if cast(str, r.status) == BenchmarkRunStatus.FAILED.value)
 
         if runs:
             failed_count = await self._mark_remaining_runs_cancelled(
@@ -438,7 +432,9 @@ class BenchmarkExecutor:
         indexing_duration = 0  # No indexing needed for evaluation-only benchmarks
 
         await self._send_progress(
-            ctx, BenchmarkStatus.RUNNING, "indexing",
+            ctx,
+            BenchmarkStatus.RUNNING,
+            "indexing",
             current_run={**run_info, "completed_queries": 0, "stage": "indexing"},
         )
 
@@ -460,14 +456,18 @@ class BenchmarkExecutor:
         eval_start = time.perf_counter()
 
         await self._send_progress(
-            ctx, BenchmarkStatus.RUNNING, "evaluating",
+            ctx,
+            BenchmarkStatus.RUNNING,
+            "evaluating",
             current_run={**run_info, "completed_queries": 0, "stage": "evaluating"},
         )
 
         # Create progress callback using closure over ctx and run_info
         async def progress_callback(completed_queries: int, total_queries: int) -> None:
             await self._send_progress(
-                ctx, BenchmarkStatus.RUNNING, "evaluating",
+                ctx,
+                BenchmarkStatus.RUNNING,
+                "evaluating",
                 current_run={
                     **run_info,
                     "total_queries": total_queries,
@@ -528,7 +528,9 @@ class BenchmarkExecutor:
         )
 
         await self._send_progress(
-            completed_ctx, BenchmarkStatus.RUNNING, "evaluating",
+            completed_ctx,
+            BenchmarkStatus.RUNNING,
+            "evaluating",
             last_completed_run={
                 "run_id": run_id,
                 "run_order": int(run.run_order),

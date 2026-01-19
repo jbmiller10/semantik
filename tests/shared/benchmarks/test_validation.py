@@ -106,9 +106,7 @@ class TestValidateTopKValues:
 
     def test_detects_invalid_values(self) -> None:
         """Detects values that cannot be parsed as positive integers."""
-        valid, invalid, too_small = validate_top_k_values(
-            [10, "invalid", None, -5, 0, 20], min_required_k=10
-        )
+        valid, invalid, too_small = validate_top_k_values([10, "invalid", None, -5, 0, 20], min_required_k=10)
         assert valid == [10, 20]
         assert invalid == ["invalid", None, -5, 0]
         assert too_small == []
@@ -122,9 +120,7 @@ class TestValidateTopKValues:
 
     def test_combined_validation(self) -> None:
         """Handles combination of invalid and too-small values."""
-        valid, invalid, too_small = validate_top_k_values(
-            [5, "bad", 10, None, 20], min_required_k=15
-        )
+        valid, invalid, too_small = validate_top_k_values([5, "bad", 10, None, 20], min_required_k=15)
         assert valid == [20]
         assert invalid == ["bad", None]
         assert too_small == [5, 10]
@@ -137,9 +133,7 @@ class TestValidateTopKValues:
 
     def test_values_deduped(self) -> None:
         """Removes duplicates from results."""
-        valid, invalid, too_small = validate_top_k_values(
-            [20, 20, 5, 5, "x", "x"], min_required_k=10
-        )
+        valid, invalid, too_small = validate_top_k_values([20, 20, 5, 5, "x", "x"], min_required_k=10)
         assert valid == [20]
         assert too_small == [5]
 

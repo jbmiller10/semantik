@@ -747,12 +747,14 @@ class BenchmarkDatasetService:
             if not isinstance(raw_doc_ref, dict) or not raw_doc_ref:
                 stats.unresolved += 1
                 if collect_samples and len(stats.unresolved_samples) < 100:
-                    stats.unresolved_samples.append({
-                        "query_id": cast(int, relevance.benchmark_query_id),
-                        "doc_ref": raw_doc_ref,
-                        "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
-                        "reason": "invalid_doc_ref",
-                    })
+                    stats.unresolved_samples.append(
+                        {
+                            "query_id": cast(int, relevance.benchmark_query_id),
+                            "doc_ref": raw_doc_ref,
+                            "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
+                            "reason": "invalid_doc_ref",
+                        }
+                    )
                 continue
 
             resolved_doc_id, reason = resolve_single_doc_ref(raw_doc_ref, ctx)
@@ -767,12 +769,14 @@ class BenchmarkDatasetService:
                     stats.unresolved += 1
 
                 if collect_samples and len(stats.unresolved_samples) < 100:
-                    stats.unresolved_samples.append({
-                        "query_id": cast(int, relevance.benchmark_query_id),
-                        "doc_ref": raw_doc_ref,
-                        "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
-                        "reason": reason,
-                    })
+                    stats.unresolved_samples.append(
+                        {
+                            "query_id": cast(int, relevance.benchmark_query_id),
+                            "doc_ref": raw_doc_ref,
+                            "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
+                            "reason": reason,
+                        }
+                    )
 
     def _compute_mapping_status(self, resolved_count: int, total_count: int) -> MappingStatus:
         """Compute mapping status from resolution counts."""
