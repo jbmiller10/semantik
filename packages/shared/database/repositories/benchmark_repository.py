@@ -22,10 +22,29 @@ from shared.database.models import (
     BenchmarkStatus,
 )
 
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+def _get_benchmark_full_load() -> tuple[Any, ...]:
+    """Get selectinload options for full benchmark loading."""
+    return (
+        selectinload(Benchmark.owner),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
+        selectinload(Benchmark.runs),
+    )
+
+
+def _get_benchmark_list_load() -> tuple[Any, ...]:
+    """Get selectinload options for benchmark listing."""
+    return (
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
+        selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
+    )
 
 
 class BenchmarkRepository:
@@ -127,6 +146,22 @@ class BenchmarkRepository:
             logger.error("Failed to create benchmark: %s", exc)
             raise DatabaseOperationError("create", "benchmark", str(exc)) from exc
 
+    async def exists(self, benchmark_uuid: str) -> bool:
+        """Check if a benchmark exists by UUID.
+
+        Lightweight check that avoids loading relationships.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+
+        Returns:
+            True if benchmark exists, False otherwise
+        """
+        result = await self.session.scalar(
+            select(func.count(Benchmark.id)).where(Benchmark.id == benchmark_uuid)
+        )
+        return bool(result)
+
     async def get_by_uuid(self, benchmark_uuid: str) -> Benchmark | None:
         """Get a benchmark by UUID.
 
@@ -137,14 +172,7 @@ class BenchmarkRepository:
             Benchmark instance or None if not found
         """
         stmt: Select[tuple[Benchmark]] = (
-            select(Benchmark)
-            .where(Benchmark.id == benchmark_uuid)
-            .options(
-                selectinload(Benchmark.owner),
-                selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
-                selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
-                selectinload(Benchmark.runs),
-            )
+            select(Benchmark).where(Benchmark.id == benchmark_uuid).options(*_get_benchmark_full_load())
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -200,10 +228,7 @@ class BenchmarkRepository:
             stmt: Select[tuple[Benchmark]] = (
                 select(Benchmark)
                 .where(Benchmark.owner_id == user_id)
-                .options(
-                    selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.dataset),
-                    selectinload(Benchmark.mapping).selectinload(BenchmarkDatasetMapping.collection),
-                )
+                .options(*_get_benchmark_list_load())
                 .order_by(Benchmark.created_at.desc())
             )
 
@@ -246,53 +271,77 @@ class BenchmarkRepository:
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        now = datetime.now(UTC)
-        values: dict[str, Any] = {
-            "status": status.value,
-        }
+        values = self._build_status_update_values(status, completed_runs, failed_runs)
 
-        if status == BenchmarkStatus.RUNNING:
-            values["started_at"] = func.coalesce(Benchmark.started_at, now)
-        elif status in (BenchmarkStatus.COMPLETED, BenchmarkStatus.FAILED):
-            values["completed_at"] = func.coalesce(Benchmark.completed_at, now)
-        elif status == BenchmarkStatus.CANCELLED:
-            values["cancelled_at"] = func.coalesce(Benchmark.cancelled_at, now)
+        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid)
+
+        # Prevent overwriting CANCELLED with non-cancelled statuses
+        if status != BenchmarkStatus.CANCELLED:
+            stmt = stmt.where(Benchmark.status != BenchmarkStatus.CANCELLED.value)
+
+        stmt = stmt.values(**values).returning(Benchmark)
+        result = await self.session.execute(stmt)
+        benchmark = result.scalar_one_or_none()
+
+        if benchmark is not None:
+            logger.info("Updated benchmark %s status to %s", benchmark_uuid, status.value)
+            return benchmark
+
+        # Update returned no rows - check if benchmark exists or was already cancelled
+        return await self._handle_update_no_rows(benchmark_uuid, status)
+
+    def _build_status_update_values(
+        self,
+        status: BenchmarkStatus,
+        completed_runs: int | None,
+        failed_runs: int | None,
+    ) -> dict[str, Any]:
+        """Build UPDATE values dict for status transition."""
+        now = datetime.now(UTC)
+        values: dict[str, Any] = {"status": status.value}
+
+        # Map status to timestamp field, using coalesce to preserve existing values
+        timestamp_map = {
+            BenchmarkStatus.RUNNING: ("started_at", Benchmark.started_at),
+            BenchmarkStatus.COMPLETED: ("completed_at", Benchmark.completed_at),
+            BenchmarkStatus.FAILED: ("completed_at", Benchmark.completed_at),
+            BenchmarkStatus.CANCELLED: ("cancelled_at", Benchmark.cancelled_at),
+        }
+        if status in timestamp_map:
+            field, column = timestamp_map[status]
+            values[field] = func.coalesce(column, now)
 
         if completed_runs is not None:
             values["completed_runs"] = completed_runs
         if failed_runs is not None:
             values["failed_runs"] = failed_runs
 
-        stmt = update(Benchmark).where(Benchmark.id == benchmark_uuid)
+        return values
 
-        # Prevent overwriting CANCELLED with non-cancelled statuses.
-        if status != BenchmarkStatus.CANCELLED:
-            stmt = stmt.where(Benchmark.status != BenchmarkStatus.CANCELLED.value)
+    async def _handle_update_no_rows(
+        self,
+        benchmark_uuid: str,
+        status: BenchmarkStatus,
+    ) -> Benchmark:
+        """Handle case where UPDATE returned no rows.
 
-        stmt = stmt.values(**values).returning(Benchmark)
+        Either benchmark doesn't exist or was already CANCELLED.
+        """
+        stmt: Select[tuple[Benchmark]] = (
+            select(Benchmark).where(Benchmark.id == benchmark_uuid).execution_options(populate_existing=True)
+        )
+        existing = (await self.session.execute(stmt)).scalar_one_or_none()
 
-        result = await self.session.execute(stmt)
-        benchmark = result.scalar_one_or_none()
+        if existing is None:
+            raise EntityNotFoundError("benchmark", benchmark_uuid)
 
-        if benchmark is None:
-            # Either not found, or was CANCELLED and we tried to overwrite it.
-            existing_stmt: Select[tuple[Benchmark]] = (
-                select(Benchmark).where(Benchmark.id == benchmark_uuid).execution_options(populate_existing=True)
+        if cast(str, existing.status) == BenchmarkStatus.CANCELLED.value and status != BenchmarkStatus.CANCELLED:
+            logger.info(
+                "Skipped benchmark %s status update to %s (already cancelled)",
+                benchmark_uuid,
+                status.value,
             )
-            existing = (await self.session.execute(existing_stmt)).scalar_one_or_none()
-            if existing is None:
-                raise EntityNotFoundError("benchmark", benchmark_uuid)
-
-            if cast(str, existing.status) == BenchmarkStatus.CANCELLED.value and status != BenchmarkStatus.CANCELLED:
-                logger.info(
-                    "Skipped benchmark %s status update to %s (already cancelled)",
-                    benchmark_uuid,
-                    status.value,
-                )
-            return existing
-
-        logger.info("Updated benchmark %s status to %s", benchmark_uuid, status.value)
-        return benchmark
+        return existing
 
     async def get_status_value(
         self,
@@ -310,26 +359,24 @@ class BenchmarkRepository:
         self,
         benchmark_uuid: str,
         operation_uuid: str | None,
-    ) -> Benchmark:
+    ) -> None:
         """Link the benchmark to a backing operation.
 
         Args:
             benchmark_uuid: UUID of the benchmark
             operation_uuid: UUID of the operation (or None to unlink)
 
-        Returns:
-            Updated Benchmark instance
-
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        benchmark = await self.get_by_uuid(benchmark_uuid)
-        if not benchmark:
+        stmt = (
+            update(Benchmark)
+            .where(Benchmark.id == benchmark_uuid)
+            .values(operation_uuid=operation_uuid)
+        )
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
             raise EntityNotFoundError("benchmark", benchmark_uuid)
-
-        benchmark.operation_uuid = operation_uuid
-        await self.session.flush()
-        return benchmark
 
     async def transition_status_atomically(
         self,
@@ -393,8 +440,7 @@ class BenchmarkRepository:
 
         if benchmark is None:
             # Check if benchmark exists at all
-            exists = await self.get_by_uuid(benchmark_uuid)
-            if not exists:
+            if not await self.exists(benchmark_uuid):
                 raise EntityNotFoundError("benchmark", benchmark_uuid)
             # Benchmark exists but wasn't in expected status (race lost)
             logger.warning(
@@ -416,26 +462,24 @@ class BenchmarkRepository:
         self,
         benchmark_uuid: str,
         total_runs: int,
-    ) -> Benchmark:
+    ) -> None:
         """Set the total number of runs for a benchmark.
 
         Args:
             benchmark_uuid: UUID of the benchmark
             total_runs: Total number of runs
 
-        Returns:
-            Updated Benchmark instance
-
         Raises:
             EntityNotFoundError: If benchmark not found
         """
-        benchmark = await self.get_by_uuid(benchmark_uuid)
-        if not benchmark:
+        stmt = (
+            update(Benchmark)
+            .where(Benchmark.id == benchmark_uuid)
+            .values(total_runs=total_runs)
+        )
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
             raise EntityNotFoundError("benchmark", benchmark_uuid)
-
-        benchmark.total_runs = total_runs
-        await self.session.flush()
-        return benchmark
 
     async def delete(
         self,
@@ -486,8 +530,7 @@ class BenchmarkRepository:
             DatabaseOperationError: For database errors
         """
         # Verify benchmark exists
-        benchmark = await self.get_by_uuid(benchmark_id)
-        if not benchmark:
+        if not await self.exists(benchmark_id):
             raise EntityNotFoundError("benchmark", benchmark_id)
 
         run = BenchmarkRun(
@@ -794,110 +837,78 @@ class BenchmarkRepository:
             benchmark_id: UUID of the benchmark
 
         Returns:
-            Dictionary with aggregated results:
-            {
-                "benchmark_id": "...",
-                "runs": [
-                    {
-                        "run_id": "...",
-                        "config": {...},
-                        "status": "completed",
-                        "metrics": {
-                            "precision@5": 0.75,
-                            "recall@10": 0.85,
-                            ...
-                        },
-                        "timing": {
-                            "indexing_ms": 1234,
-                            "evaluation_ms": 5678,
-                            "total_ms": 6912
-                        }
-                    },
-                    ...
-                ],
-                "summary": {
-                    "total_runs": 10,
-                    "completed_runs": 8,
-                    "failed_runs": 2,
-                    "best_run": "...",
-                    "best_metrics": {...}
-                }
-            }
+            Dictionary with benchmark_id, primary_k, k_values_for_metrics,
+            runs (list of run data with metrics), and summary.
         """
         benchmark = await self.get_by_uuid(benchmark_id)
         if not benchmark:
             raise EntityNotFoundError("benchmark", benchmark_id)
 
         runs = await self.get_runs_for_benchmark(benchmark_id)
-
         config_matrix = cast(dict[str, Any], benchmark.config_matrix) or {}
+
+        primary_k = self._parse_primary_k(config_matrix)
+        k_values = self._parse_k_values(config_matrix, primary_k)
+
+        runs_data, best_run_id, best_metric_value = self._aggregate_runs(runs, primary_k)
+
+        return {
+            "benchmark_id": benchmark_id,
+            "primary_k": primary_k,
+            "k_values_for_metrics": k_values,
+            "runs": runs_data,
+            "summary": {
+                "total_runs": benchmark.total_runs,
+                "completed_runs": benchmark.completed_runs,
+                "failed_runs": benchmark.failed_runs,
+                "best_run": best_run_id,
+                "best_primary_metric": best_metric_value if best_run_id is not None else None,
+            },
+        }
+
+    def _parse_primary_k(self, config_matrix: dict[str, Any]) -> int:
+        """Extract and validate primary_k from config matrix."""
         try:
             primary_k = int(config_matrix.get("primary_k", 10))
         except (TypeError, ValueError):
             primary_k = 10
-        if primary_k <= 0:
-            primary_k = 10
+        return primary_k if primary_k > 0 else 10
 
+    def _parse_k_values(self, config_matrix: dict[str, Any], primary_k: int) -> list[int]:
+        """Extract and validate k_values_for_metrics from config matrix."""
         raw_k_values = config_matrix.get("k_values_for_metrics")
         if not raw_k_values:
-            k_values_for_metrics = [primary_k]
-        else:
-            values: set[int] = set()
-            for raw_value in cast(list[Any], raw_k_values):
-                try:
-                    k_int = int(raw_value)
-                except (TypeError, ValueError):
-                    continue
+            return [primary_k]
+
+        values: set[int] = set()
+        for raw_value in cast(list[Any], raw_k_values):
+            try:
+                k_int = int(raw_value)
                 if k_int > 0:
                     values.add(k_int)
-            k_values_for_metrics = sorted(values) if values else [primary_k]
+            except (TypeError, ValueError):
+                continue
 
-        if primary_k not in k_values_for_metrics:
-            k_values_for_metrics = sorted({*k_values_for_metrics, primary_k})
+        if not values:
+            return [primary_k]
 
+        # Ensure primary_k is included
+        values.add(primary_k)
+        return sorted(values)
+
+    def _aggregate_runs(
+        self,
+        runs: list[BenchmarkRun],
+        primary_k: int,
+    ) -> tuple[list[dict[str, Any]], str | None, float]:
+        """Aggregate run data and find best run."""
         runs_data: list[dict[str, Any]] = []
         best_run_id: str | None = None
         best_metric_value = float("-inf")
 
         for run in runs:
-            # Use eager-loaded metrics from selectinload instead of separate query
-            metrics = run.metrics
-
-            metrics_flat: dict[str, float] = {}
-            metrics_structured: dict[str, Any] = {
-                "mrr": None,
-                "ap": None,
-                "precision": {},
-                "recall": {},
-                "ndcg": {},
-            }
-
-            for metric in metrics:
-                key = metric.metric_name
-                if metric.k_value is not None:
-                    key = f"{metric.metric_name}@{metric.k_value}"
-                metrics_flat[key] = metric.metric_value
-
-                if metric.metric_name in ("precision", "recall", "ndcg") and metric.k_value is not None:
-                    metrics_structured[metric.metric_name][int(metric.k_value)] = metric.metric_value
-                elif metric.metric_name in ("mrr", "ap") and metric.k_value is None:
-                    metrics_structured[metric.metric_name] = metric.metric_value
-
-            if not metrics_structured["precision"]:
-                metrics_structured.pop("precision", None)
-            if not metrics_structured["recall"]:
-                metrics_structured.pop("recall", None)
-            if not metrics_structured["ndcg"]:
-                metrics_structured.pop("ndcg", None)
-            if metrics_structured.get("ap") is None:
-                metrics_structured.pop("ap", None)
-
-            metrics_primary: dict[str, float | None] = {
-                "mrr": cast(float | None, metrics_structured.get("mrr")),
-                "precision": cast(dict[int, float], metrics_structured.get("precision", {})).get(primary_k),
-                "recall": cast(dict[int, float], metrics_structured.get("recall", {})).get(primary_k),
-                "ndcg": cast(dict[int, float], metrics_structured.get("ndcg", {})).get(primary_k),
-            }
+            metrics_flat, metrics_structured = self._process_run_metrics(run.metrics)
+            metrics_primary = self._extract_primary_metrics(metrics_structured, primary_k)
 
             run_data = {
                 "run_id": run.id,
@@ -917,24 +928,59 @@ class BenchmarkRepository:
             }
             runs_data.append(run_data)
 
-            primary_metric = metrics_primary.get("ndcg")
-            if primary_metric is None:
-                primary_metric = metrics_primary.get("mrr")
-
+            # Track best run by nDCG, falling back to MRR
+            primary_metric = metrics_primary.get("ndcg") or metrics_primary.get("mrr")
             if primary_metric is not None and primary_metric > best_metric_value:
                 best_metric_value = primary_metric
                 best_run_id = run.id
 
+        return runs_data, best_run_id, best_metric_value
+
+    def _process_run_metrics(
+        self,
+        metrics: list[BenchmarkRunMetric],
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        """Process metrics into flat and structured formats."""
+        metrics_flat: dict[str, float] = {}
+        metrics_structured: dict[str, Any] = {
+            "mrr": None,
+            "ap": None,
+            "precision": {},
+            "recall": {},
+            "ndcg": {},
+        }
+
+        for metric in metrics:
+            # Build flat key (e.g., "precision@5")
+            key = metric.metric_name
+            if metric.k_value is not None:
+                key = f"{metric.metric_name}@{metric.k_value}"
+            metrics_flat[key] = metric.metric_value
+
+            # Build structured format
+            if metric.metric_name in ("precision", "recall", "ndcg") and metric.k_value is not None:
+                metrics_structured[metric.metric_name][int(metric.k_value)] = metric.metric_value
+            elif metric.metric_name in ("mrr", "ap") and metric.k_value is None:
+                metrics_structured[metric.metric_name] = metric.metric_value
+
+        # Remove empty dicts and None values
+        for key in ("precision", "recall", "ndcg"):
+            if not metrics_structured[key]:
+                del metrics_structured[key]
+        if metrics_structured.get("ap") is None:
+            metrics_structured.pop("ap", None)
+
+        return metrics_flat, metrics_structured
+
+    def _extract_primary_metrics(
+        self,
+        metrics_structured: dict[str, Any],
+        primary_k: int,
+    ) -> dict[str, float | None]:
+        """Extract primary metrics at the specified k value."""
         return {
-            "benchmark_id": benchmark_id,
-            "primary_k": primary_k,
-            "k_values_for_metrics": k_values_for_metrics,
-            "runs": runs_data,
-            "summary": {
-                "total_runs": benchmark.total_runs,
-                "completed_runs": benchmark.completed_runs,
-                "failed_runs": benchmark.failed_runs,
-                "best_run": best_run_id,
-                "best_primary_metric": best_metric_value if best_run_id is not None else None,
-            },
+            "mrr": cast(float | None, metrics_structured.get("mrr")),
+            "precision": cast(dict[int, float], metrics_structured.get("precision", {})).get(primary_k),
+            "recall": cast(dict[int, float], metrics_structured.get("recall", {})).get(primary_k),
+            "ndcg": cast(dict[int, float], metrics_structured.get("ndcg", {})).get(primary_k),
         }

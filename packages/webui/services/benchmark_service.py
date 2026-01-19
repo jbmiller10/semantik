@@ -8,6 +8,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
+from shared.benchmarks import parse_k_values, validate_top_k_values
 from shared.database.exceptions import EntityNotFoundError, ValidationError
 from shared.database.models import Benchmark, BenchmarkStatus, MappingStatus
 
@@ -111,64 +112,34 @@ class BenchmarkService:
         # Note: Sparse/hybrid search mode validation is done at runtime during search
         # If the collection doesn't have sparse vectors, vecpipe will fall back to dense
 
-        # Ensure metrics k-values are explicit and stored for reproducibility.
-        # These keys are treated as benchmark-level evaluation settings, even though they live
-        # inside config_matrix for now.
-        raw_primary_k = config_matrix.get("primary_k", 10)
-        try:
-            primary_k = int(raw_primary_k)
-        except (TypeError, ValueError):
-            primary_k = 10
-        if primary_k <= 0:
-            primary_k = 10
+        # Parse and validate k-values for metrics using shared validation
+        k_config = parse_k_values(
+            raw_primary_k=config_matrix.get("primary_k", 10),
+            raw_k_values=config_matrix.get("k_values_for_metrics"),
+        )
+        primary_k = k_config.primary_k
+        k_values_for_metrics = k_config.k_values_for_metrics
 
-        raw_k_values = config_matrix.get("k_values_for_metrics")
-        if not raw_k_values:
-            k_values_for_metrics = [primary_k]
-        else:
-            k_values_set: set[int] = set()
-            for raw_value in cast(list[Any], raw_k_values):
-                try:
-                    k_int = int(raw_value)
-                except (TypeError, ValueError):
-                    continue
-                if k_int > 0:
-                    k_values_set.add(k_int)
-            k_values_for_metrics = sorted(k_values_set) if k_values_set else [primary_k]
-
-        if primary_k not in k_values_for_metrics:
-            k_values_for_metrics = sorted({*k_values_for_metrics, primary_k})
-
-        required_top_k = max(k_values_for_metrics)
+        # Validate top-k values for search configuration
         raw_top_k_values = config_matrix.get("top_k_values", [top_k])
         if not isinstance(raw_top_k_values, list) or not raw_top_k_values:
             raise ValidationError(
                 "config_matrix.top_k_values must be a non-empty list",
                 "config_matrix",
             )
-        bad_top_k_values: list[Any] = []
-        too_small_top_k_values: list[int] = []
-        for raw_value in raw_top_k_values:
-            try:
-                k_int = int(raw_value)
-            except (TypeError, ValueError):
-                bad_top_k_values.append(raw_value)
-                continue
-            if k_int <= 0:
-                bad_top_k_values.append(raw_value)
-                continue
-            if k_int < required_top_k:
-                too_small_top_k_values.append(k_int)
 
-        if bad_top_k_values:
+        required_top_k = max(k_values_for_metrics)
+        _, invalid_values, too_small_values = validate_top_k_values(raw_top_k_values, required_top_k)
+
+        if invalid_values:
             raise ValidationError(
-                f"config_matrix.top_k_values must be positive integers; invalid values: {bad_top_k_values}",
+                f"config_matrix.top_k_values must be positive integers; invalid values: {invalid_values}",
                 "config_matrix",
             )
-        if too_small_top_k_values:
+        if too_small_values:
             raise ValidationError(
-                "All top_k_values must be >= max(k_values_for_metrics) "
-                f"({required_top_k}); invalid values: {sorted(set(too_small_top_k_values))}",
+                f"All top_k_values must be >= max(k_values_for_metrics) ({required_top_k}); "
+                f"invalid values: {too_small_values}",
                 "config_matrix",
             )
 
@@ -239,27 +210,16 @@ class BenchmarkService:
         Returns:
             Number of runs created
         """
-        # Extract parameter lists
-        search_modes = config_matrix.get("search_modes", ["dense"])
-        use_reranker_values = config_matrix.get("use_reranker", [False])
-        top_k_values = config_matrix.get("top_k_values", [top_k])
-        rrf_k_values = config_matrix.get("rrf_k_values", [60])
-        score_thresholds = config_matrix.get("score_thresholds", [None])
-
-        # Generate all combinations
-        combinations = list(
-            itertools.product(
-                search_modes,
-                use_reranker_values,
-                top_k_values,
-                rrf_k_values,
-                score_thresholds,
-            )
+        combinations = itertools.product(
+            config_matrix.get("search_modes", ["dense"]),
+            config_matrix.get("use_reranker", [False]),
+            config_matrix.get("top_k_values", [top_k]),
+            config_matrix.get("rrf_k_values", [60]),
+            config_matrix.get("score_thresholds", [None]),
         )
 
-        run_order = 0
-        for search_mode, use_reranker, k_val, rrf_k, score_thresh in combinations:
-            # Build config for this run
+        run_count = 0
+        for run_order, (search_mode, use_reranker, k_val, rrf_k, score_thresh) in enumerate(combinations):
             config = {
                 "search_mode": search_mode,
                 "use_reranker": use_reranker,
@@ -267,8 +227,6 @@ class BenchmarkService:
                 "rrf_k": rrf_k,
                 "score_threshold": score_thresh,
             }
-
-            # Compute config hash for this specific run
             config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
 
             await self.benchmark_repo.create_run(
@@ -277,9 +235,9 @@ class BenchmarkService:
                 config_hash=config_hash,
                 config=config,
             )
-            run_order += 1
+            run_count += 1
 
-        return run_order
+        return run_count
 
     async def get_benchmark(
         self,

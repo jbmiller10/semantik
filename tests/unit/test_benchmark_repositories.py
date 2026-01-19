@@ -137,7 +137,8 @@ async def test_benchmark_repository_transition_status_atomically_handles_race_an
     res.scalar_one_or_none.return_value = None
     session.execute.return_value = res
 
-    repo.get_by_uuid = AsyncMock(return_value=SimpleNamespace(id="bench-1", status=BenchmarkStatus.PENDING.value))
+    # Benchmark exists but status doesn't match (race condition)
+    repo.exists = AsyncMock(return_value=True)
     result = await repo.transition_status_atomically(
         benchmark_uuid="bench-1",
         from_status=BenchmarkStatus.PENDING,
@@ -146,7 +147,8 @@ async def test_benchmark_repository_transition_status_atomically_handles_race_an
     )
     assert result is None
 
-    repo.get_by_uuid = AsyncMock(return_value=None)
+    # Benchmark doesn't exist at all
+    repo.exists = AsyncMock(return_value=False)
     with pytest.raises(EntityNotFoundError):
         await repo.transition_status_atomically(
             benchmark_uuid="missing",

@@ -53,6 +53,7 @@ from .types import (
     RetrievedChunk,
     SearchTiming,
 )
+from .validation import KValueConfig, parse_k_values, validate_top_k_values
 
 __all__ = [
     # Evaluators
@@ -79,4 +80,8 @@ __all__ = [
     "BenchmarkMetricError",
     "BenchmarkEvaluationError",
     "BenchmarkValidationError",
+    # Validation
+    "KValueConfig",
+    "parse_k_values",
+    "validate_top_k_values",
 ]

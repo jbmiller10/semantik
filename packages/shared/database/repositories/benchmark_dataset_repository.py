@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -77,7 +79,9 @@ class BenchmarkDatasetRepository:
             raise ValidationError("Dataset name is required", "name")
 
         # Verify owner exists
-        user_exists = await self.session.scalar(select(func.count()).select_from(User).where(User.id == owner_id))
+        user_exists = await self.session.scalar(
+            select(func.count(User.id)).where(User.id == owner_id)
+        )
         if not user_exists:
             raise EntityNotFoundError("user", str(owner_id))
 
@@ -101,11 +105,17 @@ class BenchmarkDatasetRepository:
             logger.error("Failed to create benchmark dataset: %s", exc)
             raise DatabaseOperationError("create", "benchmark_dataset", str(exc)) from exc
 
-    async def get_by_uuid(self, dataset_uuid: str) -> BenchmarkDataset | None:
+    async def get_by_uuid(
+        self,
+        dataset_uuid: str,
+        *,
+        load_mappings: bool = True,
+    ) -> BenchmarkDataset | None:
         """Get a dataset by UUID.
 
         Args:
             dataset_uuid: UUID of the dataset
+            load_mappings: Whether to eager-load mappings (default True)
 
         Returns:
             BenchmarkDataset instance or None if not found
@@ -113,11 +123,10 @@ class BenchmarkDatasetRepository:
         stmt: Select[tuple[BenchmarkDataset]] = (
             select(BenchmarkDataset)
             .where(BenchmarkDataset.id == dataset_uuid)
-            .options(
-                selectinload(BenchmarkDataset.owner),
-                selectinload(BenchmarkDataset.mappings),
-            )
+            .options(selectinload(BenchmarkDataset.owner))
         )
+        if load_mappings:
+            stmt = stmt.options(selectinload(BenchmarkDataset.mappings))
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -227,9 +236,7 @@ class BenchmarkDatasetRepository:
             dataset.query_count = query_count
 
         if metadata is not None:
-            merged = dict(dataset.meta or {})
-            merged.update(metadata)
-            dataset.meta = merged
+            dataset.meta = {**(dataset.meta or {}), **metadata}
 
         dataset.updated_at = datetime.now(UTC)
         await self.session.flush()
@@ -286,7 +293,7 @@ class BenchmarkDatasetRepository:
 
         # Verify collection exists
         collection_exists = await self.session.scalar(
-            select(func.count()).select_from(Collection).where(Collection.id == collection_id)
+            select(func.count(Collection.id)).where(Collection.id == collection_id)
         )
         if not collection_exists:
             raise EntityNotFoundError("collection", collection_id)
@@ -514,9 +521,6 @@ class BenchmarkDatasetRepository:
 
         # Compute hash if not provided
         if doc_ref_hash is None:
-            import hashlib
-            import json
-
             doc_ref_hash = hashlib.sha256(json.dumps(doc_ref, sort_keys=True).encode()).hexdigest()
 
         relevance = BenchmarkRelevance(
@@ -587,30 +591,46 @@ class BenchmarkDatasetRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def _count_relevance(
+        self,
+        mapping_id: int,
+        *,
+        resolved_only: bool = False,
+    ) -> int:
+        """Count relevance judgments for a mapping.
+
+        Args:
+            mapping_id: ID of the mapping
+            resolved_only: If True, count only resolved judgments
+
+        Returns:
+            Count of relevance judgments
+        """
+        stmt = select(func.count(BenchmarkRelevance.id)).where(
+            BenchmarkRelevance.mapping_id == mapping_id
+        )
+        if resolved_only:
+            stmt = stmt.where(BenchmarkRelevance.resolved_document_id.is_not(None))
+        try:
+            return int(await self.session.scalar(stmt) or 0)
+        except Exception as exc:
+            context = "resolved " if resolved_only else ""
+            logger.error(
+                "Failed to count %srelevance for mapping %s: %s",
+                context,
+                mapping_id,
+                exc,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("count", "benchmark_relevance", str(exc)) from exc
+
     async def count_relevance_for_mapping(self, mapping_id: int) -> int:
         """Count total relevance judgments for a mapping."""
-        try:
-            total = await self.session.scalar(
-                select(func.count(BenchmarkRelevance.id)).where(BenchmarkRelevance.mapping_id == mapping_id)
-            )
-            return int(total or 0)
-        except Exception as exc:
-            logger.error("Failed to count relevance for mapping %s: %s", mapping_id, exc, exc_info=True)
-            raise DatabaseOperationError("count", "benchmark_relevance", str(exc)) from exc
+        return await self._count_relevance(mapping_id)
 
     async def count_resolved_relevance_for_mapping(self, mapping_id: int) -> int:
         """Count resolved relevance judgments for a mapping."""
-        try:
-            total = await self.session.scalar(
-                select(func.count(BenchmarkRelevance.id)).where(
-                    BenchmarkRelevance.mapping_id == mapping_id,
-                    BenchmarkRelevance.resolved_document_id.is_not(None),
-                )
-            )
-            return int(total or 0)
-        except Exception as exc:
-            logger.error("Failed to count resolved relevance for mapping %s: %s", mapping_id, exc, exc_info=True)
-            raise DatabaseOperationError("count", "benchmark_relevance", str(exc)) from exc
+        return await self._count_relevance(mapping_id, resolved_only=True)
 
     async def list_unresolved_relevance_for_mapping(
         self,

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@/tests/utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import { CreateBenchmarkModal } from '../benchmarks/CreateBenchmarkModal'
-import { useCollection } from '../../hooks/useCollections'
+import { useCollections } from '../../hooks/useCollections'
 import { useBenchmarkDatasets, useCreateBenchmark, useDatasetMappings } from '../../hooks/useBenchmarks'
 import type { BenchmarkDataset, DatasetMapping } from '@/types/benchmark'
 
@@ -15,7 +15,7 @@ vi.mock('../../hooks/useBenchmarks', () => ({
 }))
 
 vi.mock('../../hooks/useCollections', () => ({
-  useCollection: vi.fn(),
+  useCollections: vi.fn(),
 }))
 
 const dataset: BenchmarkDataset = {
@@ -55,15 +55,10 @@ describe('CreateBenchmarkModal', () => {
       } as never
     })
 
-    vi.mocked(useCollection).mockImplementation((collectionId: string) => {
-      if (collectionId !== COLLECTION_ID) {
-        return { data: undefined, isLoading: false } as never
-      }
-      return {
-        data: { id: COLLECTION_ID, name: 'Test Collection 1', metadata: {} },
-        isLoading: false,
-      } as never
-    })
+    vi.mocked(useCollections).mockReturnValue({
+      data: [{ id: COLLECTION_ID, name: 'Test Collection 1', metadata: {} }],
+      isLoading: false,
+    } as never)
 
     vi.mocked(useCreateBenchmark).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false } as never)
   })

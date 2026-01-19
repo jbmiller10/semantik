@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from shared.config import settings
@@ -22,6 +23,150 @@ if TYPE_CHECKING:
     from webui.tasks.utils import CeleryTaskWithOperationUpdates
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ResolutionContext:
+    """Lookup tables for document reference resolution."""
+
+    existing_doc_ids: set[str]
+    uri_to_doc_id: dict[str, str]
+    hash_to_doc_ids: dict[str, list[str]]
+    file_name_to_doc_ids: dict[str, list[str]]
+
+
+@dataclass
+class ResolutionStats:
+    """Statistics tracked during resolution."""
+
+    processed: int = 0
+    resolved: int = 0
+    ambiguous: int = 0
+    unresolved: int = 0
+    unresolved_samples: list[dict[str, Any]] = field(default_factory=list)
+
+
+def resolve_single_doc_ref(
+    doc_ref: dict[str, Any],
+    ctx: ResolutionContext,
+) -> tuple[str | None, str | None]:
+    """Resolve a single document reference using 5-priority strategy.
+
+    Resolution priority:
+    1. document_id - must exist in collection
+    2. uri - exact match against Document.uri
+    3. content_hash - only if unique within collection
+    4. path - treated as URI-like identifier
+    5. file_name - only if unique within collection
+
+    Args:
+        doc_ref: Document reference dictionary with keys like document_id, uri, etc.
+        ctx: Resolution context with lookup tables.
+
+    Returns:
+        Tuple of (resolved_document_id, failure_reason).
+        One will always be None.
+    """
+    ref_doc_id = doc_ref.get("document_id")
+    ref_uri = doc_ref.get("uri")
+    ref_hash = doc_ref.get("content_hash")
+    ref_path = doc_ref.get("path")
+    ref_file_name = doc_ref.get("file_name")
+
+    # Priority 1: document_id
+    if ref_doc_id:
+        doc_id_str = str(ref_doc_id)
+        if doc_id_str in ctx.existing_doc_ids:
+            return doc_id_str, None
+        return None, "not_found"
+
+    # Priority 2: uri
+    if ref_uri:
+        resolved = ctx.uri_to_doc_id.get(str(ref_uri))
+        if resolved:
+            return resolved, None
+        return None, "not_found"
+
+    # Priority 3: content_hash (must be unique)
+    if ref_hash:
+        candidates = ctx.hash_to_doc_ids.get(str(ref_hash), [])
+        if len(candidates) == 1:
+            return candidates[0], None
+        if len(candidates) > 1:
+            return None, "ambiguous"
+        return None, "not_found"
+
+    # Priority 4: path (treated as URI)
+    if ref_path:
+        resolved = ctx.uri_to_doc_id.get(str(ref_path))
+        if resolved:
+            return resolved, None
+        return None, "not_found"
+
+    # Priority 5: file_name (must be unique)
+    if ref_file_name:
+        candidates = ctx.file_name_to_doc_ids.get(str(ref_file_name), [])
+        if len(candidates) == 1:
+            return candidates[0], None
+        if len(candidates) > 1:
+            return None, "ambiguous"
+        return None, "not_found"
+
+    return None, "invalid_ref"
+
+
+def parse_judgment(
+    judgment: Any,
+    query_key: str,
+) -> tuple[dict[str, Any], int]:
+    """Parse a relevance judgment into doc_ref and grade.
+
+    Args:
+        judgment: Raw judgment from dataset (dict, string, or scalar).
+        query_key: Query key for error messages.
+
+    Returns:
+        Tuple of (doc_ref dict, relevance_grade int).
+
+    Raises:
+        ValidationError: If judgment format is invalid.
+    """
+    grade_raw: Any = 2
+
+    if isinstance(judgment, dict):
+        grade_raw = judgment.get("relevance_grade", 2)
+        doc_ref_raw = judgment.get("doc_ref", judgment)
+
+        if isinstance(doc_ref_raw, dict):
+            doc_ref = doc_ref_raw
+        elif isinstance(doc_ref_raw, str):
+            doc_ref = {"uri": doc_ref_raw}
+        else:
+            raise ValidationError(
+                f"Query {query_key!s} has invalid doc_ref (expected object or string)",
+                "file",
+            )
+    else:
+        doc_ref = {"uri": str(judgment)}
+
+    if not doc_ref:
+        raise ValidationError(f"Query {query_key!s} has empty doc_ref", "file")
+
+    try:
+        grade = int(grade_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            f"Query {query_key!s} has invalid relevance_grade (expected int 0-3)",
+            "file",
+        ) from exc
+
+    if grade < 0 or grade > 3:
+        raise ValidationError(
+            f"Query {query_key!s} relevance_grade must be between 0 and 3",
+            "file",
+        )
+
+    return doc_ref, grade
 
 
 class BenchmarkDatasetService:
@@ -152,46 +297,7 @@ class BenchmarkDatasetService:
             # Build pending relevance judgments to store in metadata
             pending_relevance: list[dict[str, Any]] = []
             for judgment in judgments:
-                doc_ref: dict[str, Any]
-                grade_raw: Any = 2
-
-                if isinstance(judgment, dict):
-                    grade_raw = judgment.get("relevance_grade", 2)
-                    doc_ref_raw = judgment.get("doc_ref", judgment)
-                    if isinstance(doc_ref_raw, dict):
-                        doc_ref = doc_ref_raw
-                    elif isinstance(doc_ref_raw, str):
-                        doc_ref = {"uri": doc_ref_raw}
-                    else:
-                        raise ValidationError(
-                            f"Query {query_key!s} has invalid doc_ref (expected object or string)",
-                            "file",
-                        )
-                else:
-                    # Simple scalar reference; treat as URI-like identifier.
-                    doc_ref = {"uri": str(judgment)}
-                    grade_raw = 2
-
-                if not doc_ref:
-                    raise ValidationError(
-                        f"Query {query_key!s} has empty doc_ref",
-                        "file",
-                    )
-
-                try:
-                    grade = int(grade_raw)
-                except (TypeError, ValueError) as exc:
-                    raise ValidationError(
-                        f"Query {query_key!s} has invalid relevance_grade (expected int 0-3)",
-                        "file",
-                    ) from exc
-
-                if grade < 0 or grade > 3:
-                    raise ValidationError(
-                        f"Query {query_key!s} relevance_grade must be between 0 and 3",
-                        "file",
-                    )
-
+                doc_ref, grade = parse_judgment(judgment, str(query_key))
                 pending_relevance.append({"doc_ref": doc_ref, "relevance_grade": grade})
 
             # Store relevance judgments in metadata (will be resolved when mapping is created)
@@ -399,7 +505,6 @@ class BenchmarkDatasetService:
         if not mapping:
             raise EntityNotFoundError("benchmark_dataset_mapping", str(mapping_id))
 
-        # Verify dataset ownership
         mapping_dataset_id = str(mapping.dataset_id)
         mapping_collection_id = str(mapping.collection_id)
         await self.benchmark_dataset_repo.get_by_uuid_for_user(mapping_dataset_id, user_id)
@@ -411,7 +516,7 @@ class BenchmarkDatasetService:
         max_docs = int(getattr(settings, "BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS", 50_000))
         max_wall_ms = int(getattr(settings, "BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS", 8_000))
 
-        # Route large jobs to async execution up front to avoid timeouts.
+        # Route large jobs to async execution up front.
         if ref_count > max_refs or doc_count > max_docs:
             operation_uuid = await self._enqueue_mapping_resolution_operation(
                 mapping_id=mapping_id,
@@ -419,7 +524,6 @@ class BenchmarkDatasetService:
                 collection_id=mapping_collection_id,
                 user_id=user_id,
             )
-
             return {
                 "id": mapping_id,
                 "operation_uuid": operation_uuid,
@@ -430,21 +534,15 @@ class BenchmarkDatasetService:
             }
 
         start_time = time.monotonic()
-        batch_size = 1000
-        unresolved_samples: list[dict[str, Any]] = []
-        processed_refs = 0
-        resolved_refs = 0
-        ambiguous_refs = 0
-        unresolved_refs = 0
+        stats = ResolutionStats()
         after_id = 0
 
         while True:
-            # Enforce a wall-clock budget for sync requests.
+            # Enforce wall-clock budget for sync requests.
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
             if elapsed_ms >= max_wall_ms:
                 resolved_total = await self.benchmark_dataset_repo.count_resolved_relevance_for_mapping(mapping_id)
-                total = ref_count
-                if resolved_total == total:
+                if resolved_total == ref_count:
                     break
 
                 operation_uuid = await self._enqueue_mapping_resolution_operation(
@@ -453,13 +551,12 @@ class BenchmarkDatasetService:
                     collection_id=mapping_collection_id,
                     user_id=user_id,
                 )
-
                 status = MappingStatus.PARTIAL if resolved_total > 0 else MappingStatus.PENDING
                 await self.benchmark_dataset_repo.update_mapping_status(
                     mapping_id=mapping_id,
                     status=status,
                     mapped_count=resolved_total,
-                    total_count=total,
+                    total_count=ref_count,
                 )
                 await self.db_session.commit()
 
@@ -468,164 +565,45 @@ class BenchmarkDatasetService:
                     "operation_uuid": operation_uuid,
                     "mapping_status": status.value,
                     "mapped_count": resolved_total,
-                    "total_count": total,
+                    "total_count": ref_count,
                     "unresolved": [],
                 }
 
             batch = await self.benchmark_dataset_repo.list_unresolved_relevance_for_mapping(
                 mapping_id,
                 after_id=after_id,
-                limit=batch_size,
+                limit=1000,
             )
             if not batch:
                 break
 
             after_id = int(cast(int, batch[-1].id))
+            ctx = await self._build_resolution_context(mapping_collection_id, batch)
+            self._resolve_batch(batch, ctx, stats, collect_samples=True)
 
-            # Collect lookup keys for bulk document resolution.
-            doc_ids: set[str] = set()
-            uris: set[str] = set()
-            hashes: set[str] = set()
-            file_names: set[str] = set()
-
-            for relevance in batch:
-                raw = relevance.doc_ref
-                if not isinstance(raw, dict):
-                    continue
-                if raw.get("document_id"):
-                    doc_ids.add(str(raw["document_id"]))
-                if raw.get("uri"):
-                    uris.add(str(raw["uri"]))
-                if raw.get("path"):
-                    # Treat path as uri-like identifier (authoritative match against Document.uri)
-                    uris.add(str(raw["path"]))
-                if raw.get("content_hash"):
-                    hashes.add(str(raw["content_hash"]))
-                if raw.get("file_name"):
-                    file_names.add(str(raw["file_name"]))
-
-            existing_doc_ids = await self.document_repo.get_existing_ids_in_collection(mapping_collection_id, doc_ids)
-            uri_to_doc_id = await self.document_repo.get_doc_ids_by_uri_bulk(mapping_collection_id, uris)
-            hash_to_doc_ids = await self.document_repo.get_doc_ids_by_content_hash_bulk(mapping_collection_id, hashes)
-            file_name_to_doc_ids = await self.document_repo.get_doc_ids_by_file_name_bulk(
-                mapping_collection_id,
-                file_names,
-            )
-
-            for relevance in batch:
-                processed_refs += 1
-                raw_doc_ref = relevance.doc_ref
-
-                if not isinstance(raw_doc_ref, dict) or not raw_doc_ref:
-                    unresolved_refs += 1
-                    if len(unresolved_samples) < 100:
-                        unresolved_samples.append(
-                            {
-                                "query_id": cast(int, relevance.benchmark_query_id),
-                                "doc_ref": raw_doc_ref,
-                                "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
-                                "reason": "invalid_doc_ref",
-                            }
-                        )
-                    continue
-
-                doc_ref = raw_doc_ref
-                resolved_doc_id: str | None = None
-                reason: str | None = None
-
-                ref_doc_id = doc_ref.get("document_id")
-                ref_uri = doc_ref.get("uri")
-                ref_hash = doc_ref.get("content_hash")
-                ref_path = doc_ref.get("path")
-                ref_file_name = doc_ref.get("file_name")
-
-                if ref_doc_id:
-                    doc_id_str = str(ref_doc_id)
-                    if doc_id_str in existing_doc_ids:
-                        resolved_doc_id = doc_id_str
-                    else:
-                        reason = "not_found"
-                elif ref_uri:
-                    resolved_doc_id = uri_to_doc_id.get(str(ref_uri))
-                    if not resolved_doc_id:
-                        reason = "not_found"
-                elif ref_hash:
-                    candidates = hash_to_doc_ids.get(str(ref_hash), [])
-                    if len(candidates) == 1:
-                        resolved_doc_id = candidates[0]
-                    elif len(candidates) > 1:
-                        reason = "ambiguous"
-                    else:
-                        reason = "not_found"
-                elif ref_path:
-                    resolved_doc_id = uri_to_doc_id.get(str(ref_path))
-                    if not resolved_doc_id:
-                        reason = "not_found"
-                elif ref_file_name:
-                    candidates = file_name_to_doc_ids.get(str(ref_file_name), [])
-                    if len(candidates) == 1:
-                        resolved_doc_id = candidates[0]
-                    elif len(candidates) > 1:
-                        reason = "ambiguous"
-                    else:
-                        reason = "not_found"
-                else:
-                    reason = "invalid_ref"
-
-                if resolved_doc_id:
-                    relevance.resolved_document_id = resolved_doc_id
-                    resolved_refs += 1
-                else:
-                    if reason == "ambiguous":
-                        ambiguous_refs += 1
-                    else:
-                        unresolved_refs += 1
-
-                    if len(unresolved_samples) < 100:
-                        unresolved_samples.append(
-                            {
-                                "query_id": cast(int, relevance.benchmark_query_id),
-                                "doc_ref": doc_ref,
-                                "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
-                                "reason": reason,
-                            }
-                        )
-
-            # Persist per-batch updates to keep the work idempotent/resumable.
             await self.db_session.flush()
             await self.db_session.commit()
 
         resolved_total = await self.benchmark_dataset_repo.count_resolved_relevance_for_mapping(mapping_id)
-        total = ref_count
-        if resolved_total == total:
-            status = MappingStatus.RESOLVED
-        elif resolved_total > 0:
-            status = MappingStatus.PARTIAL
-        else:
-            status = MappingStatus.PENDING
+        status = self._compute_mapping_status(resolved_total, ref_count)
 
         await self.benchmark_dataset_repo.update_mapping_status(
             mapping_id=mapping_id,
             status=status,
             mapped_count=resolved_total,
-            total_count=total,
+            total_count=ref_count,
         )
         await self.db_session.commit()
 
-        logger.info(
-            "Resolved mapping %d: %d/%d references resolved",
-            mapping_id,
-            resolved_total,
-            total,
-        )
+        logger.info("Resolved mapping %d: %d/%d references resolved", mapping_id, resolved_total, ref_count)
 
         return {
             "id": mapping_id,
             "operation_uuid": None,
             "mapping_status": status.value,
             "mapped_count": resolved_total,
-            "total_count": total,
-            "unresolved": unresolved_samples,  # Limit unresolved list to 100 items
+            "total_count": ref_count,
+            "unresolved": stats.unresolved_samples,
         }
 
     async def resolve_mapping_with_progress(
@@ -643,184 +621,56 @@ class BenchmarkDatasetService:
 
         dataset_id = str(mapping.dataset_id)
         collection_id = str(mapping.collection_id)
-
-        # Verify dataset ownership (defense in depth).
         await self.benchmark_dataset_repo.get_by_uuid_for_user(dataset_id, user_id)
 
         total_refs = await self.benchmark_dataset_repo.count_relevance_for_mapping(mapping_id)
-        processed_refs = 0
-        resolved_refs = 0
-        ambiguous_refs = 0
-        unresolved_refs = 0
+        stats = ResolutionStats()
         after_id = 0
-        batch_size = 1000
 
         progress_reporter.set_collection_id(collection_id)
-        await progress_reporter.send_update(
-            "benchmark_mapping_resolution_progress",
-            {
-                "mapping_id": mapping_id,
-                "dataset_id": dataset_id,
-                "collection_id": collection_id,
-                "stage": "starting",
-                "total_refs": total_refs,
-                "processed_refs": processed_refs,
-                "resolved_refs": resolved_refs,
-                "ambiguous_refs": ambiguous_refs,
-                "unresolved_refs": unresolved_refs,
-            },
-        )
 
-        try:
+        async def send_progress(stage: str) -> None:
             await progress_reporter.send_update(
                 "benchmark_mapping_resolution_progress",
                 {
                     "mapping_id": mapping_id,
                     "dataset_id": dataset_id,
                     "collection_id": collection_id,
-                    "stage": "loading_documents",
+                    "stage": stage,
                     "total_refs": total_refs,
-                    "processed_refs": processed_refs,
-                    "resolved_refs": resolved_refs,
-                    "ambiguous_refs": ambiguous_refs,
-                    "unresolved_refs": unresolved_refs,
+                    "processed_refs": stats.processed,
+                    "resolved_refs": stats.resolved,
+                    "ambiguous_refs": stats.ambiguous,
+                    "unresolved_refs": stats.unresolved,
                 },
             )
+
+        await send_progress("starting")
+
+        try:
+            await send_progress("loading_documents")
 
             while True:
                 batch = await self.benchmark_dataset_repo.list_unresolved_relevance_for_mapping(
                     mapping_id,
                     after_id=after_id,
-                    limit=batch_size,
+                    limit=1000,
                 )
                 if not batch:
                     break
 
                 after_id = int(cast(int, batch[-1].id))
-
-                doc_ids: set[str] = set()
-                uris: set[str] = set()
-                hashes: set[str] = set()
-                file_names: set[str] = set()
-
-                for relevance in batch:
-                    raw = relevance.doc_ref
-                    if not isinstance(raw, dict):
-                        continue
-                    if raw.get("document_id"):
-                        doc_ids.add(str(raw["document_id"]))
-                    if raw.get("uri"):
-                        uris.add(str(raw["uri"]))
-                    if raw.get("path"):
-                        uris.add(str(raw["path"]))
-                    if raw.get("content_hash"):
-                        hashes.add(str(raw["content_hash"]))
-                    if raw.get("file_name"):
-                        file_names.add(str(raw["file_name"]))
-
-                existing_doc_ids = await self.document_repo.get_existing_ids_in_collection(collection_id, doc_ids)
-                uri_to_doc_id = await self.document_repo.get_doc_ids_by_uri_bulk(collection_id, uris)
-                hash_to_doc_ids = await self.document_repo.get_doc_ids_by_content_hash_bulk(collection_id, hashes)
-                file_name_to_doc_ids = await self.document_repo.get_doc_ids_by_file_name_bulk(collection_id, file_names)
-
-                for relevance in batch:
-                    processed_refs += 1
-                    raw_doc_ref = relevance.doc_ref
-                    if not isinstance(raw_doc_ref, dict) or not raw_doc_ref:
-                        unresolved_refs += 1
-                        continue
-
-                    doc_ref = raw_doc_ref
-                    resolved_doc_id: str | None = None
-                    reason: str | None = None
-
-                    ref_doc_id = doc_ref.get("document_id")
-                    ref_uri = doc_ref.get("uri")
-                    ref_hash = doc_ref.get("content_hash")
-                    ref_path = doc_ref.get("path")
-                    ref_file_name = doc_ref.get("file_name")
-
-                    if ref_doc_id:
-                        doc_id_str = str(ref_doc_id)
-                        if doc_id_str in existing_doc_ids:
-                            resolved_doc_id = doc_id_str
-                        else:
-                            reason = "not_found"
-                    elif ref_uri:
-                        resolved_doc_id = uri_to_doc_id.get(str(ref_uri))
-                        if not resolved_doc_id:
-                            reason = "not_found"
-                    elif ref_hash:
-                        candidates = hash_to_doc_ids.get(str(ref_hash), [])
-                        if len(candidates) == 1:
-                            resolved_doc_id = candidates[0]
-                        elif len(candidates) > 1:
-                            reason = "ambiguous"
-                        else:
-                            reason = "not_found"
-                    elif ref_path:
-                        resolved_doc_id = uri_to_doc_id.get(str(ref_path))
-                        if not resolved_doc_id:
-                            reason = "not_found"
-                    elif ref_file_name:
-                        candidates = file_name_to_doc_ids.get(str(ref_file_name), [])
-                        if len(candidates) == 1:
-                            resolved_doc_id = candidates[0]
-                        elif len(candidates) > 1:
-                            reason = "ambiguous"
-                        else:
-                            reason = "not_found"
-                    else:
-                        reason = "invalid_ref"
-
-                    if resolved_doc_id:
-                        relevance.resolved_document_id = resolved_doc_id
-                        resolved_refs += 1
-                    else:
-                        if reason == "ambiguous":
-                            ambiguous_refs += 1
-                        else:
-                            unresolved_refs += 1
+                ctx = await self._build_resolution_context(collection_id, batch)
+                self._resolve_batch(batch, ctx, stats, collect_samples=False)
 
                 await self.db_session.flush()
                 await self.db_session.commit()
-
-                await progress_reporter.send_update(
-                    "benchmark_mapping_resolution_progress",
-                    {
-                        "mapping_id": mapping_id,
-                        "dataset_id": dataset_id,
-                        "collection_id": collection_id,
-                        "stage": "resolving",
-                        "total_refs": total_refs,
-                        "processed_refs": processed_refs,
-                        "resolved_refs": resolved_refs,
-                        "ambiguous_refs": ambiguous_refs,
-                        "unresolved_refs": unresolved_refs,
-                    },
-                )
+                await send_progress("resolving")
 
             resolved_total = await self.benchmark_dataset_repo.count_resolved_relevance_for_mapping(mapping_id)
-            status = (
-                MappingStatus.RESOLVED
-                if resolved_total == total_refs
-                else (MappingStatus.PARTIAL if resolved_total > 0 else MappingStatus.PENDING)
-            )
+            status = self._compute_mapping_status(resolved_total, total_refs)
 
-            await progress_reporter.send_update(
-                "benchmark_mapping_resolution_progress",
-                {
-                    "mapping_id": mapping_id,
-                    "dataset_id": dataset_id,
-                    "collection_id": collection_id,
-                    "stage": "finalizing",
-                    "total_refs": total_refs,
-                    "processed_refs": processed_refs,
-                    "resolved_refs": resolved_refs,
-                    "ambiguous_refs": ambiguous_refs,
-                    "unresolved_refs": unresolved_refs,
-                },
-            )
+            await send_progress("finalizing")
 
             await self.benchmark_dataset_repo.update_mapping_status(
                 mapping_id=mapping_id,
@@ -830,20 +680,7 @@ class BenchmarkDatasetService:
             )
             await self.db_session.commit()
 
-            await progress_reporter.send_update(
-                "benchmark_mapping_resolution_progress",
-                {
-                    "mapping_id": mapping_id,
-                    "dataset_id": dataset_id,
-                    "collection_id": collection_id,
-                    "stage": "completed",
-                    "total_refs": total_refs,
-                    "processed_refs": processed_refs,
-                    "resolved_refs": resolved_refs,
-                    "ambiguous_refs": ambiguous_refs,
-                    "unresolved_refs": unresolved_refs,
-                },
-            )
+            await send_progress("completed")
 
             return {
                 "mapping_id": mapping_id,
@@ -854,34 +691,96 @@ class BenchmarkDatasetService:
             }
 
         except Exception as original_exc:
-            logger.error(
-                "Mapping resolution %s failed: %s",
-                mapping_id,
-                original_exc,
-                exc_info=True,
-            )
+            logger.error("Mapping resolution %s failed: %s", mapping_id, original_exc, exc_info=True)
             try:
-                await progress_reporter.send_update(
-                    "benchmark_mapping_resolution_progress",
-                    {
-                        "mapping_id": mapping_id,
-                        "dataset_id": dataset_id,
-                        "collection_id": collection_id,
-                        "stage": "failed",
-                        "total_refs": total_refs,
-                        "processed_refs": processed_refs,
-                        "resolved_refs": resolved_refs,
-                        "ambiguous_refs": ambiguous_refs,
-                        "unresolved_refs": unresolved_refs,
-                    },
-                )
+                await send_progress("failed")
             except Exception as progress_exc:
-                logger.warning(
-                    "Failed to send failure progress for mapping %s: %s",
-                    mapping_id,
-                    progress_exc,
-                )
+                logger.warning("Failed to send failure progress for mapping %s: %s", mapping_id, progress_exc)
             raise original_exc
+
+    async def _build_resolution_context(
+        self,
+        collection_id: str,
+        batch: list[Any],
+    ) -> ResolutionContext:
+        """Build lookup tables for a batch of relevance records."""
+        doc_ids: set[str] = set()
+        uris: set[str] = set()
+        hashes: set[str] = set()
+        file_names: set[str] = set()
+
+        for relevance in batch:
+            raw = relevance.doc_ref
+            if not isinstance(raw, dict):
+                continue
+            if raw.get("document_id"):
+                doc_ids.add(str(raw["document_id"]))
+            if raw.get("uri"):
+                uris.add(str(raw["uri"]))
+            if raw.get("path"):
+                uris.add(str(raw["path"]))
+            if raw.get("content_hash"):
+                hashes.add(str(raw["content_hash"]))
+            if raw.get("file_name"):
+                file_names.add(str(raw["file_name"]))
+
+        return ResolutionContext(
+            existing_doc_ids=await self.document_repo.get_existing_ids_in_collection(collection_id, doc_ids),
+            uri_to_doc_id=await self.document_repo.get_doc_ids_by_uri_bulk(collection_id, uris),
+            hash_to_doc_ids=await self.document_repo.get_doc_ids_by_content_hash_bulk(collection_id, hashes),
+            file_name_to_doc_ids=await self.document_repo.get_doc_ids_by_file_name_bulk(collection_id, file_names),
+        )
+
+    def _resolve_batch(
+        self,
+        batch: list[Any],
+        ctx: ResolutionContext,
+        stats: ResolutionStats,
+        *,
+        collect_samples: bool,
+    ) -> None:
+        """Resolve a batch of relevance records and update stats."""
+        for relevance in batch:
+            stats.processed += 1
+            raw_doc_ref = relevance.doc_ref
+
+            if not isinstance(raw_doc_ref, dict) or not raw_doc_ref:
+                stats.unresolved += 1
+                if collect_samples and len(stats.unresolved_samples) < 100:
+                    stats.unresolved_samples.append({
+                        "query_id": cast(int, relevance.benchmark_query_id),
+                        "doc_ref": raw_doc_ref,
+                        "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
+                        "reason": "invalid_doc_ref",
+                    })
+                continue
+
+            resolved_doc_id, reason = resolve_single_doc_ref(raw_doc_ref, ctx)
+
+            if resolved_doc_id:
+                relevance.resolved_document_id = resolved_doc_id
+                stats.resolved += 1
+            else:
+                if reason == "ambiguous":
+                    stats.ambiguous += 1
+                else:
+                    stats.unresolved += 1
+
+                if collect_samples and len(stats.unresolved_samples) < 100:
+                    stats.unresolved_samples.append({
+                        "query_id": cast(int, relevance.benchmark_query_id),
+                        "doc_ref": raw_doc_ref,
+                        "doc_ref_hash": cast(str | None, relevance.doc_ref_hash),
+                        "reason": reason,
+                    })
+
+    def _compute_mapping_status(self, resolved_count: int, total_count: int) -> MappingStatus:
+        """Compute mapping status from resolution counts."""
+        if resolved_count == total_count:
+            return MappingStatus.RESOLVED
+        if resolved_count > 0:
+            return MappingStatus.PARTIAL
+        return MappingStatus.PENDING
 
     async def _enqueue_mapping_resolution_operation(
         self,

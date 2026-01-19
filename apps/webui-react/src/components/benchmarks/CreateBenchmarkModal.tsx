@@ -9,13 +9,23 @@ import {
   useDatasetMappings,
   useCreateBenchmark,
 } from '../../hooks/useBenchmarks';
-import { useCollection } from '../../hooks/useCollections';
+import { useCollections } from '../../hooks/useCollections';
 import { ConfigMatrixBuilder } from './ConfigMatrixBuilder';
-import type { ConfigMatrixItem, DatasetMapping } from '../../types/benchmark';
+import type { ConfigMatrixItem } from '../../types/benchmark';
 
 interface CreateBenchmarkModalProps {
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface FormState {
+  name: string;
+  description: string;
+  selectedDatasetId: string;
+  selectedMappingId: number | null;
+  configMatrix: ConfigMatrixItem;
+  selectedMetrics: Set<string>;
+  topK: number;
 }
 
 const DEFAULT_CONFIG: ConfigMatrixItem = {
@@ -33,32 +43,33 @@ const AVAILABLE_METRICS = [
   { id: 'ndcg', label: 'nDCG@K', description: 'Normalized Discounted Cumulative Gain' },
 ];
 
-export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModalProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
-  const [selectedMappingId, setSelectedMappingId] = useState<number | null>(null);
-  const [configMatrix, setConfigMatrix] = useState<ConfigMatrixItem>(DEFAULT_CONFIG);
-  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(
-    new Set(['precision', 'recall', 'mrr', 'ndcg'])
-  );
-  const [topK, setTopK] = useState<number>(10);
+const DEFAULT_FORM_STATE: FormState = {
+  name: '',
+  description: '',
+  selectedDatasetId: '',
+  selectedMappingId: null,
+  configMatrix: DEFAULT_CONFIG,
+  selectedMetrics: new Set(['precision', 'recall', 'mrr', 'ndcg']),
+  topK: 10,
+};
+
+export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModalProps): React.ReactElement {
+  const [form, setForm] = useState<FormState>(DEFAULT_FORM_STATE);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { data: datasetsResponse } = useBenchmarkDatasets();
-  const { data: mappings } = useDatasetMappings(selectedDatasetId);
+  const { data: mappings } = useDatasetMappings(form.selectedDatasetId);
+  const { data: collections } = useCollections();
   const createMutation = useCreateBenchmark();
 
-  // Get collection info for the selected mapping
-  const selectedMapping = mappings?.find((m) => m.id === selectedMappingId);
-  const { data: collection } = useCollection(selectedMapping?.collection_id ?? '');
-
-  // Determine feature availability from collection
-  const hasReranker = true; // Assume reranker is available
-  // Check for sparse index through metadata (sparse_index_config is on CreateCollectionRequest, not returned Collection)
-  const hasSparseIndex = Boolean(
-    (collection?.metadata as Record<string, unknown> | undefined)?.sparse_index_enabled
-  );
+  // Build collection name lookup from already-loaded collections list (avoids N+1 queries)
+  const collectionNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of collections ?? []) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [collections]);
 
   // Filter to only resolved mappings
   const resolvedMappings = useMemo(
@@ -66,66 +77,74 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
     [mappings]
   );
 
-  // Reset mapping when dataset changes
-  useEffect(() => {
-    setSelectedMappingId(null);
-  }, [selectedDatasetId]);
+  // Get collection info for the selected mapping to determine feature availability
+  const selectedMapping = mappings?.find((m) => m.id === form.selectedMappingId);
+  const selectedCollection = collections?.find((c) => c.id === selectedMapping?.collection_id);
 
-  // Auto-select first resolved mapping
+  // Determine feature availability from collection
+  const hasReranker = true; // Assume reranker is available
+  const hasSparseIndex = Boolean(
+    (selectedCollection?.metadata as Record<string, unknown> | undefined)?.sparse_index_enabled
+  );
+
+  // Compute the first resolved mapping ID (stable reference for useEffect)
+  const firstResolvedMappingId = resolvedMappings[0]?.id ?? null;
+
+  // Reset mapping when dataset changes, auto-select first resolved mapping
   useEffect(() => {
-    if (resolvedMappings.length > 0 && !selectedMappingId) {
-      setSelectedMappingId(resolvedMappings[0].id);
-    }
-  }, [resolvedMappings, selectedMappingId]);
+    setForm((prev) => ({ ...prev, selectedMappingId: firstResolvedMappingId }));
+  }, [form.selectedDatasetId, firstResolvedMappingId]);
 
   // Handle escape key
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
+    function handleEscape(e: KeyboardEvent): void {
       if (e.key === 'Escape' && !createMutation.isPending) {
         onClose();
       }
-    };
+    }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, createMutation.isPending]);
 
-  const toggleMetric = (metricId: string) => {
-    const updated = new Set(selectedMetrics);
-    if (updated.has(metricId)) {
-      updated.delete(metricId);
-    } else {
-      updated.add(metricId);
-    }
-    setSelectedMetrics(updated);
-  };
+  function toggleMetric(metricId: string): void {
+    setForm((prev) => {
+      const updated = new Set(prev.selectedMetrics);
+      if (updated.has(metricId)) {
+        updated.delete(metricId);
+      } else {
+        updated.add(metricId);
+      }
+      return { ...prev, selectedMetrics: updated };
+    });
+  }
 
-  const validateForm = () => {
+  function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!name.trim()) {
+    if (!form.name.trim()) {
       newErrors.name = 'Benchmark name is required';
     }
 
-    if (!selectedMappingId) {
+    if (!form.selectedMappingId) {
       newErrors.mapping = 'Please select a dataset and mapping';
     }
 
-    if (configMatrix.search_modes.length === 0) {
+    if (form.configMatrix.search_modes.length === 0) {
       newErrors.config = 'Select at least one search mode';
-    } else if (configMatrix.use_reranker.length === 0) {
+    } else if (form.configMatrix.use_reranker.length === 0) {
       newErrors.config = 'Select at least one reranker option';
-    } else if (configMatrix.top_k_values.length === 0) {
+    } else if (form.configMatrix.top_k_values.length === 0) {
       newErrors.config = 'Select at least one Top-K value';
     }
 
-    if (selectedMetrics.size === 0) {
+    if (form.selectedMetrics.size === 0) {
       newErrors.metrics = 'Select at least one metric';
     }
 
     // Check config count
-    const modes = configMatrix.search_modes.length || 1;
-    const rerankerOptions = configMatrix.use_reranker.length || 1;
-    const topKCount = configMatrix.top_k_values.length || 1;
+    const modes = form.configMatrix.search_modes.length || 1;
+    const rerankerOptions = form.configMatrix.use_reranker.length || 1;
+    const topKCount = form.configMatrix.top_k_values.length || 1;
     const configCount = modes * rerankerOptions * topKCount;
 
     if (configCount > 50) {
@@ -134,32 +153,36 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
 
-    if (!validateForm() || !selectedMappingId) {
+    if (!validateForm() || !form.selectedMappingId) {
       return;
     }
 
     try {
       await createMutation.mutateAsync({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        mapping_id: selectedMappingId,
-        config_matrix: configMatrix,
-        top_k: topK,
-        metrics_to_compute: Array.from(selectedMetrics),
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        mapping_id: form.selectedMappingId,
+        config_matrix: form.configMatrix,
+        top_k: form.topK,
+        metrics_to_compute: Array.from(form.selectedMetrics),
       });
       onSuccess();
     } catch {
       // Error handled by mutation
     }
-  };
+  }
 
   const datasets = datasetsResponse?.datasets ?? [];
   const isSubmitting = createMutation.isPending;
+
+  function updateField<K extends keyof FormState>(field: K, value: FormState[K]): void {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/80 flex items-center justify-center p-4 z-50">
@@ -190,8 +213,8 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
               </label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={form.name}
+                onChange={(e) => updateField('name', e.target.value)}
                 disabled={isSubmitting}
                 className={`w-full px-4 py-2.5 input-field rounded-xl ${errors.name ? 'border-red-500/50' : ''}`}
                 placeholder="Q1 2024 Search Quality Test"
@@ -207,8 +230,8 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
                 disabled={isSubmitting}
                 rows={2}
                 className="w-full px-4 py-2.5 input-field rounded-xl"
@@ -225,8 +248,8 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                 <div className="relative">
                   <Database className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-muted)]" />
                   <select
-                    value={selectedDatasetId}
-                    onChange={(e) => setSelectedDatasetId(e.target.value)}
+                    value={form.selectedDatasetId}
+                    onChange={(e) => updateField('selectedDatasetId', e.target.value)}
                     disabled={isSubmitting}
                     className="w-full pl-10 pr-4 py-2.5 input-field rounded-xl"
                   >
@@ -240,7 +263,7 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                 </div>
               </div>
 
-              {selectedDatasetId && (
+              {form.selectedDatasetId && (
                 <div>
                   <label className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
                     Collection Mapping <span className="text-red-400">*</span>
@@ -249,13 +272,15 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                     <div className="relative">
                       <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-muted)]" />
                       <select
-                        value={selectedMappingId ?? ''}
-                        onChange={(e) => setSelectedMappingId(Number(e.target.value))}
+                        value={form.selectedMappingId ?? ''}
+                        onChange={(e) => updateField('selectedMappingId', Number(e.target.value))}
                         disabled={isSubmitting}
                         className="w-full pl-10 pr-4 py-2.5 input-field rounded-xl"
                       >
                         {resolvedMappings.map((mapping) => (
-                          <MappingOption key={mapping.id} mapping={mapping} />
+                          <option key={mapping.id} value={mapping.id}>
+                            {collectionNameById.get(mapping.collection_id) ?? mapping.collection_id} ({mapping.mapped_count}/{mapping.total_count} docs)
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -279,14 +304,14 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
             </div>
 
             {/* Configuration Matrix */}
-            {selectedMappingId && (
+            {form.selectedMappingId && (
               <div>
                 <label className="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                   Search Configuration
                 </label>
                 <ConfigMatrixBuilder
-                  value={configMatrix}
-                  onChange={setConfigMatrix}
+                  value={form.configMatrix}
+                  onChange={(value) => updateField('configMatrix', value)}
                   hasReranker={hasReranker}
                   hasSparseIndex={hasSparseIndex}
                   disabled={isSubmitting}
@@ -306,8 +331,8 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                 type="number"
                 min={1}
                 max={100}
-                value={topK}
-                onChange={(e) => setTopK(parseInt(e.target.value, 10) || 10)}
+                value={form.topK}
+                onChange={(e) => updateField('topK', parseInt(e.target.value, 10) || 10)}
                 disabled={isSubmitting}
                 className="w-24 px-4 py-2 input-field rounded-xl"
               />
@@ -329,7 +354,7 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
                   >
                     <input
                       type="checkbox"
-                      checked={selectedMetrics.has(metric.id)}
+                      checked={form.selectedMetrics.has(metric.id)}
                       onChange={() => toggleMetric(metric.id)}
                       disabled={isSubmitting}
                       className="h-4 w-4 mt-0.5 bg-[var(--input-bg)] border-[var(--input-border)] text-gray-600 dark:text-white focus:ring-gray-400 dark:focus:ring-white rounded"
@@ -359,7 +384,7 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !selectedMappingId}
+              disabled={isSubmitting || !form.selectedMappingId}
               className="px-6 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white rounded-xl hover:bg-gray-300 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
@@ -375,16 +400,5 @@ export function CreateBenchmarkModal({ onClose, onSuccess }: CreateBenchmarkModa
         </form>
       </div>
     </div>
-  );
-}
-
-// Helper component to show collection name in mapping select
-function MappingOption({ mapping }: { mapping: DatasetMapping }) {
-  const { data: collection } = useCollection(mapping.collection_id);
-
-  return (
-    <option value={mapping.id}>
-      {collection?.name ?? mapping.collection_id} ({mapping.mapped_count}/{mapping.total_count} docs)
-    </option>
   );
 }
