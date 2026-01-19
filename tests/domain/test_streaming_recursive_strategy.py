@@ -26,4 +26,3 @@ async def test_streaming_recursive_does_not_truncate_long_paragraph() -> None:
     combined_words = " ".join(chunk.content for chunk in chunks).split()
     assert "Header" in combined_words
     assert combined_words.count("word") == 200
-

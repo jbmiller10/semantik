@@ -96,11 +96,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                 merged.append(split)
 
         # Prefer merging a tiny tail into the previous chunk when it fits.
-        if (
-            len(merged) >= 2
-            and len(merged[-1]) < min_size
-            and len(merged[-2]) + len(merged[-1]) <= max_size
-        ):
+        if len(merged) >= 2 and len(merged[-1]) < min_size and len(merged[-2]) + len(merged[-1]) <= max_size:
             merged[-2] += merged[-1]
             merged.pop()
 
