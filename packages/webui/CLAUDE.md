@@ -70,6 +70,8 @@
     <router path="api/v2/directory_scan.py">Directory scanning with WebSocket progress</router>
     <router path="api/v2/partition_monitoring.py">Qdrant partition health monitoring</router>
     <router path="api/v2/system.py">System info, GPU status, resource usage</router>
+    <router path="api/v2/benchmarks.py">Benchmark CRUD, start/cancel, results endpoints</router>
+    <router path="api/v2/benchmark_datasets.py">Dataset upload, list, mapping, delete endpoints</router>
   </v2-routers>
 </api-structure>
 
@@ -135,6 +137,45 @@
   <service name="ProjectionService">
     <responsibility>UMAP/t-SNE embedding projections</responsibility>
     <location>services/projection_service.py</location>
+  </service>
+
+  <service name="BenchmarkService">
+    <responsibility>Benchmark lifecycle management and execution orchestration</responsibility>
+    <location>services/benchmark_service.py</location>
+    <critical-methods>
+      - create_benchmark: Create benchmark with config matrix, pre-creates runs
+      - start_benchmark: Create Operation and dispatch Celery task
+      - cancel_benchmark: Request cancellation via status update
+      - get_results: Aggregate and format run results with metrics
+      - delete_benchmark: Cascading deletion of runs and results
+    </critical-methods>
+  </service>
+
+  <service name="BenchmarkDatasetService">
+    <responsibility>Ground truth dataset management and mapping resolution</responsibility>
+    <location>services/benchmark_dataset_service.py</location>
+    <critical-methods>
+      - upload_dataset: Parse JSON, validate schema, store queries and relevance judgments
+      - create_mapping: Create dataset-to-collection binding
+      - resolve_mapping: Resolve doc_refs to document IDs (by URI or content_hash)
+      - get_mapping_status: Check resolution progress
+    </critical-methods>
+    <dataset-format>
+      JSON with schema_version, queries array containing query_id, query_text,
+      and relevant_documents with doc_ref (URI/content_hash) and relevance_grade (0-3)
+    </dataset-format>
+  </service>
+
+  <service name="BenchmarkExecutor">
+    <responsibility>Orchestrates benchmark execution with idempotent run processing</responsibility>
+    <location>services/benchmark_executor.py</location>
+    <features>
+      - Sequential configuration processing for predictable GPU memory
+      - Progress reporting via Redis pub/sub (operation:{operation_uuid} channel)
+      - Idempotent execution: skips completed/failed runs on retry
+      - Error isolation: individual run failures don't stop benchmark
+      - Metrics computation via shared.benchmarks evaluators
+    </features>
   </service>
 
   <service name="factory.py">
@@ -232,8 +273,10 @@
     <module path="tasks/ingestion.py">INDEX, APPEND, REMOVE_SOURCE operations</module>
     <module path="tasks/reindex.py">Blue-green REINDEX with validation</module>
     <module path="tasks/projection.py">UMAP/t-SNE projection computation</module>
-    <module path="tasks/cleanup.py">Periodic cleanup (results, collections, Qdrant)</module>
+    <module path="tasks/cleanup.py">Periodic cleanup (results, collections, Qdrant, stale benchmarks)</module>
     <module path="tasks/sync_dispatcher.py">Continuous sync scheduling</module>
+    <module path="tasks/benchmark.py">BENCHMARK operation execution via BenchmarkExecutor</module>
+    <module path="tasks/benchmark_mapping.py">Async dataset-collection mapping resolution</module>
     <module path="tasks/utils.py">Shared utilities, constants, base task class</module>
     <module path="chunking_tasks.py">Chunking-specific Celery tasks</module>
   </modules>
@@ -253,6 +296,7 @@
     - DELETE: Collection deletion with Qdrant cleanup
     - REMOVE_SOURCE: Remove documents by source
     - PROJECTION: Embedding visualization computation
+    - BENCHMARK: Search quality benchmark execution
   </operation-types>
 
   <beat-schedule>

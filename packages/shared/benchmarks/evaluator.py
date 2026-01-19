@@ -7,8 +7,6 @@ multiple queries for a benchmark configuration.
 
 import logging
 import time
-
-logger = logging.getLogger(__name__)
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -23,6 +21,8 @@ from .types import (
     RetrievedChunk,
     SearchTiming,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class QueryEvaluator:

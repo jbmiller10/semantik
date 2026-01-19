@@ -545,6 +545,7 @@ class BenchmarkRepository:
             .where(BenchmarkRun.benchmark_id == benchmark_id)
             .options(selectinload(BenchmarkRun.metrics))
             .order_by(BenchmarkRun.run_order)
+            .execution_options(populate_existing=True)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
