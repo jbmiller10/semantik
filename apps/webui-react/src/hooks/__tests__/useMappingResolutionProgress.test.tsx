@@ -9,8 +9,12 @@ import { useMappingResolutionProgress } from '../useMappingResolutionProgress'
 let lastOnMessage: ((event: MessageEvent) => void) | undefined
 
 vi.mock('../useWebSocket', () => ({
-  useWebSocket: (_url: string | null, options: any) => {
-    lastOnMessage = options?.onMessage
+  useWebSocket: (_url: string | null, options: unknown) => {
+    const onMessage =
+      options && typeof options === 'object' && 'onMessage' in options
+        ? (options as { onMessage?: (event: MessageEvent) => void }).onMessage
+        : undefined
+    lastOnMessage = onMessage
     return { readyState: WebSocket.OPEN }
   },
 }))

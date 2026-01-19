@@ -39,8 +39,8 @@ describe('DatasetsView', () => {
       data: undefined,
       isLoading: true,
       error: null,
-    } as any)
-    vi.mocked(useDeleteDataset).mockReturnValue({ mutate: vi.fn() } as any)
+    } as unknown as ReturnType<typeof useBenchmarkDatasets>)
+    vi.mocked(useDeleteDataset).mockReturnValue({ mutate: vi.fn() } as unknown as ReturnType<typeof useDeleteDataset>)
 
     const { container } = render(<DatasetsView />)
     expect(container.querySelector('.animate-spin')).toBeTruthy()
@@ -51,8 +51,8 @@ describe('DatasetsView', () => {
       data: undefined,
       isLoading: false,
       error: { message: 'nope' },
-    } as any)
-    vi.mocked(useDeleteDataset).mockReturnValue({ mutate: vi.fn() } as any)
+    } as unknown as ReturnType<typeof useBenchmarkDatasets>)
+    vi.mocked(useDeleteDataset).mockReturnValue({ mutate: vi.fn() } as unknown as ReturnType<typeof useDeleteDataset>)
 
     render(<DatasetsView />)
     expect(screen.getByText(/Failed to load datasets: nope/i)).toBeInTheDocument()
@@ -62,7 +62,10 @@ describe('DatasetsView', () => {
     const user = userEvent.setup()
     const deleteMutate = vi.fn()
 
-    ;(window as any).confirm = vi.fn(() => true)
+    Object.defineProperty(window, 'confirm', {
+      value: vi.fn(() => true),
+      writable: true,
+    })
 
     vi.mocked(useBenchmarkDatasets).mockReturnValue({
       data: {
@@ -91,18 +94,18 @@ describe('DatasetsView', () => {
       },
       isLoading: false,
       error: null,
-    } as any)
+    } as unknown as ReturnType<typeof useBenchmarkDatasets>)
 
     vi.mocked(useDeleteDataset).mockReturnValue({
       mutate: deleteMutate,
       isPending: false,
       variables: undefined,
-    } as any)
+    } as unknown as ReturnType<typeof useDeleteDataset>)
 
     vi.mocked(useDatasetMappings).mockImplementation((datasetId: string) => {
       return {
         data: datasetId === 'ds-1' ? [{ id: 1 }] : [],
-      } as any
+      } as unknown as ReturnType<typeof useDatasetMappings>
     })
 
     render(<DatasetsView />)
@@ -132,8 +135,10 @@ describe('DatasetsView', () => {
       data: { datasets: [] },
       isLoading: false,
       error: null,
-    } as any)
-    vi.mocked(useDeleteDataset).mockReturnValue({ mutate: vi.fn(), isPending: false } as any)
+    } as unknown as ReturnType<typeof useBenchmarkDatasets>)
+    vi.mocked(useDeleteDataset).mockReturnValue(
+      { mutate: vi.fn(), isPending: false } as unknown as ReturnType<typeof useDeleteDataset>
+    )
 
     render(<DatasetsView />)
 

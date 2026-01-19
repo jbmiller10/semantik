@@ -42,7 +42,7 @@ vi.mock('../../hooks/useBenchmarks', () => ({
 describe('BenchmarksTab', () => {
   it('defaults to Datasets sub-tab and can switch to Results', async () => {
     const user = userEvent.setup()
-    vi.mocked(useBenchmark).mockReturnValue({ data: null } as any)
+    vi.mocked(useBenchmark).mockReturnValue({ data: null } as unknown as ReturnType<typeof useBenchmark>)
 
     render(<BenchmarksTab />)
     expect(screen.getByText('DatasetsView')).toBeInTheDocument()
@@ -58,7 +58,9 @@ describe('BenchmarksTab', () => {
     const user = userEvent.setup()
 
     vi.mocked(useBenchmark).mockImplementation((benchmarkId: string) => {
-      return { data: benchmarkId ? { id: benchmarkId, status: 'running' } : null } as any
+      return { data: benchmarkId ? { id: benchmarkId, status: 'running' } : null } as unknown as ReturnType<
+        typeof useBenchmark
+      >
     })
 
     render(<BenchmarksTab />)
