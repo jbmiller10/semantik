@@ -85,6 +85,26 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
+async function readFileText(file: File): Promise<string> {
+  const maybeText = (file as File & { text?: () => Promise<string> }).text;
+  if (typeof maybeText === 'function') {
+    return await maybeText.call(file);
+  }
+
+  const maybeArrayBuffer = (file as File & { arrayBuffer?: () => Promise<ArrayBuffer> }).arrayBuffer;
+  if (typeof maybeArrayBuffer === 'function') {
+    const buffer = await maybeArrayBuffer.call(file);
+    return new TextDecoder().decode(buffer);
+  }
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
+}
+
 export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -118,7 +138,7 @@ export function DatasetUploadModal({ onClose, onSuccess }: DatasetUploadModalPro
     setCanonicalDataset(null);
 
     try {
-      const text = await f.text();
+      const text = await readFileText(f);
       let dataset: CanonicalDataset;
 
       if (f.name.endsWith('.json')) {

@@ -49,11 +49,7 @@ export const benchmarkDatasetsApi = {
     }
     formData.append('file', file);
 
-    return apiClient.post<BenchmarkDataset>('/api/v2/benchmark-datasets', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    return apiClient.post<BenchmarkDataset>('/api/v2/benchmark-datasets', formData);
   },
 
   /**

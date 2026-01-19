@@ -82,7 +82,10 @@ export function ConfigMatrixBuilder({
   const toggleSearchMode = (mode: SearchMode) => {
     const current = new Set(value.search_modes);
     if (current.has(mode)) {
-      current.delete(mode);
+      // Prevent removing the last item
+      if (current.size > 1) {
+        current.delete(mode);
+      }
     } else {
       current.add(mode);
     }
@@ -95,7 +98,10 @@ export function ConfigMatrixBuilder({
   const toggleReranker = (useReranker: boolean) => {
     const current = new Set(value.use_reranker);
     if (current.has(useReranker)) {
-      current.delete(useReranker);
+      // Prevent removing the last item
+      if (current.size > 1) {
+        current.delete(useReranker);
+      }
     } else {
       current.add(useReranker);
     }
@@ -108,7 +114,10 @@ export function ConfigMatrixBuilder({
   const toggleTopK = (k: number) => {
     const current = new Set(value.top_k_values);
     if (current.has(k)) {
-      current.delete(k);
+      // Prevent removing the last item
+      if (current.size > 1) {
+        current.delete(k);
+      }
     } else {
       current.add(k);
     }
@@ -121,7 +130,10 @@ export function ConfigMatrixBuilder({
   const toggleRrfK = (k: number) => {
     const current = new Set(value.rrf_k_values);
     if (current.has(k)) {
-      current.delete(k);
+      // Prevent removing the last item
+      if (current.size > 1) {
+        current.delete(k);
+      }
     } else {
       current.add(k);
     }

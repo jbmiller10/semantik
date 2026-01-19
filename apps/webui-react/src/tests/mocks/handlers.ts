@@ -18,34 +18,88 @@ import type {
 // Benchmark in-memory mock state (used by contract-level tests)
 // =============================================================================
 
-let benchmarkDatasetsState: BenchmarkDataset[] = []
-let datasetTotalRefsById: Record<string, number> = {}
-let datasetMappingsState: DatasetMapping[] = []
-let benchmarksState: Benchmark[] = []
-let benchmarkRunsByBenchmarkId: Record<string, BenchmarkRun[]> = {}
-let runQueryResultsByRunId: Record<string, RunQueryResultsResponse> = {}
-let autoCompleteBenchmarksOnStart = false
+type BenchmarkMockState = {
+  benchmarkDatasetsState: BenchmarkDataset[];
+  datasetTotalRefsById: Record<string, number>;
+  datasetMappingsState: DatasetMapping[];
+  benchmarksState: Benchmark[];
+  benchmarkRunsByBenchmarkId: Record<string, BenchmarkRun[]>;
+  runQueryResultsByRunId: Record<string, RunQueryResultsResponse>;
+  autoCompleteBenchmarksOnStart: boolean;
+}
+
+const benchmarkMockState: BenchmarkMockState = (() => {
+  const globalState = globalThis as unknown as { __semantikBenchmarkMockState?: BenchmarkMockState }
+  if (!globalState.__semantikBenchmarkMockState) {
+    globalState.__semantikBenchmarkMockState = {
+      benchmarkDatasetsState: [],
+      datasetTotalRefsById: {},
+      datasetMappingsState: [],
+      benchmarksState: [],
+      benchmarkRunsByBenchmarkId: {},
+      runQueryResultsByRunId: {},
+      autoCompleteBenchmarksOnStart: false,
+    }
+  }
+  return globalState.__semantikBenchmarkMockState
+})()
 
 export function resetBenchmarkMocks(): void {
-  benchmarkDatasetsState = []
-  datasetTotalRefsById = {}
-  datasetMappingsState = []
-  benchmarksState = []
-  benchmarkRunsByBenchmarkId = {}
-  runQueryResultsByRunId = {}
-  autoCompleteBenchmarksOnStart = false
+  benchmarkMockState.benchmarkDatasetsState = []
+  benchmarkMockState.datasetTotalRefsById = {}
+  benchmarkMockState.datasetMappingsState = []
+  benchmarkMockState.benchmarksState = []
+  benchmarkMockState.benchmarkRunsByBenchmarkId = {}
+  benchmarkMockState.runQueryResultsByRunId = {}
+  benchmarkMockState.autoCompleteBenchmarksOnStart = false
+}
+
+export function seedBenchmarkDataset(overrides: Partial<BenchmarkDataset> & { total_refs?: number } = {}): BenchmarkDataset {
+  const now = new Date().toISOString()
+  const dataset: BenchmarkDataset = {
+    id: overrides.id ?? `ds-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: overrides.name ?? 'Seed Dataset',
+    description: overrides.description ?? null,
+    owner_id: overrides.owner_id ?? 1,
+    query_count: overrides.query_count ?? 1,
+    schema_version: overrides.schema_version ?? '1.0',
+    created_at: overrides.created_at ?? now,
+    updated_at: overrides.updated_at ?? null,
+  }
+
+  benchmarkMockState.benchmarkDatasetsState = [dataset, ...benchmarkMockState.benchmarkDatasetsState]
+  benchmarkMockState.datasetTotalRefsById[dataset.id] = overrides.total_refs ?? dataset.query_count
+  return dataset
+}
+
+export function seedDatasetMapping(
+  overrides: Partial<DatasetMapping> & { dataset_id: string; collection_id: string }
+): DatasetMapping {
+  const now = new Date().toISOString()
+  const mapping: DatasetMapping = {
+    id: overrides.id ?? Math.floor(Math.random() * 100000),
+    dataset_id: overrides.dataset_id,
+    collection_id: overrides.collection_id,
+    mapping_status: overrides.mapping_status ?? 'pending',
+    mapped_count: overrides.mapped_count ?? 0,
+    total_count: overrides.total_count ?? benchmarkMockState.datasetTotalRefsById[overrides.dataset_id] ?? 0,
+    created_at: overrides.created_at ?? now,
+    resolved_at: overrides.resolved_at ?? null,
+  }
+  benchmarkMockState.datasetMappingsState = [mapping, ...benchmarkMockState.datasetMappingsState]
+  return mapping
 }
 
 export function setBenchmarkAutoCompleteOnStart(enabled: boolean): void {
-  autoCompleteBenchmarksOnStart = enabled
+  benchmarkMockState.autoCompleteBenchmarksOnStart = enabled
 }
 
 function _markBenchmarkCompleted(benchmarkId: string): void {
-  const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+  const index = benchmarkMockState.benchmarksState.findIndex((b) => b.id === benchmarkId)
   if (index < 0) return
 
   const now = new Date().toISOString()
-  const runs = (benchmarkRunsByBenchmarkId[benchmarkId] ?? []).map((run, idx) => ({
+  const runs = (benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId] ?? []).map((run, idx) => ({
     ...run,
     status: 'completed' as BenchmarkRunStatus,
     metrics: {
@@ -61,15 +115,19 @@ function _markBenchmarkCompleted(benchmarkId: string): void {
     },
   }))
 
-  benchmarkRunsByBenchmarkId[benchmarkId] = runs
+  benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId] = runs
   const updated: Benchmark = {
-    ...benchmarksState[index],
+    ...benchmarkMockState.benchmarksState[index],
     status: 'completed',
     completed_at: now,
     completed_runs: runs.length,
     failed_runs: 0,
   }
-  benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+  benchmarkMockState.benchmarksState = [
+    ...benchmarkMockState.benchmarksState.slice(0, index),
+    updated,
+    ...benchmarkMockState.benchmarksState.slice(index + 1),
+  ]
 }
 
 function _paginate<T>(items: T[], pageRaw: string | null, perPageRaw: string | null) {
@@ -95,6 +153,25 @@ function _countTotalRefsFromDatasetFile(raw: unknown): { schemaVersion: string; 
   }
 
   return { schemaVersion, queryCount: queries.length, totalRefs }
+}
+
+async function _readMultipartFileText(file: unknown): Promise<string> {
+  if (!file || typeof file !== 'object') {
+    throw new Error('Invalid file')
+  }
+
+  const maybeText = (file as { text?: unknown }).text
+  if (typeof maybeText === 'function') {
+    return await (maybeText as () => Promise<string>)()
+  }
+
+  const maybeArrayBuffer = (file as { arrayBuffer?: unknown }).arrayBuffer
+  if (typeof maybeArrayBuffer === 'function') {
+    const buffer = await (maybeArrayBuffer as () => Promise<ArrayBuffer>)()
+    return new TextDecoder().decode(buffer)
+  }
+
+  throw new Error('Invalid file')
 }
 
 export const handlers = [
@@ -270,7 +347,7 @@ export const handlers = [
 
   // V2 API endpoints
   // System info
-  http.get('/api/v2/system/info', () => {
+  http.get('*/api/v2/system/info', () => {
     return HttpResponse.json({
       version: '0.8.0',
       environment: 'development',
@@ -284,7 +361,7 @@ export const handlers = [
   }),
 
   // System health
-  http.get('/api/v2/system/health', () => {
+  http.get('*/api/v2/system/health', () => {
     return HttpResponse.json({
       postgres: { status: 'healthy', message: 'Connected' },
       redis: { status: 'healthy', message: 'Connected' },
@@ -294,7 +371,7 @@ export const handlers = [
   }),
 
   // System status
-  http.get('/api/v2/system/status', () => {
+  http.get('*/api/v2/system/status', () => {
     return HttpResponse.json({
       healthy: true,
       version: '0.8.0',
@@ -313,7 +390,7 @@ export const handlers = [
   }),
 
   // Collections
-  http.get('/api/v2/collections', () => {
+  http.get('*/api/v2/collections', () => {
     return HttpResponse.json({
       collections: [
         {
@@ -359,7 +436,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/collections/:uuid', ({ params }) => {
+  http.get('*/api/v2/collections/:uuid', ({ params }) => {
     const collection: Collection = {
       id: params.uuid as string,
       name: 'Test Collection',
@@ -381,7 +458,7 @@ export const handlers = [
     return HttpResponse.json(collection)
   }),
 
-  http.post('/api/v2/collections/:uuid/reindex', ({ params }) => {
+  http.post('*/api/v2/collections/:uuid/reindex', ({ params }) => {
     const operation: Operation = {
       id: 'op-' + Date.now(),
       collection_id: params.uuid as string,
@@ -401,12 +478,12 @@ export const handlers = [
     return HttpResponse.json(operation)
   }),
 
-  http.delete('/api/v2/collections/:uuid', () => {
+  http.delete('*/api/v2/collections/:uuid', () => {
     return HttpResponse.json({ message: 'Collection deleted successfully' })
   }),
 
   // Sparse index endpoints
-  http.get('/api/v2/collections/:uuid/sparse-index', () => {
+  http.get('*/api/v2/collections/:uuid/sparse-index', () => {
     return HttpResponse.json({
       enabled: false,
       plugin_id: null,
@@ -417,7 +494,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/collections/:uuid/sparse-index', async ({ request }) => {
+  http.post('*/api/v2/collections/:uuid/sparse-index', async ({ request }) => {
     const body = await request.json() as { plugin_id: string; config?: Record<string, unknown> }
     return HttpResponse.json({
       enabled: true,
@@ -429,7 +506,7 @@ export const handlers = [
     })
   }),
 
-  http.delete('/api/v2/collections/:uuid/sparse-index', () => {
+  http.delete('*/api/v2/collections/:uuid/sparse-index', () => {
     return HttpResponse.json({
       enabled: false,
       plugin_id: null,
@@ -440,7 +517,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/collections/:uuid/sparse-index/reindex', () => {
+  http.post('*/api/v2/collections/:uuid/sparse-index/reindex', () => {
     return HttpResponse.json({
       job_id: 'mock-reindex-job-' + Date.now(),
       status: 'pending',
@@ -448,7 +525,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/collections/:uuid/sparse-index/reindex/:jobId', () => {
+  http.get('*/api/v2/collections/:uuid/sparse-index/reindex/:jobId', () => {
     return HttpResponse.json({
       job_id: 'mock-reindex-job',
       status: 'completed',
@@ -461,7 +538,7 @@ export const handlers = [
   }),
 
   // Connectors catalog endpoint
-  http.get('/api/v2/connectors', () => {
+  http.get('*/api/v2/connectors', () => {
     return HttpResponse.json({
       directory: {
         name: 'Directory',
@@ -552,7 +629,7 @@ export const handlers = [
   }),
 
   // Search endpoint
-  http.post('/api/v2/search', async ({ request }) => {
+  http.post('*/api/v2/search', async ({ request }) => {
     const body = await request.json() as {
       use_reranker?: boolean;
       use_hyde?: boolean;
@@ -592,7 +669,7 @@ export const handlers = [
   }),
 
   // LLM Settings endpoints
-  http.get('/api/v2/llm/settings', () => {
+  http.get('*/api/v2/llm/settings', () => {
     return HttpResponse.json({
       high_quality_provider: 'anthropic',
       high_quality_model: 'claude-opus-4-5-20251101',
@@ -607,7 +684,7 @@ export const handlers = [
     })
   }),
 
-  http.put('/api/v2/llm/settings', async ({ request }) => {
+  http.put('*/api/v2/llm/settings', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({
       high_quality_provider: body.high_quality_provider ?? 'anthropic',
@@ -623,7 +700,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/llm/models', () => {
+  http.get('*/api/v2/llm/models', () => {
     return HttpResponse.json({
       models: [
         {
@@ -680,7 +757,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/llm/models/refresh', ({ request }) => {
+  http.get('*/api/v2/llm/models/refresh', ({ request }) => {
     const url = new URL(request.url)
     const provider = url.searchParams.get('provider')
 
@@ -727,7 +804,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/llm/test', async ({ request }) => {
+  http.post('*/api/v2/llm/test', async ({ request }) => {
     const body = await request.json() as { provider: string; api_key: string }
 
     // Simulate invalid API key
@@ -746,7 +823,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/llm/usage', () => {
+  http.get('*/api/v2/llm/usage', () => {
     return HttpResponse.json({
       total_input_tokens: 58023,
       total_output_tokens: 30245,
@@ -765,7 +842,7 @@ export const handlers = [
   }),
 
   // User Preferences endpoints
-  http.get('/api/v2/preferences', () => {
+  http.get('*/api/v2/preferences', () => {
     return HttpResponse.json({
       search: {
         top_k: 10,
@@ -797,7 +874,7 @@ export const handlers = [
     })
   }),
 
-  http.put('/api/v2/preferences', async ({ request }) => {
+  http.put('*/api/v2/preferences', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({
       search: {
@@ -830,7 +907,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/preferences/reset/search', () => {
+  http.post('*/api/v2/preferences/reset/search', () => {
     return HttpResponse.json({
       search: {
         top_k: 10,
@@ -862,7 +939,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/preferences/reset/collection-defaults', () => {
+  http.post('*/api/v2/preferences/reset/collection-defaults', () => {
     return HttpResponse.json({
       search: {
         top_k: 10,
@@ -894,7 +971,7 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/preferences/reset/interface', () => {
+  http.post('*/api/v2/preferences/reset/interface', () => {
     return HttpResponse.json({
       search: {
         top_k: 10,
@@ -927,7 +1004,7 @@ export const handlers = [
   }),
 
   // System Settings endpoints (admin-only)
-  http.get('/api/v2/system-settings', () => {
+  http.get('*/api/v2/system-settings', () => {
     return HttpResponse.json({
       settings: {
         max_collections_per_user: { value: 10, updated_at: null, updated_by: null },
@@ -937,7 +1014,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/system-settings/effective', () => {
+  http.get('*/api/v2/system-settings/effective', () => {
     return HttpResponse.json({
       settings: {
         // GPU & Memory settings
@@ -961,7 +1038,7 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/v2/system-settings/defaults', () => {
+  http.get('*/api/v2/system-settings/defaults', () => {
     return HttpResponse.json({
       defaults: {
         // GPU & Memory settings
@@ -985,7 +1062,7 @@ export const handlers = [
     })
   }),
 
-  http.patch('/api/v2/system-settings', async ({ request }) => {
+  http.patch('*/api/v2/system-settings', async ({ request }) => {
     const body = await request.json() as { settings: Record<string, unknown> }
     const keys = Object.keys(body.settings || {})
     return HttpResponse.json({
@@ -998,7 +1075,7 @@ export const handlers = [
   }),
 
   // API Keys endpoints
-  http.get('/api/v2/api-keys', () => {
+  http.get('*/api/v2/api-keys', () => {
     const mockApiKeys: ApiKeyResponse[] = [
       {
         id: 'key-1-uuid',
@@ -1035,7 +1112,7 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/v2/api-keys/:keyId', ({ params }) => {
+  http.get('*/api/v2/api-keys/:keyId', ({ params }) => {
     const key: ApiKeyResponse = {
       id: params.keyId as string,
       name: 'Test Key',
@@ -1048,7 +1125,7 @@ export const handlers = [
     return HttpResponse.json(key)
   }),
 
-  http.post('/api/v2/api-keys', async ({ request }) => {
+  http.post('*/api/v2/api-keys', async ({ request }) => {
     const body = await request.json() as { name: string; expires_in_days?: number | null }
 
     // Simulate duplicate name error
@@ -1084,7 +1161,7 @@ export const handlers = [
     return HttpResponse.json(response, { status: 201 })
   }),
 
-  http.patch('/api/v2/api-keys/:keyId', async ({ params, request }) => {
+  http.patch('*/api/v2/api-keys/:keyId', async ({ params, request }) => {
     const body = await request.json() as { is_active: boolean }
     const response: ApiKeyResponse = {
       id: params.keyId as string,
@@ -1102,9 +1179,9 @@ export const handlers = [
   // Benchmark Datasets + Benchmarks (v2)
   // =============================================================================
 
-  http.get('/api/v2/benchmark-datasets', ({ request }) => {
+  http.get('*/api/v2/benchmark-datasets', ({ request }) => {
     const { page, perPage, total, items } = _paginate(
-      benchmarkDatasetsState,
+      benchmarkMockState.benchmarkDatasetsState,
       request.url.searchParams.get('page'),
       request.url.searchParams.get('per_page'),
     )
@@ -1118,15 +1195,15 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
-    const dataset = benchmarkDatasetsState.find((d) => d.id === String(params.datasetId))
+  http.get('*/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
+    const dataset = benchmarkMockState.benchmarkDatasetsState.find((d) => d.id === String(params.datasetId))
     if (!dataset) {
       return HttpResponse.json({ detail: 'Dataset not found' }, { status: 404 })
     }
     return HttpResponse.json(dataset)
   }),
 
-  http.post('/api/v2/benchmark-datasets', async ({ request }) => {
+  http.post('*/api/v2/benchmark-datasets', async ({ request }) => {
     const form = await request.formData()
     const name = String(form.get('name') ?? '').trim()
     const descriptionRaw = form.get('description')
@@ -1136,13 +1213,13 @@ export const handlers = [
     if (!name) {
       return HttpResponse.json({ detail: 'name is required' }, { status: 422 })
     }
-    if (!(file instanceof File)) {
+    if (!file) {
       return HttpResponse.json({ detail: 'file is required' }, { status: 422 })
     }
 
     let parsed: unknown = null
     try {
-      parsed = JSON.parse(await file.text())
+      parsed = JSON.parse(await _readMultipartFileText(file))
     } catch {
       return HttpResponse.json({ detail: 'Invalid JSON' }, { status: 400 })
     }
@@ -1164,29 +1241,31 @@ export const handlers = [
       updated_at: null,
     }
 
-    benchmarkDatasetsState = [dataset, ...benchmarkDatasetsState]
-    datasetTotalRefsById[dataset.id] = totalRefs
+    benchmarkMockState.benchmarkDatasetsState = [dataset, ...benchmarkMockState.benchmarkDatasetsState]
+    benchmarkMockState.datasetTotalRefsById[dataset.id] = totalRefs
 
     return HttpResponse.json(dataset, { status: 201 })
   }),
 
-  http.delete('/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
+  http.delete('*/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
     const datasetId = String(params.datasetId)
-    benchmarkDatasetsState = benchmarkDatasetsState.filter((d) => d.id !== datasetId)
-    datasetMappingsState = datasetMappingsState.filter((m) => m.dataset_id !== datasetId)
-    delete datasetTotalRefsById[datasetId]
+    benchmarkMockState.benchmarkDatasetsState = benchmarkMockState.benchmarkDatasetsState.filter((d) => d.id !== datasetId)
+    benchmarkMockState.datasetMappingsState = benchmarkMockState.datasetMappingsState.filter((m) => m.dataset_id !== datasetId)
+    delete benchmarkMockState.datasetTotalRefsById[datasetId]
     return new HttpResponse(null, { status: 204 })
   }),
 
-  http.post('/api/v2/benchmark-datasets/:datasetId/mappings', async ({ params, request }) => {
+  http.post('*/api/v2/benchmark-datasets/:datasetId/mappings', async ({ params, request }) => {
     const datasetId = String(params.datasetId)
-    const dataset = benchmarkDatasetsState.find((d) => d.id === datasetId)
+    const dataset = benchmarkMockState.benchmarkDatasetsState.find((d) => d.id === datasetId)
     if (!dataset) {
       return HttpResponse.json({ detail: 'Dataset not found' }, { status: 404 })
     }
 
     const body = await request.json() as { collection_id: string }
-    const existing = datasetMappingsState.find((m) => m.dataset_id === datasetId && m.collection_id === body.collection_id)
+    const existing = benchmarkMockState.datasetMappingsState.find(
+      (m) => m.dataset_id === datasetId && m.collection_id === body.collection_id
+    )
     if (existing) {
       return HttpResponse.json({ detail: 'Mapping already exists' }, { status: 409 })
     }
@@ -1198,38 +1277,38 @@ export const handlers = [
       collection_id: body.collection_id,
       mapping_status: 'pending',
       mapped_count: 0,
-      total_count: datasetTotalRefsById[datasetId] ?? dataset.query_count,
+      total_count: benchmarkMockState.datasetTotalRefsById[datasetId] ?? dataset.query_count,
       created_at: now,
       resolved_at: null,
     }
-    datasetMappingsState = [mapping, ...datasetMappingsState]
+    benchmarkMockState.datasetMappingsState = [mapping, ...benchmarkMockState.datasetMappingsState]
     return HttpResponse.json(mapping, { status: 201 })
   }),
 
-  http.get('/api/v2/benchmark-datasets/:datasetId/mappings', ({ params }) => {
+  http.get('*/api/v2/benchmark-datasets/:datasetId/mappings', ({ params }) => {
     const datasetId = String(params.datasetId)
-    const mappings = datasetMappingsState.filter((m) => m.dataset_id === datasetId)
+    const mappings = benchmarkMockState.datasetMappingsState.filter((m) => m.dataset_id === datasetId)
     return HttpResponse.json(mappings)
   }),
 
-  http.post('/api/v2/benchmark-datasets/:datasetId/mappings/:mappingId/resolve', ({ params }) => {
+  http.post('*/api/v2/benchmark-datasets/:datasetId/mappings/:mappingId/resolve', ({ params }) => {
     const mappingId = Number(params.mappingId)
-    const mappingIndex = datasetMappingsState.findIndex((m) => m.id === mappingId)
+    const mappingIndex = benchmarkMockState.datasetMappingsState.findIndex((m) => m.id === mappingId)
     if (mappingIndex < 0) {
       return HttpResponse.json({ detail: 'Mapping not found' }, { status: 404 })
     }
 
-    const mapping = datasetMappingsState[mappingIndex]
+    const mapping = benchmarkMockState.datasetMappingsState[mappingIndex]
     const resolved: DatasetMapping = {
       ...mapping,
       mapping_status: 'resolved',
       mapped_count: mapping.total_count,
       resolved_at: new Date().toISOString(),
     }
-    datasetMappingsState = [
-      ...datasetMappingsState.slice(0, mappingIndex),
+    benchmarkMockState.datasetMappingsState = [
+      ...benchmarkMockState.datasetMappingsState.slice(0, mappingIndex),
       resolved,
-      ...datasetMappingsState.slice(mappingIndex + 1),
+      ...benchmarkMockState.datasetMappingsState.slice(mappingIndex + 1),
     ]
 
     const response: MappingResolveResponse = {
@@ -1243,11 +1322,11 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/v2/benchmarks', ({ request }) => {
+  http.get('*/api/v2/benchmarks', ({ request }) => {
     const statusFilter = request.url.searchParams.get('status_filter')
     const filtered = statusFilter
-      ? benchmarksState.filter((b) => b.status === statusFilter)
-      : benchmarksState
+      ? benchmarkMockState.benchmarksState.filter((b) => b.status === statusFilter)
+      : benchmarkMockState.benchmarksState
 
     const { page, perPage, total, items } = _paginate(
       filtered,
@@ -1264,15 +1343,15 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/v2/benchmarks/:benchmarkId', ({ params }) => {
-    const benchmark = benchmarksState.find((b) => b.id === String(params.benchmarkId))
+  http.get('*/api/v2/benchmarks/:benchmarkId', ({ params }) => {
+    const benchmark = benchmarkMockState.benchmarksState.find((b) => b.id === String(params.benchmarkId))
     if (!benchmark) {
       return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
     }
     return HttpResponse.json(benchmark)
   }),
 
-  http.post('/api/v2/benchmarks', async ({ request }) => {
+  http.post('*/api/v2/benchmarks', async ({ request }) => {
     const body = await request.json() as {
       name: string
       description?: string
@@ -1348,33 +1427,37 @@ export const handlers = [
     }
 
     benchmark.total_runs = runs.length
-    benchmarksState = [benchmark, ...benchmarksState]
-    benchmarkRunsByBenchmarkId[benchmarkId] = runs
-    runQueryResultsByRunId = {
-      ...runQueryResultsByRunId,
+    benchmarkMockState.benchmarksState = [benchmark, ...benchmarkMockState.benchmarksState]
+    benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId] = runs
+    benchmarkMockState.runQueryResultsByRunId = {
+      ...benchmarkMockState.runQueryResultsByRunId,
       ...Object.fromEntries(runs.map((r) => [r.id, { run_id: r.id, results: [], total: 0, page: 1, per_page: 50 }])),
     }
 
     return HttpResponse.json(benchmark, { status: 201 })
   }),
 
-  http.post('/api/v2/benchmarks/:benchmarkId/start', ({ params }) => {
+  http.post('*/api/v2/benchmarks/:benchmarkId/start', ({ params }) => {
     const benchmarkId = String(params.benchmarkId)
-    const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+    const index = benchmarkMockState.benchmarksState.findIndex((b) => b.id === benchmarkId)
     if (index < 0) {
       return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
     }
 
     const operationUuid = `op-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const updated: Benchmark = {
-      ...benchmarksState[index],
+      ...benchmarkMockState.benchmarksState[index],
       status: 'running',
       started_at: new Date().toISOString(),
       operation_uuid: operationUuid,
     }
-    benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+    benchmarkMockState.benchmarksState = [
+      ...benchmarkMockState.benchmarksState.slice(0, index),
+      updated,
+      ...benchmarkMockState.benchmarksState.slice(index + 1),
+    ]
 
-    if (autoCompleteBenchmarksOnStart) {
+    if (benchmarkMockState.autoCompleteBenchmarksOnStart) {
       _markBenchmarkCompleted(benchmarkId)
     }
 
@@ -1386,30 +1469,34 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/v2/benchmarks/:benchmarkId/cancel', ({ params }) => {
+  http.post('*/api/v2/benchmarks/:benchmarkId/cancel', ({ params }) => {
     const benchmarkId = String(params.benchmarkId)
-    const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+    const index = benchmarkMockState.benchmarksState.findIndex((b) => b.id === benchmarkId)
     if (index < 0) {
       return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
     }
 
     const updated: Benchmark = {
-      ...benchmarksState[index],
+      ...benchmarkMockState.benchmarksState[index],
       status: 'cancelled',
       completed_at: new Date().toISOString(),
     }
-    benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+    benchmarkMockState.benchmarksState = [
+      ...benchmarkMockState.benchmarksState.slice(0, index),
+      updated,
+      ...benchmarkMockState.benchmarksState.slice(index + 1),
+    ]
     return HttpResponse.json(updated)
   }),
 
-  http.get('/api/v2/benchmarks/:benchmarkId/results', ({ params }) => {
+  http.get('*/api/v2/benchmarks/:benchmarkId/results', ({ params }) => {
     const benchmarkId = String(params.benchmarkId)
-    const benchmark = benchmarksState.find((b) => b.id === benchmarkId)
+    const benchmark = benchmarkMockState.benchmarksState.find((b) => b.id === benchmarkId)
     if (!benchmark) {
       return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
     }
 
-    const runs = benchmarkRunsByBenchmarkId[benchmarkId] ?? []
+    const runs = benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId] ?? []
     const response: BenchmarkResultsResponse = {
       benchmark_id: benchmarkId,
       primary_k: 10,
@@ -1425,9 +1512,9 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/v2/benchmarks/:benchmarkId/runs/:runId/queries', ({ params, request }) => {
+  http.get('*/api/v2/benchmarks/:benchmarkId/runs/:runId/queries', ({ params, request }) => {
     const runId = String(params.runId)
-    const existing = runQueryResultsByRunId[runId]
+    const existing = benchmarkMockState.runQueryResultsByRunId[runId]
     if (!existing) {
       return HttpResponse.json({ detail: 'Run not found' }, { status: 404 })
     }
@@ -1450,10 +1537,10 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.delete('/api/v2/benchmarks/:benchmarkId', ({ params }) => {
+  http.delete('*/api/v2/benchmarks/:benchmarkId', ({ params }) => {
     const benchmarkId = String(params.benchmarkId)
-    benchmarksState = benchmarksState.filter((b) => b.id !== benchmarkId)
-    delete benchmarkRunsByBenchmarkId[benchmarkId]
+    benchmarkMockState.benchmarksState = benchmarkMockState.benchmarksState.filter((b) => b.id !== benchmarkId)
+    delete benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId]
     return new HttpResponse(null, { status: 204 })
   }),
 ]

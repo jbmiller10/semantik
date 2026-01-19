@@ -35,16 +35,18 @@ describe('benchmarksApi + benchmarkDatasetsApi', () => {
   })
 
   it('uploads a dataset as multipart form data', () => {
-    const file = new File([JSON.stringify({ schema_version: '1.0', queries: [] })], 'dataset.json', { type: 'application/json' })
+    const file = new File([JSON.stringify({ schema_version: '1.0', queries: [] })], 'dataset.json', {
+      type: 'application/json',
+    })
     benchmarkDatasetsApi.upload({ name: 'My Dataset', description: 'desc' }, file)
 
-    const [url, body, config] = mockPost.mock.calls[0]
+    expect(mockPost).toHaveBeenCalledTimes(1)
+    const [url, body] = mockPost.mock.calls[0] as [string, FormData]
     expect(url).toBe('/api/v2/benchmark-datasets')
     expect(body).toBeInstanceOf(FormData)
-    expect((body as FormData).get('name')).toBe('My Dataset')
-    expect((body as FormData).get('description')).toBe('desc')
-    expect((body as FormData).get('file')).toBe(file)
-    expect(config).toEqual({ headers: { 'Content-Type': 'multipart/form-data' } })
+    expect(body.get('name')).toBe('My Dataset')
+    expect(body.get('description')).toBe('desc')
+    expect(body.get('file')).toBe(file)
   })
 
   it('deletes a dataset', () => {
@@ -104,4 +106,3 @@ describe('benchmarksApi + benchmarkDatasetsApi', () => {
     )
   })
 })
-

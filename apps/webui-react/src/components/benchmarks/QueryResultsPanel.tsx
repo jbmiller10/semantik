@@ -59,6 +59,7 @@ export function QueryResultsPanel({ benchmarkId, runId, onBack }: QueryResultsPa
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
+            aria-label="Back"
             className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -169,6 +170,7 @@ export function QueryResultsPanel({ benchmarkId, runId, onBack }: QueryResultsPa
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
+                aria-label="Previous page"
                 className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -179,6 +181,7 @@ export function QueryResultsPanel({ benchmarkId, runId, onBack }: QueryResultsPa
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
+                aria-label="Next page"
                 className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronRight className="h-4 w-4" />
