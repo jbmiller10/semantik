@@ -95,7 +95,14 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return empty set for _get_active_collections
-        mock_asyncio_run.side_effect = lambda coro: set() if "_get_active_collections" in str(coro) else None
+        def _run_side_effect(coro):  # noqa: ANN001
+            try:
+                return set() if "_get_active_collections" in str(coro) else None
+            finally:
+                if hasattr(coro, "close"):
+                    coro.close()
+
+        mock_asyncio_run.side_effect = _run_side_effect
 
         # Run cleanup with system collection
 
@@ -130,9 +137,14 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return active collections for _get_active_collections
-        mock_asyncio_run.side_effect = lambda coro: (
-            {"col_active", "col_in_use"} if "_get_active_collections" in str(coro) else None
-        )
+        def _run_side_effect(coro):  # noqa: ANN001
+            try:
+                return {"col_active", "col_in_use"} if "_get_active_collections" in str(coro) else None
+            finally:
+                if hasattr(coro, "close"):
+                    coro.close()
+
+        mock_asyncio_run.side_effect = _run_side_effect
 
         # Run cleanup
 
@@ -162,7 +174,14 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return empty set for _get_active_collections
-        mock_asyncio_run.side_effect = lambda coro: set() if "_get_active_collections" in str(coro) else None
+        def _run_side_effect(coro):  # noqa: ANN001
+            try:
+                return set() if "_get_active_collections" in str(coro) else None
+            finally:
+                if hasattr(coro, "close"):
+                    coro.close()
+
+        mock_asyncio_run.side_effect = _run_side_effect
 
         # Mock collection exists but is recent staging
         mock_qdrant_manager_instance.collection_exists.return_value = True
@@ -202,13 +221,17 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return empty set for _get_active_collections, None for audit
-        def mock_run_side_effect(coro) -> None:
-            coro_str = str(coro)
-            if "_get_active_collections" in coro_str:
-                return set()
-            if "_audit_collection_deletions_batch" in coro_str:
+        def mock_run_side_effect(coro) -> None:  # noqa: ANN001
+            try:
+                coro_str = str(coro)
+                if "_get_active_collections" in coro_str:
+                    return set()
+                if "_audit_collection_deletions_batch" in coro_str:
+                    return None
                 return None
-            return None
+            finally:
+                if hasattr(coro, "close"):
+                    coro.close()
 
         mock_asyncio_run.side_effect = mock_run_side_effect
 
@@ -270,9 +293,9 @@ class TestGetActiveCollections:
         async def mock_session_maker() -> Generator[Any, None, None]:
             yield mock_session
 
-        # Patch both AsyncSessionLocal and CollectionRepository at their source
+        # Patch the session factory resolver to avoid touching real Postgres.
         with (
-            patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
+            patch("webui.tasks.cleanup._resolve_session_factory", new=AsyncMock(return_value=mock_session_maker)),
             patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
         ):
             # Run function
@@ -306,9 +329,9 @@ class TestAuditCollectionDeletion:
         # Mock the audit log class
         mock_audit_log_class = MagicMock()
 
-        # Patch both AsyncSessionLocal and CollectionAuditLog at their source
+        # Patch the session factory resolver to avoid touching real Postgres.
         with (
-            patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
+            patch("webui.tasks.cleanup._resolve_session_factory", new=AsyncMock(return_value=mock_session_maker)),
             patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
         ):
             # Run function
