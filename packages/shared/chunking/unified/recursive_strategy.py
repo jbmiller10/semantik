@@ -516,8 +516,22 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         if max_size <= 0:
             return [text]
 
-        result = [text[i : i + max_size] for i in range(0, len(text), max_size)]
-        return self._merge_small_splits(result, min_size, max_size)
+        # Historically, this helper merges a too-small final remainder into the
+        # previous chunk (even if that exceeds max_size), preferring fewer tiny
+        # chunks over strictly enforcing the character budget.
+        result: list[str] = []
+        for i in range(0, len(text), max_size):
+            chunk = text[i : i + max_size]
+            if not result:
+                result.append(chunk)
+                continue
+
+            if min_size > 0 and len(chunk) < min_size:
+                result[-1] += chunk
+            else:
+                result.append(chunk)
+
+        return result
 
     @staticmethod
     def _validate_config(config: ChunkConfig) -> None:
