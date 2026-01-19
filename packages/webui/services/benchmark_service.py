@@ -315,8 +315,7 @@ class BenchmarkService:
         if updated_benchmark is None:
             # Race lost or benchmark was not in PENDING status
             raise ValidationError(
-                "Benchmark must be in PENDING status to start. "
-                "It may have been started by another request.",
+                "Benchmark must be in PENDING status to start. It may have been started by another request.",
                 "benchmark_id",
             )
 

@@ -28,4 +28,3 @@ def downgrade() -> None:
     """Cannot remove enum values in PostgreSQL."""
     # PostgreSQL doesn't support removing enum values once added.
     # This is a no-op to allow downgrade commands to proceed.
-    pass
