@@ -5,8 +5,10 @@ and the ConfigurationEvaluator for running and aggregating results across
 multiple queries for a benchmark configuration.
 """
 
-import contextlib
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -236,8 +238,15 @@ class ConfigurationEvaluator:
                         should_emit = True
 
                     if should_emit:
-                        with contextlib.suppress(Exception):
+                        try:
                             await progress_callback(completed_queries, total_queries)
+                        except Exception as exc:
+                            logger.warning(
+                                "Progress callback failed for query %d/%d: %s",
+                                completed_queries,
+                                total_queries,
+                                exc,
+                            )
 
             except Exception as e:
                 if isinstance(e, BenchmarkCancelledError):

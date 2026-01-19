@@ -853,22 +853,35 @@ class BenchmarkDatasetService:
                 "total_count": total_refs,
             }
 
-        except Exception:
-            await progress_reporter.send_update(
-                "benchmark_mapping_resolution_progress",
-                {
-                    "mapping_id": mapping_id,
-                    "dataset_id": dataset_id,
-                    "collection_id": collection_id,
-                    "stage": "failed",
-                    "total_refs": total_refs,
-                    "processed_refs": processed_refs,
-                    "resolved_refs": resolved_refs,
-                    "ambiguous_refs": ambiguous_refs,
-                    "unresolved_refs": unresolved_refs,
-                },
+        except Exception as original_exc:
+            logger.error(
+                "Mapping resolution %s failed: %s",
+                mapping_id,
+                original_exc,
+                exc_info=True,
             )
-            raise
+            try:
+                await progress_reporter.send_update(
+                    "benchmark_mapping_resolution_progress",
+                    {
+                        "mapping_id": mapping_id,
+                        "dataset_id": dataset_id,
+                        "collection_id": collection_id,
+                        "stage": "failed",
+                        "total_refs": total_refs,
+                        "processed_refs": processed_refs,
+                        "resolved_refs": resolved_refs,
+                        "ambiguous_refs": ambiguous_refs,
+                        "unresolved_refs": unresolved_refs,
+                    },
+                )
+            except Exception as progress_exc:
+                logger.warning(
+                    "Failed to send failure progress for mapping %s: %s",
+                    mapping_id,
+                    progress_exc,
+                )
+            raise original_exc
 
     async def _enqueue_mapping_resolution_operation(
         self,

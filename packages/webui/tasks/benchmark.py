@@ -216,6 +216,7 @@ async def _run_benchmark_async(
                 log.warning(
                     "Failed to update benchmark status: %s",
                     update_exc,
+                    exc_info=True,
                 )
 
             # Update operation status to FAILED
@@ -230,6 +231,7 @@ async def _run_benchmark_async(
                 log.warning(
                     "Failed to update operation status: %s",
                     op_update_exc,
+                    exc_info=True,
                 )
 
         finally:

@@ -218,6 +218,19 @@ ADAPTIVE_BATCH_SIZING=true # Enable adaptive batching
 | MAX_STORAGE_GB_PER_USER | 50.0 | Maximum storage per user (GB) |
 | CACHE_DEFAULT_TTL_SECONDS | 300 | Default cache TTL (seconds) |
 
+#### Benchmarking (Configurable)
+
+These control dataset upload quotas and whether mapping resolution runs synchronously in the HTTP request or is queued to Celery. See [api/BENCHMARKS_API.md](./api/BENCHMARKS_API.md) for endpoints, dataset schema, and progress events.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| BENCHMARK_DATASET_MAX_UPLOAD_BYTES | 10485760 | Maximum dataset upload size (bytes) |
+| BENCHMARK_DATASET_MAX_QUERIES | 1000 | Maximum number of queries per dataset |
+| BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY | 100 | Maximum relevance judgments per query |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS | 10000 | Max relevance refs for synchronous mapping resolution |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS | 50000 | Max collection document count for synchronous mapping resolution |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS | 8000 | Wall-clock budget (ms) for synchronous mapping resolution |
+
 #### Background Cleanup Circuit Breaker (Configurable)
 
 These control the Redis cleanup loop backoff and circuit breaker behavior:

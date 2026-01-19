@@ -352,7 +352,13 @@ class BenchmarkExecutor:
             completed_so_far: Number of runs already processed
         """
         run_id = str(run.id)
-        run_config = cast(dict[str, Any], run.config) or {}
+        run_config = cast(dict[str, Any], run.config)
+        if not run_config:
+            logger.warning(
+                "Run %s has no configuration, using defaults. This may indicate a bug.",
+                run_id,
+            )
+            run_config = {}
 
         # Extract search parameters from run config
         search_mode = run_config.get("search_mode", "dense")
@@ -567,10 +573,21 @@ class BenchmarkExecutor:
             # Convert BenchmarkSearchResult to expected types
             chunks: list[RetrievedChunk] = []
             for chunk in result.chunks:
+                doc_id = chunk.get("doc_id")
+                chunk_id = chunk.get("chunk_id")
+
+                if not doc_id or not chunk_id:
+                    logger.warning(
+                        "Chunk missing required fields in search result: doc_id=%s, chunk_id=%s",
+                        doc_id,
+                        chunk_id,
+                    )
+                    continue  # Skip malformed chunks
+
                 chunks.append(
                     RetrievedChunk(
-                        doc_id=chunk.get("doc_id", ""),
-                        chunk_id=chunk.get("chunk_id", ""),
+                        doc_id=doc_id,
+                        chunk_id=chunk_id,
                         score=chunk.get("score", 0.0),
                     )
                 )
@@ -674,7 +691,13 @@ class BenchmarkExecutor:
         primary_k defaults to 10. k_values_for_metrics defaults to [primary_k].
         Ensures primary_k is included and values are positive integers.
         """
-        config_matrix = cast(dict[str, Any], benchmark.config_matrix) or {}
+        config_matrix = cast(dict[str, Any], benchmark.config_matrix)
+        if not config_matrix:
+            logger.warning(
+                "Benchmark %s has no config_matrix, using defaults. This may indicate a bug.",
+                benchmark.id,
+            )
+            config_matrix = {}
 
         raw_primary_k = config_matrix.get("primary_k", 10)
         try:

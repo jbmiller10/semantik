@@ -859,7 +859,8 @@ class BenchmarkRepository:
         best_metric_value = float("-inf")
 
         for run in runs:
-            metrics = await self.get_metrics_for_run(run.id)
+            # Use eager-loaded metrics from selectinload instead of separate query
+            metrics = run.metrics
 
             metrics_flat: dict[str, float] = {}
             metrics_structured: dict[str, Any] = {

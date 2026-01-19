@@ -41,8 +41,17 @@ export const benchmarkKeys = {
   details: () => [...benchmarkKeys.all, 'detail'] as const,
   detail: (id: string) => [...benchmarkKeys.details(), id] as const,
   results: (id: string) => [...benchmarkKeys.all, 'results', id] as const,
-  queryResults: (benchmarkId: string, runId: string) =>
-    [...benchmarkKeys.all, 'query-results', benchmarkId, runId] as const,
+  queryResults: (benchmarkId: string, runId: string, params?: BenchmarkPaginationParams) =>
+    [
+      ...benchmarkKeys.all,
+      'query-results',
+      benchmarkId,
+      runId,
+      {
+        page: params?.page ?? 1,
+        per_page: params?.per_page ?? 50,
+      },
+    ] as const,
 };
 
 // =============================================================================
@@ -421,7 +430,7 @@ export function useBenchmarkQueryResults(
   params?: BenchmarkPaginationParams
 ) {
   return useQuery({
-    queryKey: benchmarkKeys.queryResults(benchmarkId, runId),
+    queryKey: benchmarkKeys.queryResults(benchmarkId, runId, params),
     queryFn: async () => {
       const response = await benchmarksApi.getQueryResults(benchmarkId, runId, params);
       return response.data;
