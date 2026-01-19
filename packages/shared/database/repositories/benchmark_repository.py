@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.orm import selectinload
 
 from shared.database.exceptions import AccessDeniedError, DatabaseOperationError, EntityNotFoundError, ValidationError
@@ -292,6 +292,87 @@ class BenchmarkRepository:
 
         benchmark.operation_uuid = operation_uuid
         await self.session.flush()
+        return benchmark
+
+    async def transition_status_atomically(
+        self,
+        benchmark_uuid: str,
+        from_status: BenchmarkStatus,
+        to_status: BenchmarkStatus,
+        operation_uuid: str | None = None,
+    ) -> Benchmark | None:
+        """Atomically transition benchmark status with race protection.
+
+        Uses UPDATE...WHERE for atomic conditional update. The WHERE clause
+        includes the current status, so the update only succeeds if the
+        benchmark is still in the expected state. This prevents TOCTOU race
+        conditions where two concurrent requests both check PENDING, then
+        both try to transition to RUNNING.
+
+        Args:
+            benchmark_uuid: UUID of the benchmark
+            from_status: Expected current status (update fails if not matched)
+            to_status: Target status to transition to
+            operation_uuid: Optional operation UUID to set atomically
+
+        Returns:
+            Updated Benchmark instance if transition succeeded, None if
+            the benchmark was not in the expected status (race lost)
+
+        Raises:
+            EntityNotFoundError: If benchmark not found at all
+        """
+        now = datetime.now(UTC)
+
+        # Build update values
+        values: dict[str, Any] = {
+            "status": to_status.value,
+        }
+
+        # Set timestamps based on target status
+        if to_status == BenchmarkStatus.RUNNING:
+            values["started_at"] = now
+        elif to_status in (BenchmarkStatus.COMPLETED, BenchmarkStatus.FAILED):
+            values["completed_at"] = now
+        elif to_status == BenchmarkStatus.CANCELLED:
+            values["cancelled_at"] = now
+
+        if operation_uuid is not None:
+            values["operation_uuid"] = operation_uuid
+
+        # Atomic conditional update
+        stmt = (
+            update(Benchmark)
+            .where(
+                Benchmark.id == benchmark_uuid,
+                Benchmark.status == from_status.value,
+            )
+            .values(**values)
+            .returning(Benchmark)
+        )
+
+        result = await self.session.execute(stmt)
+        benchmark = result.scalar_one_or_none()
+
+        if benchmark is None:
+            # Check if benchmark exists at all
+            exists = await self.get_by_uuid(benchmark_uuid)
+            if not exists:
+                raise EntityNotFoundError("benchmark", benchmark_uuid)
+            # Benchmark exists but wasn't in expected status (race lost)
+            logger.warning(
+                "Atomic transition failed for benchmark %s: expected status %s",
+                benchmark_uuid,
+                from_status.value,
+            )
+            return None
+
+        logger.info(
+            "Atomically transitioned benchmark %s from %s to %s",
+            benchmark_uuid,
+            from_status.value,
+            to_status.value,
+        )
         return benchmark
 
     async def set_total_runs(

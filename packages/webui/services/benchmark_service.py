@@ -270,6 +270,7 @@ class BenchmarkService:
         """Start benchmark execution.
 
         Creates an Operation record and dispatches the Celery task.
+        Uses atomic status transition to prevent race conditions.
 
         Args:
             benchmark_id: UUID of the benchmark
@@ -281,23 +282,17 @@ class BenchmarkService:
         Raises:
             EntityNotFoundError: If benchmark not found
             AccessDeniedError: If user doesn't own the benchmark
-            ValidationError: If benchmark is not in PENDING status
+            ValidationError: If benchmark is not in PENDING status or race lost
         """
+        # Verify ownership (raises EntityNotFoundError or AccessDeniedError)
         benchmark = await self.benchmark_repo.get_by_uuid_for_user(benchmark_id, user_id)
 
-        # Verify benchmark is PENDING
-        if cast(str, benchmark.status) != BenchmarkStatus.PENDING.value:
-            raise ValidationError(
-                f"Benchmark must be in PENDING status to start. Current status: {benchmark.status}",
-                "benchmark_id",
-            )
-
-        # Get mapping to find collection
+        # Get mapping to find collection (needed before operation creation)
         mapping = await self.benchmark_dataset_repo.get_mapping(cast(int, benchmark.mapping_id))
         if not mapping:
             raise EntityNotFoundError("benchmark_dataset_mapping", str(benchmark.mapping_id))
 
-        # Create operation record
+        # Create operation record first
         from shared.database.models import OperationType
 
         operation = await self.operation_repo.create(
@@ -307,8 +302,23 @@ class BenchmarkService:
             config={"benchmark_id": benchmark_id},
         )
 
-        # Link operation to benchmark
-        await self.benchmark_repo.set_operation(benchmark_id, str(operation.id))
+        # Atomically transition PENDING → RUNNING and link operation
+        # This prevents TOCTOU race conditions where two concurrent requests
+        # both check PENDING, then both try to start the benchmark
+        updated_benchmark = await self.benchmark_repo.transition_status_atomically(
+            benchmark_uuid=benchmark_id,
+            from_status=BenchmarkStatus.PENDING,
+            to_status=BenchmarkStatus.RUNNING,
+            operation_uuid=operation.uuid,
+        )
+
+        if updated_benchmark is None:
+            # Race lost or benchmark was not in PENDING status
+            raise ValidationError(
+                "Benchmark must be in PENDING status to start. "
+                "It may have been started by another request.",
+                "benchmark_id",
+            )
 
         # Commit before dispatching Celery task
         await self.db_session.commit()
@@ -319,7 +329,7 @@ class BenchmarkService:
         celery_app.send_task(
             "webui.tasks.benchmark.run_benchmark",
             kwargs={
-                "operation_uuid": str(operation.id),
+                "operation_uuid": operation.uuid,
                 "benchmark_id": benchmark_id,
             },
         )
@@ -327,13 +337,13 @@ class BenchmarkService:
         logger.info(
             "Started benchmark %s with operation %s",
             benchmark_id,
-            operation.id,
+            operation.uuid,
         )
 
         return {
             "id": benchmark_id,
             "status": BenchmarkStatus.RUNNING.value,
-            "operation_uuid": str(operation.id),
+            "operation_uuid": operation.uuid,
             "message": "Benchmark execution started",
         }
 

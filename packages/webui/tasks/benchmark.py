@@ -6,6 +6,7 @@ benchmark evaluation to the BenchmarkExecutor service.
 
 from __future__ import annotations
 
+import uuid
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
@@ -53,7 +54,7 @@ async def _resolve_session_factory() -> async_sessionmaker[AsyncSession]:
     time_limit=OPERATION_HARD_TIME_LIMIT,
 )
 def run_benchmark(
-    self: Any,  # noqa: ARG001 - Required for Celery bind=True
+    self: Any,
     operation_uuid: str,
     benchmark_id: str,
 ) -> dict[str, Any]:
@@ -66,25 +67,29 @@ def run_benchmark(
     4. Updates operation and benchmark status on completion
 
     Args:
-        self: Celery task instance (for retries)
+        self: Celery task instance (for retries and task_id)
         operation_uuid: UUID of the backing Operation record
         benchmark_id: UUID of the benchmark to execute
 
     Returns:
         Dictionary with execution results
     """
-    return cast(dict[str, Any], resolve_awaitable_sync(_run_benchmark_async(operation_uuid, benchmark_id)))
+    # Extract Celery task_id for operation tracking
+    task_id = self.request.id if hasattr(self, "request") and self.request else str(uuid.uuid4())
+    return cast(dict[str, Any], resolve_awaitable_sync(_run_benchmark_async(operation_uuid, benchmark_id, task_id)))
 
 
 async def _run_benchmark_async(
     operation_uuid: str,
     benchmark_id: str,
+    task_id: str,
 ) -> dict[str, Any]:
     """Async implementation of benchmark execution.
 
     Args:
         operation_uuid: UUID of the backing Operation record
         benchmark_id: UUID of the benchmark to execute
+        task_id: Celery task ID for operation tracking
 
     Returns:
         Dictionary with execution results
@@ -92,7 +97,7 @@ async def _run_benchmark_async(
     tasks_ns = _tasks_namespace()
     log = getattr(tasks_ns, "logger", logger)
 
-    log.info("Starting benchmark %s with operation %s", benchmark_id, operation_uuid)
+    log.info("Starting benchmark %s with operation %s (task_id=%s)", benchmark_id, operation_uuid, task_id)
 
     session_factory = await _resolve_session_factory()
 
@@ -125,6 +130,10 @@ async def _run_benchmark_async(
             result["error"] = f"Operation not found: {operation_uuid}"
             result["status"] = "failed"
             return result
+
+        # Store task_id for operation tracking (enables task cancellation)
+        await operation_repo.set_task_id(operation_uuid, task_id)
+        log.info("Set task_id %s for operation %s", task_id, operation_uuid)
 
         await operation_repo.update_status(
             operation_uuid,
