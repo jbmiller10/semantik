@@ -71,6 +71,41 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
     MAX_RECURSION_DEPTH = 100
     MAX_SPLIT_ITERATIONS = 10_000
 
+    @staticmethod
+    def _merge_small_splits(splits: list[str], min_size: int, max_size: int) -> list[str]:
+        """
+        Merge adjacent small splits when possible without exceeding max_size.
+
+        The recursive splitter should be lossless (never drop content). `min_size`
+        is treated as a soft target; we merge small fragments only when doing so
+        keeps the merged chunk within max_size.
+        """
+        if not splits:
+            return []
+
+        if min_size <= 0:
+            return [s for s in splits if s]
+
+        merged: list[str] = []
+        for split in splits:
+            if not split:
+                continue
+            if merged and len(merged[-1]) < min_size and len(merged[-1]) + len(split) <= max_size:
+                merged[-1] += split
+            else:
+                merged.append(split)
+
+        # Prefer merging a tiny tail into the previous chunk when it fits.
+        if (
+            len(merged) >= 2
+            and len(merged[-1]) < min_size
+            and len(merged[-2]) + len(merged[-1]) <= max_size
+        ):
+            merged[-2] += merged[-1]
+            merged.pop()
+
+        return merged
+
     def _init_llama_splitter(self, config: ChunkConfig) -> Any:
         """Initialize LlamaIndex splitter if needed."""
         if not self._use_llama_index or not self._llama_available:
@@ -414,7 +449,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
 
         # Base case: text is within size limits
         if len(text) <= max_size:
-            return [text] if len(text) >= min_size else []
+            # Lossless: never drop non-empty text due to min_size.
+            return [text] if text else []
 
         if not separators:
             return self._force_split_by_size(text, max_size, min_size)
@@ -436,15 +472,14 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                     # Check if adding this split would exceed max size
                     if current_chunk and len(current_chunk) + len(split) > max_size:
                         # Save current chunk and start new one
-                        if len(current_chunk) >= min_size:
-                            result.append(current_chunk)
+                        result.append(current_chunk)
                         current_chunk = split
                     else:
                         # Add to current chunk
                         current_chunk += split
 
                 # Add final chunk
-                if current_chunk and len(current_chunk) >= min_size:
+                if current_chunk:
                     result.append(current_chunk)
 
                 # Recursively process chunks that are still too large
@@ -464,7 +499,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                     else:
                         final_result.append(chunk)
 
-                return final_result
+                return self._merge_small_splits(final_result, min_size, max_size)
 
         return self._force_split_by_size(text, max_size, min_size)
 
@@ -475,14 +510,14 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         min_size: int,
     ) -> list[str]:
         """Split text by size when no separators work."""
-        result = []
-        for i in range(0, len(text), max_size):
-            chunk = text[i : i + max_size]
-            if len(chunk) >= min_size:
-                result.append(chunk)
-            elif result:
-                result[-1] += chunk
-        return result
+        if not text:
+            return []
+
+        if max_size <= 0:
+            return [text]
+
+        result = [text[i : i + max_size] for i in range(0, len(text), max_size)]
+        return self._merge_small_splits(result, min_size, max_size)
 
     @staticmethod
     def _validate_config(config: ChunkConfig) -> None:

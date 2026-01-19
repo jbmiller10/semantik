@@ -772,10 +772,12 @@ class SearchService:
             "quantization": collection.quantization,
             "search_mode": search_mode,
             "rrf_k": rrf_k,
-            "score_threshold": score_threshold,
             "use_reranker": use_reranker,
             "include_content": False,  # Not needed for metrics calculation
         }
+        # Only include score_threshold if specified (vecpipe rejects null)
+        if score_threshold is not None:
+            search_params["score_threshold"] = score_threshold
 
         # Note: Reranker model selection is handled by vecpipe based on the embedding model
         # We don't override it here for benchmark consistency
@@ -810,12 +812,12 @@ class SearchService:
                     search_time_ms = elapsed_ms - (rerank_time_ms or 0)
 
                     # Format chunks for metrics calculation
-                    # Each result has document_id, chunk_id, and score
+                    # Each result has doc_id, chunk_id, and score
                     chunks: list[dict[str, Any]] = []
                     for r in data.get("results", []):
                         chunks.append(
                             {
-                                "doc_id": r.get("document_id"),
+                                "doc_id": r.get("doc_id"),
                                 "chunk_id": r.get("chunk_id"),
                                 "score": r.get("score", 0.0),
                             }

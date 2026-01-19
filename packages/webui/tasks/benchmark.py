@@ -236,7 +236,7 @@ async def _run_benchmark_async(
 
         finally:
             # Ensure progress reporter is closed
-            progress_reporter.close()
+            await progress_reporter.close()
 
     return result
 
