@@ -165,4 +165,153 @@ describe('useBenchmarkProgress', () => {
       expect(onError).toHaveBeenCalledWith('nope')
     })
   })
+
+  it('ignores unrelated messages and updates state for granular benchmark events', async () => {
+    useAuthStore.setState({ token: 'token', refreshToken: null, user: null })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const onComplete = vi.fn()
+    const onError = vi.fn()
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const { result } = renderHook(
+      () => useBenchmarkProgress('bench-1', 'op-1', { onComplete, onError }),
+      { wrapper }
+    )
+
+    // Unrelated benchmark and unrelated operation id -> ignored
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'benchmark_progress',
+            data: { benchmark_id: 'other', operation_id: 'other-op', status: 'running' },
+          }),
+        })
+      )
+    })
+    expect(result.current.progress.status).toBe('pending')
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'benchmark_started',
+            data: { benchmark_id: 'bench-1', operation_id: 'op-1', total_runs: 3 },
+          }),
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.progress.totalRuns).toBe(3)
+      expect(result.current.progress.stage).toBe('evaluating')
+    })
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'benchmark_run_started',
+            data: {
+              benchmark_id: 'bench-1',
+              operation_id: 'op-1',
+              run_order: 1,
+              config: { search_mode: 'dense' },
+              total_queries: 2,
+            },
+          }),
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.progress.currentRunOrder).toBe(1)
+      expect(result.current.progress.currentQueries.total).toBe(2)
+    })
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'benchmark_query_processed',
+            data: { benchmark_id: 'bench-1', operation_id: 'op-1', processed: 1 },
+          }),
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.progress.currentQueries.processed).toBe(1)
+    })
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'benchmark_run_completed',
+            data: {
+              benchmark_id: 'bench-1',
+              operation_id: 'op-1',
+              run_id: 'run-1',
+              run_order: 1,
+              completed_runs: 1,
+              metrics: { mrr: 0.1 },
+            },
+          }),
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.progress.completedRuns).toBe(1)
+      expect(result.current.progress.recentMetrics).toHaveLength(1)
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: benchmarkKeys.results('bench-1') })
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'operation_failed',
+            data: { operation_id: 'op-1', error_message: 'boom' },
+          }),
+        })
+      )
+    })
+
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('boom'))
+
+    act(() => {
+      lastOnMessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({ type: 'operation_completed', data: { operation_id: 'op-1' } }),
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.progress.stage).toBe('completed')
+      expect(onComplete).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('does not throw on invalid JSON messages', () => {
+    useAuthStore.setState({ token: 'token', refreshToken: null, user: null })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderHook(() => useBenchmarkProgress('bench-1', 'op-1'), { wrapper })
+
+    act(() => {
+      lastOnMessage?.(new MessageEvent('message', { data: '{not-json' }))
+    })
+
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
 })

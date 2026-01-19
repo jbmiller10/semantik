@@ -362,6 +362,31 @@ describe('useBenchmarks hooks', () => {
     );
   });
 
+  it('shows warning toast when mapping resolution is partial and not queued', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = createWrapper(queryClient);
+
+    vi.mocked(benchmarkDatasetsApi.resolveMapping).mockResolvedValue({
+      data: {
+        id: 1,
+        operation_uuid: null,
+        mapping_status: 'partial',
+        mapped_count: 5,
+        total_count: 10,
+        unresolved: [],
+      },
+    } as MockAxiosResponse<MappingResolveResponse>);
+
+    const { result: resolveMapping } = renderHook(() => useResolveMapping(), { wrapper });
+    await act(async () => {
+      await resolveMapping.current.mutateAsync({ datasetId: 'ds-1', mappingId: 1 });
+    });
+
+    expect(addToast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'warning', message: expect.stringMatching(/partially resolved/i) })
+    );
+  });
+
   it('restores cached list data when dataset deletion fails', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = createWrapper(queryClient);
