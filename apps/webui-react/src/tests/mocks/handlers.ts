@@ -1,6 +1,101 @@
 import { http, HttpResponse } from 'msw'
 import type { Collection, Operation } from '../../types/collection'
 import type { ApiKeyResponse, ApiKeyCreateResponse, ApiKeyListResponse } from '../../types/api-key'
+import type {
+  Benchmark,
+  BenchmarkDataset,
+  BenchmarkListResponse,
+  BenchmarkResultsResponse,
+  BenchmarkRun,
+  BenchmarkRunStatus,
+  DatasetListResponse,
+  DatasetMapping,
+  MappingResolveResponse,
+  RunQueryResultsResponse,
+} from '../../types/benchmark'
+
+// =============================================================================
+// Benchmark in-memory mock state (used by contract-level tests)
+// =============================================================================
+
+let benchmarkDatasetsState: BenchmarkDataset[] = []
+let datasetTotalRefsById: Record<string, number> = {}
+let datasetMappingsState: DatasetMapping[] = []
+let benchmarksState: Benchmark[] = []
+let benchmarkRunsByBenchmarkId: Record<string, BenchmarkRun[]> = {}
+let runQueryResultsByRunId: Record<string, RunQueryResultsResponse> = {}
+let autoCompleteBenchmarksOnStart = false
+
+export function resetBenchmarkMocks(): void {
+  benchmarkDatasetsState = []
+  datasetTotalRefsById = {}
+  datasetMappingsState = []
+  benchmarksState = []
+  benchmarkRunsByBenchmarkId = {}
+  runQueryResultsByRunId = {}
+  autoCompleteBenchmarksOnStart = false
+}
+
+export function setBenchmarkAutoCompleteOnStart(enabled: boolean): void {
+  autoCompleteBenchmarksOnStart = enabled
+}
+
+function _markBenchmarkCompleted(benchmarkId: string): void {
+  const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+  if (index < 0) return
+
+  const now = new Date().toISOString()
+  const runs = (benchmarkRunsByBenchmarkId[benchmarkId] ?? []).map((run, idx) => ({
+    ...run,
+    status: 'completed' as BenchmarkRunStatus,
+    metrics: {
+      mrr: 0.5 + idx * 0.05,
+      precision: { '10': 0.6 + idx * 0.02 },
+      recall: { '10': 0.4 + idx * 0.02 },
+      ndcg: { '10': 0.55 + idx * 0.03 },
+    },
+    timing: {
+      indexing_ms: null,
+      evaluation_ms: null,
+      total_ms: 200 + idx * 50,
+    },
+  }))
+
+  benchmarkRunsByBenchmarkId[benchmarkId] = runs
+  const updated: Benchmark = {
+    ...benchmarksState[index],
+    status: 'completed',
+    completed_at: now,
+    completed_runs: runs.length,
+    failed_runs: 0,
+  }
+  benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+}
+
+function _paginate<T>(items: T[], pageRaw: string | null, perPageRaw: string | null) {
+  const page = Math.max(1, Number(pageRaw ?? 1))
+  const perPage = Math.min(100, Math.max(1, Number(perPageRaw ?? 50)))
+  const start = (page - 1) * perPage
+  const end = start + perPage
+  return { page, perPage, total: items.length, items: items.slice(start, end) }
+}
+
+function _countTotalRefsFromDatasetFile(raw: unknown): { schemaVersion: string; queryCount: number; totalRefs: number } {
+  if (!raw || typeof raw !== 'object') return { schemaVersion: '1.0', queryCount: 0, totalRefs: 0 }
+  const obj = raw as Record<string, unknown>
+  const schemaVersion = typeof obj.schema_version === 'string' ? obj.schema_version : '1.0'
+  const queries = Array.isArray(obj.queries) ? obj.queries : []
+
+  let totalRefs = 0
+  for (const q of queries) {
+    if (!q || typeof q !== 'object') continue
+    const qObj = q as Record<string, unknown>
+    const relevantDocs = Array.isArray(qObj.relevant_docs) ? qObj.relevant_docs : []
+    totalRefs += relevantDocs.length
+  }
+
+  return { schemaVersion, queryCount: queries.length, totalRefs }
+}
 
 export const handlers = [
   // Auth endpoints
@@ -1001,5 +1096,364 @@ export const handlers = [
       created_at: '2025-01-01T00:00:00Z',
     }
     return HttpResponse.json(response)
+  }),
+
+  // =============================================================================
+  // Benchmark Datasets + Benchmarks (v2)
+  // =============================================================================
+
+  http.get('/api/v2/benchmark-datasets', ({ request }) => {
+    const { page, perPage, total, items } = _paginate(
+      benchmarkDatasetsState,
+      request.url.searchParams.get('page'),
+      request.url.searchParams.get('per_page'),
+    )
+
+    const response: DatasetListResponse = {
+      datasets: items,
+      total,
+      page,
+      per_page: perPage,
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.get('/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
+    const dataset = benchmarkDatasetsState.find((d) => d.id === String(params.datasetId))
+    if (!dataset) {
+      return HttpResponse.json({ detail: 'Dataset not found' }, { status: 404 })
+    }
+    return HttpResponse.json(dataset)
+  }),
+
+  http.post('/api/v2/benchmark-datasets', async ({ request }) => {
+    const form = await request.formData()
+    const name = String(form.get('name') ?? '').trim()
+    const descriptionRaw = form.get('description')
+    const description = typeof descriptionRaw === 'string' && descriptionRaw.trim() ? descriptionRaw : null
+    const file = form.get('file')
+
+    if (!name) {
+      return HttpResponse.json({ detail: 'name is required' }, { status: 422 })
+    }
+    if (!(file instanceof File)) {
+      return HttpResponse.json({ detail: 'file is required' }, { status: 422 })
+    }
+
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(await file.text())
+    } catch {
+      return HttpResponse.json({ detail: 'Invalid JSON' }, { status: 400 })
+    }
+
+    const { schemaVersion, queryCount, totalRefs } = _countTotalRefsFromDatasetFile(parsed)
+    if (queryCount <= 0) {
+      return HttpResponse.json({ detail: 'Dataset must contain at least one query' }, { status: 400 })
+    }
+
+    const now = new Date().toISOString()
+    const dataset: BenchmarkDataset = {
+      id: `ds-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name,
+      description,
+      owner_id: 1,
+      query_count: queryCount,
+      schema_version: schemaVersion,
+      created_at: now,
+      updated_at: null,
+    }
+
+    benchmarkDatasetsState = [dataset, ...benchmarkDatasetsState]
+    datasetTotalRefsById[dataset.id] = totalRefs
+
+    return HttpResponse.json(dataset, { status: 201 })
+  }),
+
+  http.delete('/api/v2/benchmark-datasets/:datasetId', ({ params }) => {
+    const datasetId = String(params.datasetId)
+    benchmarkDatasetsState = benchmarkDatasetsState.filter((d) => d.id !== datasetId)
+    datasetMappingsState = datasetMappingsState.filter((m) => m.dataset_id !== datasetId)
+    delete datasetTotalRefsById[datasetId]
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.post('/api/v2/benchmark-datasets/:datasetId/mappings', async ({ params, request }) => {
+    const datasetId = String(params.datasetId)
+    const dataset = benchmarkDatasetsState.find((d) => d.id === datasetId)
+    if (!dataset) {
+      return HttpResponse.json({ detail: 'Dataset not found' }, { status: 404 })
+    }
+
+    const body = await request.json() as { collection_id: string }
+    const existing = datasetMappingsState.find((m) => m.dataset_id === datasetId && m.collection_id === body.collection_id)
+    if (existing) {
+      return HttpResponse.json({ detail: 'Mapping already exists' }, { status: 409 })
+    }
+
+    const now = new Date().toISOString()
+    const mapping: DatasetMapping = {
+      id: Math.floor(Math.random() * 100000),
+      dataset_id: datasetId,
+      collection_id: body.collection_id,
+      mapping_status: 'pending',
+      mapped_count: 0,
+      total_count: datasetTotalRefsById[datasetId] ?? dataset.query_count,
+      created_at: now,
+      resolved_at: null,
+    }
+    datasetMappingsState = [mapping, ...datasetMappingsState]
+    return HttpResponse.json(mapping, { status: 201 })
+  }),
+
+  http.get('/api/v2/benchmark-datasets/:datasetId/mappings', ({ params }) => {
+    const datasetId = String(params.datasetId)
+    const mappings = datasetMappingsState.filter((m) => m.dataset_id === datasetId)
+    return HttpResponse.json(mappings)
+  }),
+
+  http.post('/api/v2/benchmark-datasets/:datasetId/mappings/:mappingId/resolve', ({ params }) => {
+    const mappingId = Number(params.mappingId)
+    const mappingIndex = datasetMappingsState.findIndex((m) => m.id === mappingId)
+    if (mappingIndex < 0) {
+      return HttpResponse.json({ detail: 'Mapping not found' }, { status: 404 })
+    }
+
+    const mapping = datasetMappingsState[mappingIndex]
+    const resolved: DatasetMapping = {
+      ...mapping,
+      mapping_status: 'resolved',
+      mapped_count: mapping.total_count,
+      resolved_at: new Date().toISOString(),
+    }
+    datasetMappingsState = [
+      ...datasetMappingsState.slice(0, mappingIndex),
+      resolved,
+      ...datasetMappingsState.slice(mappingIndex + 1),
+    ]
+
+    const response: MappingResolveResponse = {
+      id: resolved.id,
+      operation_uuid: null,
+      mapping_status: resolved.mapping_status,
+      mapped_count: resolved.mapped_count,
+      total_count: resolved.total_count,
+      unresolved: [],
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.get('/api/v2/benchmarks', ({ request }) => {
+    const statusFilter = request.url.searchParams.get('status_filter')
+    const filtered = statusFilter
+      ? benchmarksState.filter((b) => b.status === statusFilter)
+      : benchmarksState
+
+    const { page, perPage, total, items } = _paginate(
+      filtered,
+      request.url.searchParams.get('page'),
+      request.url.searchParams.get('per_page'),
+    )
+
+    const response: BenchmarkListResponse = {
+      benchmarks: items,
+      total,
+      page,
+      per_page: perPage,
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.get('/api/v2/benchmarks/:benchmarkId', ({ params }) => {
+    const benchmark = benchmarksState.find((b) => b.id === String(params.benchmarkId))
+    if (!benchmark) {
+      return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
+    }
+    return HttpResponse.json(benchmark)
+  }),
+
+  http.post('/api/v2/benchmarks', async ({ request }) => {
+    const body = await request.json() as {
+      name: string
+      description?: string
+      mapping_id: number
+      config_matrix: {
+        search_modes: string[]
+        use_reranker: boolean[]
+        top_k_values?: number[]
+        rrf_k_values?: number[]
+        score_thresholds?: Array<number | null>
+        primary_k?: number
+        k_values_for_metrics?: number[]
+      }
+      top_k?: number
+      metrics_to_compute?: string[]
+    }
+
+    const now = new Date().toISOString()
+    const benchmarkId = `bench-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    const benchmark: Benchmark = {
+      id: benchmarkId,
+      name: body.name,
+      description: body.description ?? null,
+      owner_id: 1,
+      mapping_id: body.mapping_id,
+      status: 'pending',
+      total_runs: 0,
+      completed_runs: 0,
+      failed_runs: 0,
+      created_at: now,
+      started_at: null,
+      completed_at: null,
+      operation_uuid: null,
+    }
+
+    const searchModes = Array.isArray(body.config_matrix?.search_modes) ? body.config_matrix.search_modes : ['dense']
+    const useReranker = Array.isArray(body.config_matrix?.use_reranker) ? body.config_matrix.use_reranker : [false]
+    const topKValues = body.config_matrix?.top_k_values?.length ? body.config_matrix.top_k_values : [body.top_k ?? 10]
+    const rrfKValues = body.config_matrix?.rrf_k_values?.length ? body.config_matrix.rrf_k_values : [60]
+    const scoreThresholds = body.config_matrix?.score_thresholds?.length ? body.config_matrix.score_thresholds : [null]
+
+    const runs: BenchmarkRun[] = []
+    let runOrder = 0
+    for (const searchMode of searchModes) {
+      for (const reranker of useReranker) {
+        for (const topK of topKValues) {
+          for (const rrfK of rrfKValues) {
+            for (const scoreThreshold of scoreThresholds) {
+              const status: BenchmarkRunStatus = 'pending'
+              runs.push({
+                id: `run-${benchmarkId}-${runOrder}`,
+                run_order: runOrder,
+                config_hash: `cfg-${runOrder}`,
+                config: {
+                  search_mode: searchMode,
+                  use_reranker: reranker,
+                  top_k: topK,
+                  rrf_k: rrfK,
+                  score_threshold: scoreThreshold,
+                },
+                status,
+                error_message: null,
+                metrics: { mrr: null, precision: {}, recall: {}, ndcg: {} },
+                metrics_flat: {},
+                timing: { indexing_ms: null, evaluation_ms: null, total_ms: null },
+              })
+              runOrder += 1
+            }
+          }
+        }
+      }
+    }
+
+    benchmark.total_runs = runs.length
+    benchmarksState = [benchmark, ...benchmarksState]
+    benchmarkRunsByBenchmarkId[benchmarkId] = runs
+    runQueryResultsByRunId = {
+      ...runQueryResultsByRunId,
+      ...Object.fromEntries(runs.map((r) => [r.id, { run_id: r.id, results: [], total: 0, page: 1, per_page: 50 }])),
+    }
+
+    return HttpResponse.json(benchmark, { status: 201 })
+  }),
+
+  http.post('/api/v2/benchmarks/:benchmarkId/start', ({ params }) => {
+    const benchmarkId = String(params.benchmarkId)
+    const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+    if (index < 0) {
+      return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
+    }
+
+    const operationUuid = `op-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const updated: Benchmark = {
+      ...benchmarksState[index],
+      status: 'running',
+      started_at: new Date().toISOString(),
+      operation_uuid: operationUuid,
+    }
+    benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+
+    if (autoCompleteBenchmarksOnStart) {
+      _markBenchmarkCompleted(benchmarkId)
+    }
+
+    return HttpResponse.json({
+      id: benchmarkId,
+      status: 'running',
+      operation_uuid: operationUuid,
+      message: 'Benchmark execution started',
+    })
+  }),
+
+  http.post('/api/v2/benchmarks/:benchmarkId/cancel', ({ params }) => {
+    const benchmarkId = String(params.benchmarkId)
+    const index = benchmarksState.findIndex((b) => b.id === benchmarkId)
+    if (index < 0) {
+      return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
+    }
+
+    const updated: Benchmark = {
+      ...benchmarksState[index],
+      status: 'cancelled',
+      completed_at: new Date().toISOString(),
+    }
+    benchmarksState = [...benchmarksState.slice(0, index), updated, ...benchmarksState.slice(index + 1)]
+    return HttpResponse.json(updated)
+  }),
+
+  http.get('/api/v2/benchmarks/:benchmarkId/results', ({ params }) => {
+    const benchmarkId = String(params.benchmarkId)
+    const benchmark = benchmarksState.find((b) => b.id === benchmarkId)
+    if (!benchmark) {
+      return HttpResponse.json({ detail: 'Benchmark not found' }, { status: 404 })
+    }
+
+    const runs = benchmarkRunsByBenchmarkId[benchmarkId] ?? []
+    const response: BenchmarkResultsResponse = {
+      benchmark_id: benchmarkId,
+      primary_k: 10,
+      k_values_for_metrics: [10],
+      runs,
+      summary: {
+        total_runs: runs.length,
+        completed_runs: benchmark.completed_runs,
+        failed_runs: benchmark.failed_runs,
+      },
+      total_runs: runs.length,
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.get('/api/v2/benchmarks/:benchmarkId/runs/:runId/queries', ({ params, request }) => {
+    const runId = String(params.runId)
+    const existing = runQueryResultsByRunId[runId]
+    if (!existing) {
+      return HttpResponse.json({ detail: 'Run not found' }, { status: 404 })
+    }
+
+    const { page, perPage } = _paginate(
+      existing.results,
+      request.url.searchParams.get('page'),
+      request.url.searchParams.get('per_page'),
+    )
+
+    const start = (page - 1) * perPage
+    const end = start + perPage
+    const response: RunQueryResultsResponse = {
+      run_id: runId,
+      results: existing.results.slice(start, end),
+      total: existing.total,
+      page,
+      per_page: perPage,
+    }
+    return HttpResponse.json(response)
+  }),
+
+  http.delete('/api/v2/benchmarks/:benchmarkId', ({ params }) => {
+    const benchmarkId = String(params.benchmarkId)
+    benchmarksState = benchmarksState.filter((b) => b.id !== benchmarkId)
+    delete benchmarkRunsByBenchmarkId[benchmarkId]
+    return new HttpResponse(null, { status: 204 })
   }),
 ]

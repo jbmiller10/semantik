@@ -22,7 +22,7 @@ const DEFAULT_CONFIG: ConfigMatrixItem = {
   search_modes: ['dense'],
   use_reranker: [false],
   top_k_values: [10],
-  rrf_k_values: [],
+  rrf_k_values: [60],
   score_thresholds: [null],
 };
 
