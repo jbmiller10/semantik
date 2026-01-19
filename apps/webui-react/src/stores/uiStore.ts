@@ -12,13 +12,13 @@ export type Theme = 'light' | 'dark' | 'system';
 
 export interface UIState {
   toasts: Toast[];
-  activeTab: 'search' | 'collections' | 'operations';
+  activeTab: 'search' | 'collections' | 'operations' | 'benchmarks';
   showDocumentViewer: { collectionId: string; docId: string; chunkId?: string } | null;
   showCollectionDetailsModal: string | null;
   theme: Theme;
   addToast: (toast: Omit<Toast, 'id' | 'timerId'>) => void;
   removeToast: (id: string) => void;
-  setActiveTab: (tab: 'search' | 'collections' | 'operations') => void;
+  setActiveTab: (tab: 'search' | 'collections' | 'operations' | 'benchmarks') => void;
   setShowDocumentViewer: (viewer: { collectionId: string; docId: string; chunkId?: string } | null) => void;
   setShowCollectionDetailsModal: (collectionId: string | null) => void;
   setTheme: (theme: Theme) => void;

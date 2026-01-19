@@ -5,6 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import SearchInterface from '../components/SearchInterface';
 import CollectionsDashboard from '../components/CollectionsDashboard';
 import ActiveOperationsTab from '../components/ActiveOperationsTab';
+import BenchmarksTab from '../components/BenchmarksTab';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 function HomePage() {
@@ -79,6 +80,11 @@ function HomePage() {
       {activeTab === 'operations' && (
         <ErrorBoundary>
           <ActiveOperationsTab />
+        </ErrorBoundary>
+      )}
+      {activeTab === 'benchmarks' && (
+        <ErrorBoundary>
+          <BenchmarksTab />
         </ErrorBoundary>
       )}
     </>
