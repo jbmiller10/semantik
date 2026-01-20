@@ -38,8 +38,8 @@ from webui.api.v2.model_manager_schemas import (
     TaskStatus,
 )
 from webui.auth import get_current_user
-from webui.dependencies import get_db
 from webui.celery_app import celery_app
+from webui.dependencies import get_db
 from webui.model_manager import task_state
 from webui.model_manager.task_state import CrossOpConflictError
 from webui.services.factory import get_redis_manager
@@ -402,10 +402,19 @@ async def download_model(
 
     # Initialize progress and dispatch task
     await task_state.init_task_progress(redis_client, task_id, model_id, "download")
-    celery_app.send_task(
-        "webui.tasks.model_manager.download_model",
-        args=[model_id, task_id],
-    )
+    try:
+        celery_app.send_task(
+            "webui.tasks.model_manager.download_model",
+            args=[model_id, task_id],
+        )
+    except Exception as e:
+        logger.exception("Failed to enqueue download task: model=%s, task_id=%s", model_id, task_id)
+        await task_state.update_task_progress(redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}")
+        await task_state.release_model_operation_if_owner(redis_client, model_id, "download", task_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to enqueue background download task",
+        ) from e
 
     logger.info("Download task dispatched: model=%s, task_id=%s", model_id, task_id)
 
@@ -606,10 +615,19 @@ async def delete_model_cache(
 
     # Initialize progress and dispatch task
     await task_state.init_task_progress(redis_client, task_id, model_id, "delete")
-    celery_app.send_task(
-        "webui.tasks.model_manager.delete_model",
-        args=[model_id, task_id],
-    )
+    try:
+        celery_app.send_task(
+            "webui.tasks.model_manager.delete_model",
+            args=[model_id, task_id],
+        )
+    except Exception as e:
+        logger.exception("Failed to enqueue delete task: model=%s, task_id=%s", model_id, task_id)
+        await task_state.update_task_progress(redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}")
+        await task_state.release_model_operation_if_owner(redis_client, model_id, "delete", task_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to enqueue background delete task",
+        ) from e
 
     logger.info("Delete task dispatched: model=%s, task_id=%s", model_id, task_id)
 

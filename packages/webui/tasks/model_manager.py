@@ -8,11 +8,13 @@ This module provides background tasks for:
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 from celery.exceptions import SoftTimeLimitExceeded
 
 from shared.config import settings
+from shared.model_manager.hf_cache import resolve_hf_cache_dir
 from webui.celery_app import celery_app
 from webui.model_manager import task_state
 from webui.services.redis_manager import RedisConfig, RedisManager
@@ -36,43 +38,36 @@ def _get_sync_redis_client() -> Any:
     return manager.sync_client
 
 
-class ProgressCallback:
-    """Custom progress callback for huggingface_hub downloads.
+class _TaskHeartbeat:
+    """Heartbeat thread that refreshes progress + active-key TTL while a task runs."""
 
-    Tracks download progress and updates Redis state.
-    """
+    def __init__(self, redis_client: Any, task_id: str, *, interval_seconds: int = 30) -> None:
+        self._redis_client = redis_client
+        self._task_id = task_id
+        self._interval_seconds = interval_seconds
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f"model-manager-heartbeat:{task_id}", daemon=True)
 
-    def __init__(
-        self,
-        redis_client: Any,
-        task_id: str,
-        model_id: str,
-    ) -> None:
-        self.redis_client = redis_client
-        self.task_id = task_id
-        self.model_id = model_id
-        self.total_bytes = 0
-        self.downloaded_bytes = 0
-        self._last_update_bytes = 0
-        self._update_threshold = 1024 * 1024  # Update every 1MB
+    def start(self) -> None:
+        self._thread.start()
 
-    def __call__(self, n: int) -> None:
-        """Called by huggingface_hub with bytes downloaded."""
-        self.downloaded_bytes += n
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
-        # Throttle updates to avoid Redis spam
-        if self.downloaded_bytes - self._last_update_bytes >= self._update_threshold:
-            self._last_update_bytes = self.downloaded_bytes
+    def _run(self) -> None:
+        while not self._stop_event.wait(self._interval_seconds):
             try:
                 task_state.update_task_progress_sync(
-                    self.redis_client,
-                    self.task_id,
+                    self._redis_client,
+                    self._task_id,
                     status="running",
-                    bytes_downloaded=self.downloaded_bytes,
-                    bytes_total=self.total_bytes,
+                    bytes_downloaded=0,
+                    bytes_total=0,
                 )
             except Exception as e:
-                logger.warning("Failed to update progress: %s", e)
+                logger.debug("Heartbeat progress update failed: %s", e)
 
 
 def _is_retryable_error(exc: Exception) -> bool:
@@ -153,26 +148,40 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         Dict with task_id, model_id, status, and optional error
     """
     redis_client = _get_sync_redis_client()
+    heartbeat: _TaskHeartbeat | None = None
+    operation = "download"
+    should_release = True
 
     try:
-        # Claim operation slot
-        claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, "download", task_id)
+        # Ensure we own the active operation slot.
+        # The API claims the op before enqueuing. This check prevents tasks from
+        # "stealing" locks or clearing another task's lock in finally.
+        active = task_state.get_active_operation_sync(redis_client, model_id)
+        if active is None:
+            # Fallback for direct task invocation (e.g., manual admin ops).
+            claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, operation, task_id)
+            if not claimed and existing_task_id and existing_task_id != task_id:
+                return {
+                    "task_id": task_id,
+                    "model_id": model_id,
+                    "status": "deduplicated",
+                    "existing_task_id": existing_task_id,
+                }
+        else:
+            active_operation, active_task_id = active
+            if active_operation != operation:
+                raise task_state.CrossOpConflictError(model_id, active_operation, active_task_id)
+            if active_task_id != task_id:
+                return {
+                    "task_id": task_id,
+                    "model_id": model_id,
+                    "status": "deduplicated",
+                    "existing_task_id": active_task_id,
+                }
 
-        if not claimed:
-            logger.info(
-                "Download already in progress for %s (task: %s)",
-                model_id,
-                existing_task_id,
-            )
-            return {
-                "task_id": task_id,
-                "model_id": model_id,
-                "status": "deduplicated",
-                "existing_task_id": existing_task_id,
-            }
-
-        # Initialize progress
-        task_state.init_task_progress_sync(redis_client, task_id, model_id, "download")
+        # Ensure progress exists (API usually initializes it before enqueue).
+        if not task_state.task_progress_exists_sync(redis_client, task_id):
+            task_state.init_task_progress_sync(redis_client, task_id, model_id, operation)
 
         # Update status to running
         task_state.update_task_progress_sync(redis_client, task_id, status="running", bytes_downloaded=0, bytes_total=0)
@@ -182,15 +191,15 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         # Import huggingface_hub here to avoid loading it in all workers
         from huggingface_hub import snapshot_download
 
-        # Create progress callback
-        progress_callback = ProgressCallback(redis_client, task_id, model_id)
+        # Keep Redis state fresh while snapshot_download runs (may take hours).
+        heartbeat = _TaskHeartbeat(redis_client, task_id, interval_seconds=30)
+        heartbeat.start()
 
         # Download the model
         # Note: HF_HOME environment variable controls cache location
         local_dir = snapshot_download(
             repo_id=model_id,
-            # tqdm_class parameter for progress tracking is internal to HF
-            # We use a simpler approach with file size monitoring
+            # Progress bytes are best-effort (status updates via heartbeat).
         )
 
         logger.info("Download complete for %s: %s", model_id, local_dir)
@@ -200,8 +209,8 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
             redis_client,
             task_id,
             status="completed",
-            bytes_downloaded=progress_callback.downloaded_bytes,
-            bytes_total=progress_callback.total_bytes,
+            bytes_downloaded=0,
+            bytes_total=0,
         )
 
         return {
@@ -256,6 +265,7 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
 
         if _is_retryable_error(e) and self.request.retries < self.max_retries:
             # Retry with exponential backoff
+            should_release = False
             raise self.retry(exc=e, countdown=30 * (2**self.request.retries)) from e
 
         # Final failure
@@ -273,11 +283,13 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         }
 
     finally:
-        # Always release the operation slot
-        try:
-            task_state.release_model_operation_sync(redis_client, model_id)
-        except Exception as e:
-            logger.warning("Failed to release operation slot for %s: %s", model_id, e)
+        if heartbeat is not None:
+            heartbeat.stop()
+        if should_release:
+            try:
+                task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
+            except Exception as e:
+                logger.warning("Failed to release operation slot for %s: %s", model_id, e)
 
 
 @celery_app.task(
@@ -308,26 +320,34 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         Dict with task_id, model_id, status, and optional error
     """
     redis_client = _get_sync_redis_client()
+    operation = "delete"
 
     try:
-        # Claim operation slot
-        claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, "delete", task_id)
+        # Ensure we own the active operation slot (API claims before enqueue).
+        active = task_state.get_active_operation_sync(redis_client, model_id)
+        if active is None:
+            claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, operation, task_id)
+            if not claimed and existing_task_id and existing_task_id != task_id:
+                return {
+                    "task_id": task_id,
+                    "model_id": model_id,
+                    "status": "deduplicated",
+                    "existing_task_id": existing_task_id,
+                }
+        else:
+            active_operation, active_task_id = active
+            if active_operation != operation:
+                raise task_state.CrossOpConflictError(model_id, active_operation, active_task_id)
+            if active_task_id != task_id:
+                return {
+                    "task_id": task_id,
+                    "model_id": model_id,
+                    "status": "deduplicated",
+                    "existing_task_id": active_task_id,
+                }
 
-        if not claimed:
-            logger.info(
-                "Delete already in progress for %s (task: %s)",
-                model_id,
-                existing_task_id,
-            )
-            return {
-                "task_id": task_id,
-                "model_id": model_id,
-                "status": "deduplicated",
-                "existing_task_id": existing_task_id,
-            }
-
-        # Initialize progress
-        task_state.init_task_progress_sync(redis_client, task_id, model_id, "delete")
+        if not task_state.task_progress_exists_sync(redis_client, task_id):
+            task_state.init_task_progress_sync(redis_client, task_id, model_id, operation)
 
         # Update status to running
         task_state.update_task_progress_sync(redis_client, task_id, status="running")
@@ -338,7 +358,7 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         from huggingface_hub import scan_cache_dir
 
         # Scan the cache
-        cache_info = scan_cache_dir()
+        cache_info = scan_cache_dir(resolve_hf_cache_dir())
 
         # Find the repo for this model
         target_repo = None
@@ -453,8 +473,8 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         }
 
     finally:
-        # Always release the operation slot
+        # Release the operation slot only if we still own it.
         try:
-            task_state.release_model_operation_sync(redis_client, model_id)
+            task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
         except Exception as e:
             logger.warning("Failed to release operation slot for %s: %s", model_id, e)

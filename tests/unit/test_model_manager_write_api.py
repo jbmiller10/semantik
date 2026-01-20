@@ -16,16 +16,12 @@ from httpx import ASGITransport, AsyncClient
 
 from shared.database import get_db
 from webui.api.v2.model_manager_schemas import (
-    ConflictType,
     ModelDownloadRequest,
     ModelUsageResponse,
-    TaskResponse,
-    TaskStatus,
 )
 from webui.auth import get_current_user
 from webui.main import app
 from webui.model_manager.task_state import CrossOpConflictError
-
 
 # =============================================================================
 # Fixtures

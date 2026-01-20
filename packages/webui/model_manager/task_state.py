@@ -53,10 +53,15 @@ def _progress_key(task_id: str) -> str:
     return f"{PROGRESS_KEY_PREFIX}{task_id}"
 
 
-def _parse_active_value(value: str | None) -> tuple[str, str] | None:
+def _parse_active_value(value: str | bytes | None) -> tuple[str, str] | None:
     """Parse active key value into (operation, task_id) or None."""
     if not value:
         return None
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except Exception:
+            return None
     parts = value.split(":", 1)
     if len(parts) != 2:
         return None
@@ -154,6 +159,26 @@ async def release_model_operation(
     key = _active_key(model_id)
     await redis_client.delete(key)
     logger.debug("Released operation slot for %s", model_id)
+
+async def release_model_operation_if_owner(
+    redis_client: aioredis.Redis,
+    model_id: str,
+    operation: str,
+    task_id: str,
+) -> bool:
+    """Release the active operation slot for a model if owned by (operation, task_id).
+
+    Returns:
+        True if the key was released, False otherwise.
+    """
+    key = _active_key(model_id)
+    existing_value = await redis_client.get(key)
+    existing = _parse_active_value(existing_value)
+    if existing != (operation, task_id):
+        return False
+    await redis_client.delete(key)
+    logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
+    return True
 
 
 async def get_active_operation(
@@ -290,6 +315,13 @@ async def get_task_progress(
 # Sync functions (for Celery tasks)
 # =============================================================================
 
+def task_progress_exists_sync(
+    redis_client: redis.Redis,
+    task_id: str,
+) -> bool:
+    """Return True if the task progress hash exists."""
+    return bool(redis_client.exists(_progress_key(task_id)))
+
 
 def claim_model_operation_sync(
     redis_client: redis.Redis,
@@ -356,6 +388,35 @@ def release_model_operation_sync(
     key = _active_key(model_id)
     redis_client.delete(key)
     logger.debug("Released operation slot for %s", model_id)
+
+def release_model_operation_if_owner_sync(
+    redis_client: redis.Redis,
+    model_id: str,
+    operation: str,
+    task_id: str,
+) -> bool:
+    """Release the active operation slot for a model if owned by (operation, task_id).
+
+    Returns:
+        True if the key was released, False otherwise.
+    """
+    key = _active_key(model_id)
+    existing_value = redis_client.get(key)
+    existing = _parse_active_value(existing_value)
+    if existing != (operation, task_id):
+        return False
+    redis_client.delete(key)
+    logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
+    return True
+
+def get_active_operation_sync(
+    redis_client: redis.Redis,
+    model_id: str,
+) -> tuple[str, str] | None:
+    """Synchronous version of get_active_operation for Celery tasks."""
+    key = _active_key(model_id)
+    value = redis_client.get(key)
+    return _parse_active_value(value)
 
 
 def update_task_progress_sync(

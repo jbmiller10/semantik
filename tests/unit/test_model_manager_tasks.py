@@ -17,8 +17,9 @@ class TestDownloadModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        # Claim succeeds
-        mock_task_state.claim_model_operation_sync.return_value = (True, None)
+        # Active lock is already owned by this task (normal path via API).
+        mock_task_state.get_active_operation_sync.return_value = ("download", "task-123")
+        mock_task_state.task_progress_exists_sync.return_value = True
 
         # Mock huggingface_hub.snapshot_download
         with patch("huggingface_hub.snapshot_download") as mock_download:
@@ -32,12 +33,13 @@ class TestDownloadModelTask:
         assert result["model_id"] == "test/model"
         assert result["local_dir"] == "/path/to/model"
 
-        # Verify init and update calls
-        mock_task_state.init_task_progress_sync.assert_called_once()
+        # Verify update calls (running + completed)
         assert mock_task_state.update_task_progress_sync.call_count >= 2  # running + completed
 
         # Verify release was called
-        mock_task_state.release_model_operation_sync.assert_called_once_with(mock_redis, "test/model")
+        mock_task_state.release_model_operation_if_owner_sync.assert_called_once_with(
+            mock_redis, "test/model", "download", "task-123"
+        )
 
     @patch("webui.tasks.model_manager._get_sync_redis_client")
     @patch("webui.tasks.model_manager.task_state")
@@ -48,8 +50,8 @@ class TestDownloadModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        # Claim returns existing task
-        mock_task_state.claim_model_operation_sync.return_value = (False, "existing-task")
+        # Active lock exists for a different task_id.
+        mock_task_state.get_active_operation_sync.return_value = ("download", "existing-task")
 
         result = download_model.run("test/model", "task-123")
 
@@ -68,10 +70,8 @@ class TestDownloadModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        # Claim raises conflict
-        mock_task_state.claim_model_operation_sync.side_effect = CrossOpConflictError(
-            "test/model", "delete", "delete-task"
-        )
+        # Active lock exists for the other operation.
+        mock_task_state.get_active_operation_sync.return_value = ("delete", "delete-task")
         mock_task_state.CrossOpConflictError = CrossOpConflictError
 
         result = download_model.run("test/model", "task-123")
@@ -88,7 +88,8 @@ class TestDownloadModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        mock_task_state.claim_model_operation_sync.return_value = (True, None)
+        mock_task_state.get_active_operation_sync.return_value = ("download", "task-123")
+        mock_task_state.task_progress_exists_sync.return_value = True
         mock_task_state.CrossOpConflictError = CrossOpConflictError
 
         with patch("huggingface_hub.snapshot_download") as mock_download:
@@ -100,7 +101,7 @@ class TestDownloadModelTask:
         assert "Permission denied" in result["error"]
 
         # Verify release was still called
-        mock_task_state.release_model_operation_sync.assert_called_once()
+        mock_task_state.release_model_operation_if_owner_sync.assert_called_once()
 
 
 class TestDeleteModelTask:
@@ -115,7 +116,8 @@ class TestDeleteModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        mock_task_state.claim_model_operation_sync.return_value = (True, None)
+        mock_task_state.get_active_operation_sync.return_value = ("delete", "task-123")
+        mock_task_state.task_progress_exists_sync.return_value = True
 
         # Mock scan_cache_dir
         with patch("huggingface_hub.scan_cache_dir") as mock_scan:
@@ -142,7 +144,7 @@ class TestDeleteModelTask:
         assert result["revisions_deleted"] == 1
         assert result["freed_bytes"] == 1024 * 1024 * 100
 
-        mock_task_state.release_model_operation_sync.assert_called_once()
+        mock_task_state.release_model_operation_if_owner_sync.assert_called_once()
 
     @patch("webui.tasks.model_manager._get_sync_redis_client")
     @patch("webui.tasks.model_manager.task_state")
@@ -153,7 +155,8 @@ class TestDeleteModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        mock_task_state.claim_model_operation_sync.return_value = (True, None)
+        mock_task_state.get_active_operation_sync.return_value = ("delete", "task-123")
+        mock_task_state.task_progress_exists_sync.return_value = True
 
         with patch("huggingface_hub.scan_cache_dir") as mock_scan:
             mock_cache_info = MagicMock()
@@ -173,7 +176,7 @@ class TestDeleteModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        mock_task_state.claim_model_operation_sync.return_value = (False, "existing-task")
+        mock_task_state.get_active_operation_sync.return_value = ("delete", "existing-task")
 
         result = delete_model.run("test/model", "task-123")
 
@@ -189,9 +192,7 @@ class TestDeleteModelTask:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        mock_task_state.claim_model_operation_sync.side_effect = CrossOpConflictError(
-            "test/model", "download", "download-task"
-        )
+        mock_task_state.get_active_operation_sync.return_value = ("download", "download-task")
         mock_task_state.CrossOpConflictError = CrossOpConflictError
 
         result = delete_model.run("test/model", "task-123")
