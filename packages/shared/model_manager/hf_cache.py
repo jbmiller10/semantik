@@ -144,15 +144,13 @@ def scan_hf_cache(
             logger.debug("huggingface_hub not installed - HF cache scan unavailable")
         except PermissionError as e:
             logger.warning(
-                "Permission denied scanning HF cache at %s: %s. "
-                "Models may show as not installed.",
+                "Permission denied scanning HF cache at %s: %s. " "Models may show as not installed.",
                 cache_dir,
                 e,
             )
         except Exception as e:
             logger.warning(
-                "Failed to scan HF cache at %s: %s. "
-                "Models may show as not installed.",
+                "Failed to scan HF cache at %s: %s. " "Models may show as not installed.",
                 cache_dir,
                 e,
             )

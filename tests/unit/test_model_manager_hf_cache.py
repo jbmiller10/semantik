@@ -242,9 +242,7 @@ class TestHFCacheErrorLogging:
     def test_import_error_logs_debug_message(self, caplog: pytest.LogCaptureFixture) -> None:
         """ImportError should log at debug level."""
         # Create a temporary directory that exists
-        with patch(
-            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
-        ) as mock_resolve:
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
             mock_resolve.return_value = Path("/tmp")
 
             # Mock the import to fail
@@ -262,27 +260,20 @@ class TestHFCacheErrorLogging:
 
         # Check the debug log message
         assert any(
-            "huggingface_hub not installed" in record.message
-            and record.levelno == logging.DEBUG
+            "huggingface_hub not installed" in record.message and record.levelno == logging.DEBUG
             for record in caplog.records
         )
 
-    def test_permission_error_logs_warning_with_path(
-        self, caplog: pytest.LogCaptureFixture, tmp_path: Path
-    ) -> None:
+    def test_permission_error_logs_warning_with_path(self, caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
         """PermissionError should log at warning level with cache path."""
         cache_dir = tmp_path / "test_cache"
         cache_dir.mkdir()
 
-        with patch(
-            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
-        ) as mock_resolve:
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
             mock_resolve.return_value = cache_dir
 
             # Mock scan_cache_dir to raise PermissionError
-            mock_scan = MagicMock(
-                side_effect=PermissionError("Permission denied: '/test/cache'")
-            )
+            mock_scan = MagicMock(side_effect=PermissionError("Permission denied: '/test/cache'"))
             with patch("huggingface_hub.scan_cache_dir", mock_scan):
                 with caplog.at_level(logging.WARNING, logger="shared.model_manager.hf_cache"):
                     result = scan_hf_cache(force_refresh=True)
@@ -293,30 +284,22 @@ class TestHFCacheErrorLogging:
 
         # Check the warning log message
         warning_records = [
-            r for r in caplog.records
-            if r.levelno == logging.WARNING
-            and "Permission denied" in r.message
+            r for r in caplog.records if r.levelno == logging.WARNING and "Permission denied" in r.message
         ]
         assert len(warning_records) == 1
         assert str(cache_dir) in warning_records[0].message
         assert "Models may show as not installed" in warning_records[0].message
 
-    def test_general_exception_logs_warning_with_path(
-        self, caplog: pytest.LogCaptureFixture, tmp_path: Path
-    ) -> None:
+    def test_general_exception_logs_warning_with_path(self, caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
         """General exceptions should log at warning level with cache path."""
         cache_dir = tmp_path / "test_cache"
         cache_dir.mkdir()
 
-        with patch(
-            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
-        ) as mock_resolve:
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
             mock_resolve.return_value = cache_dir
 
             # Mock scan_cache_dir to raise a general exception
-            mock_scan = MagicMock(
-                side_effect=RuntimeError("Unexpected cache format")
-            )
+            mock_scan = MagicMock(side_effect=RuntimeError("Unexpected cache format"))
             with patch("huggingface_hub.scan_cache_dir", mock_scan):
                 with caplog.at_level(logging.WARNING, logger="shared.model_manager.hf_cache"):
                     result = scan_hf_cache(force_refresh=True)
@@ -327,9 +310,7 @@ class TestHFCacheErrorLogging:
 
         # Check the warning log message
         warning_records = [
-            r for r in caplog.records
-            if r.levelno == logging.WARNING
-            and "Failed to scan HF cache" in r.message
+            r for r in caplog.records if r.levelno == logging.WARNING and "Failed to scan HF cache" in r.message
         ]
         assert len(warning_records) == 1
         assert str(cache_dir) in warning_records[0].message
