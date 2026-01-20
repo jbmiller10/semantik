@@ -52,9 +52,7 @@ class TestClaimModelOperation:
         mock_redis.get.return_value = "download:existing-task"
 
         with pytest.raises(CrossOpConflictError) as exc_info:
-            await task_state.claim_model_operation(
-                mock_redis, "test/model", "delete", "task-123"
-            )
+            await task_state.claim_model_operation(mock_redis, "test/model", "delete", "task-123")
 
         assert exc_info.value.model_id == "test/model"
         assert exc_info.value.active_operation == "download"
@@ -132,9 +130,7 @@ class TestInitTaskProgress:
         """Test that progress hash is created with correct fields."""
         mock_redis = AsyncMock()
 
-        await task_state.init_task_progress(
-            mock_redis, "task-123", "test/model", "download"
-        )
+        await task_state.init_task_progress(mock_redis, "task-123", "test/model", "download")
 
         # Verify hset was called
         mock_redis.hset.assert_called_once()
@@ -290,9 +286,7 @@ class TestSyncFunctions:
         mock_redis.get.return_value = "download:existing-task"
 
         with pytest.raises(CrossOpConflictError):
-            task_state.claim_model_operation_sync(
-                mock_redis, "test/model", "delete", "task-123"
-            )
+            task_state.claim_model_operation_sync(mock_redis, "test/model", "delete", "task-123")
 
     def test_release_model_operation_sync(self):
         """Test sync release deletes key."""
@@ -321,9 +315,7 @@ class TestSyncFunctions:
         """Test sync progress initialization."""
         mock_redis = MagicMock()
 
-        task_state.init_task_progress_sync(
-            mock_redis, "task-123", "test/model", "download"
-        )
+        task_state.init_task_progress_sync(mock_redis, "task-123", "test/model", "download")
 
         mock_redis.hset.assert_called_once()
         mock_redis.expire.assert_called_once()

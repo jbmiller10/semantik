@@ -37,9 +37,7 @@ class TestDownloadModelTask:
         assert mock_task_state.update_task_progress_sync.call_count >= 2  # running + completed
 
         # Verify release was called
-        mock_task_state.release_model_operation_sync.assert_called_once_with(
-            mock_redis, "test/model"
-        )
+        mock_task_state.release_model_operation_sync.assert_called_once_with(mock_redis, "test/model")
 
     @patch("webui.tasks.model_manager._get_sync_redis_client")
     @patch("webui.tasks.model_manager.task_state")
