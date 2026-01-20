@@ -10,6 +10,8 @@ import { useUIStore } from '../stores/uiStore';
 import type {
   ModelListResponse,
   ModelType,
+  ModelUsageResponse,
+  ModelManagerConflictResponse,
   TaskProgressResponse,
   TaskStatus,
 } from '../types/model-manager';
@@ -351,6 +353,281 @@ export function useModelDownloadProgress(
   };
 }
 
-// Phase 2C hooks - placeholders for future implementation
-// export function useModelUsage(modelId: string) { ... }
-// export function useDeleteModel() { ... }
+// =============================================================================
+// Model Usage Query Hook
+// =============================================================================
+
+export interface UseModelUsageOptions {
+  /** Only enable the query when true */
+  enabled?: boolean;
+}
+
+/**
+ * Hook to fetch model usage/preflight data before deletion.
+ * Returns blocking conditions, warnings, and whether confirmation is required.
+ *
+ * @example
+ * const { data: usage } = useModelUsage('model-id', { enabled: !!selectedModel });
+ * if (usage && !usage.can_delete) {
+ *   // Show blocking message
+ * }
+ */
+export function useModelUsage(
+  modelId: string | null,
+  options?: UseModelUsageOptions
+): {
+  data: ModelUsageResponse | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => void;
+} {
+  const { enabled = true } = options ?? {};
+
+  const query = useQuery({
+    queryKey: modelManagerKeys.usage(modelId ?? ''),
+    queryFn: () => {
+      if (!modelId) return null;
+      return modelManagerApi.getModelUsage(modelId);
+    },
+    enabled: enabled && !!modelId,
+    staleTime: 30 * 1000, // 30 seconds - usage data can change
+  });
+
+  return {
+    data: query.data ?? null,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error as Error | null,
+    refetch: query.refetch,
+  };
+}
+
+// =============================================================================
+// Delete Progress State
+// =============================================================================
+
+/**
+ * Delete progress information for a single model.
+ * Simpler than download - no bytes needed.
+ */
+export interface DeleteProgress {
+  taskId: string;
+  modelId: string;
+  status: TaskStatus;
+  error: string | null;
+  updatedAt: number;
+}
+
+/**
+ * Formatted delete progress with computed values for display.
+ */
+export interface FormattedDeleteProgress extends DeleteProgress {
+  isDeleting: boolean;
+  isFailed: boolean;
+}
+
+// =============================================================================
+// Delete Mutation Hook
+// =============================================================================
+
+export interface StartModelDeleteResult {
+  /** Start a delete for a model (with optional confirmation bypass) */
+  startDelete: (modelId: string, confirm?: boolean) => void;
+  /** Get task ID for a model (from recently started deletes) */
+  getTaskId: (modelId: string) => string | undefined;
+  /** Clear task ID for a model (after completion/dismissal) */
+  clearTaskId: (modelId: string) => void;
+  /** Check if mutation is pending */
+  isPending: boolean;
+  /** Last conflict response for handling requires_confirmation */
+  lastConflict: ModelManagerConflictResponse | null;
+  /** Clear the last conflict (after handling) */
+  clearConflict: () => void;
+}
+
+/**
+ * Hook to start model deletions.
+ * Tracks task IDs for recently started deletions.
+ * Handles 409 conflicts including requires_confirmation.
+ */
+export function useStartModelDelete(): StartModelDeleteResult {
+  const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
+
+  // Track recently started deletes: modelId -> taskId
+  const [startedDeletes, setStartedDeletes] = useState<Map<string, string>>(new Map());
+
+  // Track the last conflict response for requires_confirmation handling
+  const [lastConflict, setLastConflict] = useState<ModelManagerConflictResponse | null>(null);
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async ({ modelId, confirm }: { modelId: string; confirm?: boolean }) => {
+      return modelManagerApi.deleteModel(modelId, confirm);
+    },
+    onSuccess: (response, { modelId }) => {
+      // Clear any previous conflict
+      setLastConflict(null);
+
+      if (response.status === 'not_installed') {
+        // Handle immediate not_installed response
+        addToast({
+          type: 'info',
+          message: 'Model is already removed',
+        });
+        // Invalidate to refresh status
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        return;
+      }
+
+      if (response.task_id) {
+        // Track the task ID for immediate progress polling
+        setStartedDeletes((prev) => {
+          const next = new Map(prev);
+          next.set(modelId, response.task_id!);
+          return next;
+        });
+
+        // Invalidate model list to pick up active_delete_task_id
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+
+        // Show warnings if any
+        if (response.warnings.length > 0) {
+          addToast({
+            type: 'warning',
+            message: response.warnings.join(', '),
+          });
+        }
+      }
+    },
+    onError: (error, { modelId }) => {
+      // Handle 409 conflict
+      if (error instanceof AxiosError && error.response?.status === 409) {
+        const conflictData = error.response.data as ModelManagerConflictResponse;
+        const conflictType = conflictData?.conflict_type;
+
+        if (conflictType === 'cross_op_exclusion') {
+          addToast({
+            type: 'warning',
+            message: 'Cannot delete: another operation is in progress',
+          });
+        } else if (conflictType === 'in_use_block') {
+          const collections = conflictData?.blocked_by_collections || [];
+          addToast({
+            type: 'error',
+            message: `Cannot delete: model is used by ${collections.length} collection(s)`,
+          });
+        } else if (conflictType === 'requires_confirmation') {
+          // Store conflict for UI to handle
+          setLastConflict({
+            ...conflictData,
+            model_id: modelId,
+          });
+          return; // Don't show toast - UI will show confirmation dialog
+        } else {
+          addToast({
+            type: 'error',
+            message: conflictData?.detail || 'Operation conflict',
+          });
+        }
+        return;
+      }
+
+      const errorMessage = handleApiError(error);
+      addToast({
+        type: 'error',
+        message: `Delete failed: ${errorMessage}`,
+      });
+    },
+  });
+
+  // Start delete
+  const startDelete = useCallback(
+    (modelId: string, confirm?: boolean) => {
+      // Clear any existing entry for this model (for retry)
+      setStartedDeletes((prev) => {
+        if (prev.has(modelId)) {
+          const next = new Map(prev);
+          next.delete(modelId);
+          return next;
+        }
+        return prev;
+      });
+
+      deleteMutation.mutate({ modelId, confirm });
+    },
+    [deleteMutation]
+  );
+
+  // Get task ID for a model
+  const getTaskId = useCallback(
+    (modelId: string): string | undefined => {
+      return startedDeletes.get(modelId);
+    },
+    [startedDeletes]
+  );
+
+  // Clear task ID for a model
+  const clearTaskId = useCallback((modelId: string) => {
+    setStartedDeletes((prev) => {
+      const next = new Map(prev);
+      next.delete(modelId);
+      return next;
+    });
+  }, []);
+
+  // Clear last conflict
+  const clearConflict = useCallback(() => {
+    setLastConflict(null);
+  }, []);
+
+  return {
+    startDelete,
+    getTaskId,
+    clearTaskId,
+    isPending: deleteMutation.isPending,
+    lastConflict,
+    clearConflict,
+  };
+}
+
+// =============================================================================
+// Model Delete Progress Hook
+// =============================================================================
+
+export interface UseModelDeleteProgressOptions {
+  /** Callback when delete reaches terminal status */
+  onTerminal?: (progress: TaskProgressResponse) => void;
+}
+
+/**
+ * Hook to track delete progress for a specific model.
+ * Combines useTaskProgress with delete-specific logic.
+ */
+export function useModelDeleteProgress(
+  modelId: string | null,
+  taskId: string | null,
+  options?: UseModelDeleteProgressOptions
+): FormattedDeleteProgress | null {
+  const { onTerminal } = options ?? {};
+
+  const { data } = useTaskProgress(taskId, {
+    onTerminal,
+  });
+
+  if (!data || !modelId) return null;
+
+  const isDeleting = data.status === 'pending' || data.status === 'running';
+  const isFailed = data.status === 'failed';
+
+  return {
+    taskId: data.task_id,
+    modelId: data.model_id,
+    status: data.status,
+    error: data.error,
+    updatedAt: data.updated_at,
+    isDeleting,
+    isFailed,
+  };
+}

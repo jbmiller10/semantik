@@ -1,9 +1,11 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { RefreshCw, Search, HardDrive, AlertCircle } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { RefreshCw, Search, HardDrive, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   useModelManagerModels,
   useStartModelDownload,
   useModelDownloadProgress,
+  useStartModelDelete,
+  useModelDeleteProgress,
   modelManagerKeys,
 } from '../../../hooks/useModelManager';
 import type { ModelType, CuratedModelResponse, TaskProgressResponse } from '../../../types/model-manager';
@@ -21,30 +23,193 @@ function formatSize(mb: number): string {
   return `${mb} MB`;
 }
 
+// =============================================================================
+// Delete Confirmation Modal
+// =============================================================================
+
+interface DeleteConfirmationState {
+  modelId: string;
+  modelName: string;
+  estimatedFreedSize: number | null;
+  warnings: string[];
+}
+
+interface DeleteConfirmModalProps {
+  confirmation: DeleteConfirmationState;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}
+
+function DeleteConfirmModal({
+  confirmation,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: DeleteConfirmModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isDeleting) {
+        onCancel();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onCancel, isDeleting]);
+
+  // Focus trap for accessibility
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    const focusableElements = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement?.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement?.focus();
+      }
+    };
+
+    // Focus first focusable element on mount
+    firstElement?.focus();
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-black/50 dark:bg-black/80 z-[60]"
+        onClick={isDeleting ? undefined : onCancel}
+      />
+      <div
+        ref={modalRef}
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel rounded-xl shadow-2xl z-[60] w-full max-w-md"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-modal-title"
+      >
+        {/* Content */}
+        <div className="p-6">
+          <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-500/20 rounded-full">
+            <AlertTriangle className="w-6 h-6 text-red-500" />
+          </div>
+
+          <h3
+            id="delete-modal-title"
+            className="mt-4 text-lg font-semibold text-[var(--text-primary)] text-center"
+          >
+            Delete Model
+          </h3>
+
+          <p className="mt-2 text-sm text-[var(--text-muted)] text-center">
+            Are you sure you want to delete{' '}
+            <span className="font-medium text-[var(--text-primary)]">
+              "{confirmation.modelName}"
+            </span>
+            ?
+          </p>
+
+          {confirmation.estimatedFreedSize !== null && (
+            <p className="mt-2 text-sm text-[var(--text-secondary)] text-center">
+              This will free approximately{' '}
+              <span className="font-medium">{formatSize(confirmation.estimatedFreedSize)}</span>{' '}
+              of disk space.
+            </p>
+          )}
+
+          {/* Warnings */}
+          {confirmation.warnings.length > 0 && (
+            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-amber-300">
+                  <span className="font-medium">Warnings:</span>
+                  <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                    {confirmation.warnings.map((warning, index) => (
+                      <li key={index} className="text-amber-400">
+                        {warning}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border)] flex justify-end gap-3 rounded-b-xl">
+          <button
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Delete Model
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /**
- * Wrapper component for ModelCard that handles download progress polling.
- * Each instance calls useModelDownloadProgress for its own model.
+ * Wrapper component for ModelCard that handles download and delete progress polling.
+ * Each instance calls useModelDownloadProgress and useModelDeleteProgress for its own model.
  */
 interface ModelCardWithDownloadProps {
   model: CuratedModelResponse;
-  taskId: string | null;
+  downloadTaskId: string | null;
+  deleteTaskId: string | null;
   onDownload: (modelId: string) => void;
   onDelete?: (modelId: string) => void;
-  onTerminal: (modelId: string, progress: TaskProgressResponse) => void;
-  onDismissError: (modelId: string) => void;
+  onDownloadTerminal: (modelId: string, progress: TaskProgressResponse) => void;
+  onDeleteTerminal: (modelId: string, progress: TaskProgressResponse) => void;
+  onDismissDownloadError: (modelId: string) => void;
+  onDismissDeleteError: (modelId: string) => void;
 }
 
 function ModelCardWithDownload({
   model,
-  taskId,
+  downloadTaskId,
+  deleteTaskId,
   onDownload,
   onDelete,
-  onTerminal,
-  onDismissError,
+  onDownloadTerminal,
+  onDeleteTerminal,
+  onDismissDownloadError,
+  onDismissDeleteError,
 }: ModelCardWithDownloadProps) {
   // Poll for download progress when we have a task ID
-  const downloadProgress = useModelDownloadProgress(model.id, taskId, {
-    onTerminal: (progress) => onTerminal(model.id, progress),
+  const downloadProgress = useModelDownloadProgress(model.id, downloadTaskId, {
+    onTerminal: (progress) => onDownloadTerminal(model.id, progress),
+  });
+
+  // Poll for delete progress when we have a task ID
+  const deleteProgress = useModelDeleteProgress(model.id, deleteTaskId, {
+    onTerminal: (progress) => onDeleteTerminal(model.id, progress),
   });
 
   return (
@@ -53,8 +218,11 @@ function ModelCardWithDownload({
       onDownload={onDownload}
       onDelete={onDelete}
       downloadProgress={downloadProgress}
+      deleteProgress={deleteProgress}
       onRetry={onDownload}
-      onDismissError={onDismissError}
+      onDismissError={onDismissDownloadError}
+      onRetryDelete={onDelete}
+      onDismissDeleteError={onDismissDeleteError}
     />
   );
 }
@@ -68,7 +236,26 @@ export default function ModelsSettings() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Download management
-  const { startDownload, getTaskId, clearTaskId } = useStartModelDownload();
+  const {
+    startDownload,
+    getTaskId: getDownloadTaskId,
+    clearTaskId: clearDownloadTaskId,
+  } = useStartModelDownload();
+
+  // Delete management
+  const {
+    startDelete,
+    getTaskId: getDeleteTaskId,
+    clearTaskId: clearDeleteTaskId,
+    isPending: isDeletePending,
+    lastConflict,
+    clearConflict,
+  } = useStartModelDelete();
+
+  // Delete confirmation state
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(
+    null
+  );
 
   const {
     data,
@@ -137,7 +324,7 @@ export default function ModelsSettings() {
   const handleDownloadTerminal = useCallback(
     (modelId: string, progress: TaskProgressResponse) => {
       // Clear the task ID from our local state
-      clearTaskId(modelId);
+      clearDownloadTaskId(modelId);
 
       // Handle based on status
       if (progress.status === 'completed') {
@@ -160,38 +347,124 @@ export default function ModelsSettings() {
         queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
       }
     },
-    [clearTaskId, addToast, queryClient]
+    [clearDownloadTaskId, addToast, queryClient]
   );
 
-  // Handle dismiss error - clear task ID
-  const handleDismissError = useCallback(
-    (modelId: string) => {
-      clearTaskId(modelId);
+  // Handle delete completion/failure
+  const handleDeleteTerminal = useCallback(
+    (modelId: string, progress: TaskProgressResponse) => {
+      // Clear the task ID from our local state
+      clearDeleteTaskId(modelId);
+
+      // Handle based on status
+      if (progress.status === 'completed' || progress.status === 'not_installed') {
+        addToast({
+          type: 'success',
+          message: 'Model deleted successfully',
+        });
+        // Invalidate to refresh the model list
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+      } else if (progress.status === 'failed') {
+        addToast({
+          type: 'error',
+          message: progress.error ?? 'Delete failed',
+        });
+      }
     },
-    [clearTaskId]
+    [clearDeleteTaskId, addToast, queryClient]
   );
 
-  // Get the effective task ID for a model (from recently started download or from model data)
-  const getEffectiveTaskId = useCallback(
+  // Handle dismiss download error - clear task ID
+  const handleDismissDownloadError = useCallback(
+    (modelId: string) => {
+      clearDownloadTaskId(modelId);
+    },
+    [clearDownloadTaskId]
+  );
+
+  // Handle dismiss delete error - clear task ID
+  const handleDismissDeleteError = useCallback(
+    (modelId: string) => {
+      clearDeleteTaskId(modelId);
+    },
+    [clearDeleteTaskId]
+  );
+
+  // Get the effective download task ID for a model
+  const getEffectiveDownloadTaskId = useCallback(
     (model: CuratedModelResponse): string | null => {
       // First check if we have a recently started download
-      const startedTaskId = getTaskId(model.id);
+      const startedTaskId = getDownloadTaskId(model.id);
       if (startedTaskId) return startedTaskId;
 
       // Fall back to the model's active download task (for resumability on page refresh)
       return model.active_download_task_id;
     },
-    [getTaskId]
+    [getDownloadTaskId]
   );
 
-  // Sync active downloads from model data on mount (for resumability)
-  useEffect(() => {
-    // This effect intentionally runs on every data change to sync active downloads
-    // No action needed here as getEffectiveTaskId already handles the model.active_download_task_id
-  }, [data?.models]);
+  // Get the effective delete task ID for a model
+  const getEffectiveDeleteTaskId = useCallback(
+    (model: CuratedModelResponse): string | null => {
+      // First check if we have a recently started delete
+      const startedTaskId = getDeleteTaskId(model.id);
+      if (startedTaskId) return startedTaskId;
 
-  // Phase 2C: Delete will be implemented later
-  // const handleDelete = (modelId: string) => { ... }
+      // Fall back to the model's active delete task (for resumability on page refresh)
+      return model.active_delete_task_id;
+    },
+    [getDeleteTaskId]
+  );
+
+  // Handle delete button click - initiate delete (may trigger confirmation dialog)
+  const handleDeleteClick = useCallback(
+    (modelId: string) => {
+      // Start delete without confirmation - API will return requires_confirmation if needed
+      startDelete(modelId, false);
+    },
+    [startDelete]
+  );
+
+  // Handle confirm delete from modal
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteConfirmation) return;
+
+    // Start delete with confirmation bypass
+    startDelete(deleteConfirmation.modelId, true);
+
+    // Close the dialog
+    setDeleteConfirmation(null);
+  }, [deleteConfirmation, startDelete]);
+
+  // Handle cancel delete from modal
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirmation(null);
+    clearConflict();
+  }, [clearConflict]);
+
+  // Watch for requires_confirmation conflict and open the confirmation dialog
+  useEffect(() => {
+    if (lastConflict && lastConflict.conflict_type === 'requires_confirmation') {
+      // Find the model to get its name and size
+      const model = data?.models?.find((m) => m.id === lastConflict.model_id);
+      if (model) {
+        setDeleteConfirmation({
+          modelId: lastConflict.model_id,
+          modelName: model.name,
+          estimatedFreedSize: model.size_on_disk_mb,
+          warnings: lastConflict.warnings || [],
+        });
+      }
+      // Clear the conflict so it doesn't trigger again
+      clearConflict();
+    }
+  }, [lastConflict, data?.models, clearConflict]);
+
+  // Sync active downloads/deletes from model data on mount (for resumability)
+  useEffect(() => {
+    // This effect intentionally runs on every data change to sync active tasks
+    // No action needed here as getEffectiveTaskId functions already handle the model's active task IDs
+  }, [data?.models]);
 
   if (isError) {
     return (
@@ -353,14 +626,27 @@ export default function ModelsSettings() {
             <ModelCardWithDownload
               key={model.id}
               model={model}
-              taskId={getEffectiveTaskId(model)}
+              downloadTaskId={getEffectiveDownloadTaskId(model)}
+              deleteTaskId={getEffectiveDeleteTaskId(model)}
               onDownload={startDownload}
-              onDelete={undefined} // Phase 2C: Delete will be implemented later
-              onTerminal={handleDownloadTerminal}
-              onDismissError={handleDismissError}
+              onDelete={handleDeleteClick}
+              onDownloadTerminal={handleDownloadTerminal}
+              onDeleteTerminal={handleDeleteTerminal}
+              onDismissDownloadError={handleDismissDownloadError}
+              onDismissDeleteError={handleDismissDeleteError}
             />
           ))}
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation && (
+        <DeleteConfirmModal
+          confirmation={deleteConfirmation}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+          isDeleting={isDeletePending}
+        />
       )}
     </div>
   );

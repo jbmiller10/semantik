@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import type { CuratedModelResponse } from '../../../types/model-manager';
 import { MODEL_TYPE_LABELS } from '../../../types/model-manager';
-import type { FormattedDownloadProgress } from '../../../hooks/useModelManager';
+import type { FormattedDownloadProgress, FormattedDeleteProgress } from '../../../hooks/useModelManager';
 
 interface ModelCardProps {
   model: CuratedModelResponse;
@@ -23,10 +23,16 @@ interface ModelCardProps {
   onDelete?: (modelId: string) => void;
   /** Download progress from useModelDownloadProgress hook */
   downloadProgress?: FormattedDownloadProgress | null;
+  /** Delete progress from useModelDeleteProgress hook */
+  deleteProgress?: FormattedDeleteProgress | null;
   /** Callback to retry a failed download */
   onRetry?: (modelId: string) => void;
   /** Callback to dismiss error state */
   onDismissError?: (modelId: string) => void;
+  /** Callback to retry a failed delete */
+  onRetryDelete?: (modelId: string) => void;
+  /** Callback to dismiss delete error state */
+  onDismissDeleteError?: (modelId: string) => void;
 }
 
 function formatSize(mb: number | null): string {
@@ -115,13 +121,74 @@ function DownloadProgressBar({ progress, onRetry, onDismiss }: DownloadProgressB
   return null;
 }
 
+interface DeleteProgressBarProps {
+  progress: FormattedDeleteProgress;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}
+
+/**
+ * Progress indicator component for delete operations.
+ * Shows spinner during delete, error message + Retry/Dismiss buttons on failure.
+ * Simpler than download - no percentage or bytes needed.
+ */
+function DeleteProgressBar({ progress, onRetry, onDismiss }: DeleteProgressBarProps) {
+  if (progress.isFailed) {
+    return (
+      <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-red-400 min-w-0">
+            <AlertCircle className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">{progress.error ?? 'Delete failed'}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border border-red-500/50 text-red-400 hover:bg-red-500/10"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </button>
+            )}
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                className="p-1 rounded hover:bg-red-500/10 text-red-400"
+                title="Dismiss"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (progress.isDeleting) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-amber-400">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span>Deleting model files...</span>
+      </div>
+    );
+  }
+
+  // For completed or other statuses, don't show anything
+  return null;
+}
+
 export default function ModelCard({
   model,
   onDownload,
   onDelete,
   downloadProgress,
+  deleteProgress,
   onRetry,
   onDismissError,
+  onRetryDelete,
+  onDismissDeleteError,
 }: ModelCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -130,7 +197,10 @@ export default function ModelCard({
     downloadProgress?.status === 'pending' ||
     downloadProgress?.status === 'running' ||
     downloadProgress?.status === 'failed';
-  const hasActiveDeleteTask = !!model.active_delete_task_id;
+
+  // Determine if there's an active delete (from progress hook or model data)
+  const isDeleting = deleteProgress?.isDeleting || deleteProgress?.isFailed;
+  const hasActiveDeleteTask = !!model.active_delete_task_id || isDeleting;
 
   // Only show download button if not installed, not downloading, and handler provided
   const hasDownloadAction = !model.is_installed && !isDownloading && onDownload;
@@ -245,10 +315,19 @@ export default function ModelCard({
         />
       )}
 
-      {/* Delete Task Warning (only show if no download progress) */}
-      {hasActiveDeleteTask && !downloadProgress && (
+      {/* Delete Progress (only show if no download progress) */}
+      {deleteProgress && !downloadProgress && (
+        <DeleteProgressBar
+          progress={deleteProgress}
+          onRetry={onRetryDelete ? () => onRetryDelete(model.id) : undefined}
+          onDismiss={onDismissDeleteError ? () => onDismissDeleteError(model.id) : undefined}
+        />
+      )}
+
+      {/* Delete Task Warning (fallback for active task without progress tracking) */}
+      {hasActiveDeleteTask && !downloadProgress && !deleteProgress && (
         <div className="mt-3 flex items-center gap-2 text-xs text-amber-400">
-          <AlertCircle className="w-3 h-3" />
+          <Loader2 className="w-3 h-3 animate-spin" />
           Deletion in progress...
         </div>
       )}
