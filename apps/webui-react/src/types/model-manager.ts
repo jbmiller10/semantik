@@ -120,6 +120,26 @@ export const MODEL_TYPE_LABELS: Record<ModelType, string> = {
 
 export const MODEL_TYPE_ORDER: ModelType[] = ['embedding', 'llm', 'reranker', 'splade'];
 
+// Terminal status constants
+
+/**
+ * Task statuses that indicate the task has completed (success or failure).
+ * Used to stop polling for progress updates.
+ */
+export const TERMINAL_TASK_STATUSES: TaskStatus[] = [
+  'completed',
+  'failed',
+  'already_installed',
+  'not_installed',
+];
+
+/**
+ * Check if a task status indicates the task is terminal (completed or failed).
+ */
+export function isTerminalStatus(status: TaskStatus | undefined | null): boolean {
+  return !!status && TERMINAL_TASK_STATUSES.includes(status);
+}
+
 // Helper functions
 
 /**

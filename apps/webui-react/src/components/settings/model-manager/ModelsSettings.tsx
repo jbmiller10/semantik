@@ -1,9 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { RefreshCw, Search, HardDrive, AlertCircle } from 'lucide-react';
-import { useModelManagerModels } from '../../../hooks/useModelManager';
-import type { ModelType, CuratedModelResponse } from '../../../types/model-manager';
+import {
+  useModelManagerModels,
+  useStartModelDownload,
+  useModelDownloadProgress,
+  modelManagerKeys,
+} from '../../../hooks/useModelManager';
+import type { ModelType, CuratedModelResponse, TaskProgressResponse } from '../../../types/model-manager';
 import { MODEL_TYPE_LABELS, MODEL_TYPE_ORDER, groupModelsByType } from '../../../types/model-manager';
 import ModelCard from './ModelCard';
+import { useQueryClient } from '@tanstack/react-query';
+import { useUIStore } from '../../../stores/uiStore';
 
 type StatusFilter = 'all' | 'installed' | 'available';
 
@@ -14,10 +21,54 @@ function formatSize(mb: number): string {
   return `${mb} MB`;
 }
 
+/**
+ * Wrapper component for ModelCard that handles download progress polling.
+ * Each instance calls useModelDownloadProgress for its own model.
+ */
+interface ModelCardWithDownloadProps {
+  model: CuratedModelResponse;
+  taskId: string | null;
+  onDownload: (modelId: string) => void;
+  onDelete?: (modelId: string) => void;
+  onTerminal: (modelId: string, progress: TaskProgressResponse) => void;
+  onDismissError: (modelId: string) => void;
+}
+
+function ModelCardWithDownload({
+  model,
+  taskId,
+  onDownload,
+  onDelete,
+  onTerminal,
+  onDismissError,
+}: ModelCardWithDownloadProps) {
+  // Poll for download progress when we have a task ID
+  const downloadProgress = useModelDownloadProgress(model.id, taskId, {
+    onTerminal: (progress) => onTerminal(model.id, progress),
+  });
+
+  return (
+    <ModelCard
+      model={model}
+      onDownload={onDownload}
+      onDelete={onDelete}
+      downloadProgress={downloadProgress}
+      onRetry={onDownload}
+      onDismissError={onDismissError}
+    />
+  );
+}
+
 export default function ModelsSettings() {
+  const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
+
   const [activeModelType, setActiveModelType] = useState<ModelType>('embedding');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Download management
+  const { startDownload, getTaskId, clearTaskId } = useStartModelDownload();
 
   const {
     data,
@@ -82,8 +133,64 @@ export default function ModelsSettings() {
     return counts;
   }, [data?.models]);
 
-  // Phase 2A: Download/delete disabled - will be implemented in Phase 2B/2C
-  // const handleDownload = (modelId: string) => { ... }
+  // Handle download completion/failure
+  const handleDownloadTerminal = useCallback(
+    (modelId: string, progress: TaskProgressResponse) => {
+      // Clear the task ID from our local state
+      clearTaskId(modelId);
+
+      // Handle based on status
+      if (progress.status === 'completed') {
+        addToast({
+          type: 'success',
+          message: 'Model download completed',
+        });
+        // Invalidate to refresh the model list
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+      } else if (progress.status === 'failed') {
+        addToast({
+          type: 'error',
+          message: progress.error ?? 'Download failed',
+        });
+      } else if (progress.status === 'already_installed') {
+        addToast({
+          type: 'info',
+          message: 'Model is already installed',
+        });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+      }
+    },
+    [clearTaskId, addToast, queryClient]
+  );
+
+  // Handle dismiss error - clear task ID
+  const handleDismissError = useCallback(
+    (modelId: string) => {
+      clearTaskId(modelId);
+    },
+    [clearTaskId]
+  );
+
+  // Get the effective task ID for a model (from recently started download or from model data)
+  const getEffectiveTaskId = useCallback(
+    (model: CuratedModelResponse): string | null => {
+      // First check if we have a recently started download
+      const startedTaskId = getTaskId(model.id);
+      if (startedTaskId) return startedTaskId;
+
+      // Fall back to the model's active download task (for resumability on page refresh)
+      return model.active_download_task_id;
+    },
+    [getTaskId]
+  );
+
+  // Sync active downloads from model data on mount (for resumability)
+  useEffect(() => {
+    // This effect intentionally runs on every data change to sync active downloads
+    // No action needed here as getEffectiveTaskId already handles the model.active_download_task_id
+  }, [data?.models]);
+
+  // Phase 2C: Delete will be implemented later
   // const handleDelete = (modelId: string) => { ... }
 
   if (isError) {
@@ -243,12 +350,14 @@ export default function ModelsSettings() {
       ) : (
         <div className="space-y-3">
           {filteredModels.map((model: CuratedModelResponse) => (
-            <ModelCard
+            <ModelCardWithDownload
               key={model.id}
               model={model}
-              // Disabled in Phase 2A - buttons show but do nothing
-              onDownload={undefined}
-              onDelete={undefined}
+              taskId={getEffectiveTaskId(model)}
+              onDownload={startDownload}
+              onDelete={undefined} // Phase 2C: Delete will be implemented later
+              onTerminal={handleDownloadTerminal}
+              onDismissError={handleDismissError}
             />
           ))}
         </div>

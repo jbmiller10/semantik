@@ -9,14 +9,24 @@ import {
   Database,
   Check,
   AlertCircle,
+  Loader2,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import type { CuratedModelResponse } from '../../../types/model-manager';
 import { MODEL_TYPE_LABELS } from '../../../types/model-manager';
+import type { FormattedDownloadProgress } from '../../../hooks/useModelManager';
 
 interface ModelCardProps {
   model: CuratedModelResponse;
   onDownload?: (modelId: string) => void;
   onDelete?: (modelId: string) => void;
+  /** Download progress from useModelDownloadProgress hook */
+  downloadProgress?: FormattedDownloadProgress | null;
+  /** Callback to retry a failed download */
+  onRetry?: (modelId: string) => void;
+  /** Callback to dismiss error state */
+  onDismissError?: (modelId: string) => void;
 }
 
 function formatSize(mb: number | null): string {
@@ -27,12 +37,104 @@ function formatSize(mb: number | null): string {
   return `${mb} MB`;
 }
 
-export default function ModelCard({ model, onDownload, onDelete }: ModelCardProps) {
+interface DownloadProgressBarProps {
+  progress: FormattedDownloadProgress;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}
+
+/**
+ * Progress bar component for download operations.
+ * Shows spinner + percentage + bytes during download.
+ * Shows error message + Retry/Dismiss buttons on failure.
+ */
+function DownloadProgressBar({ progress, onRetry, onDismiss }: DownloadProgressBarProps) {
+  const isDownloading = progress.status === 'pending' || progress.status === 'running';
+  const isFailed = progress.status === 'failed';
+
+  if (isFailed) {
+    return (
+      <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-red-400 min-w-0">
+            <AlertCircle className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">{progress.error ?? 'Download failed'}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border border-red-500/50 text-red-400 hover:bg-red-500/10"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </button>
+            )}
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                className="p-1 rounded hover:bg-red-500/10 text-red-400"
+                title="Dismiss"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isDownloading) {
+    return (
+      <div className="mt-3 space-y-2">
+        {/* Progress info */}
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Downloading...</span>
+          </div>
+          <div className="flex items-center gap-2 text-[var(--text-muted)]">
+            <span>{progress.formattedBytes}</span>
+            <span className="font-medium">{progress.percentage}%</span>
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${progress.percentage}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // For other statuses (completed, already_installed, not_installed), don't show anything
+  // The model list will refresh and show the updated state
+  return null;
+}
+
+export default function ModelCard({
+  model,
+  onDownload,
+  onDelete,
+  downloadProgress,
+  onRetry,
+  onDismissError,
+}: ModelCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const hasDownloadAction = !model.is_installed && onDownload;
+  // Determine if there's an active download (from progress hook or model data)
+  const isDownloading =
+    downloadProgress?.status === 'pending' ||
+    downloadProgress?.status === 'running' ||
+    downloadProgress?.status === 'failed';
+  const hasActiveDeleteTask = !!model.active_delete_task_id;
+
+  // Only show download button if not installed, not downloading, and handler provided
+  const hasDownloadAction = !model.is_installed && !isDownloading && onDownload;
   const hasDeleteAction = model.is_installed && onDelete;
-  const hasActiveTask = model.active_download_task_id || model.active_delete_task_id;
 
   // Get memory estimate for display (prefer int8 as common quantization)
   const memoryEstimate = model.memory_mb['int8'] ?? model.memory_mb['float16'] ?? null;
@@ -97,9 +199,9 @@ export default function ModelCard({ model, onDownload, onDelete }: ModelCardProp
           {hasDownloadAction && (
             <button
               onClick={() => onDownload(model.id)}
-              disabled={!!hasActiveTask}
+              disabled={hasActiveDeleteTask}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded bg-gray-200 dark:bg-white text-gray-900 hover:bg-gray-300 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={hasActiveTask ? 'Operation in progress' : 'Download model'}
+              title={hasActiveDeleteTask ? 'Delete in progress' : 'Download model'}
             >
               <Download className="w-3 h-3" />
               Download
@@ -108,14 +210,16 @@ export default function ModelCard({ model, onDownload, onDelete }: ModelCardProp
           {hasDeleteAction && (
             <button
               onClick={() => onDelete(model.id)}
-              disabled={!!hasActiveTask || model.used_by_collections.length > 0}
+              disabled={hasActiveDeleteTask || isDownloading || model.used_by_collections.length > 0}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded border border-red-500/50 text-red-400 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
               title={
-                hasActiveTask
-                  ? 'Operation in progress'
-                  : model.used_by_collections.length > 0
-                    ? 'Model is in use by collections'
-                    : 'Delete model'
+                hasActiveDeleteTask
+                  ? 'Delete in progress'
+                  : isDownloading
+                    ? 'Download in progress'
+                    : model.used_by_collections.length > 0
+                      ? 'Model is in use by collections'
+                      : 'Delete model'
               }
             >
               <Trash2 className="w-3 h-3" />
@@ -132,11 +236,20 @@ export default function ModelCard({ model, onDownload, onDelete }: ModelCardProp
         </div>
       </div>
 
-      {/* Active Task Warning */}
-      {hasActiveTask && (
+      {/* Download Progress */}
+      {downloadProgress && (
+        <DownloadProgressBar
+          progress={downloadProgress}
+          onRetry={onRetry ? () => onRetry(model.id) : undefined}
+          onDismiss={onDismissError ? () => onDismissError(model.id) : undefined}
+        />
+      )}
+
+      {/* Delete Task Warning (only show if no download progress) */}
+      {hasActiveDeleteTask && !downloadProgress && (
         <div className="mt-3 flex items-center gap-2 text-xs text-amber-400">
           <AlertCircle className="w-3 h-3" />
-          {model.active_download_task_id ? 'Download in progress...' : 'Deletion in progress...'}
+          Deletion in progress...
         </div>
       )}
 
