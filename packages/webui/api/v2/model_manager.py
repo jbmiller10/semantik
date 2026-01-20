@@ -409,7 +409,9 @@ async def download_model(
         )
     except Exception as e:
         logger.exception("Failed to enqueue download task: model=%s, task_id=%s", model_id, task_id)
-        await task_state.update_task_progress(redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}")
+        await task_state.update_task_progress(
+            redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}"
+        )
         await task_state.release_model_operation_if_owner(redis_client, model_id, "download", task_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -622,7 +624,9 @@ async def delete_model_cache(
         )
     except Exception as e:
         logger.exception("Failed to enqueue delete task: model=%s, task_id=%s", model_id, task_id)
-        await task_state.update_task_progress(redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}")
+        await task_state.update_task_progress(
+            redis_client, task_id, status="failed", error=f"Failed to enqueue task: {e}"
+        )
         await task_state.release_model_operation_if_owner(redis_client, model_id, "delete", task_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

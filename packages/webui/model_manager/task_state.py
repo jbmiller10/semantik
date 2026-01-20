@@ -160,6 +160,7 @@ async def release_model_operation(
     await redis_client.delete(key)
     logger.debug("Released operation slot for %s", model_id)
 
+
 async def release_model_operation_if_owner(
     redis_client: aioredis.Redis,
     model_id: str,
@@ -315,6 +316,7 @@ async def get_task_progress(
 # Sync functions (for Celery tasks)
 # =============================================================================
 
+
 def task_progress_exists_sync(
     redis_client: redis.Redis,
     task_id: str,
@@ -389,6 +391,7 @@ def release_model_operation_sync(
     redis_client.delete(key)
     logger.debug("Released operation slot for %s", model_id)
 
+
 def release_model_operation_if_owner_sync(
     redis_client: redis.Redis,
     model_id: str,
@@ -408,6 +411,7 @@ def release_model_operation_if_owner_sync(
     redis_client.delete(key)
     logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
     return True
+
 
 def get_active_operation_sync(
     redis_client: redis.Redis,

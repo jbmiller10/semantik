@@ -159,7 +159,9 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         active = task_state.get_active_operation_sync(redis_client, model_id)
         if active is None:
             # Fallback for direct task invocation (e.g., manual admin ops).
-            claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, operation, task_id)
+            claimed, existing_task_id = task_state.claim_model_operation_sync(
+                redis_client, model_id, operation, task_id
+            )
             if not claimed and existing_task_id and existing_task_id != task_id:
                 return {
                     "task_id": task_id,
@@ -326,7 +328,9 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         # Ensure we own the active operation slot (API claims before enqueue).
         active = task_state.get_active_operation_sync(redis_client, model_id)
         if active is None:
-            claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, operation, task_id)
+            claimed, existing_task_id = task_state.claim_model_operation_sync(
+                redis_client, model_id, operation, task_id
+            )
             if not claimed and existing_task_id and existing_task_id != task_id:
                 return {
                     "task_id": task_id,
