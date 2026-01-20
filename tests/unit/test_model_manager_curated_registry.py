@@ -200,3 +200,119 @@ class TestModelTypeEnum:
         assert ModelType.LLM.value == "llm"
         assert ModelType.RERANKER.value == "reranker"
         assert ModelType.SPLADE.value == "splade"
+
+
+class TestMergeModels:
+    """Tests for _merge_models helper function."""
+
+    def test_merge_precedence_first_source_wins(self) -> None:
+        """First source values should take precedence over second."""
+        from shared.model_manager.curated_registry import _merge_models
+
+        existing = CuratedModel(
+            id="test/model",
+            name="Original Name",
+            description="Original description",
+            model_type=ModelType.EMBEDDING,
+            memory_mb={"float16": 1000},
+            dimension=768,
+        )
+        new = CuratedModel(
+            id="test/model",
+            name="Different Name",
+            description="Different description",
+            model_type=ModelType.EMBEDDING,
+            memory_mb={"float16": 2000, "int8": 500},
+            dimension=1024,
+        )
+
+        merged = _merge_models(existing, new)
+
+        # All scalar fields should come from existing
+        assert merged.name == "Original Name"
+        assert merged.description == "Original description"
+        assert merged.dimension == 768
+
+    def test_merge_combines_memory_estimates(self) -> None:
+        """memory_mb dicts should be merged, with existing values winning conflicts."""
+        from shared.model_manager.curated_registry import _merge_models
+
+        existing = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.LLM,
+            memory_mb={"float16": 1000, "int8": 600},
+        )
+        new = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.LLM,
+            memory_mb={"float16": 2000, "int4": 300},  # Different float16, new int4
+        )
+
+        merged = _merge_models(existing, new)
+
+        # Existing value wins for float16
+        assert merged.memory_mb["float16"] == 1000
+        # Existing value preserved
+        assert merged.memory_mb["int8"] == 600
+        # New key added from new model
+        assert merged.memory_mb["int4"] == 300
+        # Should have all three keys
+        assert len(merged.memory_mb) == 3
+
+    def test_merge_preserves_empty_memory_mb(self) -> None:
+        """Merging models with empty memory_mb should work correctly."""
+        from shared.model_manager.curated_registry import _merge_models
+
+        existing = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.RERANKER,
+            memory_mb={},
+        )
+        new = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.RERANKER,
+            memory_mb={"int8": 500},
+        )
+
+        merged = _merge_models(existing, new)
+
+        # Should pick up memory from new since existing is empty
+        assert merged.memory_mb == {"int8": 500}
+
+    def test_merge_preserves_type_specific_fields(self) -> None:
+        """Type-specific fields like dimension, context_window should be preserved."""
+        from shared.model_manager.curated_registry import _merge_models
+
+        existing = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.EMBEDDING,
+            is_asymmetric=True,
+            query_prefix="query: ",
+            document_prefix="document: ",
+        )
+        new = CuratedModel(
+            id="test/model",
+            name="Test Model",
+            description="Test",
+            model_type=ModelType.EMBEDDING,
+            is_asymmetric=False,
+            query_prefix="",
+            document_prefix="",
+        )
+
+        merged = _merge_models(existing, new)
+
+        # Existing values should be preserved
+        assert merged.is_asymmetric is True
+        assert merged.query_prefix == "query: "
+        assert merged.document_prefix == "document: "

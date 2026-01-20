@@ -235,6 +235,9 @@ export default function ModelsSettings() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Lazy-load cache size to reduce unnecessary HF cache scans
+  const [showCacheSize, setShowCacheSize] = useState(false);
+
   // Download management
   const {
     startDownload,
@@ -264,7 +267,7 @@ export default function ModelsSettings() {
     error,
     refetch,
     isFetching,
-  } = useModelManagerModels({ includeCacheSize: true });
+  } = useModelManagerModels({ includeCacheSize: showCacheSize });
 
   // Group and filter models
   const filteredModels = useMemo(() => {
@@ -508,7 +511,7 @@ export default function ModelsSettings() {
       </div>
 
       {/* Cache Size Info */}
-      {data?.cache_size && (
+      {data?.cache_size ? (
         <div className="flex items-center gap-6 p-4 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg">
           <div className="flex items-center gap-2">
             <HardDrive className="w-5 h-5 text-[var(--text-muted)]" />
@@ -532,6 +535,20 @@ export default function ModelsSettings() {
               )}
             </span>
           </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4 p-4 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-5 h-5 text-[var(--text-muted)]" />
+            <span className="text-sm text-[var(--text-secondary)]">Cache Usage</span>
+          </div>
+          <button
+            onClick={() => setShowCacheSize(true)}
+            disabled={isFetching}
+            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline underline-offset-2 disabled:opacity-50"
+          >
+            {isFetching && showCacheSize ? 'Loading...' : 'Show cache usage'}
+          </button>
         </div>
       )}
 

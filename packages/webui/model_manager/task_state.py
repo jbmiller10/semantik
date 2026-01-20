@@ -15,6 +15,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from webui.model_manager.constants import ACTIVE_KEY_TTL, PROGRESS_KEY_TTL
+
 if TYPE_CHECKING:
     import redis
     import redis.asyncio as aioredis
@@ -24,10 +26,6 @@ logger = logging.getLogger(__name__)
 # Redis key prefixes
 ACTIVE_KEY_PREFIX = "model-manager:active:"
 PROGRESS_KEY_PREFIX = "model-manager:task:"
-
-# TTLs in seconds
-ACTIVE_KEY_TTL = 21600  # 6 hours - covers max download time + buffer
-PROGRESS_KEY_TTL = 86400  # 24 hours - allows querying after completion
 
 
 class CrossOpConflictError(Exception):

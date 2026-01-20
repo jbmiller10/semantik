@@ -55,6 +55,7 @@ export function useModelManagerModels(options?: UseModelManagerModelsOptions) {
     queryFn: () => modelManagerApi.listModels(params),
     staleTime: 2 * 60 * 1000, // 2 minutes - models change more frequently during downloads
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Prevent unnecessary HF cache scans on window focus
     enabled: options?.enabled ?? true,
   });
 }

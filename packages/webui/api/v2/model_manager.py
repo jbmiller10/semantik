@@ -533,6 +533,14 @@ async def delete_model_cache(
     """
     _require_superuser(current_user)
 
+    # Validate model is in curated list
+    curated_ids = get_curated_model_ids()
+    if model_id not in curated_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Model '{model_id}' is not in the curated model list",
+        )
+
     # Check if installed (idempotent)
     installed = await asyncio.to_thread(is_model_installed, model_id)
     if not installed:

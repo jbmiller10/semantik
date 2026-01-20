@@ -57,6 +57,8 @@ interface DownloadProgressBarProps {
 function DownloadProgressBar({ progress, onRetry, onDismiss }: DownloadProgressBarProps) {
   const isDownloading = progress.status === 'pending' || progress.status === 'running';
   const isFailed = progress.status === 'failed';
+  // Indeterminate state: downloading but total size not yet known
+  const isIndeterminate = isDownloading && progress.bytesTotal === 0;
 
   if (isFailed) {
     return (
@@ -98,19 +100,29 @@ function DownloadProgressBar({ progress, onRetry, onDismiss }: DownloadProgressB
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-[var(--text-secondary)]">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Downloading...</span>
+            <span>{isIndeterminate ? 'Initializing...' : 'Downloading...'}</span>
           </div>
           <div className="flex items-center gap-2 text-[var(--text-muted)]">
-            <span>{progress.formattedBytes}</span>
-            <span className="font-medium">{progress.percentage}%</span>
+            {isIndeterminate ? (
+              <span>Initializing...</span>
+            ) : (
+              <>
+                <span>{progress.formattedBytes}</span>
+                <span className="font-medium">{progress.percentage}%</span>
+              </>
+            )}
           </div>
         </div>
         {/* Progress bar */}
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
-            style={{ width: `${progress.percentage}%` }}
-          />
+          {isIndeterminate ? (
+            <div className="h-full bg-blue-500 rounded-full animate-pulse w-full opacity-50" />
+          ) : (
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progress.percentage}%` }}
+            />
+          )}
         </div>
       </div>
     );

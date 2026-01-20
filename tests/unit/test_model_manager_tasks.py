@@ -149,7 +149,7 @@ class TestDeleteModelTask:
     @patch("webui.tasks.model_manager._get_sync_redis_client")
     @patch("webui.tasks.model_manager.task_state")
     def test_delete_model_not_found(self, mock_task_state, mock_get_redis):
-        """Test delete when model is not in cache."""
+        """Test delete when model is not in cache - returns not_installed (no-op)."""
         from webui.tasks.model_manager import delete_model
 
         mock_redis = MagicMock()
@@ -165,7 +165,8 @@ class TestDeleteModelTask:
 
             result = delete_model.run("test/model", "task-123")
 
-        assert result["status"] == "not_found"
+        # Model not found is treated as successful no-op (not an error)
+        assert result["status"] == "not_installed"
 
     @patch("webui.tasks.model_manager._get_sync_redis_client")
     @patch("webui.tasks.model_manager.task_state")

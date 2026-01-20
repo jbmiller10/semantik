@@ -179,6 +179,40 @@ def _aggregate_splade_models() -> list[CuratedModel]:
     return models
 
 
+def _merge_models(existing: CuratedModel, new: CuratedModel) -> CuratedModel:
+    """Merge two CuratedModel instances, preferring existing (first-seen) values.
+
+    For memory_mb dicts, combines keys from both (existing values take precedence).
+
+    Args:
+        existing: The model seen first (higher precedence).
+        new: The model seen later (lower precedence).
+
+    Returns:
+        Merged CuratedModel with combined memory estimates.
+    """
+    # Merge memory_mb dicts: existing values take precedence
+    merged_memory = dict(new.memory_mb)
+    merged_memory.update(existing.memory_mb)
+
+    # Use all fields from existing, but with merged memory_mb
+    return CuratedModel(
+        id=existing.id,
+        name=existing.name,
+        description=existing.description,
+        model_type=existing.model_type,
+        memory_mb=merged_memory,
+        dimension=existing.dimension,
+        max_sequence_length=existing.max_sequence_length,
+        pooling_method=existing.pooling_method,
+        is_asymmetric=existing.is_asymmetric,
+        query_prefix=existing.query_prefix,
+        document_prefix=existing.document_prefix,
+        default_query_instruction=existing.default_query_instruction,
+        context_window=existing.context_window,
+    )
+
+
 @lru_cache(maxsize=1)
 def get_curated_models() -> tuple[CuratedModel, ...]:
     """Get all curated models, aggregated from multiple sources.
@@ -186,18 +220,33 @@ def get_curated_models() -> tuple[CuratedModel, ...]:
     Returns an immutable tuple sorted by (model_type, name) for deterministic ordering.
     Uses LRU cache to avoid repeated aggregation.
 
+    De-duplicates by (id, model_type) with first-seen precedence. If the same model
+    appears in multiple sources, fields are merged (first source values take precedence,
+    memory_mb dicts are combined with first source values winning on conflicts).
+
     Returns:
         Tuple of CuratedModel instances.
     """
-    models: list[CuratedModel] = []
+    # Track seen models by (id, model_type) for de-duplication
+    seen: dict[tuple[str, ModelType], CuratedModel] = {}
 
-    # Aggregate from all sources
-    models.extend(_aggregate_embedding_models())
-    models.extend(_aggregate_llm_models())
-    models.extend(_aggregate_reranker_models())
-    models.extend(_aggregate_splade_models())
+    # Aggregate from all sources in precedence order
+    for source_models in [
+        _aggregate_embedding_models(),
+        _aggregate_llm_models(),
+        _aggregate_reranker_models(),
+        _aggregate_splade_models(),
+    ]:
+        for model in source_models:
+            key = (model.id, model.model_type)
+            if key not in seen:
+                seen[key] = model
+            else:
+                # Merge with existing, preserving first-seen precedence
+                seen[key] = _merge_models(seen[key], model)
 
-    # Sort by (model_type.value, name) for deterministic ordering
+    # Convert to list and sort by (model_type.value, name) for deterministic ordering
+    models = list(seen.values())
     models.sort(key=lambda m: (m.model_type.value, m.name))
 
     return tuple(models)

@@ -372,17 +372,20 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
                 break
 
         if target_repo is None:
-            logger.info("Model %s not found in cache (task: %s)", model_id, task_id)
+            logger.info(
+                "Model %s not found in cache (task: %s) - treating as no-op",
+                model_id,
+                task_id,
+            )
             task_state.update_task_progress_sync(
                 redis_client,
                 task_id,
-                status="completed",
-                error="Model not found in cache",
+                status="not_installed",  # No error field - this is a successful no-op
             )
             return {
                 "task_id": task_id,
                 "model_id": model_id,
-                "status": "not_found",
+                "status": "not_installed",
             }
 
         # Get all revision hashes

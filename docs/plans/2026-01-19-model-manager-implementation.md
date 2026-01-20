@@ -531,6 +531,140 @@ Add:
 
 ---
 
+## Phase 2D: Hardening + UX/Perf Polish ✅ COMPLETED (2026-01-20)
+
+**Purpose**
+Address Phase 0–2C follow-ups discovered during implementation review:
+- curated registry de-dup/merge rules
+- TTL + force-refresh correctness
+- curated-only delete semantics
+- more accurate task statuses + progress UX
+- reduce unnecessary cache scans
+- optional list endpoint batching (DB/Redis)
+
+### Task 2D-1: Curated Registry De-dupe + Precedence Merge
+
+**Files**
+- Modify: `packages/shared/model_manager/curated_registry.py`
+- Add/Modify tests: `tests/unit/test_model_manager_curated_registry.py`
+
+**Requirements**
+- Treat each curated entry as uniquely identified by `(id, model_type)`.
+- If multiple sources emit the same `(id, model_type)`, merge deterministically:
+  1. Prefer the entry with richer type-specific fields populated.
+  2. On conflicts for the same field, use fixed precedence by source:
+     - Embedding: `shared.embedding.models.MODEL_CONFIGS` > anything else
+     - LLM: `shared.llm.model_registry` > anything else
+     - Reranker: plugin metadata list > anything else
+     - SPLADE: plugin defaults > known SPLADE IDs list
+- Maintain deterministic ordering after merge: sort by `(model_type, name or id)`.
+
+**Verification**
+- Add unit coverage that asserts:
+  - no duplicate `(id, model_type)` pairs
+  - deterministic ordering
+  - merge precedence behaves as expected (use a small mocked overlap scenario)
+
+---
+
+### Task 1D-2: Backend TTL Alignment + Force-Refresh Correctness
+
+**Files**
+- Modify: `packages/webui/model_manager/task_state.py`
+- Modify: `packages/webui/model_manager/constants.py` (if needed)
+- Modify: `packages/shared/model_manager/hf_cache.py`
+- Modify: `packages/webui/api/v2/model_manager.py`
+- Add/Modify tests: `tests/unit/test_model_manager_hf_cache.py`
+
+**Requirements**
+- Align active-op TTL to the plan’s 24h semantics (and refresh-on-progress behavior):
+  - Active key TTL: 24h (cleared explicitly on completion/failure; refreshed during running)
+  - Progress key TTL: 24h
+- Apply `force_refresh_cache=true` consistently:
+  - `GET /api/v2/models?include_cache_size=true&force_refresh_cache=true` must bypass the HF scan TTL for:
+    - installed status, and
+    - cache size breakdown.
+- Prefer a single constants source of truth (avoid duplicated TTL constants across modules).
+
+**Verification**
+- Extend unit tests to assert:
+  - force-refresh yields a new scan result (via mocking)
+  - include_cache_size path respects force_refresh_cache
+
+---
+
+### Task 1D-3: Curated-Only Delete Guardrails
+
+**Files**
+- Modify: `packages/webui/api/v2/model_manager.py`
+- Add/Modify tests: `tests/unit/test_model_manager_write_api.py`
+
+**Requirements**
+- Enforce curated-only validation for deletion, consistent with download:
+  - `DELETE /api/v2/models/cache?model_id=...` returns `400` if `model_id` is not in curated list.
+  - (Optional future escape hatch: explicit `allow_unmanaged=true` admin-only flag; deferred unless needed.)
+- Keep slash-safe semantics (`model_id` remains a query param).
+
+**Verification**
+- Add test: delete of non-curated model id returns `400`.
+
+---
+
+### Task 1D-4: Task Status + Progress UX Improvements
+
+**Files**
+- Modify: `packages/webui/tasks/model_manager.py`
+- Modify: `packages/webui/api/v2/model_manager.py` (status mapping if needed)
+- Modify: `apps/webui-react/src/hooks/useModelManager.ts`
+- Modify: `apps/webui-react/src/components/settings/model-manager/ModelCard.tsx`
+
+**Requirements**
+- Fix “not found in cache” semantics in delete task:
+  - If repo is missing, treat as idempotent no-op:
+    - progress `status=not_installed` (or equivalent terminal no-op), and
+    - no “error” field on a successful no-op.
+- Improve download progress reporting:
+  - Prefer bytes-based progress updates from HuggingFace download where feasible.
+  - If bytes can’t be determined, keep status transitions accurate and switch UI to an indeterminate progress indicator (not a 0% bar).
+
+**Verification**
+- Add/adjust unit tests to assert:
+  - delete “repo missing” yields a terminal no-op status
+  - UI renders indeterminate progress when `bytes_total==0` and status is running
+
+---
+
+### Task 1D-5 (Optional): Batch DB + Redis Lookups in `GET /api/v2/models`
+
+**Files**
+- Modify: `packages/webui/api/v2/model_manager.py`
+
+**Requirements**
+- Replace per-model collection usage queries with a single batched query keyed by `embedding_model`.
+- Replace per-model Redis gets with a single batched fetch (e.g., `MGET`) for active keys.
+- Preserve response shape and deterministic ordering.
+
+**Verification**
+- Keep existing API contract tests passing; add a small regression test if feasible.
+
+---
+
+### Task 2D-6: Reduce Unnecessary HF Cache Scans from UI
+
+**Files**
+- Modify: `apps/webui-react/src/hooks/useModelManager.ts`
+- Modify: `apps/webui-react/src/components/settings/model-manager/ModelsSettings.tsx`
+
+**Requirements**
+- Do not request `include_cache_size=true` on every list fetch by default.
+  - Options: lazy-load cache size behind a toggle, or fetch cache size only on explicit “Refresh” action.
+- Ensure the model list query does not refetch aggressively (e.g., disable refetch-on-window-focus) to avoid repeated HF scans across sessions.
+
+**Verification**
+- Manual: open Settings → Models, switch tabs, focus/unfocus window; ensure the list doesn’t spam refreshes and cache size is still accessible on demand.
+
+---
+
 ## Phase 3: Tests + Docs
 
 ### Task 10: Backend Tests
