@@ -49,9 +49,7 @@ async def _get_collections_using_model(db: AsyncSession, model_id: str) -> list[
     Returns:
         List of collection names using this model.
     """
-    result = await db.execute(
-        select(Collection.name).where(Collection.embedding_model == model_id)
-    )
+    result = await db.execute(select(Collection.name).where(Collection.embedding_model == model_id))
     return [row[0] for row in result.fetchall()]
 
 
@@ -93,14 +91,10 @@ async def list_models(
 
     # Filter by type if specified
     if model_type is not None:
-        curated_models = tuple(
-            m for m in curated_models if m.model_type.value == model_type.value
-        )
+        curated_models = tuple(m for m in curated_models if m.model_type.value == model_type.value)
 
     # Scan HF cache in a thread pool to avoid blocking
-    installed_models = await asyncio.to_thread(
-        get_installed_models, force_refresh=force_refresh_cache
-    )
+    installed_models = await asyncio.to_thread(get_installed_models, force_refresh=force_refresh_cache)
 
     # Build response models
     response_models: list[CuratedModelResponse] = []
@@ -140,20 +134,22 @@ async def list_models(
                 context_window=model.context_window,
             )
 
-        response_models.append(CuratedModelResponse(
-            id=model.id,
-            name=model.name,
-            description=model.description,
-            model_type=_map_model_type(model.model_type),
-            memory_mb=dict(model.memory_mb),
-            is_installed=is_installed,
-            size_on_disk_mb=size_on_disk_mb,
-            used_by_collections=used_by_collections,
-            active_download_task_id=None,  # Phase 1B placeholder
-            active_delete_task_id=None,  # Phase 1B placeholder
-            embedding_details=embedding_details,
-            llm_details=llm_details,
-        ))
+        response_models.append(
+            CuratedModelResponse(
+                id=model.id,
+                name=model.name,
+                description=model.description,
+                model_type=_map_model_type(model.model_type),
+                memory_mb=dict(model.memory_mb),
+                is_installed=is_installed,
+                size_on_disk_mb=size_on_disk_mb,
+                used_by_collections=used_by_collections,
+                active_download_task_id=None,  # Phase 1B placeholder
+                active_delete_task_id=None,  # Phase 1B placeholder
+                embedding_details=embedding_details,
+                llm_details=llm_details,
+            )
+        )
 
     # Compute cache size info if requested
     cache_size = None

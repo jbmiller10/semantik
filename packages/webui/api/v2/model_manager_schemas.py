@@ -51,7 +51,9 @@ class EmbeddingModelDetails(BaseModel):
     dimension: int | None = Field(default=None, description="Embedding dimension")
     max_sequence_length: int | None = Field(default=None, description="Maximum input sequence length")
     pooling_method: str | None = Field(default=None, description="Pooling method (mean, cls, last_token)")
-    is_asymmetric: bool = Field(default=False, description="Whether model uses different handling for queries vs documents")
+    is_asymmetric: bool = Field(
+        default=False, description="Whether model uses different handling for queries vs documents"
+    )
     query_prefix: str = Field(default="", description="Prefix for query texts")
     document_prefix: str = Field(default="", description="Prefix for document texts")
     default_query_instruction: str = Field(default="", description="Default instruction for query embedding")
@@ -74,10 +76,14 @@ class CuratedModelResponse(BaseModel):
     name: str = Field(..., description="Display name")
     description: str = Field(..., description="Model description")
     model_type: ModelType = Field(..., description="Type of model")
-    memory_mb: dict[str, int] = Field(default_factory=dict, description="Memory estimates per quantization (e.g., float16, int8)")
+    memory_mb: dict[str, int] = Field(
+        default_factory=dict, description="Memory estimates per quantization (e.g., float16, int8)"
+    )
     is_installed: bool = Field(..., description="Whether the model is installed in HF cache")
     size_on_disk_mb: int | None = Field(default=None, description="Size on disk in MB (if installed)")
-    used_by_collections: list[str] = Field(default_factory=list, description="Collection names using this model (embedding models only)")
+    used_by_collections: list[str] = Field(
+        default_factory=list, description="Collection names using this model (embedding models only)"
+    )
 
     # Placeholders for Phase 1B
     active_download_task_id: str | None = Field(default=None, description="Active download task ID (Phase 1B)")

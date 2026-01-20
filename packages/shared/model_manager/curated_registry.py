@@ -45,11 +45,13 @@ class CuratedModel:
 
     def __hash__(self) -> int:
         """Custom hash for frozen dataclass with dict field."""
-        return hash((
-            self.id,
-            self.model_type,
-            tuple(sorted(self.memory_mb.items())) if self.memory_mb else (),
-        ))
+        return hash(
+            (
+                self.id,
+                self.model_type,
+                tuple(sorted(self.memory_mb.items())) if self.memory_mb else (),
+            )
+        )
 
 
 def _aggregate_embedding_models() -> list[CuratedModel]:
@@ -58,20 +60,22 @@ def _aggregate_embedding_models() -> list[CuratedModel]:
 
     models = []
     for model_id, config in MODEL_CONFIGS.items():
-        models.append(CuratedModel(
-            id=model_id,
-            name=config.name,
-            description=config.description,
-            model_type=ModelType.EMBEDDING,
-            memory_mb=dict(config.memory_estimate) if config.memory_estimate else {},
-            dimension=config.dimension,
-            max_sequence_length=config.max_sequence_length,
-            pooling_method=config.pooling_method,
-            is_asymmetric=config.is_asymmetric,
-            query_prefix=config.query_prefix,
-            document_prefix=config.document_prefix,
-            default_query_instruction=config.default_query_instruction,
-        ))
+        models.append(
+            CuratedModel(
+                id=model_id,
+                name=config.name,
+                description=config.description,
+                model_type=ModelType.EMBEDDING,
+                memory_mb=dict(config.memory_estimate) if config.memory_estimate else {},
+                dimension=config.dimension,
+                max_sequence_length=config.max_sequence_length,
+                pooling_method=config.pooling_method,
+                is_asymmetric=config.is_asymmetric,
+                query_prefix=config.query_prefix,
+                document_prefix=config.document_prefix,
+                default_query_instruction=config.default_query_instruction,
+            )
+        )
     return models
 
 
@@ -81,14 +85,16 @@ def _aggregate_llm_models() -> list[CuratedModel]:
 
     models = []
     for model_info in get_models_by_provider("local"):
-        models.append(CuratedModel(
-            id=model_info.id,
-            name=model_info.display_name,
-            description=model_info.description,
-            model_type=ModelType.LLM,
-            memory_mb=dict(model_info.memory_mb) if model_info.memory_mb else {},
-            context_window=model_info.context_window,
-        ))
+        models.append(
+            CuratedModel(
+                id=model_info.id,
+                name=model_info.display_name,
+                description=model_info.description,
+                model_type=ModelType.LLM,
+                memory_mb=dict(model_info.memory_mb) if model_info.memory_mb else {},
+                context_window=model_info.context_window,
+            )
+        )
     return models
 
 
@@ -120,13 +126,15 @@ def _aggregate_reranker_models() -> list[CuratedModel]:
         else:
             description = "Cross-encoder reranker"
 
-        models.append(CuratedModel(
-            id=model_id,
-            name=model_id.split("/")[-1],
-            description=description,
-            model_type=ModelType.RERANKER,
-            memory_mb=memory_estimates.get(model_id, {}),
-        ))
+        models.append(
+            CuratedModel(
+                id=model_id,
+                name=model_id.split("/")[-1],
+                description=description,
+                model_type=ModelType.RERANKER,
+                memory_mb=memory_estimates.get(model_id, {}),
+            )
+        )
     return models
 
 
@@ -159,13 +167,15 @@ def _aggregate_splade_models() -> list[CuratedModel]:
         else:
             description = "SPLADE v3 learned sparse model"
 
-        models.append(CuratedModel(
-            id=model_id,
-            name=model_id.split("/")[-1],
-            description=description,
-            model_type=ModelType.SPLADE,
-            memory_mb=memory_estimates.get(model_id, {}),
-        ))
+        models.append(
+            CuratedModel(
+                id=model_id,
+                name=model_id.split("/")[-1],
+                description=description,
+                model_type=ModelType.SPLADE,
+                memory_mb=memory_estimates.get(model_id, {}),
+            )
+        )
     return models
 
 

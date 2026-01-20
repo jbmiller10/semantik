@@ -32,10 +32,13 @@ class TestResolveHfCacheDir:
 
     def test_hf_hub_cache_takes_priority(self) -> None:
         """HF_HUB_CACHE should take priority over other options."""
-        with patch.dict(os.environ, {
-            "HF_HUB_CACHE": "/custom/hf/cache",
-            "HF_HOME": "/custom/hf/home",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "HF_HUB_CACHE": "/custom/hf/cache",
+                "HF_HOME": "/custom/hf/home",
+            },
+        ):
             path = resolve_hf_cache_dir()
             assert path == Path("/custom/hf/cache")
 
