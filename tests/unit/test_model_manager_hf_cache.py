@@ -1,8 +1,11 @@
 """Unit tests for shared.model_manager.hf_cache."""
 
+import logging
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from shared.model_manager.hf_cache import (
     HFCacheInfo,
@@ -227,3 +230,108 @@ class TestHFCacheInfoDataclass:
         assert info.repos == {}
         assert info.total_size_mb == 500
         assert isinstance(info.scan_time, datetime)
+
+
+class TestHFCacheErrorLogging:
+    """Tests for error logging in scan_hf_cache function."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_cache()
+
+    def test_import_error_logs_debug_message(self, caplog: pytest.LogCaptureFixture) -> None:
+        """ImportError should log at debug level."""
+        # Create a temporary directory that exists
+        with patch(
+            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
+        ) as mock_resolve:
+            mock_resolve.return_value = Path("/tmp")
+
+            # Mock the import to fail
+            with patch.dict("sys.modules", {"huggingface_hub": None}):
+                with patch(
+                    "builtins.__import__",
+                    side_effect=ImportError("No module named 'huggingface_hub'"),
+                ):
+                    with caplog.at_level(logging.DEBUG, logger="shared.model_manager.hf_cache"):
+                        result = scan_hf_cache(force_refresh=True)
+
+        # Should still return a valid (empty) result
+        assert isinstance(result, HFCacheInfo)
+        assert result.repos == {}
+
+        # Check the debug log message
+        assert any(
+            "huggingface_hub not installed" in record.message
+            and record.levelno == logging.DEBUG
+            for record in caplog.records
+        )
+
+    def test_permission_error_logs_warning_with_path(
+        self, caplog: pytest.LogCaptureFixture, tmp_path: Path
+    ) -> None:
+        """PermissionError should log at warning level with cache path."""
+        cache_dir = tmp_path / "test_cache"
+        cache_dir.mkdir()
+
+        with patch(
+            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
+        ) as mock_resolve:
+            mock_resolve.return_value = cache_dir
+
+            # Mock scan_cache_dir to raise PermissionError
+            mock_scan = MagicMock(
+                side_effect=PermissionError("Permission denied: '/test/cache'")
+            )
+            with patch("huggingface_hub.scan_cache_dir", mock_scan):
+                with caplog.at_level(logging.WARNING, logger="shared.model_manager.hf_cache"):
+                    result = scan_hf_cache(force_refresh=True)
+
+        # Should return empty result
+        assert isinstance(result, HFCacheInfo)
+        assert result.repos == {}
+
+        # Check the warning log message
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "Permission denied" in r.message
+        ]
+        assert len(warning_records) == 1
+        assert str(cache_dir) in warning_records[0].message
+        assert "Models may show as not installed" in warning_records[0].message
+
+    def test_general_exception_logs_warning_with_path(
+        self, caplog: pytest.LogCaptureFixture, tmp_path: Path
+    ) -> None:
+        """General exceptions should log at warning level with cache path."""
+        cache_dir = tmp_path / "test_cache"
+        cache_dir.mkdir()
+
+        with patch(
+            "shared.model_manager.hf_cache.resolve_hf_cache_dir"
+        ) as mock_resolve:
+            mock_resolve.return_value = cache_dir
+
+            # Mock scan_cache_dir to raise a general exception
+            mock_scan = MagicMock(
+                side_effect=RuntimeError("Unexpected cache format")
+            )
+            with patch("huggingface_hub.scan_cache_dir", mock_scan):
+                with caplog.at_level(logging.WARNING, logger="shared.model_manager.hf_cache"):
+                    result = scan_hf_cache(force_refresh=True)
+
+        # Should return empty result
+        assert isinstance(result, HFCacheInfo)
+        assert result.repos == {}
+
+        # Check the warning log message
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "Failed to scan HF cache" in r.message
+        ]
+        assert len(warning_records) == 1
+        assert str(cache_dir) in warning_records[0].message
+        assert "Models may show as not installed" in warning_records[0].message
+        assert "Unexpected cache format" in warning_records[0].message

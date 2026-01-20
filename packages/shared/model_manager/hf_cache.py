@@ -7,12 +7,15 @@ IMPORTANT: The scan_hf_cache() function is synchronous. Callers in async
 contexts must use asyncio.to_thread() to avoid blocking the event loop.
 """
 
+import logging
 import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
+
+logger = logging.getLogger(__name__)
 
 # Module-level cache state for TTL caching
 _cache_result: "HFCacheInfo | None" = None
@@ -137,11 +140,22 @@ def scan_hf_cache(
                     revisions=revisions,
                 )
         except ImportError:
-            # huggingface_hub not installed
-            pass
-        except Exception:
-            # Cache scan failed - return empty result
-            pass
+            # huggingface_hub not installed - expected in some deployments
+            logger.debug("huggingface_hub not installed - HF cache scan unavailable")
+        except PermissionError as e:
+            logger.warning(
+                "Permission denied scanning HF cache at %s: %s. "
+                "Models may show as not installed.",
+                cache_dir,
+                e,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to scan HF cache at %s: %s. "
+                "Models may show as not installed.",
+                cache_dir,
+                e,
+            )
 
     # Build result
     result = HFCacheInfo(
