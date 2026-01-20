@@ -1,0 +1,237 @@
+import { useState } from 'react';
+import {
+  Download,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  HardDrive,
+  Cpu,
+  Database,
+  Check,
+  AlertCircle,
+} from 'lucide-react';
+import type { CuratedModelResponse } from '../../../types/model-manager';
+import { MODEL_TYPE_LABELS } from '../../../types/model-manager';
+
+interface ModelCardProps {
+  model: CuratedModelResponse;
+  onDownload?: (modelId: string) => void;
+  onDelete?: (modelId: string) => void;
+}
+
+function formatSize(mb: number | null): string {
+  if (mb === null) return '--';
+  if (mb >= 1024) {
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
+  return `${mb} MB`;
+}
+
+export default function ModelCard({ model, onDownload, onDelete }: ModelCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const hasDownloadAction = !model.is_installed && onDownload;
+  const hasDeleteAction = model.is_installed && onDelete;
+  const hasActiveTask = model.active_download_task_id || model.active_delete_task_id;
+
+  // Get memory estimate for display (prefer int8 as common quantization)
+  const memoryEstimate = model.memory_mb['int8'] ?? model.memory_mb['float16'] ?? null;
+
+  return (
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4">
+      {/* Header Row */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          {/* Name and Status */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-sm font-medium text-[var(--text-primary)] truncate">
+              {model.name}
+            </h4>
+            {/* Type Badge */}
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+              {MODEL_TYPE_LABELS[model.model_type]}
+            </span>
+            {/* Installation Status */}
+            {model.is_installed ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400">
+                <Check className="w-3 h-3" />
+                Installed
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
+                Available
+              </span>
+            )}
+          </div>
+
+          {/* Description */}
+          <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">
+            {model.description}
+          </p>
+
+          {/* Quick Stats */}
+          <div className="mt-2 flex items-center gap-4 text-xs text-[var(--text-muted)]">
+            {model.is_installed && model.size_on_disk_mb !== null && (
+              <span className="flex items-center gap-1">
+                <HardDrive className="w-3 h-3" />
+                {formatSize(model.size_on_disk_mb)}
+              </span>
+            )}
+            {memoryEstimate !== null && (
+              <span className="flex items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                ~{formatSize(memoryEstimate)} RAM
+              </span>
+            )}
+            {model.model_type === 'embedding' && model.used_by_collections.length > 0 && (
+              <span className="flex items-center gap-1">
+                <Database className="w-3 h-3" />
+                {model.used_by_collections.length} collection{model.used_by_collections.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {hasDownloadAction && (
+            <button
+              onClick={() => onDownload(model.id)}
+              disabled={!!hasActiveTask}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded bg-gray-200 dark:bg-white text-gray-900 hover:bg-gray-300 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={hasActiveTask ? 'Operation in progress' : 'Download model'}
+            >
+              <Download className="w-3 h-3" />
+              Download
+            </button>
+          )}
+          {hasDeleteAction && (
+            <button
+              onClick={() => onDelete(model.id)}
+              disabled={!!hasActiveTask || model.used_by_collections.length > 0}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded border border-red-500/50 text-red-400 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={
+                hasActiveTask
+                  ? 'Operation in progress'
+                  : model.used_by_collections.length > 0
+                    ? 'Model is in use by collections'
+                    : 'Delete model'
+              }
+            >
+              <Trash2 className="w-3 h-3" />
+              Delete
+            </button>
+          )}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
+            title={isExpanded ? 'Hide details' : 'Show details'}
+          >
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Active Task Warning */}
+      {hasActiveTask && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-amber-400">
+          <AlertCircle className="w-3 h-3" />
+          {model.active_download_task_id ? 'Download in progress...' : 'Deletion in progress...'}
+        </div>
+      )}
+
+      {/* Expanded Details */}
+      {isExpanded && (
+        <div className="mt-4 pt-4 border-t border-[var(--border)] space-y-3">
+          {/* Model ID */}
+          <div>
+            <dt className="text-xs font-medium text-[var(--text-muted)]">Model ID</dt>
+            <dd className="mt-0.5 text-xs text-[var(--text-secondary)] font-mono break-all">
+              {model.id}
+            </dd>
+          </div>
+
+          {/* Memory Estimates */}
+          {Object.keys(model.memory_mb).length > 0 && (
+            <div>
+              <dt className="text-xs font-medium text-[var(--text-muted)]">Memory by Quantization</dt>
+              <dd className="mt-1 flex flex-wrap gap-2">
+                {Object.entries(model.memory_mb).map(([quant, mb]) => (
+                  <span
+                    key={quant}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+                  >
+                    {quant}: {formatSize(mb)}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
+
+          {/* Embedding-specific details */}
+          {model.embedding_details && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {model.embedding_details.dimension !== null && (
+                <div>
+                  <dt className="text-xs font-medium text-[var(--text-muted)]">Dimension</dt>
+                  <dd className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                    {model.embedding_details.dimension}
+                  </dd>
+                </div>
+              )}
+              {model.embedding_details.max_sequence_length !== null && (
+                <div>
+                  <dt className="text-xs font-medium text-[var(--text-muted)]">Max Sequence</dt>
+                  <dd className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                    {model.embedding_details.max_sequence_length.toLocaleString()}
+                  </dd>
+                </div>
+              )}
+              {model.embedding_details.pooling_method && (
+                <div>
+                  <dt className="text-xs font-medium text-[var(--text-muted)]">Pooling</dt>
+                  <dd className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                    {model.embedding_details.pooling_method}
+                  </dd>
+                </div>
+              )}
+              {model.embedding_details.is_asymmetric && (
+                <div>
+                  <dt className="text-xs font-medium text-[var(--text-muted)]">Asymmetric</dt>
+                  <dd className="mt-0.5 text-xs text-[var(--text-secondary)]">Yes</dd>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LLM-specific details */}
+          {model.llm_details && model.llm_details.context_window !== null && (
+            <div>
+              <dt className="text-xs font-medium text-[var(--text-muted)]">Context Window</dt>
+              <dd className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                {model.llm_details.context_window.toLocaleString()} tokens
+              </dd>
+            </div>
+          )}
+
+          {/* Collections using this model */}
+          {model.used_by_collections.length > 0 && (
+            <div>
+              <dt className="text-xs font-medium text-[var(--text-muted)]">Used by Collections</dt>
+              <dd className="mt-1 flex flex-wrap gap-1">
+                {model.used_by_collections.map((name) => (
+                  <span
+                    key={name}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-500/10 text-blue-400"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

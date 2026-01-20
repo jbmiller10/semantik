@@ -8,6 +8,7 @@ import {
   Terminal,
   Key,
   ArrowLeft,
+  Database,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import PreferencesTab from '../components/settings/PreferencesTab';
@@ -16,8 +17,9 @@ import SystemTab from '../components/settings/SystemTab';
 import PluginsSettings from '../components/settings/PluginsSettings';
 import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
 import ApiKeysSettings from '../components/settings/ApiKeysSettings';
+import ModelsSettings from '../components/settings/model-manager/ModelsSettings';
 
-type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys';
+type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys' | 'models';
 
 interface TabConfig {
   id: SettingsTab;
@@ -33,6 +35,7 @@ const tabs: TabConfig[] = [
   { id: 'plugins', label: 'Plugins', icon: Puzzle },
   { id: 'mcp', label: 'MCP Profiles', icon: Terminal },
   { id: 'api-keys', label: 'API Keys', icon: Key },
+  { id: 'models', label: 'Models', icon: Database, requiresSuperuser: true },
 ];
 
 function SettingsPage() {
@@ -41,9 +44,9 @@ function SettingsPage() {
   const isSuperuser = user?.is_superuser ?? false;
   const [activeTab, setActiveTab] = useState<SettingsTab>('preferences');
 
-  // Redirect non-superuser away from admin tab
+  // Redirect non-superuser away from superuser-only tabs
   useEffect(() => {
-    if (activeTab === 'admin' && !isSuperuser) {
+    if ((activeTab === 'admin' || activeTab === 'models') && !isSuperuser) {
       setActiveTab('preferences');
     }
   }, [activeTab, isSuperuser]);
@@ -111,6 +114,7 @@ function SettingsPage() {
         {activeTab === 'plugins' && <PluginsSettings />}
         {activeTab === 'mcp' && <MCPProfilesSettings />}
         {activeTab === 'api-keys' && <ApiKeysSettings />}
+        {activeTab === 'models' && isSuperuser && <ModelsSettings />}
       </div>
     </div>
   );
