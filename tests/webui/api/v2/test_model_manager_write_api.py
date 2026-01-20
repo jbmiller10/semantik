@@ -237,7 +237,9 @@ class TestUsagePreflightDeleteFlow:
                                             ) as mock_init:
                                                 mock_init.return_value = None
 
-                                                with patch("webui.api.v2.model_manager.celery_app.send_task") as mock_send:
+                                                with patch(
+                                                    "webui.api.v2.model_manager.celery_app.send_task"
+                                                ) as mock_send:
                                                     mock_send.return_value = MagicMock()
 
                                                     response = await superuser_client.delete(
