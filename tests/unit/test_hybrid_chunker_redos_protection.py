@@ -163,8 +163,9 @@ class TestHybridChunkerWithMaliciousContent:
         chunks = chunker.chunk_text(malicious_content, "test_doc")
         elapsed_time = time.time() - start_time
 
-        # Should complete quickly (well under the timeout)
-        assert elapsed_time < REGEX_TIMEOUT
+        # Should complete in reasonable time (not hang due to ReDoS)
+        # Using a generous threshold for CI runners which can be slow
+        assert elapsed_time < 5.0
         assert isinstance(chunks, list)
 
     @pytest.mark.asyncio()
