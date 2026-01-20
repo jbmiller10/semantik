@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelType(str, Enum):
@@ -32,6 +32,13 @@ class TaskStatus(str, Enum):
     # Idempotent "no-op" statuses
     ALREADY_INSTALLED = "already_installed"
     NOT_INSTALLED = "not_installed"
+
+
+class OperationType(str, Enum):
+    """Operation types for model manager tasks."""
+
+    DOWNLOAD = "download"
+    DELETE = "delete"
 
 
 class CacheSizeInfo(BaseModel):
@@ -95,12 +102,36 @@ class CuratedModelResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def _validate_type_specific_details(self) -> "CuratedModelResponse":
+        if self.model_type == ModelType.EMBEDDING:
+            if self.embedding_details is None:
+                raise ValueError("embedding_details is required when model_type='embedding'")
+            if self.llm_details is not None:
+                raise ValueError("llm_details must be None when model_type='embedding'")
+            return self
+
+        if self.model_type == ModelType.LLM:
+            if self.llm_details is None:
+                raise ValueError("llm_details is required when model_type='llm'")
+            if self.embedding_details is not None:
+                raise ValueError("embedding_details must be None when model_type='llm'")
+            return self
+
+        if self.embedding_details is not None or self.llm_details is not None:
+            raise ValueError("embedding_details and llm_details must be None for non-embedding/non-llm models")
+        return self
+
 
 class ModelListResponse(BaseModel):
     """Response schema for the model list endpoint."""
 
     models: list[CuratedModelResponse] = Field(..., description="List of curated models")
     cache_size: CacheSizeInfo | None = Field(default=None, description="Cache size breakdown (if requested)")
+    hf_cache_scan_error: str | None = Field(
+        default=None,
+        description="Error message if HuggingFace cache scan failed (installed status may be inaccurate)",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -113,7 +144,7 @@ class ModelManagerConflictResponse(BaseModel):
     model_id: str = Field(..., description="HuggingFace model ID")
 
     # For cross_op_exclusion
-    active_operation: str | None = Field(default=None, description="Active operation type (download/delete)")
+    active_operation: OperationType | None = Field(default=None, description="Active operation type (download/delete)")
     active_task_id: str | None = Field(default=None, description="ID of the active task")
 
     # For in_use_block
@@ -125,13 +156,54 @@ class ModelManagerConflictResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def _validate_conflict_fields(self) -> "ModelManagerConflictResponse":
+        if self.conflict_type == ConflictType.CROSS_OP_EXCLUSION:
+            if not self.active_operation or not self.active_task_id:
+                raise ValueError(
+                    "active_operation and active_task_id are required when conflict_type='cross_op_exclusion'"
+                )
+            if self.blocked_by_collections:
+                raise ValueError("blocked_by_collections must be empty when conflict_type='cross_op_exclusion'")
+            if self.requires_confirmation:
+                raise ValueError("requires_confirmation must be false when conflict_type='cross_op_exclusion'")
+            if self.warnings:
+                raise ValueError("warnings must be empty when conflict_type='cross_op_exclusion'")
+            return self
+
+        if self.conflict_type == ConflictType.IN_USE_BLOCK:
+            if not self.blocked_by_collections:
+                raise ValueError("blocked_by_collections is required when conflict_type='in_use_block'")
+            if self.active_operation is not None or self.active_task_id is not None:
+                raise ValueError("active_operation and active_task_id must be None when conflict_type='in_use_block'")
+            if self.requires_confirmation:
+                raise ValueError("requires_confirmation must be false when conflict_type='in_use_block'")
+            if self.warnings:
+                raise ValueError("warnings must be empty when conflict_type='in_use_block'")
+            return self
+
+        if self.conflict_type == ConflictType.REQUIRES_CONFIRMATION:
+            if not self.requires_confirmation:
+                raise ValueError("requires_confirmation must be true when conflict_type='requires_confirmation'")
+            if not self.warnings:
+                raise ValueError("warnings is required when conflict_type='requires_confirmation'")
+            if self.active_operation is not None or self.active_task_id is not None:
+                raise ValueError(
+                    "active_operation and active_task_id must be None when conflict_type='requires_confirmation'"
+                )
+            if self.blocked_by_collections:
+                raise ValueError("blocked_by_collections must be empty when conflict_type='requires_confirmation'")
+            return self
+
+        return self
+
 
 class TaskResponse(BaseModel):
     """Response for download/delete operations."""
 
     task_id: str | None = Field(default=None, description="Task ID (None for idempotent no-ops)")
     model_id: str = Field(..., description="HuggingFace model ID")
-    operation: str = Field(..., description="Operation type (download/delete)")
+    operation: OperationType = Field(..., description="Operation type (download/delete)")
     status: TaskStatus = Field(..., description="Current task status")
     warnings: list[str] = Field(default_factory=list, description="Warning messages (for delete with confirm=true)")
 
@@ -146,7 +218,7 @@ class TaskProgressResponse(BaseModel):
 
     task_id: str = Field(..., description="Unique task identifier")
     model_id: str = Field(..., description="HuggingFace model ID")
-    operation: str = Field(..., description="Operation type (download/delete)")
+    operation: OperationType = Field(..., description="Operation type (download/delete)")
     status: TaskStatus = Field(..., description="Current task status")
     bytes_downloaded: int = Field(default=0, description="Bytes downloaded so far (download only)")
     bytes_total: int = Field(default=0, description="Total bytes to download (download only)")
@@ -154,6 +226,12 @@ class TaskProgressResponse(BaseModel):
     updated_at: float = Field(..., description="Last update timestamp (epoch seconds)")
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _validate_error_field(self) -> "TaskProgressResponse":
+        if self.status != TaskStatus.FAILED and self.error is not None:
+            raise ValueError("error must be None unless status='failed'")
+        return self
 
 
 class ModelDownloadRequest(BaseModel):
@@ -196,6 +274,14 @@ class ModelUsageResponse(BaseModel):
     loaded_in_vecpipe: bool = Field(default=False, description="Whether model is loaded in VecPipe GPU memory")
     loaded_vecpipe_model_types: list[str] = Field(
         default_factory=list, description="Model types loaded in VecPipe (embedding, reranker, etc.)"
+    )
+    hf_cache_scan_error: str | None = Field(
+        default=None,
+        description="Error message if HuggingFace cache scan failed (installed status may be inaccurate)",
+    )
+    vecpipe_query_error: str | None = Field(
+        default=None,
+        description="Error message if VecPipe loaded-model query failed (loaded status is unknown)",
     )
 
     # Computed fields

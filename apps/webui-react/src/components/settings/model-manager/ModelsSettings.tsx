@@ -447,27 +447,21 @@ export default function ModelsSettings() {
 
   // Watch for requires_confirmation conflict and open the confirmation dialog
   useEffect(() => {
-    if (lastConflict && lastConflict.conflict_type === 'requires_confirmation') {
-      // Find the model to get its name and size
-      const model = data?.models?.find((m) => m.id === lastConflict.model_id);
-      if (model) {
-        setDeleteConfirmation({
-          modelId: lastConflict.model_id,
-          modelName: model.name,
-          estimatedFreedSize: model.size_on_disk_mb,
-          warnings: lastConflict.warnings || [],
-        });
-      }
-      // Clear the conflict so it doesn't trigger again
-      clearConflict();
-    }
-  }, [lastConflict, data?.models, clearConflict]);
+    if (!lastConflict || lastConflict.conflict_type !== 'requires_confirmation') return;
 
-  // Sync active downloads/deletes from model data on mount (for resumability)
-  useEffect(() => {
-    // This effect intentionally runs on every data change to sync active tasks
-    // No action needed here as getEffectiveTaskId functions already handle the model's active task IDs
-  }, [data?.models]);
+    const model = data?.models?.find((m) => m.id === lastConflict.model_id);
+    if (!model) return;
+
+    setDeleteConfirmation({
+      modelId: lastConflict.model_id,
+      modelName: model.name,
+      estimatedFreedSize: model.size_on_disk_mb,
+      warnings: lastConflict.warnings || [],
+    });
+
+    // Clear the conflict so it doesn't trigger again.
+    clearConflict();
+  }, [lastConflict, data?.models, clearConflict]);
 
   if (isError) {
     return (
@@ -509,6 +503,24 @@ export default function ModelsSettings() {
           Refresh
         </button>
       </div>
+
+      {/* HF cache scan warning */}
+      {data?.hf_cache_scan_error && (
+        <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <div className="font-medium text-[var(--text-primary)]">
+              HuggingFace cache scan failed
+            </div>
+            <div className="text-[var(--text-secondary)]">
+              Installed status and disk sizes may be inaccurate until this is resolved.
+            </div>
+            <div className="mt-1 text-xs text-[var(--text-muted)] break-words">
+              {data.hf_cache_scan_error}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cache Size Info */}
       {data?.cache_size ? (

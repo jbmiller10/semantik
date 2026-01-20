@@ -17,9 +17,7 @@ from shared.model_manager import (
     get_cache_size_info,
     get_curated_model_ids,
     get_curated_models,
-    get_installed_models,
-    get_model_size_on_disk,
-    is_model_installed,
+    scan_hf_cache,
 )
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.model_manager_schemas import (
@@ -113,7 +111,7 @@ async def _count_llm_configs_using_model(db: AsyncSession, model_id: str) -> int
     return result.scalar() or 0
 
 
-async def _get_vecpipe_loaded_models(model_id: str) -> tuple[bool, list[str]]:
+async def _get_vecpipe_loaded_models(model_id: str) -> tuple[bool, list[str], str | None]:
     """Query VecPipe /memory/models to check if model is loaded.
 
     This is best-effort - failures are logged but don't block operations.
@@ -122,8 +120,9 @@ async def _get_vecpipe_loaded_models(model_id: str) -> tuple[bool, list[str]]:
         model_id: The model ID to check.
 
     Returns:
-        Tuple of (is_loaded: bool, model_types: list[str])
-        model_types contains the types of loaded instances (e.g., ["embedding", "reranker"])
+        Tuple of (is_loaded, model_types, error).
+        model_types contains the types of loaded instances (e.g., ["embedding", "reranker"]).
+        error is None on success; otherwise a string describing the failure.
     """
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -138,10 +137,10 @@ async def _get_vecpipe_loaded_models(model_id: str) -> tuple[bool, list[str]]:
                     if model_type not in loaded_types:
                         loaded_types.append(model_type)
 
-            return (len(loaded_types) > 0, loaded_types)
+            return (len(loaded_types) > 0, loaded_types, None)
     except Exception as e:
         logger.warning("Failed to query VecPipe loaded models: %s", e)
-        return (False, [])
+        return (False, [], f"{type(e).__name__}: {e}")
 
 
 @router.get(
@@ -180,7 +179,10 @@ async def list_models(
         curated_models = tuple(m for m in curated_models if m.model_type.value == model_type.value)
 
     # Scan HF cache in a thread pool to avoid blocking
-    installed_models = await asyncio.to_thread(get_installed_models, force_refresh=force_refresh_cache)
+    hf_cache_info = await asyncio.to_thread(scan_hf_cache, force_refresh=force_refresh_cache)
+    installed_models = {
+        repo_id: repo for (repo_type, repo_id), repo in hf_cache_info.repos.items() if repo_type == "model"
+    }
 
     # Get Redis client for active operation lookups
     redis_manager = get_redis_manager()
@@ -267,7 +269,9 @@ async def list_models(
             unmanaged_repo_count=cache_breakdown["unmanaged_repo_count"],
         )
 
-    return ModelListResponse(models=response_models, cache_size=cache_size)
+    return ModelListResponse(
+        models=response_models, cache_size=cache_size, hf_cache_scan_error=hf_cache_info.scan_error
+    )
 
 
 @router.get(
@@ -280,7 +284,7 @@ async def list_models(
     },
 )
 async def get_task_progress(
-    task_id: str,
+    task_id: uuid.UUID,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> TaskProgressResponse:
     """Get progress for a download/delete task.
@@ -295,12 +299,13 @@ async def get_task_progress(
     redis_manager = get_redis_manager()
     redis_client = await redis_manager.async_client()
 
-    progress = await task_state.get_task_progress(redis_client, task_id)
+    task_id_str = str(task_id)
+    progress = await task_state.get_task_progress(redis_client, task_id_str)
 
     if progress is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found",
+            detail=f"Task {task_id_str} not found",
         )
 
     # Map status string to TaskStatus enum
@@ -308,7 +313,23 @@ async def get_task_progress(
     try:
         task_status = TaskStatus(status_str)
     except ValueError:
+        logger.warning(
+            "Invalid model-manager task status %r for task_id=%s (model_id=%s, operation=%s). Defaulting to 'pending'.",
+            status_str,
+            task_id_str,
+            progress.get("model_id"),
+            progress.get("operation"),
+        )
         task_status = TaskStatus.PENDING
+
+    error = progress.get("error")
+    if task_status != TaskStatus.FAILED and error is not None:
+        logger.warning(
+            "Model-manager task %s has error set but status=%s; ignoring error field.",
+            task_id_str,
+            task_status,
+        )
+        error = None
 
     return TaskProgressResponse(
         task_id=progress["task_id"],
@@ -317,7 +338,7 @@ async def get_task_progress(
         status=task_status,
         bytes_downloaded=progress.get("bytes_downloaded", 0),
         bytes_total=progress.get("bytes_total", 0),
-        error=progress.get("error"),
+        error=error,
         updated_at=progress.get("updated_at", 0.0),
     )
 
@@ -360,9 +381,12 @@ async def download_model(
             detail=f"Model '{model_id}' is not in the curated model list",
         )
 
-    # Check if already installed (idempotent)
-    installed = await asyncio.to_thread(is_model_installed, model_id)
-    if installed:
+    # Check if already installed (idempotent). If the HF cache scan fails,
+    # treat the state as unknown and proceed - snapshot_download will still
+    # reuse/validate the cache.
+    hf_cache_info = await asyncio.to_thread(scan_hf_cache)
+    installed = ("model", model_id) in hf_cache_info.repos
+    if installed and hf_cache_info.scan_error is None:
         return TaskResponse(
             task_id=None,
             model_id=model_id,
@@ -450,11 +474,11 @@ async def get_model_usage(
     """
     _require_superuser(current_user)
 
-    # Check if installed
-    installed = await asyncio.to_thread(is_model_installed, model_id)
-    size_on_disk_mb = None
-    if installed:
-        size_on_disk_mb = await asyncio.to_thread(get_model_size_on_disk, model_id)
+    # Check if installed (best-effort; may be inaccurate if HF cache scan fails)
+    hf_cache_info = await asyncio.to_thread(scan_hf_cache)
+    installed_repo = hf_cache_info.repos.get(("model", model_id))
+    installed = installed_repo is not None
+    size_on_disk_mb = installed_repo.size_on_disk_mb if installed_repo is not None else None
 
     # Get blocking conditions (collections using this model)
     blocked_by_collections = await _get_collections_using_model(db, model_id)
@@ -465,7 +489,7 @@ async def get_model_usage(
     is_default = model_id == settings.DEFAULT_EMBEDDING_MODEL
 
     # Query VecPipe for loaded models (best-effort)
-    loaded_in_vecpipe, loaded_types = await _get_vecpipe_loaded_models(model_id)
+    loaded_in_vecpipe, loaded_types, vecpipe_query_error = await _get_vecpipe_loaded_models(model_id)
 
     # Build warnings
     warnings: list[str] = []
@@ -481,6 +505,10 @@ async def get_model_usage(
         warnings.append("This is the system default embedding model")
     if loaded_in_vecpipe:
         warnings.append(f"Model is currently loaded in VecPipe GPU memory ({', '.join(loaded_types)})")
+    if vecpipe_query_error is not None:
+        warnings.append("Unable to verify whether the model is currently loaded in VecPipe (status unknown)")
+    if hf_cache_info.scan_error is not None:
+        warnings.append("Unable to verify local HuggingFace cache state (installed status may be inaccurate)")
 
     # Determine if deletion is allowed
     can_delete = len(blocked_by_collections) == 0
@@ -497,6 +525,8 @@ async def get_model_usage(
         is_default_embedding_model=is_default,
         loaded_in_vecpipe=loaded_in_vecpipe,
         loaded_vecpipe_model_types=loaded_types,
+        hf_cache_scan_error=hf_cache_info.scan_error,
+        vecpipe_query_error=vecpipe_query_error,
         warnings=warnings,
         can_delete=can_delete,
         requires_confirmation=requires_confirmation,
@@ -541,9 +571,12 @@ async def delete_model_cache(
             detail=f"Model '{model_id}' is not in the curated model list",
         )
 
-    # Check if installed (idempotent)
-    installed = await asyncio.to_thread(is_model_installed, model_id)
-    if not installed:
+    # Check if installed (idempotent). If the HF cache scan fails, proceed so the
+    # background task can determine installed/not-installed (otherwise we'd
+    # incorrectly no-op).
+    hf_cache_info = await asyncio.to_thread(scan_hf_cache)
+    installed = ("model", model_id) in hf_cache_info.repos
+    if not installed and hf_cache_info.scan_error is None:
         return TaskResponse(
             task_id=None,
             model_id=model_id,
@@ -569,7 +602,7 @@ async def delete_model_cache(
     user_preferences_count = await _count_user_preferences_using_model(db, model_id)
     llm_config_count = await _count_llm_configs_using_model(db, model_id)
     is_default = model_id == settings.DEFAULT_EMBEDDING_MODEL
-    loaded_in_vecpipe, loaded_types = await _get_vecpipe_loaded_models(model_id)
+    loaded_in_vecpipe, loaded_types, vecpipe_query_error = await _get_vecpipe_loaded_models(model_id)
 
     if user_preferences_count > 0:
         warnings.append(f"{user_preferences_count} user(s) have this as their default embedding model")
@@ -579,6 +612,10 @@ async def delete_model_cache(
         warnings.append("This is the system default embedding model")
     if loaded_in_vecpipe:
         warnings.append(f"Model is currently loaded in VecPipe GPU memory ({', '.join(loaded_types)})")
+    if vecpipe_query_error is not None:
+        warnings.append("Unable to verify whether the model is currently loaded in VecPipe (status unknown)")
+    if hf_cache_info.scan_error is not None:
+        warnings.append("Unable to verify local HuggingFace cache state (installed status may be inaccurate)")
 
     # Require confirmation if warnings exist
     if warnings and not confirm:

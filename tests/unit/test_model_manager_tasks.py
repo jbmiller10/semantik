@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from webui.model_manager.task_state import CrossOpConflictError
 
 
@@ -102,6 +104,27 @@ class TestDownloadModelTask:
 
         # Verify release was still called
         mock_task_state.release_model_operation_if_owner_sync.assert_called_once()
+
+    @patch("webui.tasks.model_manager._get_sync_redis_client")
+    @patch("webui.tasks.model_manager.task_state")
+    def test_retry_does_not_release_operation_lock(self, mock_task_state, mock_get_redis):
+        """Retryable errors should preserve the operation lock for the retry."""
+        from webui.tasks.model_manager import download_model
+
+        mock_redis = MagicMock()
+        mock_get_redis.return_value = mock_redis
+
+        mock_task_state.get_active_operation_sync.return_value = ("download", "task-123")
+        mock_task_state.task_progress_exists_sync.return_value = True
+        mock_task_state.CrossOpConflictError = CrossOpConflictError
+
+        with patch("huggingface_hub.snapshot_download", side_effect=ConnectionError("Temporary network error")):
+            with patch.object(download_model, "retry", side_effect=RuntimeError("retry")):
+                with pytest.raises(RuntimeError, match="retry"):
+                    download_model.run("test/model", "task-123")
+
+        # The operation lock must not be released when retrying.
+        mock_task_state.release_model_operation_if_owner_sync.assert_not_called()
 
 
 class TestDeleteModelTask:
@@ -224,6 +247,26 @@ class TestHelperFunctions:
 
         assert _is_retryable_error(ValueError("Bad value")) is False
 
+    def test_is_retryable_error_http_5xx(self):
+        """HTTP 5xx errors should be retryable."""
+        import requests
+
+        from webui.tasks.model_manager import _is_retryable_error
+
+        err = requests.exceptions.HTTPError("Server error")
+        err.response = MagicMock(status_code=503)  # type: ignore[attr-defined]
+        assert _is_retryable_error(err) is True
+
+    def test_is_retryable_error_http_429(self):
+        """HTTP 429 errors should be retryable."""
+        import requests
+
+        from webui.tasks.model_manager import _is_retryable_error
+
+        err = requests.exceptions.HTTPError("Rate limited")
+        err.response = MagicMock(status_code=429)  # type: ignore[attr-defined]
+        assert _is_retryable_error(err) is True
+
     def test_is_fatal_error_permission_denied(self):
         """Test that permission denied is fatal."""
         from webui.tasks.model_manager import _is_fatal_error
@@ -243,3 +286,64 @@ class TestHelperFunctions:
         from webui.tasks.model_manager import _is_fatal_error
 
         assert _is_fatal_error(ValueError("Bad value")) is False
+
+    def test_is_fatal_error_http_401_403_404(self):
+        """HTTP 401/403/404 errors should be fatal."""
+        import requests
+
+        from webui.tasks.model_manager import _is_fatal_error
+
+        for code in (401, 403, 404):
+            err = requests.exceptions.HTTPError("HTTP error")
+            err.response = MagicMock(status_code=code)  # type: ignore[attr-defined]
+            assert _is_fatal_error(err) is True
+
+
+class TestDownloadProgressAggregator:
+    """Unit tests for download progress aggregation."""
+
+    @patch("webui.tasks.model_manager.task_state.update_task_progress_sync")
+    def test_updates_progress_with_aggregated_bytes(self, mock_update_progress):
+        from webui.tasks.model_manager import _DownloadProgressAggregator
+
+        redis_client = MagicMock()
+        aggregator = _DownloadProgressAggregator(redis_client, "task-123", min_update_interval_seconds=0)
+
+        aggregator.set_bar(1, downloaded=10, total=100)
+        aggregator.set_bar(2, downloaded=5, total=50)
+
+        assert aggregator.latest() == (15, 150)
+        assert mock_update_progress.call_count >= 2
+        mock_update_progress.assert_called_with(
+            redis_client,
+            "task-123",
+            status="running",
+            bytes_downloaded=15,
+            bytes_total=150,
+        )
+
+    @patch("webui.tasks.model_manager.task_state.update_task_progress_sync")
+    def test_redis_failure_does_not_crash_progress_updates(self, mock_update_progress):
+        from webui.tasks.model_manager import _DownloadProgressAggregator
+
+        mock_update_progress.side_effect = ConnectionError("Redis is down")
+        redis_client = MagicMock()
+        aggregator = _DownloadProgressAggregator(redis_client, "task-123", min_update_interval_seconds=0)
+
+        # Should not raise
+        aggregator.set_bar(1, downloaded=10, total=100)
+        aggregator.set_bar(1, downloaded=20, total=100)
+        aggregator.set_bar(1, downloaded=30, total=100)
+
+    @patch("webui.tasks.model_manager.task_state.update_task_progress_sync")
+    def test_disable_stops_tracking_new_bars(self, mock_update_progress):
+        from webui.tasks.model_manager import _DownloadProgressAggregator
+
+        redis_client = MagicMock()
+        aggregator = _DownloadProgressAggregator(redis_client, "task-123", min_update_interval_seconds=0)
+
+        aggregator.set_bar(1, downloaded=10, total=100)
+        aggregator.disable()
+        aggregator.set_bar(2, downloaded=5, total=50)
+
+        assert mock_update_progress.call_count == 1

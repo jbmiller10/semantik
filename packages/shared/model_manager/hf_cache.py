@@ -84,6 +84,7 @@ class HFCacheInfo:
     repos: dict[RepoKey, InstalledModel]
     total_size_mb: int
     scan_time: datetime
+    scan_error: str | None = None
 
 
 def scan_hf_cache(
@@ -118,6 +119,7 @@ def scan_hf_cache(
     # Scan the cache
     repos: dict[RepoKey, InstalledModel] = {}
     total_size_bytes = 0
+    scan_error: str | None = None
 
     if cache_dir.exists():
         try:
@@ -145,27 +147,37 @@ def scan_hf_cache(
                     last_accessed=last_accessed,
                     revisions=revisions,
                 )
-        except ImportError:
+        except ImportError as e:
             # huggingface_hub not installed - expected in some deployments
-            logger.debug("huggingface_hub not installed - HF cache scan unavailable")
+            scan_error = f"huggingface_hub not installed ({e})"
+            logger.debug("huggingface_hub not installed - HF cache scan unavailable (%s)", e)
         except PermissionError as e:
+            scan_error = f"Permission denied scanning HF cache at {cache_dir}: {e}"
             logger.warning(
                 "Permission denied scanning HF cache at %s: %s. Models may show as not installed.",
                 cache_dir,
                 e,
             )
         except Exception as e:
+            scan_error = f"Failed to scan HF cache at {cache_dir}: {e}"
             logger.warning(
                 "Failed to scan HF cache at %s: %s. Models may show as not installed.",
                 cache_dir,
                 e,
             )
 
+    # If scanning failed, prefer returning the last cached repos over an empty dict.
+    # This avoids transient filesystem issues making all models appear "not installed".
+    if scan_error is not None and _cache_result is not None and _cache_path == cache_dir:
+        repos = _cache_result.repos
+        total_size_bytes = _cache_result.total_size_mb * 1024 * 1024
+
     # Build result
     result = HFCacheInfo(
         cache_dir=cache_dir,
         repos=repos,
         total_size_mb=total_size_bytes // (1024 * 1024),
+        scan_error=scan_error,
         scan_time=datetime.now(tz=UTC),
     )
 

@@ -6,6 +6,7 @@ Tests for:
 - DELETE /api/v2/models/cache
 """
 
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,10 +16,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from shared.database import get_db
-from webui.api.v2.model_manager_schemas import (
-    ModelDownloadRequest,
-    ModelUsageResponse,
-)
+from webui.api.v2.model_manager_schemas import ModelDownloadRequest, ModelUsageResponse
 from webui.auth import get_current_user
 from webui.main import app
 from webui.model_manager.task_state import CrossOpConflictError
@@ -186,8 +184,11 @@ class TestDownloadModelEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 response = await superuser_client.post(
                     "/api/v2/models/download",
@@ -205,8 +206,11 @@ class TestDownloadModelEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager = AsyncMock()
@@ -235,13 +239,70 @@ class TestDownloadModelEndpoint:
         assert data["operation"] == "download"
 
     @pytest.mark.asyncio()
+    async def test_download_enqueue_failure_releases_lock(self, superuser_client) -> None:
+        """Enqueue failures should return 503 and release the active op lock."""
+        fixed_task_uuid = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")
+
+        with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
+            mock_curated.return_value = {"test/model"}
+
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
+
+                with patch("webui.api.v2.model_manager.uuid.uuid4", return_value=fixed_task_uuid):
+                    with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
+                        mock_redis_manager = AsyncMock()
+                        mock_redis_client = AsyncMock()
+                        mock_redis_manager.async_client.return_value = mock_redis_client
+                        mock_get_redis.return_value = mock_redis_manager
+
+                        with patch("webui.api.v2.model_manager.task_state.claim_model_operation") as mock_claim:
+                            mock_claim.return_value = (True, None)
+
+                            with patch("webui.api.v2.model_manager.task_state.init_task_progress") as mock_init:
+                                mock_init.return_value = None
+
+                                with patch("webui.api.v2.model_manager.celery_app.send_task") as mock_send:
+                                    mock_send.side_effect = RuntimeError("queue down")
+
+                                    with patch(
+                                        "webui.api.v2.model_manager.task_state.update_task_progress"
+                                    ) as mock_update:
+                                        mock_update.return_value = None
+
+                                        with patch(
+                                            "webui.api.v2.model_manager.task_state.release_model_operation_if_owner"
+                                        ) as mock_release:
+                                            mock_release.return_value = True
+
+                                            response = await superuser_client.post(
+                                                "/api/v2/models/download",
+                                                json={"model_id": "test/model"},
+                                            )
+
+        assert response.status_code == 503
+        mock_update.assert_awaited()
+        mock_release.assert_awaited_once_with(
+            mock_redis_client,
+            "test/model",
+            "download",
+            str(fixed_task_uuid),
+        )
+
+    @pytest.mark.asyncio()
     async def test_download_dedupe(self, superuser_client) -> None:
         """Test de-duplication when same download is already running."""
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager = AsyncMock()
@@ -269,8 +330,11 @@ class TestDownloadModelEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager = AsyncMock()
@@ -316,8 +380,11 @@ class TestModelUsageEndpoint:
     @pytest.mark.asyncio()
     async def test_not_installed_model(self, superuser_client) -> None:
         """Test response for model that is not installed."""
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = False
+        with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+            mock_info = MagicMock()
+            mock_info.repos = {}
+            mock_info.scan_error = None
+            mock_scan.return_value = mock_info
 
             with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                 mock_cols.return_value = []
@@ -332,7 +399,7 @@ class TestModelUsageEndpoint:
                             mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                             with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                mock_vec.return_value = (False, [])
+                                mock_vec.return_value = (False, [], None)
 
                                 response = await superuser_client.get(
                                     "/api/v2/models/usage",
@@ -348,31 +415,31 @@ class TestModelUsageEndpoint:
     @pytest.mark.asyncio()
     async def test_installed_model_with_collections(self, superuser_client) -> None:
         """Test response for installed model used by collections."""
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+            mock_info = MagicMock()
+            mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=1024)}
+            mock_info.scan_error = None
+            mock_scan.return_value = mock_info
 
-            with patch("webui.api.v2.model_manager.get_model_size_on_disk") as mock_size:
-                mock_size.return_value = 1024
+            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
+                mock_cols.return_value = ["Collection A", "Collection B"]
 
-                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
-                    mock_cols.return_value = ["Collection A", "Collection B"]
+                with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
+                    mock_prefs.return_value = 0
 
-                    with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
-                        mock_prefs.return_value = 0
+                    with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
+                        mock_llm.return_value = 0
 
-                        with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
-                            mock_llm.return_value = 0
+                        with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                            mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
-                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
+                            with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
+                                mock_vec.return_value = (False, [], None)
 
-                                with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
-
-                                    response = await superuser_client.get(
-                                        "/api/v2/models/usage",
-                                        params={"model_id": "test/model"},
-                                    )
+                                response = await superuser_client.get(
+                                    "/api/v2/models/usage",
+                                    params={"model_id": "test/model"},
+                                )
 
         assert response.status_code == 200
         data = response.json()
@@ -384,31 +451,31 @@ class TestModelUsageEndpoint:
     @pytest.mark.asyncio()
     async def test_installed_model_with_warnings(self, superuser_client) -> None:
         """Test response for installed model with warning conditions."""
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+            mock_info = MagicMock()
+            mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=512)}
+            mock_info.scan_error = None
+            mock_scan.return_value = mock_info
 
-            with patch("webui.api.v2.model_manager.get_model_size_on_disk") as mock_size:
-                mock_size.return_value = 512
+            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
+                mock_cols.return_value = []
 
-                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
-                    mock_cols.return_value = []
+                with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
+                    mock_prefs.return_value = 3
 
-                    with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
-                        mock_prefs.return_value = 3
+                    with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
+                        mock_llm.return_value = 2
 
-                        with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
-                            mock_llm.return_value = 2
+                        with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                            mock_settings.DEFAULT_EMBEDDING_MODEL = "test/model"
 
-                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                mock_settings.DEFAULT_EMBEDDING_MODEL = "test/model"
+                            with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
+                                mock_vec.return_value = (True, ["embedding"], None)
 
-                                with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (True, ["embedding"])
-
-                                    response = await superuser_client.get(
-                                        "/api/v2/models/usage",
-                                        params={"model_id": "test/model"},
-                                    )
+                                response = await superuser_client.get(
+                                    "/api/v2/models/usage",
+                                    params={"model_id": "test/model"},
+                                )
 
         assert response.status_code == 200
         data = response.json()
@@ -423,32 +490,32 @@ class TestModelUsageEndpoint:
     @pytest.mark.asyncio()
     async def test_vecpipe_query_failure_handled(self, superuser_client) -> None:
         """Test that VecPipe query failures don't break the endpoint."""
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+            mock_info = MagicMock()
+            mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=256)}
+            mock_info.scan_error = None
+            mock_scan.return_value = mock_info
 
-            with patch("webui.api.v2.model_manager.get_model_size_on_disk") as mock_size:
-                mock_size.return_value = 256
+            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
+                mock_cols.return_value = []
 
-                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
-                    mock_cols.return_value = []
+                with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
+                    mock_prefs.return_value = 0
 
-                    with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
-                        mock_prefs.return_value = 0
+                    with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
+                        mock_llm.return_value = 0
 
-                        with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
-                            mock_llm.return_value = 0
+                        with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                            mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
-                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
+                            with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
+                                # Simulate VecPipe failure - should surface as unknown
+                                mock_vec.return_value = (False, [], "timeout")
 
-                                with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    # Simulate VecPipe failure - should return defaults
-                                    mock_vec.return_value = (False, [])
-
-                                    response = await superuser_client.get(
-                                        "/api/v2/models/usage",
-                                        params={"model_id": "test/model"},
-                                    )
+                                response = await superuser_client.get(
+                                    "/api/v2/models/usage",
+                                    params={"model_id": "test/model"},
+                                )
 
         assert response.status_code == 200
         data = response.json()
@@ -493,8 +560,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 response = await superuser_client.delete(
                     "/api/v2/models/cache",
@@ -512,8 +582,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = ["Collection A", "Collection B"]
@@ -534,8 +607,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = []
@@ -550,7 +626,7 @@ class TestDeleteModelCacheEndpoint:
                                 mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                                 with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
+                                    mock_vec.return_value = (False, [], None)
 
                                     response = await superuser_client.delete(
                                         "/api/v2/models/cache",
@@ -564,13 +640,54 @@ class TestDeleteModelCacheEndpoint:
         assert len(data["warnings"]) >= 1
 
     @pytest.mark.asyncio()
+    async def test_vecpipe_query_failure_requires_confirmation(self, superuser_client) -> None:
+        """If VecPipe status is unknown, deletion should require explicit confirmation."""
+        with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
+            mock_curated.return_value = {"test/model"}
+
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
+
+                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
+                    mock_cols.return_value = []
+
+                    with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
+                        mock_prefs.return_value = 0
+
+                        with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
+                            mock_llm.return_value = 0
+
+                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
+
+                                with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
+                                    mock_vec.return_value = (False, [], "timeout")
+
+                                    response = await superuser_client.delete(
+                                        "/api/v2/models/cache",
+                                        params={"model_id": "test/model"},
+                                    )
+
+        assert response.status_code == 409
+        data = response.json()["detail"]
+        assert data["conflict_type"] == "requires_confirmation"
+        assert data["requires_confirmation"] is True
+        assert any("VecPipe" in warning for warning in data["warnings"])
+
+    @pytest.mark.asyncio()
     async def test_delete_with_confirm(self, superuser_client) -> None:
         """Test successful delete when confirm=true bypasses warnings."""
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = []
@@ -585,7 +702,7 @@ class TestDeleteModelCacheEndpoint:
                                 mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                                 with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
+                                    mock_vec.return_value = (False, [], None)
 
                                     with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                                         mock_redis_manager = AsyncMock()
@@ -626,8 +743,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = []
@@ -642,7 +762,7 @@ class TestDeleteModelCacheEndpoint:
                                 mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                                 with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
+                                    mock_vec.return_value = (False, [], None)
 
                                     with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                                         mock_redis_manager = AsyncMock()
@@ -680,8 +800,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = []
@@ -696,7 +819,7 @@ class TestDeleteModelCacheEndpoint:
                                 mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                                 with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
+                                    mock_vec.return_value = (False, [], None)
 
                                     with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                                         mock_redis_manager = AsyncMock()
@@ -725,8 +848,11 @@ class TestDeleteModelCacheEndpoint:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"test/model"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
                     mock_cols.return_value = []
@@ -741,7 +867,7 @@ class TestDeleteModelCacheEndpoint:
                                 mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
 
                                 with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
-                                    mock_vec.return_value = (False, [])
+                                    mock_vec.return_value = (False, [], None)
 
                                     with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                                         mock_redis_manager = AsyncMock()
@@ -767,3 +893,78 @@ class TestDeleteModelCacheEndpoint:
         data = response.json()["detail"]
         assert data["conflict_type"] == "cross_op_exclusion"
         assert data["active_operation"] == "download"
+
+    @pytest.mark.asyncio()
+    async def test_delete_enqueue_failure_releases_lock(self, superuser_client) -> None:
+        """Enqueue failures should return 503 and release the active op lock."""
+        fixed_task_uuid = uuid.UUID("550e8400-e29b-41d4-a716-446655440001")
+
+        with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
+            mock_curated.return_value = {"test/model"}
+
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "test/model"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
+
+                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_cols:
+                    mock_cols.return_value = []
+
+                    with patch("webui.api.v2.model_manager._count_user_preferences_using_model") as mock_prefs:
+                        mock_prefs.return_value = 0
+
+                        with patch("webui.api.v2.model_manager._count_llm_configs_using_model") as mock_llm:
+                            mock_llm.return_value = 0
+
+                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other/model"
+
+                                with patch("webui.api.v2.model_manager._get_vecpipe_loaded_models") as mock_vec:
+                                    mock_vec.return_value = (False, [], None)
+
+                                    with patch("webui.api.v2.model_manager.uuid.uuid4", return_value=fixed_task_uuid):
+                                        with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
+                                            mock_redis_manager = AsyncMock()
+                                            mock_redis_client = AsyncMock()
+                                            mock_redis_manager.async_client.return_value = mock_redis_client
+                                            mock_get_redis.return_value = mock_redis_manager
+
+                                            with patch(
+                                                "webui.api.v2.model_manager.task_state.claim_model_operation"
+                                            ) as mock_claim:
+                                                mock_claim.return_value = (True, None)
+
+                                                with patch(
+                                                    "webui.api.v2.model_manager.task_state.init_task_progress"
+                                                ) as mock_init:
+                                                    mock_init.return_value = None
+
+                                                    with patch(
+                                                        "webui.api.v2.model_manager.celery_app.send_task"
+                                                    ) as mock_send:
+                                                        mock_send.side_effect = RuntimeError("queue down")
+
+                                                        with patch(
+                                                            "webui.api.v2.model_manager.task_state.update_task_progress"
+                                                        ) as mock_update:
+                                                            mock_update.return_value = None
+
+                                                            with patch(
+                                                                "webui.api.v2.model_manager.task_state.release_model_operation_if_owner"
+                                                            ) as mock_release:
+                                                                mock_release.return_value = True
+
+                                                                response = await superuser_client.delete(
+                                                                    "/api/v2/models/cache",
+                                                                    params={"model_id": "test/model"},
+                                                                )
+
+        assert response.status_code == 503
+        mock_update.assert_awaited()
+        mock_release.assert_awaited_once_with(
+            mock_redis_client,
+            "test/model",
+            "delete",
+            str(fixed_task_uuid),
+        )

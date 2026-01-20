@@ -76,8 +76,11 @@ class TestDownloadProgressFlow:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager, _ = _mock_redis_manager()
@@ -117,8 +120,11 @@ class TestDownloadProgressFlow:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager, _ = _mock_redis_manager()
@@ -149,53 +155,56 @@ class TestUsagePreflightDeleteFlow:
     async def test_usage_then_delete_flow(self, superuser_client):
         """Verify usage preflight provides info needed for confirmed delete."""
         # Step 1: Check usage
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+            mock_info = MagicMock()
+            mock_info.repos = {("model", "BAAI/bge-small-en-v1.5"): MagicMock(size_on_disk_mb=500)}
+            mock_info.scan_error = None
+            mock_scan.return_value = mock_info
 
-            with patch("webui.api.v2.model_manager.get_model_size_on_disk") as mock_size:
-                mock_size.return_value = 500
+            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
+                mock_colls.return_value = []
 
-                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
-                    mock_colls.return_value = []
+                with patch(
+                    "webui.api.v2.model_manager._count_user_preferences_using_model",
+                    new_callable=AsyncMock,
+                ) as mock_prefs:
+                    mock_prefs.return_value = 1
 
                     with patch(
-                        "webui.api.v2.model_manager._count_user_preferences_using_model",
+                        "webui.api.v2.model_manager._count_llm_configs_using_model",
                         new_callable=AsyncMock,
-                    ) as mock_prefs:
-                        mock_prefs.return_value = 1
+                    ) as mock_llm:
+                        mock_llm.return_value = 0
 
                         with patch(
-                            "webui.api.v2.model_manager._count_llm_configs_using_model",
+                            "webui.api.v2.model_manager._get_vecpipe_loaded_models",
                             new_callable=AsyncMock,
-                        ) as mock_llm:
-                            mock_llm.return_value = 0
+                        ) as mock_vp:
+                            mock_vp.return_value = (False, [], None)
 
-                            with patch(
-                                "webui.api.v2.model_manager._get_vecpipe_loaded_models",
-                                new_callable=AsyncMock,
-                            ) as mock_vp:
-                                mock_vp.return_value = (False, [])
+                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
 
-                                with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                    mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
+                                response = await superuser_client.get(
+                                    "/api/v2/models/usage",
+                                    params={"model_id": "BAAI/bge-small-en-v1.5"},
+                                )
 
-                                    response = await superuser_client.get(
-                                        "/api/v2/models/usage",
-                                        params={"model_id": "BAAI/bge-small-en-v1.5"},
-                                    )
-
-                                    assert response.status_code == 200
-                                    usage_data = response.json()
-                                    assert usage_data["can_delete"] is True
-                                    assert usage_data["requires_confirmation"] is True
-                                    assert usage_data["user_preferences_count"] == 1
+                                assert response.status_code == 200
+                                usage_data = response.json()
+                                assert usage_data["can_delete"] is True
+                                assert usage_data["requires_confirmation"] is True
+                                assert usage_data["user_preferences_count"] == 1
 
         # Step 2: Delete with confirmation
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "BAAI/bge-small-en-v1.5"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
                     mock_colls.return_value = []
@@ -216,7 +225,7 @@ class TestUsagePreflightDeleteFlow:
                                 "webui.api.v2.model_manager._get_vecpipe_loaded_models",
                                 new_callable=AsyncMock,
                             ) as mock_vp:
-                                mock_vp.return_value = (False, [])
+                                mock_vp.return_value = (False, [], None)
 
                                 with patch("webui.api.v2.model_manager.settings") as mock_settings:
                                     mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
@@ -265,8 +274,11 @@ class TestCrossOpExclusion:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = True
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {("model", "BAAI/bge-small-en-v1.5"): MagicMock(size_on_disk_mb=500)}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
                     mock_colls.return_value = []
@@ -287,7 +299,7 @@ class TestCrossOpExclusion:
                                 "webui.api.v2.model_manager._get_vecpipe_loaded_models",
                                 new_callable=AsyncMock,
                             ) as mock_vp:
-                                mock_vp.return_value = (False, [])
+                                mock_vp.return_value = (False, [], None)
 
                                 with patch("webui.api.v2.model_manager.settings") as mock_settings:
                                     mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
@@ -322,8 +334,11 @@ class TestCrossOpExclusion:
         with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
             mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-                mock_installed.return_value = False
+            with patch("webui.api.v2.model_manager.scan_hf_cache") as mock_scan:
+                mock_info = MagicMock()
+                mock_info.repos = {}
+                mock_info.scan_error = None
+                mock_scan.return_value = mock_info
 
                 with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
                     mock_redis_manager, _ = _mock_redis_manager()

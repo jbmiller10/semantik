@@ -55,6 +55,8 @@ class _TaskHeartbeat:
         self._redis_client = redis_client
         self._task_id = task_id
         self._interval_seconds = interval_seconds
+        self._consecutive_failures = 0
+        self._warned_after_failures = False
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, name=f"model-manager-heartbeat:{task_id}", daemon=True)
 
@@ -74,8 +76,21 @@ class _TaskHeartbeat:
                     self._task_id,
                     status="running",
                 )
+                self._consecutive_failures = 0
+                self._warned_after_failures = False
             except Exception as e:
-                logger.debug("Heartbeat progress update failed: %s", e)
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= 3 and (
+                    not self._warned_after_failures or self._consecutive_failures % 30 == 0
+                ):
+                    logger.warning(
+                        "Heartbeat progress update failed %d times: %s",
+                        self._consecutive_failures,
+                        e,
+                    )
+                    self._warned_after_failures = True
+                else:
+                    logger.debug("Heartbeat progress update failed: %s", e)
 
 
 class _DownloadProgressAggregator:
@@ -99,9 +114,13 @@ class _DownloadProgressAggregator:
 
         self._latest_downloaded: int = 0
         self._latest_total: int = 0
+        self._consecutive_failures = 0
+        self._warned_after_failures = False
 
     def set_bar(self, bar_id: int, *, downloaded: int, total: int) -> None:
         with self._lock:
+            if not self._enabled:
+                return
             self._bars[bar_id] = (max(downloaded, 0), max(total, 0))
         self._maybe_emit(force=False)
 
@@ -110,6 +129,10 @@ class _DownloadProgressAggregator:
             self._bars.pop(bar_id, None)
         self._maybe_emit(force=True)
 
+    def clear_all_bars(self) -> None:
+        with self._lock:
+            self._bars.clear()
+
     def flush(self) -> tuple[int, int]:
         self._maybe_emit(force=True)
         return self.latest()
@@ -117,6 +140,7 @@ class _DownloadProgressAggregator:
     def disable(self) -> None:
         with self._lock:
             self._enabled = False
+            self._bars.clear()
 
     def latest(self) -> tuple[int, int]:
         with self._lock:
@@ -144,8 +168,21 @@ class _DownloadProgressAggregator:
                     bytes_downloaded=bytes_downloaded,
                     bytes_total=bytes_total,
                 )
+                self._consecutive_failures = 0
+                self._warned_after_failures = False
             except Exception as e:
-                logger.debug("Progress update failed: %s", e)
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= 3 and (
+                    not self._warned_after_failures or self._consecutive_failures % 30 == 0
+                ):
+                    logger.warning(
+                        "Progress update failed %d times: %s",
+                        self._consecutive_failures,
+                        e,
+                    )
+                    self._warned_after_failures = True
+                else:
+                    logger.debug("Progress update failed: %s", e)
 
 
 def _is_retryable_error(exc: Exception) -> bool:
@@ -302,8 +339,13 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
                         super().close()
 
             tqdm_class = _RedisBytesTqdm
-        except Exception:
+        except ImportError as e:
             # tqdm isn't strictly required; we'll fall back to heartbeat-only updates.
+            logger.debug("tqdm not available (%s) - download progress bytes will be unavailable", e)
+            tqdm_class = None
+        except Exception as e:
+            # tqdm isn't strictly required; we'll fall back to heartbeat-only updates.
+            logger.warning("Failed to initialize tqdm for download progress: %s", e)
             tqdm_class = None
 
         # Keep Redis state fresh while snapshot_download runs (may take hours).
@@ -318,14 +360,12 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
                 import inspect
 
                 sig = inspect.signature(snapshot_download)
-                accepts_var_kw = any(
-                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-                )
+                accepts_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
                 if "tqdm_class" in sig.parameters or accepts_var_kw:
                     snapshot_kwargs["tqdm_class"] = tqdm_class
-            except Exception:
+            except Exception as e:
                 # Be conservative: don't pass tqdm_class if we can't determine support.
-                pass
+                logger.warning("Unable to determine snapshot_download tqdm_class support: %s", e)
 
         local_dir = snapshot_download(**snapshot_kwargs)
 
@@ -439,10 +479,19 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         if heartbeat is not None:
             heartbeat.stop()
         if should_release:
-            try:
-                task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
-            except Exception as e:
-                logger.warning("Failed to release operation slot for %s: %s", model_id, e)
+            for attempt in range(3):
+                try:
+                    task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
+                    break
+                except Exception as e:
+                    logger.warning(
+                        "Failed to release operation slot for %s (attempt %d/3): %s",
+                        model_id,
+                        attempt + 1,
+                        e,
+                    )
+                    if attempt < 2:
+                        time.sleep(0.2 * (2**attempt))
 
 
 @celery_app.task(
@@ -632,7 +681,16 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
 
     finally:
         # Release the operation slot only if we still own it.
-        try:
-            task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
-        except Exception as e:
-            logger.warning("Failed to release operation slot for %s: %s", model_id, e)
+        for attempt in range(3):
+            try:
+                task_state.release_model_operation_if_owner_sync(redis_client, model_id, operation, task_id)
+                break
+            except Exception as e:
+                logger.warning(
+                    "Failed to release operation slot for %s (attempt %d/3): %s",
+                    model_id,
+                    attempt + 1,
+                    e,
+                )
+                if attempt < 2:
+                    time.sleep(0.2 * (2**attempt))

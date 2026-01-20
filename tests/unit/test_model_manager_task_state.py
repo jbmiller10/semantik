@@ -1,5 +1,6 @@
 """Unit tests for model manager task state Redis operations."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -88,6 +89,35 @@ class TestReleaseModelOperation:
         mock_redis.delete.assert_called_once_with("model-manager:active:test/model")
 
 
+class TestReleaseModelOperationIfOwner:
+    """Tests for release_model_operation_if_owner async function."""
+
+    @pytest.mark.asyncio()
+    async def test_releases_when_owner_matches(self):
+        """Check-and-delete is atomic (via Lua eval)."""
+        mock_redis = AsyncMock()
+        mock_redis.eval.return_value = 1
+
+        released = await task_state.release_model_operation_if_owner(mock_redis, "test/model", "download", "task-123")
+
+        assert released is True
+        mock_redis.eval.assert_called_once_with(
+            task_state.RELEASE_IF_OWNER_SCRIPT,
+            1,
+            "model-manager:active:test/model",
+            "download:task-123",
+        )
+
+    @pytest.mark.asyncio()
+    async def test_does_not_release_when_owner_mismatch(self):
+        mock_redis = AsyncMock()
+        mock_redis.eval.return_value = 0
+
+        released = await task_state.release_model_operation_if_owner(mock_redis, "test/model", "download", "task-123")
+
+        assert released is False
+
+
 class TestGetActiveOperation:
     """Tests for get_active_operation async function."""
 
@@ -120,6 +150,18 @@ class TestGetActiveOperation:
         result = await task_state.get_active_operation(mock_redis, "test/model")
 
         assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_returns_none_for_undecodable_bytes(self, caplog):
+        """Test None return for non-UTF8 Redis bytes."""
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = b"\xff"
+
+        with caplog.at_level(logging.WARNING):
+            result = await task_state.get_active_operation(mock_redis, "test/model")
+
+        assert result is None
+        assert "Failed to decode Redis value" in caplog.text
 
 
 class TestInitTaskProgress:
@@ -208,6 +250,14 @@ class TestUpdateTaskProgress:
 
         # Should have two expire calls: progress key and active key
         assert mock_redis.expire.call_count == 2
+        mock_redis.expire.assert_any_call(
+            "model-manager:task:task-123",
+            task_state.PROGRESS_KEY_TTL,
+        )
+        mock_redis.expire.assert_any_call(
+            "model-manager:active:test/model",
+            task_state.ACTIVE_KEY_TTL,
+        )
 
 
 class TestGetTaskProgress:
@@ -295,6 +345,28 @@ class TestSyncFunctions:
         task_state.release_model_operation_sync(mock_redis, "test/model")
 
         mock_redis.delete.assert_called_once_with("model-manager:active:test/model")
+
+    def test_release_model_operation_if_owner_sync_releases_when_owner_matches(self):
+        mock_redis = MagicMock()
+        mock_redis.eval.return_value = 1
+
+        released = task_state.release_model_operation_if_owner_sync(mock_redis, "test/model", "download", "task-123")
+
+        assert released is True
+        mock_redis.eval.assert_called_once_with(
+            task_state.RELEASE_IF_OWNER_SCRIPT,
+            1,
+            "model-manager:active:test/model",
+            "download:task-123",
+        )
+
+    def test_release_model_operation_if_owner_sync_does_not_release_when_owner_mismatch(self):
+        mock_redis = MagicMock()
+        mock_redis.eval.return_value = 0
+
+        released = task_state.release_model_operation_if_owner_sync(mock_redis, "test/model", "download", "task-123")
+
+        assert released is False
 
     def test_update_task_progress_sync(self):
         """Test sync progress update."""

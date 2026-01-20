@@ -4,9 +4,12 @@ Aggregates model configurations from multiple sources into a unified registry
 for use by the model manager UI and APIs.
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 
 class ModelType(str, Enum):
@@ -111,8 +114,8 @@ def _aggregate_reranker_models() -> list[CuratedModel]:
             if model_id not in memory_estimates:
                 memory_estimates[model_id] = {}
             memory_estimates[model_id][quant] = memory_mb
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug("vecpipe.memory_utils not available (%s) - memory estimates will be incomplete", e)
 
     models = []
     for model_id in SUPPORTED_MODELS:
@@ -157,8 +160,8 @@ def _aggregate_splade_models() -> list[CuratedModel]:
             if model_id not in memory_estimates:
                 memory_estimates[model_id] = {}
             memory_estimates[model_id][quant] = memory_mb
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.debug("vecpipe.memory_utils not available (%s) - memory estimates will be incomplete", e)
 
     models = []
     for model_id in splade_model_ids:

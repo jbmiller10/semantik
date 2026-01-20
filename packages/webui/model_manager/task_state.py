@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 ACTIVE_KEY_PREFIX = "model-manager:active:"
 PROGRESS_KEY_PREFIX = "model-manager:task:"
 
+RELEASE_IF_OWNER_SCRIPT = """
+local key = KEYS[1]
+local expected = ARGV[1]
+local current = redis.call('GET', key)
+if current == expected then
+    redis.call('DEL', key)
+    return 1
+end
+return 0
+"""
+
 
 class CrossOpConflictError(Exception):
     """Raised when attempting an operation while a conflicting operation is active."""
@@ -58,7 +69,8 @@ def _parse_active_value(value: str | bytes | None) -> tuple[str, str] | None:
     if isinstance(value, bytes):
         try:
             value = value.decode("utf-8")
-        except Exception:
+        except UnicodeDecodeError:
+            logger.warning("Failed to decode Redis value: %r", value)
             return None
     parts = value.split(":", 1)
     if len(parts) != 2:
@@ -171,13 +183,12 @@ async def release_model_operation_if_owner(
         True if the key was released, False otherwise.
     """
     key = _active_key(model_id)
-    existing_value = await redis_client.get(key)
-    existing = _parse_active_value(existing_value)
-    if existing != (operation, task_id):
-        return False
-    await redis_client.delete(key)
-    logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
-    return True
+    expected_value = f"{operation}:{task_id}"
+    released = await redis_client.eval(RELEASE_IF_OWNER_SCRIPT, 1, key, expected_value)
+    if released == 1:
+        logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
+        return True
+    return False
 
 
 async def get_active_operation(
@@ -404,13 +415,12 @@ def release_model_operation_if_owner_sync(
         True if the key was released, False otherwise.
     """
     key = _active_key(model_id)
-    existing_value = redis_client.get(key)
-    existing = _parse_active_value(existing_value)
-    if existing != (operation, task_id):
-        return False
-    redis_client.delete(key)
-    logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
-    return True
+    expected_value = f"{operation}:{task_id}"
+    released = redis_client.eval(RELEASE_IF_OWNER_SCRIPT, 1, key, expected_value)
+    if released == 1:
+        logger.debug("Released operation slot for %s (owned by %s:%s)", model_id, operation, task_id)
+        return True
+    return False
 
 
 def get_active_operation_sync(

@@ -303,6 +303,7 @@ class TestHFCacheInfoDataclass:
         assert info.repos == {}
         assert info.total_size_mb == 500
         assert isinstance(info.scan_time, datetime)
+        assert info.scan_error is None
 
 
 class TestHFCacheErrorLogging:
@@ -330,6 +331,7 @@ class TestHFCacheErrorLogging:
         # Should still return a valid (empty) result
         assert isinstance(result, HFCacheInfo)
         assert result.repos == {}
+        assert result.scan_error is not None
 
         # Check the debug log message
         assert any(
@@ -354,6 +356,7 @@ class TestHFCacheErrorLogging:
         # Should return empty result
         assert isinstance(result, HFCacheInfo)
         assert result.repos == {}
+        assert result.scan_error is not None
 
         # Check the warning log message
         warning_records = [
@@ -380,6 +383,7 @@ class TestHFCacheErrorLogging:
         # Should return empty result
         assert isinstance(result, HFCacheInfo)
         assert result.repos == {}
+        assert result.scan_error is not None
 
         # Check the warning log message
         warning_records = [
@@ -389,3 +393,31 @@ class TestHFCacheErrorLogging:
         assert str(cache_dir) in warning_records[0].message
         assert "Models may show as not installed" in warning_records[0].message
         assert "Unexpected cache format" in warning_records[0].message
+
+    def test_scan_failure_prefers_cached_repos(self, tmp_path: Path) -> None:
+        """If a scan fails, return the previous cached repos instead of empty."""
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        repo_model = MagicMock()
+        repo_model.repo_id = "org/repo"
+        repo_model.repo_type = "model"
+        repo_model.size_on_disk = 5 * 1024 * 1024
+        repo_model.revisions = []
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = repo_model.size_on_disk
+        scan_result.repos = [repo_model]
+
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
+            mock_resolve.return_value = cache_dir
+            with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+                first = scan_hf_cache(force_refresh=True)
+
+            with patch("huggingface_hub.scan_cache_dir", side_effect=PermissionError("Permission denied")):
+                second = scan_hf_cache(force_refresh=True)
+
+        assert ("model", "org/repo") in first.repos
+        assert ("model", "org/repo") in second.repos
+        assert second.repos == first.repos
+        assert second.scan_error is not None

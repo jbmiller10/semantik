@@ -197,17 +197,18 @@ describe('ModelsSettings', () => {
 
     vi.mocked(useModelManagerModels).mockImplementation((options) => {
       const includeCacheSize = options?.includeCacheSize ?? false;
-      const response: ModelListResponse = {
-        models,
-        cache_size: includeCacheSize
-          ? {
-              total_cache_size_mb: 1024,
-              managed_cache_size_mb: 512,
-              unmanaged_cache_size_mb: 512,
-              unmanaged_repo_count: 2,
-            }
-          : null,
-      };
+	      const response: ModelListResponse = {
+	        models,
+	        cache_size: includeCacheSize
+	          ? {
+	              total_cache_size_mb: 1024,
+	              managed_cache_size_mb: 512,
+	              unmanaged_cache_size_mb: 512,
+	              unmanaged_repo_count: 2,
+	            }
+	          : null,
+	        hf_cache_scan_error: null,
+	      };
 
       return {
         data: response,

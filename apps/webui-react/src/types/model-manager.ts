@@ -15,6 +15,8 @@ export type TaskStatus =
   | 'already_installed'
   | 'not_installed';
 
+export type OperationType = 'download' | 'delete';
+
 export type ConflictType =
   | 'cross_op_exclusion'
   | 'in_use_block'
@@ -61,12 +63,13 @@ export interface CuratedModelResponse {
 export interface ModelListResponse {
   models: CuratedModelResponse[];
   cache_size: CacheSizeInfo | null;
+  hf_cache_scan_error: string | null;
 }
 
 export interface TaskResponse {
   task_id: string | null;
   model_id: string;
-  operation: string;
+  operation: OperationType;
   status: TaskStatus;
   warnings: string[];
 }
@@ -74,7 +77,7 @@ export interface TaskResponse {
 export interface TaskProgressResponse {
   task_id: string;
   model_id: string;
-  operation: string;
+  operation: OperationType;
   status: TaskStatus;
   bytes_downloaded: number;
   bytes_total: number;
@@ -93,6 +96,8 @@ export interface ModelUsageResponse {
   is_default_embedding_model: boolean;
   loaded_in_vecpipe: boolean;
   loaded_vecpipe_model_types: string[];
+  hf_cache_scan_error: string | null;
+  vecpipe_query_error: string | null;
   warnings: string[];
   can_delete: boolean;
   requires_confirmation: boolean;
@@ -102,7 +107,7 @@ export interface ModelManagerConflictResponse {
   conflict_type: ConflictType;
   detail: string;
   model_id: string;
-  active_operation: string | null;
+  active_operation: OperationType | null;
   active_task_id: string | null;
   blocked_by_collections: string[];
   requires_confirmation: boolean;

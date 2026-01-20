@@ -112,10 +112,10 @@ describe('useModelManager hooks', () => {
     });
   });
 
-  describe('useModelManagerModels', () => {
-    it('should fetch curated models with params', async () => {
-      const response: ModelListResponse = { models: [], cache_size: null };
-      vi.mocked(modelManagerApi.listModels).mockResolvedValue(response);
+	  describe('useModelManagerModels', () => {
+	    it('should fetch curated models with params', async () => {
+	      const response: ModelListResponse = { models: [], cache_size: null, hf_cache_scan_error: null };
+	      vi.mocked(modelManagerApi.listModels).mockResolvedValue(response);
 
       const queryClient = createTestQueryClient();
       const { result } = renderHook(
@@ -139,8 +139,12 @@ describe('useModelManager hooks', () => {
       });
     });
 
-    it('should not fetch when disabled', async () => {
-      vi.mocked(modelManagerApi.listModels).mockResolvedValue({ models: [], cache_size: null });
+	    it('should not fetch when disabled', async () => {
+	      vi.mocked(modelManagerApi.listModels).mockResolvedValue({
+	        models: [],
+	        cache_size: null,
+	        hf_cache_scan_error: null,
+	      });
 
       const queryClient = createTestQueryClient();
       const { result } = renderHook(() => useModelManagerModels({ enabled: false }), {
@@ -451,21 +455,23 @@ describe('useModelManager hooks', () => {
     });
 
     it('should fetch usage when enabled and modelId provided', async () => {
-      const usage: ModelUsageResponse = {
-        model_id: 'model-1',
-        is_installed: true,
-        size_on_disk_mb: 123,
-        estimated_freed_size_mb: 123,
-        blocked_by_collections: [],
-        user_preferences_count: 0,
-        llm_config_count: 0,
-        is_default_embedding_model: false,
-        loaded_in_vecpipe: false,
-        loaded_vecpipe_model_types: [],
-        warnings: [],
-        can_delete: true,
-        requires_confirmation: false,
-      };
+	      const usage: ModelUsageResponse = {
+	        model_id: 'model-1',
+	        is_installed: true,
+	        size_on_disk_mb: 123,
+	        estimated_freed_size_mb: 123,
+	        blocked_by_collections: [],
+	        user_preferences_count: 0,
+	        llm_config_count: 0,
+	        is_default_embedding_model: false,
+	        loaded_in_vecpipe: false,
+	        loaded_vecpipe_model_types: [],
+	        hf_cache_scan_error: null,
+	        vecpipe_query_error: null,
+	        warnings: [],
+	        can_delete: true,
+	        requires_confirmation: false,
+	      };
       vi.mocked(modelManagerApi.getModelUsage).mockResolvedValue(usage);
 
       const queryClient = createTestQueryClient();

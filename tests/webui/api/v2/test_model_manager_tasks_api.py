@@ -69,8 +69,9 @@ class TestGetTaskProgress:
     @pytest.mark.asyncio()
     async def test_returns_task_progress(self, superuser_client) -> None:
         """Test successful retrieval of task progress."""
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
         mock_progress = {
-            "task_id": "task-123",
+            "task_id": task_id,
             "model_id": "test/model",
             "operation": "download",
             "status": "running",
@@ -89,11 +90,11 @@ class TestGetTaskProgress:
             with patch("webui.api.v2.model_manager.task_state.get_task_progress") as mock_get_progress:
                 mock_get_progress.return_value = mock_progress
 
-                response = await superuser_client.get("/api/v2/models/tasks/task-123")
+                response = await superuser_client.get(f"/api/v2/models/tasks/{task_id}")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["task_id"] == "task-123"
+        assert data["task_id"] == task_id
         assert data["model_id"] == "test/model"
         assert data["operation"] == "download"
         assert data["status"] == "running"
@@ -103,6 +104,7 @@ class TestGetTaskProgress:
     @pytest.mark.asyncio()
     async def test_returns_404_for_unknown_task(self, superuser_client) -> None:
         """Test 404 response for non-existent task."""
+        task_id = "550e8400-e29b-41d4-a716-446655440099"
         with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
             mock_redis_manager = AsyncMock()
             mock_redis_client = AsyncMock()
@@ -112,7 +114,7 @@ class TestGetTaskProgress:
             with patch("webui.api.v2.model_manager.task_state.get_task_progress") as mock_get_progress:
                 mock_get_progress.return_value = None
 
-                response = await superuser_client.get("/api/v2/models/tasks/nonexistent")
+                response = await superuser_client.get(f"/api/v2/models/tasks/{task_id}")
 
         assert response.status_code == 404
         data = response.json()
@@ -121,7 +123,7 @@ class TestGetTaskProgress:
     @pytest.mark.asyncio()
     async def test_requires_superuser(self, non_superuser_client) -> None:
         """Test 403 response for non-superuser."""
-        response = await non_superuser_client.get("/api/v2/models/tasks/task-123")
+        response = await non_superuser_client.get("/api/v2/models/tasks/550e8400-e29b-41d4-a716-446655440000")
 
         assert response.status_code == 403
         data = response.json()
@@ -130,8 +132,9 @@ class TestGetTaskProgress:
     @pytest.mark.asyncio()
     async def test_handles_completed_status(self, superuser_client) -> None:
         """Test completed task progress."""
+        task_id = "550e8400-e29b-41d4-a716-446655440001"
         mock_progress = {
-            "task_id": "task-456",
+            "task_id": task_id,
             "model_id": "test/model",
             "operation": "download",
             "status": "completed",
@@ -150,7 +153,7 @@ class TestGetTaskProgress:
             with patch("webui.api.v2.model_manager.task_state.get_task_progress") as mock_get_progress:
                 mock_get_progress.return_value = mock_progress
 
-                response = await superuser_client.get("/api/v2/models/tasks/task-456")
+                response = await superuser_client.get(f"/api/v2/models/tasks/{task_id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -160,8 +163,9 @@ class TestGetTaskProgress:
     @pytest.mark.asyncio()
     async def test_handles_failed_status_with_error(self, superuser_client) -> None:
         """Test failed task with error message."""
+        task_id = "550e8400-e29b-41d4-a716-446655440002"
         mock_progress = {
-            "task_id": "task-789",
+            "task_id": task_id,
             "model_id": "test/model",
             "operation": "download",
             "status": "failed",
@@ -180,7 +184,7 @@ class TestGetTaskProgress:
             with patch("webui.api.v2.model_manager.task_state.get_task_progress") as mock_get_progress:
                 mock_get_progress.return_value = mock_progress
 
-                response = await superuser_client.get("/api/v2/models/tasks/task-789")
+                response = await superuser_client.get(f"/api/v2/models/tasks/{task_id}")
 
         assert response.status_code == 200
         data = response.json()
