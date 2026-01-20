@@ -156,9 +156,7 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
 
     try:
         # Claim operation slot
-        claimed, existing_task_id = task_state.claim_model_operation_sync(
-            redis_client, model_id, "download", task_id
-        )
+        claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, "download", task_id)
 
         if not claimed:
             logger.info(
@@ -177,9 +175,7 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         task_state.init_task_progress_sync(redis_client, task_id, model_id, "download")
 
         # Update status to running
-        task_state.update_task_progress_sync(
-            redis_client, task_id, status="running", bytes_downloaded=0, bytes_total=0
-        )
+        task_state.update_task_progress_sync(redis_client, task_id, status="running", bytes_downloaded=0, bytes_total=0)
 
         logger.info("Starting download for model: %s (task: %s)", model_id, task_id)
 
@@ -315,9 +311,7 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
 
     try:
         # Claim operation slot
-        claimed, existing_task_id = task_state.claim_model_operation_sync(
-            redis_client, model_id, "delete", task_id
-        )
+        claimed, existing_task_id = task_state.claim_model_operation_sync(redis_client, model_id, "delete", task_id)
 
         if not claimed:
             logger.info(

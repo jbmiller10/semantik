@@ -154,3 +154,55 @@ class TaskProgressResponse(BaseModel):
     updated_at: float = Field(..., description="Last update timestamp (epoch seconds)")
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ModelDownloadRequest(BaseModel):
+    """Request body for model download endpoint."""
+
+    model_id: str = Field(..., description="HuggingFace model ID to download")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ModelUsageResponse(BaseModel):
+    """Response for model usage preflight check before deletion.
+
+    Provides information about model usage across the system to help users
+    understand the impact of deleting a model.
+    """
+
+    model_id: str = Field(..., description="HuggingFace model ID")
+    is_installed: bool = Field(..., description="Whether the model is installed")
+    size_on_disk_mb: int | None = Field(default=None, description="Size on disk in MB (if installed)")
+    estimated_freed_size_mb: int | None = Field(
+        default=None, description="Estimated space freed after deletion (same as size_on_disk_mb)"
+    )
+
+    # Blocking conditions (prevent deletion)
+    blocked_by_collections: list[str] = Field(
+        default_factory=list, description="Collection names using this model (blocks deletion)"
+    )
+
+    # Warning conditions (require confirmation)
+    user_preferences_count: int = Field(default=0, description="Number of users with this as default_embedding_model")
+    llm_config_count: int = Field(
+        default=0, description="Number of LLM configs referencing this model (for local LLMs)"
+    )
+    is_default_embedding_model: bool = Field(
+        default=False, description="Whether this is the system default embedding model"
+    )
+
+    # VecPipe state (best-effort, may fail)
+    loaded_in_vecpipe: bool = Field(default=False, description="Whether model is loaded in VecPipe GPU memory")
+    loaded_vecpipe_model_types: list[str] = Field(
+        default_factory=list, description="Model types loaded in VecPipe (embedding, reranker, etc.)"
+    )
+
+    # Computed fields
+    warnings: list[str] = Field(default_factory=list, description="Human-readable warning messages")
+    can_delete: bool = Field(..., description="Whether deletion is allowed (no blocking conditions)")
+    requires_confirmation: bool = Field(
+        ..., description="Whether deletion requires explicit confirmation (warnings exist)"
+    )
+
+    model_config = ConfigDict(extra="forbid")
