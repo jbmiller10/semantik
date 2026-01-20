@@ -1,6 +1,7 @@
 """Model manager API endpoints (superuser-only)."""
 
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,9 +24,15 @@ from webui.api.v2.model_manager_schemas import (
     LLMModelDetails,
     ModelListResponse,
     ModelType,
+    TaskProgressResponse,
+    TaskStatus,
 )
 from webui.auth import get_current_user
 from webui.dependencies import get_db
+from webui.model_manager import task_state
+from webui.services.factory import get_redis_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/models", tags=["models-v2"])
 
@@ -96,6 +103,10 @@ async def list_models(
     # Scan HF cache in a thread pool to avoid blocking
     installed_models = await asyncio.to_thread(get_installed_models, force_refresh=force_refresh_cache)
 
+    # Get Redis client for active operation lookups
+    redis_manager = get_redis_manager()
+    redis_client = await redis_manager.async_client()
+
     # Build response models
     response_models: list[CuratedModelResponse] = []
 
@@ -134,6 +145,20 @@ async def list_models(
                 context_window=model.context_window,
             )
 
+        # Check for active operations in Redis
+        active_download_task_id = None
+        active_delete_task_id = None
+        try:
+            active_op = await task_state.get_active_operation(redis_client, model.id)
+            if active_op:
+                op_type, task_id = active_op
+                if op_type == "download":
+                    active_download_task_id = task_id
+                elif op_type == "delete":
+                    active_delete_task_id = task_id
+        except Exception as e:
+            logger.warning("Failed to get active operation for %s: %s", model.id, e)
+
         response_models.append(
             CuratedModelResponse(
                 id=model.id,
@@ -144,8 +169,8 @@ async def list_models(
                 is_installed=is_installed,
                 size_on_disk_mb=size_on_disk_mb,
                 used_by_collections=used_by_collections,
-                active_download_task_id=None,  # Phase 1B placeholder
-                active_delete_task_id=None,  # Phase 1B placeholder
+                active_download_task_id=active_download_task_id,
+                active_delete_task_id=active_delete_task_id,
                 embedding_details=embedding_details,
                 llm_details=llm_details,
             )
@@ -164,3 +189,55 @@ async def list_models(
         )
 
     return ModelListResponse(models=response_models, cache_size=cache_size)
+
+
+@router.get(
+    "/tasks/{task_id}",
+    response_model=TaskProgressResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Superuser access required"},
+        404: {"model": ErrorResponse, "description": "Task not found"},
+    },
+)
+async def get_task_progress(
+    task_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> TaskProgressResponse:
+    """Get progress for a download/delete task.
+
+    Returns the current status, progress bytes (for downloads), and any errors.
+    Task progress is stored in Redis and available for polling until TTL expires.
+
+    Requires superuser access.
+    """
+    _require_superuser(current_user)
+
+    redis_manager = get_redis_manager()
+    redis_client = await redis_manager.async_client()
+
+    progress = await task_state.get_task_progress(redis_client, task_id)
+
+    if progress is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+
+    # Map status string to TaskStatus enum
+    status_str = progress.get("status", "pending")
+    try:
+        task_status = TaskStatus(status_str)
+    except ValueError:
+        task_status = TaskStatus.PENDING
+
+    return TaskProgressResponse(
+        task_id=progress["task_id"],
+        model_id=progress["model_id"],
+        operation=progress["operation"],
+        status=task_status,
+        bytes_downloaded=progress.get("bytes_downloaded", 0),
+        bytes_total=progress.get("bytes_total", 0),
+        error=progress.get("error"),
+        updated_at=progress.get("updated_at", 0.0),
+    )

@@ -136,3 +136,21 @@ class TaskResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Warning messages (for delete with confirm=true)")
 
     model_config = ConfigDict(extra="forbid")
+
+
+class TaskProgressResponse(BaseModel):
+    """Progress response for download/delete tasks.
+
+    Used by GET /api/v2/models/tasks/{task_id} to poll task progress.
+    """
+
+    task_id: str = Field(..., description="Unique task identifier")
+    model_id: str = Field(..., description="HuggingFace model ID")
+    operation: str = Field(..., description="Operation type (download/delete)")
+    status: TaskStatus = Field(..., description="Current task status")
+    bytes_downloaded: int = Field(default=0, description="Bytes downloaded so far (download only)")
+    bytes_total: int = Field(default=0, description="Total bytes to download (download only)")
+    error: str | None = Field(default=None, description="Error message if failed")
+    updated_at: float = Field(..., description="Last update timestamp (epoch seconds)")
+
+    model_config = ConfigDict(extra="forbid")
