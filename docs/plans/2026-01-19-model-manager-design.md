@@ -1,19 +1,36 @@
 # Model Manager Design
 
 **Date**: 2026-01-19
-**Status**: Approved
+**Status**: Approved (v1 Implemented)
 **Author**: John + Claude
+
+## v1 Scope
+
+This document describes the v1 implementation of the Model Manager. Custom model support is deferred to v2.
+
+### v1 Features (Implemented)
+- Browse curated registry of recommended models
+- Download models proactively to avoid runtime delays
+- Delete unused models to free disk space
+- Block deletion of models in use by collections
+- Warn (don't block) for user preferences and LLM configs
+- Superuser-only access (shared HF cache is global to all users)
+
+### Deferred to v2
+- Custom HuggingFace model support
+- Per-user custom model registry
+- Advanced configuration overrides
 
 ## Overview
 
-A new "Models" tab in Settings that lets users manage all model types (Embedding, LLM, Reranker, SPLADE) in one place. Users can browse a curated registry of recommended models, download them proactively to avoid runtime delays, and delete unused models to free disk space. Power users can add custom HuggingFace models with optional configuration overrides.
+A new "Models" tab in Settings that lets users manage all model types (Embedding, LLM, Reranker, SPLADE) in one place. Users can browse a curated registry of recommended models, download them proactively to avoid runtime delays, and delete unused models to free disk space.
 
 ## Key Principles
 
-- **Curated + Custom**: Ship with a registry of tested models, allow adding any HuggingFace model ID
+- **Curated Registry**: Ship with a registry of tested/recommended models
 - **Non-destructive**: Block deletion of models in use by collections
 - **Background operations**: Downloads happen in background, users can continue working
-- **Hybrid metadata**: Auto-detect dimension and estimate memory from parameter count; use sensible defaults (symmetric mode, mean pooling); allow advanced overrides
+- **Superuser-only**: HuggingFace cache is shared globally, so model management is restricted to superusers
 
 ## Model Types Supported
 
@@ -84,18 +101,67 @@ Settings > Models
 
 ## Delete Flow
 
+### Overview
+
 1. User clicks **[Delete]** on an installed model
-2. **If model is in use**: Show error toast "Cannot delete: used by Collection A, Collection B"
-3. **If model is not in use**:
-   - Confirmation dialog: "Delete Qwen3-Embedding-0.6B? This will free 1.2 GB of disk space."
-   - On confirm: Remove from HuggingFace cache, update status to "Not Installed"
-   - Toast: "Model deleted"
+2. Backend performs preflight check (`GET /models/{model_id}/usage`)
+3. Deletion is **blocked** (409) if collections use the model
+4. Deletion **requires confirmation** if warnings exist (user preferences, LLM configs, etc.)
+5. On confirm: Remove from HuggingFace cache, update status to "Not Installed"
+
+### Blocking vs Warning
+
+| Condition | Behavior |
+|-----------|----------|
+| Collections use model | **BLOCK** - Cannot delete until collections are updated |
+| User preferences reference model | **WARN** - Requires confirmation, preferences reset to defaults |
+| LLM tier configs reference model | **WARN** - Requires confirmation, configs updated |
+| Model is default embedding model | **WARN** - Requires confirmation (env var must be updated) |
+| Model is loaded in VecPipe | **WARN** - Best-effort check, may require service restart |
+| Plugin configs reference model | **IGNORE** - Plugins can handle missing models gracefully |
+
+### Cross-Operation Exclusion
+
+Only one operation (download or delete) can be active per model at a time:
+- Download while delete active → 409 with existing delete task_id
+- Delete while download active → 409 with existing download task_id
+- Second download request → Returns existing download task_id (idempotent)
+- Second delete request → Returns existing delete task_id (idempotent)
+
+### Delete Confirmation Dialog
+
+When warnings exist but deletion is allowed, the confirmation dialog shows:
+- Estimated disk space to be freed
+- List of warnings (preferences, configs, etc.)
+- "This action cannot be undone"
+
+### Usage Preflight Response
+
+```typescript
+interface ModelUsageResponse {
+  model_id: string;
+  is_installed: boolean;
+  size_on_disk_mb: number | null;
+  estimated_freed_size_mb: number | null;
+  blocked_by_collections: string[];    // If non-empty, deletion is blocked
+  user_preferences_count: number;      // Users referencing this model
+  llm_config_count: number;            // LLM tier configs using this model
+  is_default_embedding_model: boolean; // True if matches DEFAULT_EMBEDDING_MODEL env
+  loaded_in_vecpipe: boolean;          // Best-effort check if loaded in GPU memory
+  loaded_vecpipe_model_types: string[]; // Which model types are loaded
+  warnings: string[];                  // Human-readable warning messages
+  can_delete: boolean;                 // True if not blocked by collections
+  requires_confirmation: boolean;      // True if warnings exist
+}
+```
 
 ### In-Use Detection
 
-A model is "in use" if any collection references it as its embedding model. The backend query joins collections table with model name to determine usage. This applies to all model types - embedding models via collection config, rerankers via search config, etc.
+A model is "in use" and **blocks deletion** if any collection references it as its embedding model. The backend query joins collections table with model name to determine usage. This hard block applies only to collections - other references (preferences, LLM configs) generate warnings instead.
 
-## Add Custom Model Flow
+## Add Custom Model Flow (v2 - Deferred)
+
+> **Note**: Custom model support is deferred to v2. The following describes the planned implementation.
 
 User clicks **[+ Add Custom]** button, which opens a modal:
 
@@ -142,17 +208,18 @@ User clicks **[+ Add Custom]** button, which opens a modal:
 
 ### Model Registry Storage
 
-Two sources of model metadata:
+**v1 Implementation**: Curated registry only (shipped with app)
 
 1. **Curated registry** (shipped with app): `packages/shared/models/model_registry.yaml`
    - Contains tested/recommended models with full metadata
    - Updated with app releases
 
-2. **User custom models** (database): `custom_models` table
+2. **User custom models** (v2 - deferred): `custom_models` table
    - Stores user-added HuggingFace model IDs and their overrides
    - Per-user scoping (multi-tenant safe)
 
 ```sql
+-- v2: Custom model support
 CREATE TABLE custom_models (
     id UUID PRIMARY KEY,
     user_id UUID REFERENCES users(id),
@@ -163,6 +230,25 @@ CREATE TABLE custom_models (
     UNIQUE(user_id, model_id)
 );
 ```
+
+### Cache Size Semantics
+
+The model list endpoint returns cache size information with three components:
+
+```typescript
+interface CacheSizeInfo {
+  total_cache_size_mb: number;       // Entire HuggingFace hub cache
+  managed_cache_size_mb: number;     // Only curated models (known to registry)
+  unmanaged_cache_size_mb: number;   // total - managed (unknown repos)
+  unmanaged_repo_count: number;      // Count of repos not in curated registry
+}
+```
+
+- **Total**: Everything in `~/.cache/huggingface/hub/`
+- **Managed**: Models matching entries in the curated registry
+- **Unmanaged**: Models downloaded outside the Model Manager (e.g., by other apps)
+
+The UI displays "X GB used by curated models, Y GB by other downloads" to help users understand disk usage.
 
 ### Download/Cache Management
 
@@ -229,15 +315,17 @@ interface DownloadProgress {
 | Navigation pattern | Horizontal sub-tabs + search/filter | Scales to many models without overwhelming UI |
 | Download mechanism | Celery background tasks | Consistent with existing operation pattern |
 | Cache management | HuggingFace hub library | Standard tooling, handles revisions properly |
-| Model registry | YAML (curated) + DB (custom) | Curated ships with app, custom persists per-user |
+| Model registry | YAML (curated only in v1) | Curated ships with app, custom deferred to v2 |
 | Quantization | Informational only | Quantization happens at runtime, not download time |
-| Deletion protection | Block if in use | Prevents accidental breakage of collections |
-| Custom model metadata | Auto-detect + defaults + optional overrides | Balance of UX and correctness |
+| Deletion protection | Block collections, warn for preferences | Prevents breakage while allowing cleanup |
+| Access control | Superuser-only | HF cache is global, multi-tenant safety |
+| Cross-op exclusion | One operation per model | Prevents race conditions in cache operations |
 
-## Out of Scope
+## Out of Scope (v1)
 
-The following are not included in this design but could be future enhancements:
+The following are not included in v1 but could be future enhancements:
 
+- Custom HuggingFace model support (v2)
 - Batch download/delete operations
 - Model version management (always use latest)
 - Automatic cleanup of unused models
@@ -248,17 +336,26 @@ The following are not included in this design but could be future enhancements:
 
 ### Frontend Components (apps/webui-react)
 
-- New `ModelsTab.tsx` component in `src/components/settings/`
-- Sub-components: `ModelCard.tsx`, `AddCustomModelModal.tsx`
-- New hooks: `useModels.ts`, `useModelDownload.ts`
-- New API service: `src/services/api/v2/models.ts`
-- New types: `src/types/model.ts`
+v1 implementation:
+- `ModelsSettings.tsx` component in `src/components/settings/model-manager/`
+- `ModelCard.tsx` sub-component with download/delete progress
+- Hooks: `useModelManager.ts` (queries + mutations + progress tracking)
+- API service: `src/services/api/v2/model-manager.ts`
+- Types: `src/types/model-manager.ts`
+
+v2 additions (deferred):
+- `AddCustomModelModal.tsx` for custom model registration
 
 ### Backend Components (packages/webui, packages/shared)
 
-- New router: `packages/webui/api/v2/models.py`
-- New Celery task: `packages/webui/tasks/model_download.py`
-- New repository: `packages/shared/database/repositories/custom_model.py`
-- New model: `packages/shared/database/models/custom_model.py`
+v1 implementation:
+- Router: `packages/webui/api/v2/model_manager.py`
+- Celery tasks: Download and delete in `packages/webui/tasks/model_manager_tasks.py`
+- Redis state: `packages/webui/api/v2/model_manager_task_state.py`
+- Curated registry: `packages/shared/models/model_registry.py`
+- Schemas: `packages/webui/api/v2/model_manager_schemas.py`
+
+v2 additions (deferred):
+- Repository: `packages/shared/database/repositories/custom_model.py`
+- Model: `packages/shared/database/models/custom_model.py`
 - Migration for `custom_models` table
-- Consolidate model registries into `packages/shared/models/model_registry.yaml`
