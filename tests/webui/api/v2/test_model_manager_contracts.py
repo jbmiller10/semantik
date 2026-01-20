@@ -1,5 +1,6 @@
 """Contract tests for model manager API schemas and access control."""
 
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
@@ -7,6 +8,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from shared.database import get_db
 from webui.api.v2.model_manager_schemas import (
     CacheSizeInfo,
     ConflictType,
@@ -156,7 +158,7 @@ class TestCacheSizeInfo:
 
 
 @pytest_asyncio.fixture
-async def non_superuser_client():
+async def non_superuser_client(db_session):
     """Provide AsyncClient with non-superuser authentication."""
     mock_regular_user = {
         "id": 2,
@@ -169,7 +171,11 @@ async def non_superuser_client():
     async def override_get_current_user() -> dict[str, Any]:
         return mock_regular_user
 
+    async def override_get_db() -> AsyncGenerator[Any, None]:
+        yield db_session
+
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -177,7 +183,7 @@ async def non_superuser_client():
 
 
 @pytest_asyncio.fixture
-async def superuser_client():
+async def superuser_client(db_session):
     """Provide AsyncClient with superuser authentication."""
     mock_admin_user = {
         "id": 1,
@@ -190,7 +196,11 @@ async def superuser_client():
     async def override_get_current_user() -> dict[str, Any]:
         return mock_admin_user
 
+    async def override_get_db() -> AsyncGenerator[Any, None]:
+        yield db_session
+
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

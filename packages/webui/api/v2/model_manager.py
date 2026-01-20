@@ -50,7 +50,7 @@ async def _get_collections_using_model(db: AsyncSession, model_id: str) -> list[
         List of collection names using this model.
     """
     result = await db.execute(select(Collection.name).where(Collection.embedding_model == model_id))
-    return [row[0] for row in result.fetchall()]
+    return [row[0] for row in result.all()]
 
 
 def _map_model_type(shared_type: SharedModelType) -> ModelType:
