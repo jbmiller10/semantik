@@ -191,64 +191,67 @@ class TestUsagePreflightDeleteFlow:
                                     assert usage_data["user_preferences_count"] == 1
 
         # Step 2: Delete with confirmation
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
+            mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
-                mock_colls.return_value = []
+            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
+                mock_installed.return_value = True
 
-                with patch(
-                    "webui.api.v2.model_manager._count_user_preferences_using_model",
-                    new_callable=AsyncMock,
-                ) as mock_prefs:
-                    mock_prefs.return_value = 1
+                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
+                    mock_colls.return_value = []
 
                     with patch(
-                        "webui.api.v2.model_manager._count_llm_configs_using_model",
+                        "webui.api.v2.model_manager._count_user_preferences_using_model",
                         new_callable=AsyncMock,
-                    ) as mock_llm:
-                        mock_llm.return_value = 0
+                    ) as mock_prefs:
+                        mock_prefs.return_value = 1
 
                         with patch(
-                            "webui.api.v2.model_manager._get_vecpipe_loaded_models",
+                            "webui.api.v2.model_manager._count_llm_configs_using_model",
                             new_callable=AsyncMock,
-                        ) as mock_vp:
-                            mock_vp.return_value = (False, [])
+                        ) as mock_llm:
+                            mock_llm.return_value = 0
 
-                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
+                            with patch(
+                                "webui.api.v2.model_manager._get_vecpipe_loaded_models",
+                                new_callable=AsyncMock,
+                            ) as mock_vp:
+                                mock_vp.return_value = (False, [])
 
-                                with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
-                                    mock_redis_manager, _ = _mock_redis_manager()
-                                    mock_get_redis.return_value = mock_redis_manager
+                                with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                                    mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
 
-                                    with patch(
-                                        "webui.api.v2.model_manager.task_state.claim_model_operation",
-                                        new_callable=AsyncMock,
-                                    ) as mock_claim:
-                                        mock_claim.return_value = (True, None)
+                                    with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
+                                        mock_redis_manager, _ = _mock_redis_manager()
+                                        mock_get_redis.return_value = mock_redis_manager
 
                                         with patch(
-                                            "webui.api.v2.model_manager.task_state.init_task_progress",
+                                            "webui.api.v2.model_manager.task_state.claim_model_operation",
                                             new_callable=AsyncMock,
-                                        ) as mock_init:
-                                            mock_init.return_value = None
+                                        ) as mock_claim:
+                                            mock_claim.return_value = (True, None)
 
-                                            with patch("webui.api.v2.model_manager.celery_app.send_task") as mock_send:
-                                                mock_send.return_value = MagicMock()
+                                            with patch(
+                                                "webui.api.v2.model_manager.task_state.init_task_progress",
+                                                new_callable=AsyncMock,
+                                            ) as mock_init:
+                                                mock_init.return_value = None
 
-                                                response = await superuser_client.delete(
-                                                    "/api/v2/models/cache",
-                                                    params={
-                                                        "model_id": "BAAI/bge-small-en-v1.5",
-                                                        "confirm": "true",
-                                                    },
-                                                )
+                                                with patch("webui.api.v2.model_manager.celery_app.send_task") as mock_send:
+                                                    mock_send.return_value = MagicMock()
 
-                                                assert response.status_code == 200
-                                                delete_data = response.json()
-                                                assert delete_data["task_id"] is not None
-                                                assert delete_data["operation"] == "delete"
+                                                    response = await superuser_client.delete(
+                                                        "/api/v2/models/cache",
+                                                        params={
+                                                            "model_id": "BAAI/bge-small-en-v1.5",
+                                                            "confirm": "true",
+                                                        },
+                                                    )
+
+                                                    assert response.status_code == 200
+                                                    delete_data = response.json()
+                                                    assert delete_data["task_id"] is not None
+                                                    assert delete_data["operation"] == "delete"
 
 
 class TestCrossOpExclusion:
@@ -257,56 +260,59 @@ class TestCrossOpExclusion:
     @pytest.mark.asyncio()
     async def test_download_blocks_delete(self, superuser_client):
         """Verify active download blocks delete attempt."""
-        with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
-            mock_installed.return_value = True
+        with patch("webui.api.v2.model_manager.get_curated_model_ids") as mock_curated:
+            mock_curated.return_value = {"BAAI/bge-small-en-v1.5"}
 
-            with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
-                mock_colls.return_value = []
+            with patch("webui.api.v2.model_manager.is_model_installed") as mock_installed:
+                mock_installed.return_value = True
 
-                with patch(
-                    "webui.api.v2.model_manager._count_user_preferences_using_model",
-                    new_callable=AsyncMock,
-                ) as mock_prefs:
-                    mock_prefs.return_value = 0
+                with patch("webui.api.v2.model_manager._get_collections_using_model") as mock_colls:
+                    mock_colls.return_value = []
 
                     with patch(
-                        "webui.api.v2.model_manager._count_llm_configs_using_model",
+                        "webui.api.v2.model_manager._count_user_preferences_using_model",
                         new_callable=AsyncMock,
-                    ) as mock_llm:
-                        mock_llm.return_value = 0
+                    ) as mock_prefs:
+                        mock_prefs.return_value = 0
 
                         with patch(
-                            "webui.api.v2.model_manager._get_vecpipe_loaded_models",
+                            "webui.api.v2.model_manager._count_llm_configs_using_model",
                             new_callable=AsyncMock,
-                        ) as mock_vp:
-                            mock_vp.return_value = (False, [])
+                        ) as mock_llm:
+                            mock_llm.return_value = 0
 
-                            with patch("webui.api.v2.model_manager.settings") as mock_settings:
-                                mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
+                            with patch(
+                                "webui.api.v2.model_manager._get_vecpipe_loaded_models",
+                                new_callable=AsyncMock,
+                            ) as mock_vp:
+                                mock_vp.return_value = (False, [])
 
-                                with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
-                                    mock_redis_manager, _ = _mock_redis_manager()
-                                    mock_get_redis.return_value = mock_redis_manager
+                                with patch("webui.api.v2.model_manager.settings") as mock_settings:
+                                    mock_settings.DEFAULT_EMBEDDING_MODEL = "other-model"
 
-                                    with patch(
-                                        "webui.api.v2.model_manager.task_state.claim_model_operation",
-                                        new_callable=AsyncMock,
-                                    ) as mock_claim:
-                                        # Simulate conflict - download is active
-                                        mock_claim.side_effect = CrossOpConflictError(
-                                            "BAAI/bge-small-en-v1.5", "download", "download-task-123"
-                                        )
+                                    with patch("webui.api.v2.model_manager.get_redis_manager") as mock_get_redis:
+                                        mock_redis_manager, _ = _mock_redis_manager()
+                                        mock_get_redis.return_value = mock_redis_manager
 
-                                        response = await superuser_client.delete(
-                                            "/api/v2/models/cache",
-                                            params={"model_id": "BAAI/bge-small-en-v1.5"},
-                                        )
+                                        with patch(
+                                            "webui.api.v2.model_manager.task_state.claim_model_operation",
+                                            new_callable=AsyncMock,
+                                        ) as mock_claim:
+                                            # Simulate conflict - download is active
+                                            mock_claim.side_effect = CrossOpConflictError(
+                                                "BAAI/bge-small-en-v1.5", "download", "download-task-123"
+                                            )
 
-                                        assert response.status_code == 409
-                                        data = response.json()
-                                        # Response is nested under "detail"
-                                        assert data["detail"]["conflict_type"] == "cross_op_exclusion"
-                                        assert data["detail"]["active_operation"] == "download"
+                                            response = await superuser_client.delete(
+                                                "/api/v2/models/cache",
+                                                params={"model_id": "BAAI/bge-small-en-v1.5"},
+                                            )
+
+                                            assert response.status_code == 409
+                                            data = response.json()
+                                            # Response is nested under "detail"
+                                            assert data["detail"]["conflict_type"] == "cross_op_exclusion"
+                                            assert data["detail"]["active_operation"] == "download"
 
     @pytest.mark.asyncio()
     async def test_delete_blocks_download(self, superuser_client):
