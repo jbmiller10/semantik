@@ -65,6 +65,10 @@ def _build_base_config() -> dict[str, Any]:
         # Enable task events for monitoring
         "worker_send_task_events": True,
         "task_send_sent_event": True,
+        # Task routing
+        "task_routes": {
+            "webui.tasks.model_manager.*": {"queue": "model-manager"},
+        },
         # Beat schedule for periodic tasks
         "beat_schedule": {
             "cleanup-old-results": {
