@@ -272,31 +272,32 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         # Import huggingface_hub here to avoid loading it in all workers
         from huggingface_hub import snapshot_download
 
-        progress_aggregator = _DownloadProgressAggregator(redis_client, task_id)
+        download_progress_aggregator = _DownloadProgressAggregator(redis_client, task_id)
+        progress_aggregator = download_progress_aggregator
 
         tqdm_class: Any | None = None
         try:
-            from tqdm.auto import tqdm as _Tqdm
+            from tqdm.auto import tqdm as _tqdm
 
-            class _RedisBytesTqdm(_Tqdm):  # type: ignore[misc]
+            class _RedisBytesTqdm(_tqdm):
                 def __init__(self, *args: Any, **kwargs: Any) -> None:
                     self._track_bytes = kwargs.get("unit") == "B"
                     super().__init__(*args, **kwargs)
                     if self._track_bytes:
                         total = int(self.total) if self.total is not None else 0
-                        progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
+                        download_progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
 
                 def update(self, n: float = 1) -> Any:  # noqa: ANN401
                     result = super().update(n)
                     if self._track_bytes:
                         total = int(self.total) if self.total is not None else 0
-                        progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
+                        download_progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
                     return result
 
                 def close(self) -> None:
                     try:
                         if getattr(self, "_track_bytes", False):
-                            progress_aggregator.remove_bar(id(self))
+                            download_progress_aggregator.remove_bar(id(self))
                     finally:
                         super().close()
 
