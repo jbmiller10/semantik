@@ -236,8 +236,8 @@ async def update_task_progress(
     redis_client: aioredis.Redis,
     task_id: str,
     status: str,
-    bytes_downloaded: int = 0,
-    bytes_total: int = 0,
+    bytes_downloaded: int | None = None,
+    bytes_total: int | None = None,
     error: str | None = None,
 ) -> None:
     """Update task progress hash.
@@ -257,10 +257,12 @@ async def update_task_progress(
 
     mapping: dict[str | bytes, bytes | float | int | str] = {
         "status": status,
-        "bytes_downloaded": str(bytes_downloaded),
-        "bytes_total": str(bytes_total),
         "updated_at": str(now),
     }
+    if bytes_downloaded is not None:
+        mapping["bytes_downloaded"] = str(bytes_downloaded)
+    if bytes_total is not None:
+        mapping["bytes_total"] = str(bytes_total)
     if error is not None:
         mapping["error"] = error
 
@@ -425,8 +427,8 @@ def update_task_progress_sync(
     redis_client: redis.Redis,
     task_id: str,
     status: str,
-    bytes_downloaded: int = 0,
-    bytes_total: int = 0,
+    bytes_downloaded: int | None = None,
+    bytes_total: int | None = None,
     error: str | None = None,
 ) -> None:
     """Synchronous version of update_task_progress for Celery tasks."""
@@ -435,10 +437,12 @@ def update_task_progress_sync(
 
     mapping: dict[str | bytes, bytes | float | int | str] = {
         "status": status,
-        "bytes_downloaded": str(bytes_downloaded),
-        "bytes_total": str(bytes_total),
         "updated_at": str(now),
     }
+    if bytes_downloaded is not None:
+        mapping["bytes_downloaded"] = str(bytes_downloaded)
+    if bytes_total is not None:
+        mapping["bytes_total"] = str(bytes_total)
     if error is not None:
         mapping["error"] = error
 

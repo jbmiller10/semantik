@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any
 
 from celery.exceptions import SoftTimeLimitExceeded
@@ -24,6 +25,11 @@ logger = logging.getLogger(__name__)
 # Queue configuration
 MODEL_MANAGER_QUEUE = "model-manager"
 
+# Process-wide Redis manager reuse for Celery workers.
+# Creating a new RedisManager per task wastes connections and memory under load.
+_redis_manager: RedisManager | None = None
+_redis_manager_lock = threading.Lock()
+
 # Time limits
 DOWNLOAD_SOFT_TIME_LIMIT = 14400  # 4 hours
 DOWNLOAD_HARD_TIME_LIMIT = 21600  # 6 hours
@@ -33,9 +39,13 @@ DELETE_HARD_TIME_LIMIT = 900  # 15 minutes
 
 def _get_sync_redis_client() -> Any:
     """Get synchronous Redis client for Celery tasks."""
-    config = RedisConfig(url=settings.REDIS_URL)
-    manager = RedisManager(config)
-    return manager.sync_client
+    global _redis_manager
+    if _redis_manager is None:
+        with _redis_manager_lock:
+            if _redis_manager is None:
+                config = RedisConfig(url=settings.REDIS_URL)
+                _redis_manager = RedisManager(config)
+    return _redis_manager.sync_client
 
 
 class _TaskHeartbeat:
@@ -63,11 +73,79 @@ class _TaskHeartbeat:
                     self._redis_client,
                     self._task_id,
                     status="running",
-                    bytes_downloaded=0,
-                    bytes_total=0,
                 )
             except Exception as e:
                 logger.debug("Heartbeat progress update failed: %s", e)
+
+
+class _DownloadProgressAggregator:
+    """Aggregate byte progress across potentially multiple HF progress bars."""
+
+    def __init__(
+        self,
+        redis_client: Any,
+        task_id: str,
+        *,
+        min_update_interval_seconds: float = 0.5,
+    ) -> None:
+        self._redis_client = redis_client
+        self._task_id = task_id
+        self._min_update_interval_seconds = min_update_interval_seconds
+
+        self._lock = threading.Lock()
+        self._enabled = True
+        self._bars: dict[int, tuple[int, int]] = {}
+        self._last_emit_monotonic: float = 0.0
+
+        self._latest_downloaded: int = 0
+        self._latest_total: int = 0
+
+    def set_bar(self, bar_id: int, *, downloaded: int, total: int) -> None:
+        with self._lock:
+            self._bars[bar_id] = (max(downloaded, 0), max(total, 0))
+        self._maybe_emit(force=False)
+
+    def remove_bar(self, bar_id: int) -> None:
+        with self._lock:
+            self._bars.pop(bar_id, None)
+        self._maybe_emit(force=True)
+
+    def flush(self) -> tuple[int, int]:
+        self._maybe_emit(force=True)
+        return self.latest()
+
+    def disable(self) -> None:
+        with self._lock:
+            self._enabled = False
+
+    def latest(self) -> tuple[int, int]:
+        with self._lock:
+            return (self._latest_downloaded, self._latest_total)
+
+    def _maybe_emit(self, *, force: bool) -> None:
+        now = time.monotonic()
+        if not force and (now - self._last_emit_monotonic) < self._min_update_interval_seconds:
+            return
+
+        with self._lock:
+            bytes_downloaded = sum(downloaded for downloaded, _total in self._bars.values())
+            bytes_total = sum(total for _downloaded, total in self._bars.values() if total > 0)
+            self._latest_downloaded = bytes_downloaded
+            self._latest_total = bytes_total
+            self._last_emit_monotonic = now
+            enabled = self._enabled
+
+        if enabled:
+            try:
+                task_state.update_task_progress_sync(
+                    self._redis_client,
+                    self._task_id,
+                    status="running",
+                    bytes_downloaded=bytes_downloaded,
+                    bytes_total=bytes_total,
+                )
+            except Exception as e:
+                logger.debug("Progress update failed: %s", e)
 
 
 def _is_retryable_error(exc: Exception) -> bool:
@@ -149,6 +227,7 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
     """
     redis_client = _get_sync_redis_client()
     heartbeat: _TaskHeartbeat | None = None
+    progress_aggregator: _DownloadProgressAggregator | None = None
     operation = "download"
     should_release = True
 
@@ -193,26 +272,82 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         # Import huggingface_hub here to avoid loading it in all workers
         from huggingface_hub import snapshot_download
 
+        progress_aggregator = _DownloadProgressAggregator(redis_client, task_id)
+
+        tqdm_class: Any | None = None
+        try:
+            from tqdm.auto import tqdm as _Tqdm
+
+            class _RedisBytesTqdm(_Tqdm):  # type: ignore[misc]
+                def __init__(self, *args: Any, **kwargs: Any) -> None:
+                    self._track_bytes = kwargs.get("unit") == "B"
+                    super().__init__(*args, **kwargs)
+                    if self._track_bytes:
+                        total = int(self.total) if self.total is not None else 0
+                        progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
+
+                def update(self, n: float = 1) -> Any:  # noqa: ANN401
+                    result = super().update(n)
+                    if self._track_bytes:
+                        total = int(self.total) if self.total is not None else 0
+                        progress_aggregator.set_bar(id(self), downloaded=int(self.n), total=total)
+                    return result
+
+                def close(self) -> None:
+                    try:
+                        if getattr(self, "_track_bytes", False):
+                            progress_aggregator.remove_bar(id(self))
+                    finally:
+                        super().close()
+
+            tqdm_class = _RedisBytesTqdm
+        except Exception:
+            # tqdm isn't strictly required; we'll fall back to heartbeat-only updates.
+            tqdm_class = None
+
         # Keep Redis state fresh while snapshot_download runs (may take hours).
         heartbeat = _TaskHeartbeat(redis_client, task_id, interval_seconds=30)
         heartbeat.start()
 
         # Download the model
         # Note: HF_HOME environment variable controls cache location
-        local_dir = snapshot_download(
-            repo_id=model_id,
-            # Progress bytes are best-effort (status updates via heartbeat).
-        )
+        snapshot_kwargs: dict[str, Any] = {"repo_id": model_id}
+        if tqdm_class is not None:
+            try:
+                import inspect
+
+                sig = inspect.signature(snapshot_download)
+                accepts_var_kw = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                )
+                if "tqdm_class" in sig.parameters or accepts_var_kw:
+                    snapshot_kwargs["tqdm_class"] = tqdm_class
+            except Exception:
+                # Be conservative: don't pass tqdm_class if we can't determine support.
+                pass
+
+        local_dir = snapshot_download(**snapshot_kwargs)
 
         logger.info("Download complete for %s: %s", model_id, local_dir)
+
+        # Stop heartbeat BEFORE writing terminal status to avoid a race where a heartbeat
+        # tick overwrites the terminal status with "running".
+        if heartbeat is not None:
+            heartbeat.stop()
+            heartbeat = None
+
+        final_downloaded, final_total = (0, 0)
+        if progress_aggregator is not None:
+            final_downloaded, final_total = progress_aggregator.flush()
+            progress_aggregator.disable()
 
         # Update final status
         task_state.update_task_progress_sync(
             redis_client,
             task_id,
             status="completed",
-            bytes_downloaded=0,
-            bytes_total=0,
+            bytes_downloaded=final_downloaded,
+            bytes_total=final_total,
         )
 
         return {
@@ -223,6 +358,11 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         }
 
     except task_state.CrossOpConflictError as e:
+        if heartbeat is not None:
+            heartbeat.stop()
+            heartbeat = None
+        if progress_aggregator is not None:
+            progress_aggregator.disable()
         logger.warning("Cross-operation conflict for %s: %s", model_id, e)
         task_state.update_task_progress_sync(
             redis_client,
@@ -238,6 +378,11 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         }
 
     except SoftTimeLimitExceeded:
+        if heartbeat is not None:
+            heartbeat.stop()
+            heartbeat = None
+        if progress_aggregator is not None:
+            progress_aggregator.disable()
         logger.error("Download timeout for %s (task: %s)", model_id, task_id)
         task_state.update_task_progress_sync(
             redis_client,
@@ -248,6 +393,11 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
         raise
 
     except Exception as e:
+        if heartbeat is not None:
+            heartbeat.stop()
+            heartbeat = None
+        if progress_aggregator is not None:
+            progress_aggregator.disable()
         logger.exception("Download failed for %s (task: %s): %s", model_id, task_id, e)
 
         # Check if we should retry
@@ -367,7 +517,7 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         # Find the repo for this model
         target_repo = None
         for repo in cache_info.repos:
-            if repo.repo_id == model_id:
+            if repo.repo_id == model_id and repo.repo_type == "model":
                 target_repo = repo
                 break
 

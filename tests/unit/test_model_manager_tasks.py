@@ -123,6 +123,7 @@ class TestDeleteModelTask:
         with patch("huggingface_hub.scan_cache_dir") as mock_scan:
             mock_repo = MagicMock()
             mock_repo.repo_id = "test/model"
+            mock_repo.repo_type = "model"
             mock_revision = MagicMock()
             mock_revision.commit_hash = "abc123"
             mock_repo.revisions = [mock_revision]

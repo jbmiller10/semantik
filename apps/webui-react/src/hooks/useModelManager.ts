@@ -3,7 +3,7 @@
  * Note: This is separate from useModels.ts which handles legacy embedding models.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { modelManagerApi, type ListModelsParams } from '../services/api/v2/model-manager';
 import { handleApiError } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
@@ -16,15 +16,30 @@ import type {
   TaskStatus,
 } from '../types/model-manager';
 import { isTerminalStatus } from '../types/model-manager';
-import { AxiosError } from 'axios';
+import axios from 'axios';
 
 // Query key factory for consistent key generation
 export const modelManagerKeys = {
   all: ['model-manager'] as const,
-  list: (params?: ListModelsParams) => [...modelManagerKeys.all, 'list', params ?? {}] as const,
+  lists: () => [...modelManagerKeys.all, 'list'] as const,
+  list: (params?: ListModelsParams) => [...modelManagerKeys.lists(), params ?? {}] as const,
   usage: (modelId: string) => [...modelManagerKeys.all, 'usage', modelId] as const,
   task: (taskId: string) => [...modelManagerKeys.all, 'task', taskId] as const,
 };
+
+type ApiErrorResponse<TDetail> = {
+  detail: TDetail;
+  reference?: string;
+};
+
+function getApiErrorDetail<TDetail>(error: unknown): TDetail | null {
+  if (!axios.isAxiosError(error) || !error.response) return null;
+
+  const data = error.response.data as unknown;
+  if (!data || typeof data !== 'object' || !('detail' in data)) return null;
+
+  return (data as ApiErrorResponse<TDetail>).detail;
+}
 
 export interface UseModelManagerModelsOptions {
   modelType?: ModelType;
@@ -122,8 +137,14 @@ export function useTaskProgress(
 
   // Track 404 count for grace period
   const consecutive404s = useRef(0);
+  const lastTerminalTaskId = useRef<string | null>(null);
 
-  return useQuery({
+  // Reset terminal callback tracking when task changes
+  useEffect(() => {
+    lastTerminalTaskId.current = null;
+  }, [taskId]);
+
+  const query = useQuery({
     queryKey: modelManagerKeys.task(taskId ?? ''),
     queryFn: async () => {
       if (!taskId) return null;
@@ -135,7 +156,7 @@ export function useTaskProgress(
         return response;
       } catch (error) {
         // Handle 404 with grace period
-        if (error instanceof AxiosError && error.response?.status === 404) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
           consecutive404s.current++;
           if (consecutive404s.current < grace404Count) {
             // Return null to continue polling
@@ -157,16 +178,24 @@ export function useTaskProgress(
       // Stop polling on terminal status
       const status = query.state.data?.status;
       if (isTerminalStatus(status)) {
-        // Call onTerminal callback if provided
-        if (onTerminal && query.state.data) {
-          onTerminal(query.state.data);
-        }
         return false;
       }
 
       return pollingInterval;
     },
   });
+
+  // React Query expects refetchInterval to be pure; handle terminal side effects here instead.
+  useEffect(() => {
+    if (!onTerminal || !query.data) return;
+    if (!isTerminalStatus(query.data.status)) return;
+    if (lastTerminalTaskId.current === query.data.task_id) return;
+
+    lastTerminalTaskId.current = query.data.task_id;
+    onTerminal(query.data);
+  }, [onTerminal, query.data]);
+
+  return query;
 }
 
 // =============================================================================
@@ -210,7 +239,7 @@ export function useStartModelDownload(): StartModelDownloadResult {
           message: 'Model is already installed',
         });
         // Invalidate to refresh status
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
         return;
       }
 
@@ -223,7 +252,7 @@ export function useStartModelDownload(): StartModelDownloadResult {
         });
 
         // Invalidate model list to pick up active_download_task_id
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
 
         // Show warnings if any
         if (response.warnings.length > 0) {
@@ -236,9 +265,9 @@ export function useStartModelDownload(): StartModelDownloadResult {
     },
     onError: (error) => {
       // Handle 409 conflict
-      if (error instanceof AxiosError && error.response?.status === 409) {
-        const detail = error.response.data?.detail || 'Operation conflict';
-        const conflictType = error.response.data?.conflict_type;
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        const conflict = getApiErrorDetail<ModelManagerConflictResponse>(error);
+        const conflictType = conflict?.conflict_type;
 
         if (conflictType === 'cross_op_exclusion') {
           addToast({
@@ -248,7 +277,7 @@ export function useStartModelDownload(): StartModelDownloadResult {
         } else {
           addToast({
             type: 'error',
-            message: detail,
+            message: conflict?.detail || 'Operation conflict',
           });
         }
         return;
@@ -339,7 +368,9 @@ export function useModelDownloadProgress(
   const formattedBytes =
     data.bytes_total > 0
       ? `${formatBytes(data.bytes_downloaded)} / ${formatBytes(data.bytes_total)}`
-      : 'Starting...';
+      : data.bytes_downloaded > 0
+        ? formatBytes(data.bytes_downloaded)
+        : 'Starting...';
 
   return {
     taskId: data.task_id,
@@ -478,7 +509,7 @@ export function useStartModelDelete(): StartModelDeleteResult {
           message: 'Model is already removed',
         });
         // Invalidate to refresh status
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
         return;
       }
 
@@ -491,7 +522,7 @@ export function useStartModelDelete(): StartModelDeleteResult {
         });
 
         // Invalidate model list to pick up active_delete_task_id
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
 
         // Show warnings if any
         if (response.warnings.length > 0) {
@@ -504,8 +535,8 @@ export function useStartModelDelete(): StartModelDeleteResult {
     },
     onError: (error, { modelId }) => {
       // Handle 409 conflict
-      if (error instanceof AxiosError && error.response?.status === 409) {
-        const conflictData = error.response.data as ModelManagerConflictResponse;
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        const conflictData = getApiErrorDetail<ModelManagerConflictResponse>(error);
         const conflictType = conflictData?.conflict_type;
 
         if (conflictType === 'cross_op_exclusion') {
@@ -521,10 +552,12 @@ export function useStartModelDelete(): StartModelDeleteResult {
           });
         } else if (conflictType === 'requires_confirmation') {
           // Store conflict for UI to handle
-          setLastConflict({
-            ...conflictData,
-            model_id: modelId,
-          });
+          if (conflictData) {
+            setLastConflict({
+              ...conflictData,
+              model_id: modelId,
+            });
+          }
           return; // Don't show toast - UI will show confirmation dialog
         } else {
           addToast({

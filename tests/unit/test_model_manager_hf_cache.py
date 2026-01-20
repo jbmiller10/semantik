@@ -177,6 +177,79 @@ class TestGetCacheSizeInfo:
         assert result["unmanaged_repo_count"] >= 0
 
 
+class TestHfCacheRepoIdentityAndSizing:
+    """Tests for HF cache repo identity and size semantics."""
+
+    def setup_method(self) -> None:
+        clear_cache()
+
+    def test_repo_key_includes_repo_type(self, tmp_path: Path) -> None:
+        """scan_hf_cache should not collide repo_id across repo types."""
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        # Two repos share repo_id but differ in type (valid on HF).
+        repo_dataset = MagicMock()
+        repo_dataset.repo_id = "org/repo"
+        repo_dataset.repo_type = "dataset"
+        repo_dataset.size_on_disk = 2 * 1024 * 1024
+        repo_dataset.revisions = []
+
+        repo_model = MagicMock()
+        repo_model.repo_id = "org/repo"
+        repo_model.repo_type = "model"
+        repo_model.size_on_disk = 5 * 1024 * 1024
+        repo_model.revisions = []
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = repo_dataset.size_on_disk + repo_model.size_on_disk
+        scan_result.repos = [repo_dataset, repo_model]
+
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
+            mock_resolve.return_value = cache_dir
+            with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+                info = scan_hf_cache(force_refresh=True)
+
+                assert ("dataset", "org/repo") in info.repos
+                assert ("model", "org/repo") in info.repos
+
+                # Installed model checks should only consider repo_type=="model"
+                models = get_installed_models()
+                assert set(models.keys()) == {"org/repo"}
+                assert models["org/repo"].repo_type == "model"
+
+    def test_cache_size_semantics_reconcile_total(self, tmp_path: Path) -> None:
+        """unmanaged_cache_size_mb should reconcile as (total - managed)."""
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        repo_dataset = MagicMock()
+        repo_dataset.repo_id = "org/repo"
+        repo_dataset.repo_type = "dataset"
+        repo_dataset.size_on_disk = 2 * 1024 * 1024
+        repo_dataset.revisions = []
+
+        repo_model = MagicMock()
+        repo_model.repo_id = "org/repo"
+        repo_model.repo_type = "model"
+        repo_model.size_on_disk = 5 * 1024 * 1024
+        repo_model.revisions = []
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = repo_dataset.size_on_disk + repo_model.size_on_disk
+        scan_result.repos = [repo_dataset, repo_model]
+
+        with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
+            mock_resolve.return_value = cache_dir
+            with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+                result = get_cache_size_info({"org/repo"})
+
+        assert result["total_cache_size_mb"] == 7
+        assert result["managed_cache_size_mb"] == 5
+        assert result["unmanaged_cache_size_mb"] == 2
+        assert result["unmanaged_repo_count"] == 1
+
+
 class TestClearCache:
     """Tests for clear_cache function."""
 

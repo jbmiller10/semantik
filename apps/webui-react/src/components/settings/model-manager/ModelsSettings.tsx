@@ -336,7 +336,7 @@ export default function ModelsSettings() {
           message: 'Model download completed',
         });
         // Invalidate to refresh the model list
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
       } else if (progress.status === 'failed') {
         addToast({
           type: 'error',
@@ -347,7 +347,7 @@ export default function ModelsSettings() {
           type: 'info',
           message: 'Model is already installed',
         });
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
       }
     },
     [clearDownloadTaskId, addToast, queryClient]
@@ -366,7 +366,7 @@ export default function ModelsSettings() {
           message: 'Model deleted successfully',
         });
         // Invalidate to refresh the model list
-        queryClient.invalidateQueries({ queryKey: modelManagerKeys.list() });
+        queryClient.invalidateQueries({ queryKey: modelManagerKeys.lists() });
       } else if (progress.status === 'failed') {
         addToast({
           type: 'error',

@@ -284,12 +284,12 @@ describe('ModelCard', () => {
         status: 'running',
         bytesTotal: 0,
         percentage: 0,
+        formattedBytes: '500.0 MB',
       });
       render(<ModelCard model={model} downloadProgress={downloadProgress} />);
 
-      // Component shows "Initializing..." twice - in the label and progress area
-      const initializingElements = screen.getAllByText('Initializing...');
-      expect(initializingElements.length).toBeGreaterThan(0);
+      expect(screen.getByText('Downloading...')).toBeInTheDocument();
+      expect(screen.getByText('500.0 MB')).toBeInTheDocument();
     });
 
     it('shows pending state during download initialization', () => {
@@ -298,12 +298,12 @@ describe('ModelCard', () => {
         status: 'pending',
         bytesDownloaded: 0,
         bytesTotal: 0,
+        formattedBytes: 'Starting...',
       });
       render(<ModelCard model={model} downloadProgress={downloadProgress} />);
 
-      // Component shows "Initializing..." twice - in the label and progress area
-      const initializingElements = screen.getAllByText('Initializing...');
-      expect(initializingElements.length).toBeGreaterThan(0);
+      expect(screen.getByText('Downloading...')).toBeInTheDocument();
+      expect(screen.getByText('Starting...')).toBeInTheDocument();
     });
 
     it('shows error state with error message when download fails', () => {

@@ -100,11 +100,11 @@ function DownloadProgressBar({ progress, onRetry, onDismiss }: DownloadProgressB
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-[var(--text-secondary)]">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>{isIndeterminate ? 'Initializing...' : 'Downloading...'}</span>
+            <span>Downloading...</span>
           </div>
           <div className="flex items-center gap-2 text-[var(--text-muted)]">
             {isIndeterminate ? (
-              <span>Initializing...</span>
+              <span>{progress.formattedBytes}</span>
             ) : (
               <>
                 <span>{progress.formattedBytes}</span>
