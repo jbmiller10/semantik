@@ -17,6 +17,11 @@ from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
+# Repo identity: HuggingFace Hub allows the same repo_id across repo types
+# (model|dataset|space). We key installed repos by (repo_type, repo_id) to avoid
+# collisions and incorrect install/size reporting.
+RepoKey = tuple[str, str]
+
 # Module-level cache state for TTL caching
 _cache_result: "HFCacheInfo | None" = None
 _cache_timestamp: float = 0.0
@@ -76,7 +81,7 @@ class HFCacheInfo:
     """Parsed HuggingFace cache information."""
 
     cache_dir: Path
-    repos: dict[str, InstalledModel]
+    repos: dict[RepoKey, InstalledModel]
     total_size_mb: int
     scan_time: datetime
 
@@ -111,7 +116,7 @@ def scan_hf_cache(
             return _cache_result
 
     # Scan the cache
-    repos: dict[str, InstalledModel] = {}
+    repos: dict[RepoKey, InstalledModel] = {}
     total_size_bytes = 0
 
     if cache_dir.exists():
@@ -132,7 +137,8 @@ def scan_hf_cache(
                         if last_accessed is None or modified_dt > last_accessed:
                             last_accessed = modified_dt
 
-                repos[repo.repo_id] = InstalledModel(
+                key: RepoKey = (repo.repo_type, repo.repo_id)
+                repos[key] = InstalledModel(
                     repo_id=repo.repo_id,
                     size_on_disk_mb=repo.size_on_disk // (1024 * 1024),
                     repo_type=repo.repo_type,
@@ -144,13 +150,13 @@ def scan_hf_cache(
             logger.debug("huggingface_hub not installed - HF cache scan unavailable")
         except PermissionError as e:
             logger.warning(
-                "Permission denied scanning HF cache at %s: %s. " "Models may show as not installed.",
+                "Permission denied scanning HF cache at %s: %s. Models may show as not installed.",
                 cache_dir,
                 e,
             )
         except Exception as e:
             logger.warning(
-                "Failed to scan HF cache at %s: %s. " "Models may show as not installed.",
+                "Failed to scan HF cache at %s: %s. Models may show as not installed.",
                 cache_dir,
                 e,
             )
@@ -181,9 +187,10 @@ def get_installed_models(force_refresh: bool = False) -> dict[str, InstalledMode
         force_refresh: If True, bypass the TTL cache and force a fresh scan.
 
     Returns:
-        Dictionary mapping repo_id to InstalledModel.
+        Dictionary mapping repo_id to InstalledModel for repos of type "model".
     """
-    return scan_hf_cache(force_refresh=force_refresh).repos
+    repos = scan_hf_cache(force_refresh=force_refresh).repos
+    return {repo_id: repo for (repo_type, repo_id), repo in repos.items() if repo_type == "model"}
 
 
 def is_model_installed(model_id: str) -> bool:
@@ -234,20 +241,19 @@ def get_cache_size_info(curated_model_ids: set[str]) -> CacheSizeBreakdown:
     cache_info = scan_hf_cache()
 
     managed_size_mb = 0
-    unmanaged_size_mb = 0
     unmanaged_count = 0
 
-    for repo_id, model in cache_info.repos.items():
-        if repo_id in curated_model_ids:
-            managed_size_mb += model.size_on_disk_mb
+    for (repo_type, repo_id), repo in cache_info.repos.items():
+        is_managed_model = repo_type == "model" and repo_id in curated_model_ids
+        if is_managed_model:
+            managed_size_mb += repo.size_on_disk_mb
         else:
-            unmanaged_size_mb += model.size_on_disk_mb
             unmanaged_count += 1
 
     return CacheSizeBreakdown(
         total_cache_size_mb=cache_info.total_size_mb,
         managed_cache_size_mb=managed_size_mb,
-        unmanaged_cache_size_mb=unmanaged_size_mb,
+        unmanaged_cache_size_mb=max(cache_info.total_size_mb - managed_size_mb, 0),
         unmanaged_repo_count=unmanaged_count,
     )
 
