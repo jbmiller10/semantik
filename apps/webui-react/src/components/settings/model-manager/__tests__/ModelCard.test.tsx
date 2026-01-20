@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@/tests/utils/test-utils';
+import { render, screen } from '@/tests/utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import ModelCard from '../ModelCard';
 import type { CuratedModelResponse } from '@/types/model-manager';
