@@ -33,17 +33,17 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Connectors**: pluggable ingestion sources — built-ins include directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
 - **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
 - **Search**: dense (semantic), sparse (BM25/SPLADE), and hybrid modes with RRF fusion. Optional cross‑encoder reranking and HyDE query expansion.
-- **Sparse indexing**: BM25 for fast TF-IDF keyword search (~1000 docs/sec), SPLADE for neural sparse vectors (10-50 docs/sec on GPU).
+- **Sparse indexing**: BM25 for fast TF-IDF keyword search, SPLADE for neural sparse vectors 
 - **LLM integration**: multi-provider support (Anthropic, OpenAI, local GPU) for HyDE query expansion and future features. Quality tiers let you balance cost vs capability.
-- **MCP Integration**: connect AI assistants (Claude Desktop, Cursor) to search your collections via the Model Context Protocol. See `docs/MCP.md`.
+- **MCP Integration**: connect AI assistants to search your collections via the Model Context Protocol. See `docs/MCP.md`.
 - **API keys**: programmatic access with scoped, revocable keys for integrations and automation.
 - **Model Manager**: download, track, and delete models (embedding, LLM, reranker, SPLADE) with cache visibility and usage tracking.
 - **Benchmarking**: evaluate search quality with standard IR metrics (Precision@K, Recall@K, MRR, nDCG) against ground truth datasets.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
 - **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
-- **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
-- **Visualize:** project embeddings into 2D space & visualize relationships.
+- **Embeddings lab**: swap models/quantization per collection
+- **Visualize:** project embeddings into 2D space & visualize relationships (via `embedding-atlas`).
 - **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
 
 ## Sources & Continuous Sync
