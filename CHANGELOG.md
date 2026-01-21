@@ -3,8 +3,6 @@
 ## [0.8.0] - 2026-01-20
 
 ### Added
-- **Built-in agent tools** — search, chunks, collections, retrieve with dependency injection
-- **Agent sessions** — persistent conversations with forking, token tracking, and message history
 - **MCP server** — stdio transport exposing collections via `semantik-mcp serve` 
 - **MCP profiles** — scoped collection access with per-profile search configuration and client config generation
 - **BM25 sparse indexer** — TF-IDF keyword indexing with IDF statistics persistence (~1000 docs/sec)
