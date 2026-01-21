@@ -145,6 +145,7 @@ logs/
 data/
 !packages/shared/plugins/data/
 images/
+!docs/images/
 models/
 repomixpy-output.txt
 
