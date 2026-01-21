@@ -279,3 +279,5 @@ research_papers/
 test_data/
 documents/
 docs/plans/*
+conductor/*
+conductor/**
