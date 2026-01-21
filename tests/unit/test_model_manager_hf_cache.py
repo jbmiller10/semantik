@@ -10,12 +10,14 @@ import pytest
 from shared.model_manager.hf_cache import (
     HFCacheInfo,
     InstalledModel,
+    _scan_single_cache_dir,
     clear_cache,
     get_cache_size_info,
     get_installed_models,
     get_model_size_on_disk,
     is_model_installed,
     resolve_hf_cache_dir,
+    resolve_transformers_cache_dir,
     scan_hf_cache,
 )
 
@@ -367,15 +369,15 @@ class TestHFCacheErrorLogging:
         assert "Models may show as not installed" in warning_records[0].message
 
     def test_general_exception_logs_warning_with_path(self, caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
-        """General exceptions should log at warning level with cache path."""
+        """ValueError/OSError exceptions should log at warning level with cache path."""
         cache_dir = tmp_path / "test_cache"
         cache_dir.mkdir()
 
         with patch("shared.model_manager.hf_cache.resolve_hf_cache_dir") as mock_resolve:
             mock_resolve.return_value = cache_dir
 
-            # Mock scan_cache_dir to raise a general exception
-            mock_scan = MagicMock(side_effect=RuntimeError("Unexpected cache format"))
+            # Mock scan_cache_dir to raise a ValueError (e.g., unexpected cache format)
+            mock_scan = MagicMock(side_effect=ValueError("Unexpected cache format"))
             with patch("huggingface_hub.scan_cache_dir", mock_scan):
                 with caplog.at_level(logging.WARNING, logger="shared.model_manager.hf_cache"):
                     result = scan_hf_cache(force_refresh=True)
@@ -387,7 +389,7 @@ class TestHFCacheErrorLogging:
 
         # Check the warning log message
         warning_records = [
-            r for r in caplog.records if r.levelno == logging.WARNING and "Failed to scan HF cache" in r.message
+            r for r in caplog.records if r.levelno == logging.WARNING and "Failed to scan cache" in r.message
         ]
         assert len(warning_records) == 1
         assert str(cache_dir) in warning_records[0].message
@@ -421,3 +423,270 @@ class TestHFCacheErrorLogging:
         assert ("model", "org/repo") in second.repos
         assert second.repos == first.repos
         assert second.scan_error is not None
+
+
+class TestResolveTransformersCacheDir:
+    """Tests for resolve_transformers_cache_dir function."""
+
+    def test_returns_none_when_not_set(self) -> None:
+        """Should return None when TRANSFORMERS_CACHE is not set."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TRANSFORMERS_CACHE", None)
+            result = resolve_transformers_cache_dir()
+            assert result is None
+
+    def test_returns_none_when_same_as_hub_path(self) -> None:
+        """Should return None when TRANSFORMERS_CACHE equals HF_HUB_CACHE."""
+        with patch.dict(
+            os.environ,
+            {
+                "TRANSFORMERS_CACHE": "/app/.cache/huggingface/hub",
+                "HF_HUB_CACHE": "/app/.cache/huggingface/hub",
+            },
+        ):
+            result = resolve_transformers_cache_dir()
+            assert result is None
+
+    def test_returns_path_when_different_from_hub_path(self) -> None:
+        """Should return path when TRANSFORMERS_CACHE differs from hub cache."""
+        with patch.dict(
+            os.environ,
+            {
+                "TRANSFORMERS_CACHE": "/app/.cache/huggingface",
+                "HF_HUB_CACHE": "/app/.cache/huggingface/hub",
+            },
+        ):
+            result = resolve_transformers_cache_dir()
+            assert result == Path("/app/.cache/huggingface")
+
+
+class TestScanSingleCacheDir:
+    """Tests for _scan_single_cache_dir function."""
+
+    def test_nonexistent_directory_returns_zero_no_error(self, tmp_path: Path) -> None:
+        """Nonexistent directory should return (0, None)."""
+        nonexistent = tmp_path / "nonexistent"
+        repos: dict = {}
+        size, error = _scan_single_cache_dir(nonexistent, repos)
+        assert size == 0
+        assert error is None
+        assert repos == {}
+
+    def test_deduplication_preserves_first_entry(self, tmp_path: Path) -> None:
+        """Existing entries in repos dict should not be overwritten."""
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        existing_model = InstalledModel(
+            repo_id="org/repo",
+            size_on_disk_mb=100,
+            repo_type="model",
+            last_accessed=None,
+            revisions=["existing"],
+        )
+        repos: dict = {("model", "org/repo"): existing_model}
+
+        # Mock scan_cache_dir to return same repo with different data
+        mock_repo = MagicMock()
+        mock_repo.repo_id = "org/repo"
+        mock_repo.repo_type = "model"
+        mock_repo.size_on_disk = 200 * 1024 * 1024  # Different size
+        mock_repo.revisions = []
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = mock_repo.size_on_disk
+        scan_result.repos = [mock_repo]
+
+        with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+            size, error = _scan_single_cache_dir(cache_dir, repos)
+
+        # Original entry should be preserved
+        assert repos[("model", "org/repo")].size_on_disk_mb == 100
+        assert repos[("model", "org/repo")].revisions == ["existing"]
+        assert error is None
+
+    def test_revision_timestamp_parsing(self, tmp_path: Path) -> None:
+        """Revision last_modified timestamps should be parsed correctly."""
+        from datetime import UTC, datetime
+
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        mock_revision = MagicMock()
+        mock_revision.commit_hash = "abc12345678"
+        mock_revision.last_modified = 1704067200.0  # 2024-01-01 00:00:00 UTC
+
+        mock_repo = MagicMock()
+        mock_repo.repo_id = "org/model"
+        mock_repo.repo_type = "model"
+        mock_repo.size_on_disk = 100 * 1024 * 1024
+        mock_repo.revisions = [mock_revision]
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = mock_repo.size_on_disk
+        scan_result.repos = [mock_repo]
+
+        repos: dict = {}
+        with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+            _scan_single_cache_dir(cache_dir, repos)
+
+        model = repos[("model", "org/model")]
+        assert model.last_accessed == datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        assert model.revisions == ["abc12345"]
+
+    def test_revision_with_none_timestamp(self, tmp_path: Path) -> None:
+        """Revision with None last_modified should be handled gracefully."""
+        cache_dir = tmp_path / "hf_cache"
+        cache_dir.mkdir()
+
+        mock_revision = MagicMock()
+        mock_revision.commit_hash = "abc12345678"
+        mock_revision.last_modified = None
+
+        mock_repo = MagicMock()
+        mock_repo.repo_id = "org/model"
+        mock_repo.repo_type = "model"
+        mock_repo.size_on_disk = 50 * 1024 * 1024
+        mock_repo.revisions = [mock_revision]
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = mock_repo.size_on_disk
+        scan_result.repos = [mock_repo]
+
+        repos: dict = {}
+        with patch("huggingface_hub.scan_cache_dir", return_value=scan_result):
+            _scan_single_cache_dir(cache_dir, repos)
+
+        model = repos[("model", "org/model")]
+        assert model.last_accessed is None
+        assert model.revisions == ["abc12345"]
+
+
+class TestMultiCacheScanning:
+    """Tests for multi-cache directory scanning in scan_hf_cache."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_cache()
+
+    def test_scans_both_hub_and_transformers_cache(self, tmp_path: Path) -> None:
+        """Should scan both HF hub cache and transformers cache when different."""
+        hub_cache = tmp_path / "hub"
+        hub_cache.mkdir()
+        tf_cache = tmp_path / "transformers"
+        tf_cache.mkdir()
+
+        # Model in hub cache
+        hub_repo = MagicMock()
+        hub_repo.repo_id = "hub/model"
+        hub_repo.repo_type = "model"
+        hub_repo.size_on_disk = 100 * 1024 * 1024
+        hub_repo.revisions = []
+
+        hub_scan = MagicMock()
+        hub_scan.size_on_disk = hub_repo.size_on_disk
+        hub_scan.repos = [hub_repo]
+
+        # Model in transformers cache
+        tf_repo = MagicMock()
+        tf_repo.repo_id = "tf/model"
+        tf_repo.repo_type = "model"
+        tf_repo.size_on_disk = 200 * 1024 * 1024
+        tf_repo.revisions = []
+
+        tf_scan = MagicMock()
+        tf_scan.size_on_disk = tf_repo.size_on_disk
+        tf_scan.repos = [tf_repo]
+
+        def mock_scan(path: Path) -> MagicMock:
+            if path == hub_cache:
+                return hub_scan
+            return tf_scan
+
+        with (
+            patch("shared.model_manager.hf_cache.resolve_hf_cache_dir", return_value=hub_cache),
+            patch("shared.model_manager.hf_cache.resolve_transformers_cache_dir", return_value=tf_cache),
+            patch("huggingface_hub.scan_cache_dir", side_effect=mock_scan),
+        ):
+            result = scan_hf_cache(force_refresh=True)
+
+        assert ("model", "hub/model") in result.repos
+        assert ("model", "tf/model") in result.repos
+        assert result.total_size_mb == 300
+
+    def test_deduplication_prefers_hub_cache(self, tmp_path: Path) -> None:
+        """When same model in both caches, hub cache entry should be used."""
+        hub_cache = tmp_path / "hub"
+        hub_cache.mkdir()
+        tf_cache = tmp_path / "transformers"
+        tf_cache.mkdir()
+
+        # Same model in hub cache (scanned first)
+        hub_repo = MagicMock()
+        hub_repo.repo_id = "org/model"
+        hub_repo.repo_type = "model"
+        hub_repo.size_on_disk = 100 * 1024 * 1024
+        hub_repo.revisions = []
+
+        hub_scan = MagicMock()
+        hub_scan.size_on_disk = hub_repo.size_on_disk
+        hub_scan.repos = [hub_repo]
+
+        # Same model in transformers cache with different size
+        tf_repo = MagicMock()
+        tf_repo.repo_id = "org/model"
+        tf_repo.repo_type = "model"
+        tf_repo.size_on_disk = 200 * 1024 * 1024
+        tf_repo.revisions = []
+
+        tf_scan = MagicMock()
+        tf_scan.size_on_disk = tf_repo.size_on_disk
+        tf_scan.repos = [tf_repo]
+
+        def mock_scan(path: Path) -> MagicMock:
+            if path == hub_cache:
+                return hub_scan
+            return tf_scan
+
+        with (
+            patch("shared.model_manager.hf_cache.resolve_hf_cache_dir", return_value=hub_cache),
+            patch("shared.model_manager.hf_cache.resolve_transformers_cache_dir", return_value=tf_cache),
+            patch("huggingface_hub.scan_cache_dir", side_effect=mock_scan),
+        ):
+            result = scan_hf_cache(force_refresh=True)
+
+        # Should have hub cache version (100 MB, not 200 MB)
+        assert result.repos[("model", "org/model")].size_on_disk_mb == 100
+
+    def test_transformers_cache_not_scanned_when_same_as_hub(self, tmp_path: Path) -> None:
+        """When transformers cache equals hub cache, only scan once."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        mock_repo = MagicMock()
+        mock_repo.repo_id = "org/model"
+        mock_repo.repo_type = "model"
+        mock_repo.size_on_disk = 100 * 1024 * 1024
+        mock_repo.revisions = []
+
+        scan_result = MagicMock()
+        scan_result.size_on_disk = mock_repo.size_on_disk
+        scan_result.repos = [mock_repo]
+
+        scan_call_count = 0
+
+        def mock_scan(_path: Path) -> MagicMock:
+            nonlocal scan_call_count
+            scan_call_count += 1
+            return scan_result
+
+        with (
+            patch("shared.model_manager.hf_cache.resolve_hf_cache_dir", return_value=cache_dir),
+            patch("shared.model_manager.hf_cache.resolve_transformers_cache_dir", return_value=None),
+            patch("huggingface_hub.scan_cache_dir", side_effect=mock_scan),
+        ):
+            result = scan_hf_cache(force_refresh=True)
+
+        # Should only scan once since transformers cache returns None
+        assert scan_call_count == 1
+        assert ("model", "org/model") in result.repos

@@ -17,8 +17,13 @@ async def test_models_endpoint_returns_expected_shape(
     api_auth_headers: dict[str, str],
 ) -> None:
     """Verify /api/models returns the expected response structure."""
+    # Mock scan_hf_cache to avoid filesystem access
+    mock_cache_info = MagicMock()
+    mock_cache_info.repos = {}
+    mock_cache_info.scan_error = None
 
-    response = await api_client.get("/api/models", headers=api_auth_headers)
+    with patch("webui.api.models.scan_hf_cache", return_value=mock_cache_info):
+        response = await api_client.get("/api/models", headers=api_auth_headers)
 
     assert response.status_code == 200, response.text
 
@@ -63,14 +68,16 @@ async def test_models_endpoint_includes_plugin_models(
         },
     ]
 
-    # Mock installed models - only the default model is "installed"
-    mock_installed = {
-        "Qwen/Qwen3-Embedding-0.6B": MagicMock(repo_id="Qwen/Qwen3-Embedding-0.6B"),
+    # Mock scan_hf_cache - only the default model is "installed"
+    mock_cache_info = MagicMock()
+    mock_cache_info.repos = {
+        ("model", "Qwen/Qwen3-Embedding-0.6B"): MagicMock(repo_id="Qwen/Qwen3-Embedding-0.6B"),
     }
+    mock_cache_info.scan_error = None
 
     with (
         patch("webui.api.models.get_all_supported_models", return_value=mock_models),
-        patch("webui.api.models.get_installed_models", return_value=mock_installed),
+        patch("webui.api.models.scan_hf_cache", return_value=mock_cache_info),
     ):
         response = await api_client.get("/api/models", headers=api_auth_headers)
 
@@ -156,13 +163,15 @@ async def test_models_endpoint_filters_non_installed_local_models(
     ]
 
     # Only "installed/model" is in the HF cache
-    mock_installed = {
-        "installed/model": MagicMock(repo_id="installed/model"),
+    mock_cache_info = MagicMock()
+    mock_cache_info.repos = {
+        ("model", "installed/model"): MagicMock(repo_id="installed/model"),
     }
+    mock_cache_info.scan_error = None
 
     with (
         patch("webui.api.models.get_all_supported_models", return_value=mock_models),
-        patch("webui.api.models.get_installed_models", return_value=mock_installed),
+        patch("webui.api.models.scan_hf_cache", return_value=mock_cache_info),
     ):
         response = await api_client.get("/api/models", headers=api_auth_headers)
 
@@ -206,8 +215,15 @@ async def test_models_endpoint_empty_models_handled(
     api_auth_headers: dict[str, str],
 ) -> None:
     """Verify empty model list is handled gracefully."""
+    # Mock scan_hf_cache to avoid filesystem access
+    mock_cache_info = MagicMock()
+    mock_cache_info.repos = {}
+    mock_cache_info.scan_error = None
 
-    with patch("webui.api.models.get_all_supported_models", return_value=[]):
+    with (
+        patch("webui.api.models.get_all_supported_models", return_value=[]),
+        patch("webui.api.models.scan_hf_cache", return_value=mock_cache_info),
+    ):
         response = await api_client.get("/api/models", headers=api_auth_headers)
 
     assert response.status_code == 200, response.text

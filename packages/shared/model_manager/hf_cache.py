@@ -171,7 +171,7 @@ def _scan_single_cache_dir(
             e,
         )
         return 0, error
-    except Exception as e:
+    except (ValueError, OSError) as e:
         error = f"Failed to scan cache at {cache_dir}: {e}"
         logger.warning(
             "Failed to scan cache at %s: %s. Models may show as not installed.",
@@ -238,6 +238,11 @@ def scan_hf_cache(
     # If scanning failed, prefer returning the last cached repos over an empty dict.
     # This avoids transient filesystem issues making all models appear "not installed".
     if scan_error is not None and _cache_result is not None and _cache_path == cache_dir:
+        logger.info(
+            "Scan failed, using stale cache data (%d repos). Error: %s",
+            len(_cache_result.repos),
+            scan_error,
+        )
         repos = _cache_result.repos
         total_size_bytes = _cache_result.total_size_mb * 1024 * 1024
 

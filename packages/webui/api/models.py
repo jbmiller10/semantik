@@ -6,6 +6,7 @@ embedding models, including both built-in and plugin-provided models.
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -13,9 +14,11 @@ from fastapi import APIRouter, Depends, Query
 from shared.config.vecpipe import VecpipeConfig
 from shared.embedding import embedding_service
 from shared.embedding.factory import get_all_supported_models
-from shared.model_manager.hf_cache import get_installed_models
+from shared.model_manager.hf_cache import scan_hf_cache
 from shared.plugins.loader import load_plugins
 from webui.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -86,8 +89,17 @@ async def get_models(
     # Filter for installed models if requested
     if installed_only:
         # Scan HF cache in thread pool to avoid blocking
-        installed_models = await asyncio.to_thread(get_installed_models)
-        installed_model_ids = set(installed_models.keys())
+        cache_info = await asyncio.to_thread(scan_hf_cache)
+        if cache_info.scan_error:
+            logger.warning(
+                "HF cache scan encountered errors, model list may be incomplete: %s",
+                cache_info.scan_error,
+            )
+        installed_model_ids = {
+            repo_id
+            for (repo_type, repo_id) in cache_info.repos
+            if repo_type == "model"
+        }
 
         # Get default model from config
         settings = VecpipeConfig()
