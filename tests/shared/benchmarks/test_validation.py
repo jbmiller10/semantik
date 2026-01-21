@@ -2,11 +2,7 @@
 
 import pytest
 
-from shared.benchmarks.validation import (
-    KValueConfig,
-    parse_k_values,
-    validate_top_k_values,
-)
+from shared.benchmarks.validation import KValueConfig, parse_k_values, validate_top_k_values
 
 
 class TestParseKValues:

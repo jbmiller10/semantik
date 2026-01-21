@@ -37,6 +37,7 @@ from .ingestion import (
     process_collection_operation,
     test_task,
 )
+from .model_manager import delete_model, download_model
 from .projection import _process_projection_operation, compute_projection
 from .reindex import (
     _cleanup_staging_resources,
@@ -80,6 +81,9 @@ from .utils import (
 )
 
 __all__ = [
+    # Model manager tasks
+    "download_model",
+    "delete_model",
     # Ingestion tasks & helpers
     "process_collection_operation",
     "_process_collection_operation_async",
@@ -160,6 +164,7 @@ _PROXY_MODULES = tuple(
         "cleanup",
         "benchmark",
         "benchmark_mapping",
+        "model_manager",
         "utils",
     )
 )

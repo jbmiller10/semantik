@@ -619,12 +619,21 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 )}
               </select>
               <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Choose the AI model for converting documents to searchable vectors
+                Choose the AI model for converting documents to searchable vectors.
                 {modelsData?.current_device && (
                   <span className="ml-1 text-[var(--text-secondary)]">
-                    (running on {modelsData.current_device})
+                    Running on {modelsData.current_device}.
                   </span>
                 )}
+                {' '}
+                <a
+                  href="/settings?tab=models"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline"
+                >
+                  Download additional models
+                </a>
               </p>
             </div>
 
