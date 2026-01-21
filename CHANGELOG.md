@@ -3,7 +3,6 @@
 ## [0.8.0] - 2026-01-20
 
 ### Added
-- **Agent plugin system** — SDK-agnostic adapter pattern with Claude Agent SDK integration, streaming, tool use, and session management
 - **Built-in agent tools** — search, chunks, collections, retrieve with dependency injection
 - **Agent sessions** — persistent conversations with forking, token tracking, and message history
 - **MCP server** — stdio transport exposing collections via `semantik-mcp serve` for Claude Desktop and Cursor
