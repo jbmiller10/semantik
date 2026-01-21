@@ -37,7 +37,7 @@ Semantik supports two sparse indexing approaches:
 
 ```bash
 # Via API: Enable BM25 on an existing collection
-curl -X POST "http://localhost:8000/api/v2/collections/{collection_name}/sparse-index" \
+curl -X POST "http://localhost:8080/api/v2/collections/{collection_name}/sparse-index" \
   -H "Content-Type: application/json" \
   -d '{
     "plugin_id": "bm25-local",
@@ -49,7 +49,7 @@ curl -X POST "http://localhost:8000/api/v2/collections/{collection_name}/sparse-
 
 ```bash
 # Hybrid search combines dense + sparse with RRF fusion
-curl -X POST "http://localhost:8000/api/v2/search" \
+curl -X POST "http://localhost:8080/api/v2/search" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "machine learning optimization techniques",
@@ -63,7 +63,7 @@ curl -X POST "http://localhost:8000/api/v2/search" \
 
 ```bash
 # Get sparse index status
-curl "http://localhost:8000/api/v2/collections/{collection_name}/sparse-index"
+curl "http://localhost:8080/api/v2/collections/{collection_name}/sparse-index"
 ```
 
 ---

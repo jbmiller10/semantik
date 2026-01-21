@@ -1,6 +1,6 @@
 [project]
 name = "semantik"
-version = "0.7.7"
+version = "0.8.0"
 description = "Private, self-hosted semantic search for your documents."
 authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"

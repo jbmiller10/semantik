@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.0] - 2026-01-10
+## [0.8.0] - 2026-01-20
 
 ### Added
 - **Agent plugin system** — SDK-agnostic adapter pattern with Claude Agent SDK integration, streaming, tool use, and session management
@@ -13,13 +13,21 @@
 - **Hybrid search** — RRF fusion combining dense and sparse results with tunable k parameter
 - **Plugin protocols** — runtime-checkable interfaces for all 6 plugin types enabling external plugin development
 - **DTO adapters** — type-safe conversion layer between plugin outputs and internal types
+- **API Key Management** — programmatic API access with SHA-256 hashed keys, expiration, revocation, and per-user limits
+- **LLM integration** — multi-provider support (Anthropic, OpenAI, local GPU) with quality tiers and encrypted API key storage
+- **HyDE search** — Hypothetical Document Embeddings for query expansion via LLM-generated hypothetical documents
+- **Benchmarking system** — search quality evaluation with Precision@K, Recall@K, MRR, nDCG metrics and ground truth datasets
+- **Model Manager** — centralized LLM lifecycle management with memory estimation and quantization support (int4, int8, float16)
+- **Settings overhaul** — admin panel for deployment-wide settings and user defaults management for search/collections
 - WebSocket streaming for agent responses
 - Search mode selector UI (dense, sparse, hybrid)
 - Sparse index configuration UI per collection
+- Parser refactoring for groundwork on multiple file parser support
 
 ### Changed
-- Search API accepts `search_mode` and `rrf_k` parameters
+- Search API accepts `search_mode`, `rrf_k`, and `use_hyde` parameters
 - Collection stats update in real-time during indexing
+- Settings menu reorganized with Database, Plugins, MCP Profiles, LLM, and API Keys tabs
 
 ### Fixed
 - Collection stats not refreshing after indexing completes
