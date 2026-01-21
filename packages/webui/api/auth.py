@@ -42,32 +42,26 @@ async def register(
     user_repo: UserRepository = Depends(get_user_repository),
 ) -> UserResponse:
     """Register a new user"""
-    try:
-        hashed_password = get_password_hash(user_data.password)
+    hashed_password = get_password_hash(user_data.password)
 
-        # Check if this is the first user in the system
-        # If so, make them a superuser automatically
-        user_count = await user_repo.count_users()
-        is_first_user = user_count == 0
+    # Check if this is the first user in the system
+    # If so, make them a superuser automatically
+    user_count = await user_repo.count_users()
+    is_first_user = user_count == 0
 
-        user_dict = await user_repo.create_user(
-            {
-                "username": user_data.username,
-                "email": user_data.email,
-                "hashed_password": hashed_password,
-                "full_name": user_data.full_name,
-                "is_superuser": is_first_user,  # First user becomes superuser
-            }
-        )
+    user_dict = await user_repo.create_user(
+        {
+            "username": user_data.username,
+            "email": user_data.email,
+            "hashed_password": hashed_password,
+            "full_name": user_data.full_name,
+            "is_superuser": is_first_user,  # First user becomes superuser
+        }
+    )
 
-        if is_first_user:
-            logger.info(f"Created first user '{user_data.username}' as superuser")
-        return UserResponse(**sanitize_user_dict(user_dict))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error("Registration error: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Registration failed") from e
+    if is_first_user:
+        logger.info(f"Created first user '{user_data.username}' as superuser")
+    return UserResponse(**sanitize_user_dict(user_dict))
 
 
 @router.post("/login", response_model=Token)

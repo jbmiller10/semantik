@@ -32,7 +32,6 @@ from webui.tasks import (
     _update_collection_metrics,
     calculate_cleanup_delay,
     cleanup_old_results,
-    extract_and_serialize_thread_safe,
 )
 
 
@@ -68,19 +67,6 @@ def create_mock_async_session_local(mock_session) -> None:
 
 class TestTaskHelperFunctions:
     """Test various helper functions used in tasks."""
-
-    @patch("webui.tasks.test_task")
-    def test_test_task(self, mock_test_task) -> None:
-        """Test the test_task for Celery verification."""
-        # Mock the decorated task to return expected result
-        mock_test_task.delay.return_value = Mock()
-        mock_test_task.return_value = {"status": "success", "message": "Celery is working!"}
-
-        # Call the task
-        result = mock_test_task(Mock())
-
-        assert result["status"] == "success"
-        assert result["message"] == "Celery is working!"
 
     def test_sanitize_audit_details(self) -> None:
         """Test audit details sanitization."""
@@ -127,18 +113,6 @@ class TestTaskHelperFunctions:
     def test_sanitize_audit_details_none(self) -> None:
         """Test sanitization with None input."""
         assert _sanitize_audit_details(None) is None
-
-    @patch("shared.text_processing.extraction.extract_and_serialize")
-    def test_extract_and_serialize_thread_safe(self, mock_extract) -> None:
-        """Test thread-safe text extraction wrapper."""
-        # Mock the extraction function to avoid file access
-        mock_extract.return_value = [("Test content", {"page": 1})]
-
-        # Call the thread-safe wrapper
-        result = extract_and_serialize_thread_safe("/any/file.pdf")
-
-        assert result == [("Test content", {"page": 1})]
-        mock_extract.assert_called_once_with("/any/file.pdf")
 
 
 class TestAuditLogging:

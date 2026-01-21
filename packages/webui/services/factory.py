@@ -1,11 +1,20 @@
 """Factory functions for creating service instances with dependencies."""
 
-import logging
-from typing import cast
+from __future__ import annotations
 
-import httpx
+import logging
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from .api_key_service import ApiKeyService
+    from .benchmark_dataset_service import BenchmarkDatasetService
+    from .benchmark_service import BenchmarkService
+    from .mcp_profile_service import MCPProfileService
+
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -23,11 +32,9 @@ from .chunking.container import (
 from .chunking.orchestrator import ChunkingOrchestrator
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
-from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
 from .projection_service import ProjectionService
 from .redis_manager import RedisManager
-from .resource_manager import ResourceManager
 from .search_service import SearchService
 from .source_service import SourceService
 
@@ -100,104 +107,6 @@ def create_collection_service(
         operation_repo=operation_repo,
         document_repo=document_repo,
         collection_source_repo=collection_source_repo,
-        qdrant_manager=qdrant_manager_instance,
-    )
-
-
-def create_document_scanning_service(db: AsyncSession) -> DocumentScanningService:
-    """Create a DocumentScanningService instance with required dependencies.
-
-    This factory function simplifies dependency injection for file scanning operations.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured DocumentScanningService instance
-
-    Example:
-        ```python
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from shared.database import get_db
-        from webui.services.factory import create_document_scanning_service
-
-        async def get_document_scanning_service(
-            db: AsyncSession = Depends(get_db)
-        ) -> DocumentScanningService:
-            return create_document_scanning_service(db)
-
-        # In your task or endpoint
-        async def scan_and_register_files(
-            collection_id: str,
-            source_path: str,
-            service: DocumentScanningService = Depends(get_document_scanning_service),
-        ):
-            stats = await service.scan_directory_and_register_documents(
-                collection_id=collection_id,
-                source_path=source_path
-            )
-            return stats
-        ```
-    """
-    # Create repository instances
-    document_repo = DocumentRepository(db)
-
-    # Create and return service
-    return DocumentScanningService(
-        db_session=db,
-        document_repo=document_repo,
-    )
-
-
-def create_resource_manager(db: AsyncSession) -> ResourceManager:
-    """Create a ResourceManager instance with required dependencies.
-
-    This factory function creates a resource manager for monitoring and managing
-    resource allocation for collection operations.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured ResourceManager instance
-
-    Example:
-        ```python
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from shared.database import get_db
-        from webui.services.factory import create_resource_manager
-
-        async def get_resource_manager(
-            db: AsyncSession = Depends(get_db)
-        ) -> ResourceManager:
-            return create_resource_manager(db)
-
-        # In your endpoint or service
-        async def check_resources(
-            user_id: int,
-            resource_manager: ResourceManager = Depends(get_resource_manager),
-        ):
-            can_create = await resource_manager.can_create_collection(user_id)
-            return {"can_create": can_create}
-        ```
-    """
-    # Create repository instances
-    collection_repo = CollectionRepository(db)
-    operation_repo = OperationRepository(db)
-
-    qdrant_manager_instance = None
-    try:
-        qdrant_client = qdrant_connection_manager.get_client()
-        qdrant_manager_instance = QdrantManager(qdrant_client)
-    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
-        logger.warning("Qdrant client unavailable for resource metrics: %s", exc)
-
-    # Create and return resource manager
-    return ResourceManager(
-        collection_repo=collection_repo,
-        operation_repo=operation_repo,
         qdrant_manager=qdrant_manager_instance,
     )
 
@@ -356,6 +265,117 @@ def create_source_service(db: AsyncSession) -> SourceService:
 async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
     """FastAPI dependency for SourceService injection."""
     return create_source_service(db)
+
+
+def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
+    """Create an MCPProfileService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured MCPProfileService instance
+    """
+    # Lazy import to avoid circular dependency
+    from .mcp_profile_service import MCPProfileService
+
+    return MCPProfileService(db_session=db)
+
+
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
+    """FastAPI dependency for MCPProfileService injection."""
+    return create_mcp_profile_service(db)
+
+
+def create_api_key_service(db: AsyncSession) -> ApiKeyService:
+    """Create an ApiKeyService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured ApiKeyService instance
+    """
+    # Lazy import to avoid circular dependency
+    from .api_key_service import ApiKeyService
+
+    return ApiKeyService(db_session=db)
+
+
+async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> ApiKeyService:
+    """FastAPI dependency for ApiKeyService injection."""
+    return create_api_key_service(db)
+
+
+def create_benchmark_dataset_service(db: AsyncSession) -> BenchmarkDatasetService:
+    """Create a BenchmarkDatasetService instance with dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured BenchmarkDatasetService instance
+    """
+    from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
+
+    from .benchmark_dataset_service import BenchmarkDatasetService
+
+    benchmark_dataset_repo = BenchmarkDatasetRepository(db)
+    collection_repo = CollectionRepository(db)
+    document_repo = DocumentRepository(db)
+    operation_repo = OperationRepository(db)
+
+    return BenchmarkDatasetService(
+        db_session=db,
+        benchmark_dataset_repo=benchmark_dataset_repo,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        operation_repo=operation_repo,
+    )
+
+
+async def get_benchmark_dataset_service(
+    db: AsyncSession = Depends(get_db),
+) -> BenchmarkDatasetService:
+    """FastAPI dependency for BenchmarkDatasetService injection."""
+    return create_benchmark_dataset_service(db)
+
+
+def create_benchmark_service(db: AsyncSession) -> BenchmarkService:
+    """Create a BenchmarkService instance with dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured BenchmarkService instance
+    """
+    from shared.database.repositories.benchmark_dataset_repository import BenchmarkDatasetRepository
+    from shared.database.repositories.benchmark_repository import BenchmarkRepository
+
+    from .benchmark_service import BenchmarkService
+
+    benchmark_repo = BenchmarkRepository(db)
+    benchmark_dataset_repo = BenchmarkDatasetRepository(db)
+    collection_repo = CollectionRepository(db)
+    operation_repo = OperationRepository(db)
+    search_service = create_search_service(db)
+
+    return BenchmarkService(
+        db_session=db,
+        benchmark_repo=benchmark_repo,
+        benchmark_dataset_repo=benchmark_dataset_repo,
+        collection_repo=collection_repo,
+        operation_repo=operation_repo,
+        search_service=search_service,
+    )
+
+
+async def get_benchmark_service(
+    db: AsyncSession = Depends(get_db),
+) -> BenchmarkService:
+    """FastAPI dependency for BenchmarkService injection."""
+    return create_benchmark_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

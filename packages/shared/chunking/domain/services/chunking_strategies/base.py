@@ -8,10 +8,19 @@ ensuring consistency across different chunking approaches.
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from functools import lru_cache
+from typing import Any, ClassVar
+
+import tiktoken
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
+
+@lru_cache(maxsize=1)
+def _get_tokenizer() -> tiktoken.Encoding:
+    """Get cached tiktoken encoder."""
+    return tiktoken.get_encoding("cl100k_base")
 
 
 class ChunkingStrategy(ABC):
@@ -26,6 +35,16 @@ class ChunkingStrategy(ABC):
         `configure()` method. This is called by the factory with settings
         from the plugin state file (e.g., API keys, model settings).
     """
+
+    # Protocol-required class variables for plugin identification
+    PLUGIN_ID: ClassVar[str] = ""
+    """Unique plugin identifier - must be set by subclass."""
+
+    PLUGIN_TYPE: ClassVar[str] = "chunking"
+    """Plugin type identifier."""
+
+    PLUGIN_VERSION: ClassVar[str] = "0.0.0"
+    """Semantic version string."""
 
     def __init__(self, name: str) -> None:
         """
@@ -109,31 +128,20 @@ class ChunkingStrategy(ABC):
 
     def count_tokens(self, text: str) -> int:
         """
-        Count tokens in text using a simple approximation.
+        Count tokens in text using tiktoken.
 
-        This is a pure business logic function that doesn't depend on
-        any external tokenizer libraries.
+        Uses cl100k_base encoding (GPT-4/ChatGPT tokenizer) for accurate
+        token counting that aligns with most modern embedding models.
 
         Args:
             text: Text to count tokens in
 
         Returns:
-            Approximate token count
+            Exact token count
         """
-        # Business rule: approximate 1 token ≈ 4 characters for English text
-        # This is a domain-level approximation that doesn't require external dependencies
-
-        # Adjust for different text characteristics
-        word_count = len(text.split())
-        char_count = len(text)
-
-        # Use a weighted average of word-based and character-based estimates
-        # Typically, 1 word ≈ 1.3 tokens, and 4 characters ≈ 1 token
-        word_based_estimate = word_count * 1.3
-        char_based_estimate = char_count / 4
-
-        # Weight character-based estimate more heavily for consistency
-        return int(0.3 * word_based_estimate + 0.7 * char_based_estimate)
+        if not text:
+            return 0
+        return len(_get_tokenizer().encode(text))
 
     def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """
@@ -243,6 +251,25 @@ class ChunkingStrategy(ABC):
 
         # Ensure text doesn't start or end with whitespace
         return result.strip()
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        """Return plugin manifest for discovery and UI.
+
+        Returns a dictionary to maintain compatibility with the protocol
+        interface (external plugins return dicts, not PluginManifest dataclasses).
+
+        Returns:
+            Dictionary with plugin metadata.
+        """
+        metadata = getattr(cls, "METADATA", {})
+        return {
+            "id": cls.PLUGIN_ID,
+            "type": cls.PLUGIN_TYPE,
+            "version": cls.PLUGIN_VERSION,
+            "display_name": metadata.get("display_name", cls.PLUGIN_ID or cls.__name__),
+            "description": metadata.get("description", ""),
+        }
 
     def __repr__(self) -> str:
         """String representation of the strategy."""

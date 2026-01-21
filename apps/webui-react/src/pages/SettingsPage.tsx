@@ -1,101 +1,138 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import DatabaseSettings from '../components/settings/DatabaseSettings';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Settings,
+  Shield,
+  Server,
+  Puzzle,
+  Terminal,
+  Key,
+  ArrowLeft,
+  Database,
+} from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
+import PreferencesTab from '../components/settings/PreferencesTab';
+import AdminTab from '../components/settings/AdminTab';
+import SystemTab from '../components/settings/SystemTab';
 import PluginsSettings from '../components/settings/PluginsSettings';
+import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
+import ApiKeysSettings from '../components/settings/ApiKeysSettings';
+import ModelsSettings from '../components/settings/model-manager/ModelsSettings';
 
-type SettingsTab = 'database' | 'plugins';
+type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys' | 'models';
+
+interface TabConfig {
+  id: SettingsTab;
+  label: string;
+  icon: typeof Settings;
+  requiresSuperuser?: boolean;
+}
+
+const tabs: TabConfig[] = [
+  { id: 'preferences', label: 'Preferences', icon: Settings },
+  { id: 'admin', label: 'Admin', icon: Shield, requiresSuperuser: true },
+  { id: 'system', label: 'System', icon: Server },
+  { id: 'plugins', label: 'Plugins', icon: Puzzle },
+  { id: 'mcp', label: 'MCP Profiles', icon: Terminal },
+  { id: 'api-keys', label: 'API Keys', icon: Key },
+  { id: 'models', label: 'Models', icon: Database, requiresSuperuser: true },
+];
 
 function SettingsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('database');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const user = useAuthStore((state) => state.user);
+  const isSuperuser = user?.is_superuser ?? false;
+
+  // Initialize active tab from URL query param or default to 'preferences'
+  const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
+  const validTabs: SettingsTab[] = ['preferences', 'admin', 'system', 'plugins', 'mcp', 'api-keys', 'models'];
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'preferences';
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Sync URL when tab changes
+  const handleTabChange = useCallback((tab: SettingsTab) => {
+    setActiveTab(tab);
+    if (tab === 'preferences') {
+      // Remove query param for default tab
+      searchParams.delete('tab');
+    } else {
+      searchParams.set('tab', tab);
+    }
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Redirect non-superuser away from superuser-only tabs
+  useEffect(() => {
+    if ((activeTab === 'admin' || activeTab === 'models') && !isSuperuser) {
+      handleTabChange('preferences');
+    }
+  }, [activeTab, isSuperuser, handleTabChange]);
+
+  // Filter tabs based on user permissions
+  const visibleTabs = tabs.filter(
+    (tab) => !tab.requiresSuperuser || isSuperuser
+  );
 
   return (
     <div className="space-y-6">
       {/* Page Header with Back Button */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your database, plugins, and system settings
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            Manage your preferences, plugins, and system settings
           </p>
         </div>
         <button
           onClick={() => navigate('/')}
-          className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="inline-flex items-center px-3 py-2 border border-[var(--border)] shadow-sm text-sm leading-4 font-medium rounded-md text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent-primary)]"
         >
-          <svg className="mr-2 -ml-0.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
+          <ArrowLeft className="mr-2 -ml-0.5 h-4 w-4" />
           Back to Home
         </button>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-[var(--border)]">
         <nav className="-mb-px flex space-x-8" aria-label="Settings tabs">
-          <button
-            onClick={() => setActiveTab('database')}
-            className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
-              ${
-                activeTab === 'database'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }
-            `}
-          >
-            <svg
-              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
-                activeTab === 'database' ? 'text-blue-500' : 'text-gray-400'
-              }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
-              />
-            </svg>
-            Database
-          </button>
-          <button
-            onClick={() => setActiveTab('plugins')}
-            className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
-              ${
-                activeTab === 'plugins'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }
-            `}
-          >
-            <svg
-              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
-                activeTab === 'plugins' ? 'text-blue-500' : 'text-gray-400'
-              }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z"
-              />
-            </svg>
-            Plugins
-          </button>
+          {visibleTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`
+                  whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                  ${
+                    isActive
+                      ? 'border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
+                  }
+                `}
+              >
+                <Icon
+                  className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
+                    isActive ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'
+                  }`}
+                />
+                {tab.label}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
       {/* Tab Content */}
       <div className="mt-6">
-        {activeTab === 'database' && <DatabaseSettings />}
+        {activeTab === 'preferences' && <PreferencesTab />}
+        {activeTab === 'admin' && isSuperuser && <AdminTab />}
+        {activeTab === 'system' && <SystemTab />}
         {activeTab === 'plugins' && <PluginsSettings />}
+        {activeTab === 'mcp' && <MCPProfilesSettings />}
+        {activeTab === 'api-keys' && <ApiKeysSettings />}
+        {activeTab === 'models' && isSuperuser && <ModelsSettings />}
       </div>
     </div>
   );

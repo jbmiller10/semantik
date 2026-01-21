@@ -8,7 +8,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from shared.database.repositories.plugin_config_repository import PluginConfigRepository
 from shared.plugins.adapters import get_config_schema
@@ -555,13 +555,13 @@ class PluginService:
         record = self._get_external_record(plugin_id)
         if record is None:
             return None
-        return record.manifest.to_dict()
+        return cast(dict[str, Any], record.manifest.to_dict())
 
     async def get_config_schema(self, plugin_id: str) -> dict[str, Any] | None:
         record = self._get_external_record(plugin_id)
         if record is None:
             return None
-        return get_config_schema(record.plugin_class)
+        return cast(dict[str, Any] | None, get_config_schema(record.plugin_class))
 
     async def check_health(self, plugin_id: str) -> dict[str, Any] | None:
         record = self._get_external_record(plugin_id)

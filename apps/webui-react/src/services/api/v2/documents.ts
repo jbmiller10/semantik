@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { DocumentResponse } from './types';
+import type { DocumentResponse, FailedDocumentCountResponse, RetryDocumentsResponse } from './types';
 import { useAuthStore } from '../../../stores/authStore';
 
 /**
@@ -18,10 +18,10 @@ export const documentsV2Api = {
     // Get token from auth store
     const state = useAuthStore.getState();
     const token = state.token;
-    
+
     // Construct the full URL for the document content endpoint
     const url = `${baseURL}/api/v2/collections/${collectionUuid}/documents/${documentUuid}/content`;
-    
+
     // Return URL and headers for direct fetch or iframe use
     return {
       url,
@@ -30,8 +30,31 @@ export const documentsV2Api = {
   },
 
   /**
-   * Get document metadata (if we add this endpoint in the future)
+   * Get document metadata
    */
-  get: (collectionUuid: string, documentUuid: string) => 
+  get: (collectionUuid: string, documentUuid: string) =>
     apiClient.get<DocumentResponse>(`/api/v2/collections/${collectionUuid}/documents/${documentUuid}`),
+
+  /**
+   * Retry a single failed document
+   * Resets the document status to PENDING so it can be reprocessed
+   */
+  retry: (collectionUuid: string, documentUuid: string) =>
+    apiClient.post<DocumentResponse>(`/api/v2/collections/${collectionUuid}/documents/${documentUuid}/retry`),
+
+  /**
+   * Bulk retry all failed documents in a collection
+   * Only resets documents with transient or unknown errors that haven't exceeded max retries
+   */
+  retryFailed: (collectionUuid: string) =>
+    apiClient.post<RetryDocumentsResponse>(`/api/v2/collections/${collectionUuid}/documents/retry-failed`),
+
+  /**
+   * Get count of failed documents by error category
+   */
+  getFailedCount: (collectionUuid: string, retryableOnly: boolean = false) =>
+    apiClient.get<FailedDocumentCountResponse>(
+      `/api/v2/collections/${collectionUuid}/documents/failed/count`,
+      { params: { retryable_only: retryableOnly } }
+    ),
 };

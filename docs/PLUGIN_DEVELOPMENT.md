@@ -4,7 +4,18 @@ This guide explains how to develop plugins for Semantik's self-hosted semantic s
 
 ## Overview
 
-Semantik plugins extend core functionality through a unified plugin system. All plugins inherit from `SemanticPlugin` and can be distributed via pip packages.
+Semantik plugins extend core functionality through a unified plugin system. Plugins can be distributed via pip packages and support two development approaches:
+
+### Development Approaches
+
+| Approach | Best For | Documentation |
+|----------|----------|---------------|
+| **Protocol-based** (Recommended) | External plugins without semantik dependencies | [External Plugins Guide](external-plugins.md) |
+| **ABC-based** (This guide) | Internal plugins or when you need semantik utilities | This document |
+
+**New in v0.8**: External plugins can now be developed with **zero semantik imports** using Python's structural typing (Protocols). See [External Plugins Guide](external-plugins.md) for the protocol-based approach.
+
+This guide covers the ABC-based approach where plugins inherit from `SemanticPlugin` base classes.
 
 ### Plugin Types
 
@@ -15,6 +26,7 @@ Semantik plugins extend core functionality through a unified plugin system. All 
 | **connector** | Data source integrations | `ConnectorPlugin` |
 | **reranker** | Search result reranking | `RerankerPlugin` |
 | **extractor** | Metadata extraction | `ExtractorPlugin` |
+| **sparse_indexer** | Sparse vectors (BM25/SPLADE) | `SparseIndexerPlugin` |
 
 ## Quick Start
 
@@ -262,6 +274,42 @@ class MyConnector(ConnectorPlugin):
         pass
 ```
 
+### Parsing Binary Files in Connectors
+
+If your connector handles binary file formats (PDF, DOCX, etc.), use the parser system to extract text:
+
+```python
+from pathlib import Path
+from shared.text_processing.parsers import (
+    parse_content,
+    ExtractionFailedError,
+    UnsupportedFormatError,
+)
+
+async def load_documents(self, source_id=None) -> AsyncIterator[IngestedDocument]:
+    for file_bytes, filename in self._fetch_files():
+        try:
+            result = parse_content(
+                file_bytes,
+                filename=filename,
+                file_extension=Path(filename).suffix,
+                metadata={"source_type": self.PLUGIN_ID, "source_path": filename},
+            )
+            yield IngestedDocument(
+                content=result.text,
+                unique_id=filename,
+                source_type=self.PLUGIN_ID,
+                metadata=result.metadata,
+                content_hash=hashlib.sha256(file_bytes).hexdigest(),
+            )
+        except UnsupportedFormatError:
+            continue  # Skip unsupported files
+        except ExtractionFailedError as e:
+            logger.error(f"Failed to parse {filename}: {e}")
+```
+
+See [PARSERS.md](./PARSERS.md) for parser selection rules and configuration options.
+
 ---
 
 ## Reranker Plugins
@@ -313,6 +361,8 @@ class MyReranker(RerankerPlugin):
 
 ## Extractor Plugins
 
+> **Note**: Extractors operate on *already-parsed text* to extract metadata like entities, keywords, and sentiment. To convert documents (PDF, DOCX, etc.) to text, use the parser system - see [PARSERS.md](./PARSERS.md). Parsers are built-in utilities, not plugins.
+
 Extractor plugins extract metadata from documents.
 
 ```python
@@ -345,6 +395,163 @@ class MyExtractor(ExtractorPlugin):
             keywords=["example", "keyword"],
         )
 ```
+
+---
+
+## Sparse Indexer Plugins
+
+Sparse indexer plugins generate sparse vector representations for hybrid search. Two main types are supported:
+
+- **BM25**: Classic term-frequency based retrieval (stateful, requires IDF statistics)
+- **SPLADE**: Learned sparse representations using neural models (stateless)
+
+```python
+from shared.plugins.types.sparse_indexer import (
+    SparseIndexerPlugin,
+    SparseIndexerCapabilities,
+    SparseVector,
+    SparseQueryVector,
+)
+
+class MyBM25Indexer(SparseIndexerPlugin):
+    PLUGIN_TYPE = "sparse_indexer"
+    PLUGIN_ID = "my-bm25"
+    PLUGIN_VERSION = "1.0.0"
+    SPARSE_TYPE = "bm25"  # Must be "bm25" or "splade"
+    METADATA = {
+        "display_name": "My BM25 Indexer",
+        "description": "Custom BM25 implementation for sparse retrieval",
+    }
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self._k1 = (config or {}).get("k1", 1.5)
+        self._b = (config or {}).get("b", 0.75)
+        self._vocabulary: dict[str, int] = {}
+        self._idf_stats: dict[str, float] = {}
+
+    async def encode_documents(
+        self,
+        documents: list[dict[str, Any]],
+    ) -> list[SparseVector]:
+        """Generate sparse vectors for documents.
+
+        Args:
+            documents: List of dicts with 'content' and 'chunk_id' keys.
+
+        Returns:
+            List of SparseVector instances (one per document).
+        """
+        results = []
+        for doc in documents:
+            # Tokenize and compute BM25 scores
+            tokens = self._tokenize(doc["content"])
+            indices, values = self._compute_bm25_vector(tokens)
+            results.append(SparseVector(
+                indices=tuple(indices),
+                values=tuple(values),
+                chunk_id=doc["chunk_id"],
+            ))
+        return results
+
+    async def encode_query(self, query: str) -> SparseQueryVector:
+        """Generate sparse vector for a search query."""
+        tokens = self._tokenize(query)
+        indices, values = self._compute_query_vector(tokens)
+        return SparseQueryVector(
+            indices=tuple(indices),
+            values=tuple(values),
+        )
+
+    async def remove_documents(self, chunk_ids: list[str]) -> None:
+        """Update IDF statistics when chunks are removed.
+
+        For BM25, this updates corpus statistics. For SPLADE, this is a no-op.
+        """
+        await self._update_idf_for_removal(chunk_ids)
+
+    @classmethod
+    def get_capabilities(cls) -> SparseIndexerCapabilities:
+        """Declare indexer capabilities and limits."""
+        return SparseIndexerCapabilities(
+            sparse_type="bm25",
+            max_tokens=8192,
+            vocabulary_handling="direct",  # or "hashed" for large vocabularies
+            supports_batching=True,
+            max_batch_size=64,
+            requires_corpus_stats=True,  # BM25 needs IDF
+            idf_storage="file",  # or "qdrant_point"
+        )
+
+    def _tokenize(self, text: str) -> list[str]:
+        """Tokenize text into terms."""
+        # Implement tokenization (lowercase, remove stopwords, etc.)
+        pass
+
+    def _compute_bm25_vector(self, tokens: list[str]) -> tuple[list[int], list[float]]:
+        """Compute BM25 sparse vector from tokens."""
+        # Implement BM25 scoring
+        pass
+
+    def _compute_query_vector(self, tokens: list[str]) -> tuple[list[int], list[float]]:
+        """Compute query vector (typically just IDF weights)."""
+        pass
+
+    async def _update_idf_for_removal(self, chunk_ids: list[str]) -> None:
+        """Update IDF statistics when chunks are removed."""
+        pass
+```
+
+### Key Concepts
+
+**SPARSE_TYPE**: Must be either `"bm25"` or `"splade"`. This determines the naming convention for sparse Qdrant collections (e.g., `collection_sparse_bm25`).
+
+**Constraint**: Only one sparse indexer per collection. Users who need both BM25 and SPLADE should create separate collections.
+
+**Stateful vs Stateless**:
+- **BM25**: Stateful - requires corpus IDF statistics stored in files or Qdrant
+- **SPLADE**: Stateless - model parameters encode all knowledge, no corpus stats needed
+
+### Configuration Schema
+
+```python
+@classmethod
+def get_config_schema(cls) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "k1": {
+                "type": "number",
+                "description": "Term saturation parameter (higher = more TF weight)",
+                "default": 1.5,
+                "minimum": 0,
+                "maximum": 3,
+            },
+            "b": {
+                "type": "number",
+                "description": "Length normalization (0 = none, 1 = full)",
+                "default": 0.75,
+                "minimum": 0,
+                "maximum": 1,
+            },
+            "collection_name": {
+                "type": "string",
+                "description": "Collection name for IDF persistence",
+            },
+        },
+    }
+```
+
+### Built-in Implementations
+
+Semantik includes two built-in sparse indexers:
+
+| Plugin ID | Type | Description |
+|-----------|------|-------------|
+| `bm25-local` | BM25 | Classic BM25 with configurable k1/b, stopword removal |
+| `splade-local` | SPLADE | Neural sparse encoder using `naver/splade-cocondenser-ensembledistil` |
+
+See [Sparse Indexing Guide](SPARSE_INDEXING.md) for usage details and performance considerations.
 
 ---
 
@@ -595,3 +802,12 @@ except ImportError:
 5. **Test thoroughly** - Include unit tests for all public methods
 6. **Log appropriately** - Use Python logging, not print statements
 7. **Clean up resources** - Implement cleanup() to release connections/memory
+
+---
+
+## See Also
+
+- [External Plugins Guide](external-plugins.md) - Protocol-based development (no semantik imports)
+- [Plugin Protocols Reference](plugin-protocols.md) - Complete protocol specifications
+- [Plugin Testing](PLUGIN_TESTING.md) - Testing infrastructure and contract tests
+- [Plugin Security](PLUGIN_SECURITY.md) - Security considerations for plugins

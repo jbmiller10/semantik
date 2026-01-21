@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Minimal test to isolate the hanging issue."""
+"""Minimal test to ensure hierarchical chunker handles edge case inputs."""
+
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
-def test_hierarchical_chunker_malicious():
-    """Test the malicious input handling."""
-    from shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+def _create_hierarchical_chunker() -> TextProcessingStrategyAdapter:
+    """Create a hierarchical chunker using the unified factory."""
+    unified_strategy = UnifiedChunkingFactory.create_strategy(
+        "hierarchical",
+        use_llama_index=True,
+    )
+    return TextProcessingStrategyAdapter(unified_strategy)
 
-    chunker = HierarchicalChunker()
+
+def test_hierarchical_chunker_edge_cases() -> None:
+    """Test the hierarchical chunker handles edge case inputs without hanging."""
+    chunker = _create_hierarchical_chunker()
 
     # Test null bytes
     text_with_null = "Normal text\x00with null bytes"

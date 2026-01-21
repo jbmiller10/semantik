@@ -1,45 +1,33 @@
-"""Integration tests for the chunking factory wiring."""
+"""Integration tests for the unified chunking factory."""
 
 from __future__ import annotations
 
 import pytest
 
-from shared.text_processing.chunking_factory import ChunkingFactory
-from shared.text_processing.strategies.character_chunker import CharacterChunker
-from shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
-from shared.text_processing.strategies.hybrid_chunker import HybridChunker
-from shared.text_processing.strategies.markdown_chunker import MarkdownChunker
-from shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-from shared.text_processing.strategies.semantic_chunker import SemanticChunker
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 pytestmark = pytest.mark.integration
 
 
 def test_factory_creates_each_strategy() -> None:
     """Factory should construct each registered strategy with defaults."""
-    expectations = {
-        "character": CharacterChunker,
-        "recursive": RecursiveChunker,
-        "markdown": MarkdownChunker,
-        "semantic": SemanticChunker,
-        "hierarchical": HierarchicalChunker,
-        "hybrid": HybridChunker,
-    }
+    strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
 
-    for strategy, expected_type in expectations.items():
-        chunker = ChunkingFactory.create_chunker({"strategy": strategy})
-        assert isinstance(chunker, expected_type)
+    for strategy_name in strategies:
+        strategy = UnifiedChunkingFactory.create_strategy(strategy_name)
+        assert strategy is not None
+        assert strategy.name == strategy_name
 
 
 def test_factory_rejects_unknown_strategy() -> None:
     """Factory should raise if an unknown strategy is requested."""
-    with pytest.raises(ValueError, match="Unknown chunking strategy"):
-        ChunkingFactory.create_chunker({"strategy": "does_not_exist"})
+    with pytest.raises(ValueError, match="not a valid ChunkingStrategyType"):
+        UnifiedChunkingFactory.create_strategy("does_not_exist")
 
 
 def test_get_available_strategies_lists_all() -> None:
     """Factory should expose the registered strategy names."""
-    strategies = ChunkingFactory.get_available_strategies()
+    strategies = UnifiedChunkingFactory.get_available_strategies()
     expected = {"character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"}
     assert expected.issubset(set(strategies))
 
@@ -56,7 +44,8 @@ def test_get_available_strategies_lists_all() -> None:
 )
 def test_estimate_chunks_scales_with_length(strategy: str, small_text: int, large_text: int) -> None:
     """Chunk estimations should scale roughly with input length."""
-    chunker = ChunkingFactory.create_chunker({"strategy": strategy})
+    unified_strategy = UnifiedChunkingFactory.create_strategy(strategy)
+    chunker = TextProcessingStrategyAdapter(unified_strategy)
 
     small_estimate = chunker.estimate_chunks(small_text, {})
     large_estimate = chunker.estimate_chunks(large_text, {})
@@ -67,17 +56,27 @@ def test_estimate_chunks_scales_with_length(strategy: str, small_text: int, larg
 
 def test_validate_config_examples() -> None:
     """Representative config validation calls across strategies."""
-    char_chunker = ChunkingFactory.create_chunker({"strategy": "character"})
+    # Character chunker validation
+    char_strategy = UnifiedChunkingFactory.create_strategy("character")
+    char_chunker = TextProcessingStrategyAdapter(char_strategy)
     assert char_chunker.validate_config({"chunk_size": 256, "chunk_overlap": 32})
     assert not char_chunker.validate_config({"chunk_size": -1})
 
-    recursive_chunker = ChunkingFactory.create_chunker({"strategy": "recursive"})
+    # Recursive chunker validation
+    recursive_strategy = UnifiedChunkingFactory.create_strategy("recursive")
+    recursive_chunker = TextProcessingStrategyAdapter(recursive_strategy)
     assert not recursive_chunker.validate_config({"chunk_overlap": 9999})
 
-    semantic_chunker = ChunkingFactory.create_chunker({"strategy": "semantic"})
+    # Semantic chunker validation
+    semantic_strategy = UnifiedChunkingFactory.create_strategy("semantic")
+    semantic_chunker = TextProcessingStrategyAdapter(semantic_strategy)
     assert not semantic_chunker.validate_config({"breakpoint_percentile_threshold": 200})
     assert not semantic_chunker.validate_config({"buffer_size": 0})
 
-    hierarchical_chunker = ChunkingFactory.create_chunker({"strategy": "hierarchical"})
-    assert hierarchical_chunker.validate_config({"chunk_sizes": [512, 256, 128]})
-    assert not hierarchical_chunker.validate_config({"chunk_sizes": []})
+    # Hierarchical chunker validation - test with token-based params
+    hierarchical_strategy = UnifiedChunkingFactory.create_strategy("hierarchical")
+    hierarchical_chunker = TextProcessingStrategyAdapter(hierarchical_strategy)
+    # Valid config with reasonable token sizes
+    assert hierarchical_chunker.validate_config({"max_tokens": 512, "min_tokens": 100, "overlap_tokens": 25})
+    # Invalid: overlap too large
+    assert not hierarchical_chunker.validate_config({"max_tokens": 512, "min_tokens": 100, "overlap_tokens": 150})

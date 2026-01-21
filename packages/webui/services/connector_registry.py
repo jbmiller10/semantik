@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 from threading import RLock
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from shared.plugins.loader import load_plugins
+
+if TYPE_CHECKING:
+    from shared.connectors.base import BaseConnector
 from shared.plugins.registry import PluginSource, plugin_registry
 
 # Cache lock for thread-safe operations
@@ -90,7 +93,7 @@ class ConnectorDefinition(TypedDict, total=False):
     preview_endpoint: str
 
 
-def _build_definition(connector_cls: type) -> ConnectorDefinition:
+def _build_definition(connector_cls: type[BaseConnector]) -> ConnectorDefinition:
     metadata = getattr(connector_cls, "METADATA", {}) or {}
     return {
         "name": metadata.get("name") or metadata.get("display_name") or connector_cls.__name__,

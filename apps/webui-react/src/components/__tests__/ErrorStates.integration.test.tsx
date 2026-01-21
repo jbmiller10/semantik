@@ -185,8 +185,10 @@ describe('Error States - Integration Tests', () => {
       // Should show prominent create button(s)
       const createButtons = screen.getAllByRole('button', { name: /create.*collection/i })
       expect(createButtons.length).toBeGreaterThan(0)
-      // Check at least one has the primary button style
-      expect(createButtons.some(button => button.classList.contains('bg-blue-600'))).toBe(true)
+      // Check at least one has a button style (btn-primary)
+      expect(createButtons.some(button =>
+        button.classList.contains('btn-primary')
+      )).toBe(true)
     })
 
     it('should show empty search results appropriately', () => {
@@ -303,7 +305,7 @@ describe('Error States - Integration Tests', () => {
       // Error from collections should not be visible
       expect(screen.queryByText(/failed to load collections/i)).not.toBeInTheDocument()
       // Search interface should be visible
-      expect(screen.getByText(/search collections/i)).toBeInTheDocument()
+      expect(screen.getByText(/search knowledge base/i)).toBeInTheDocument()
     })
   })
 

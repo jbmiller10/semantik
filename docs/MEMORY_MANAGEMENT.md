@@ -9,7 +9,7 @@ Semantik uses a sophisticated GPU memory management system to efficiently handle
 │                        GPUMemoryGovernor                                │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    Memory Budget Tracking                        │   │
-│  │  - GPU usable = total * min(max%, 1 - reserve%)                 │   │
+│  │  - GPU usable = total * max_percent                             │   │
 │  │  - CPU warm pool capacity                                        │   │
 │  │  - Current allocations per model                                 │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
@@ -59,15 +59,13 @@ Configurable memory limits:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `gpu_reserve_percent` | 0.10 | Keep 10% VRAM free (safety buffer) |
-| `gpu_max_percent` | 0.90 | Never use more than 90% of VRAM |
-| `cpu_reserve_percent` | 0.20 | Keep 20% RAM free for system |
-| `cpu_max_percent` | 0.50 | Max 50% of RAM for warm models |
+| `gpu_max_percent` | 0.90 | Maximum GPU memory the application can use |
+| `cpu_max_percent` | 0.50 | Maximum CPU memory for warm models |
 
 **Usable memory calculation:**
 ```
-usable_gpu = total_gpu * min(gpu_max_percent, 1.0 - gpu_reserve_percent)
-usable_cpu = total_cpu * min(cpu_max_percent, 1.0 - cpu_reserve_percent)
+usable_gpu = total_gpu * gpu_max_percent
+usable_cpu = total_cpu * cpu_max_percent
 ```
 
 ### Pressure Levels
@@ -124,13 +122,9 @@ When enabled, models are moved to CPU RAM instead of being fully unloaded:
 # Enable/disable the memory governor (default: true)
 ENABLE_MEMORY_GOVERNOR=true
 
-# GPU Memory Limits
-GPU_MEMORY_RESERVE_PERCENT=0.10    # Safety buffer (default: 10%)
-GPU_MEMORY_MAX_PERCENT=0.90        # Maximum usage (default: 90%)
-
-# CPU Memory Limits (warm pool)
-CPU_MEMORY_RESERVE_PERCENT=0.20    # System reserve (default: 20%)
-CPU_MEMORY_MAX_PERCENT=0.50        # Warm pool limit (default: 50%)
+# Memory Limits
+GPU_MEMORY_MAX_PERCENT=0.90        # Maximum GPU memory usage (default: 90%)
+CPU_MEMORY_MAX_PERCENT=0.50        # Maximum CPU memory for warm models (default: 50%)
 
 # CPU Offloading
 ENABLE_CPU_OFFLOAD=true            # Enable warm model pool (default: true)
@@ -146,14 +140,12 @@ PRESSURE_CHECK_INTERVAL_SECONDS=15     # Monitor interval (default: 15s)
 ```bash
 # Default settings work well
 # Both embedding + reranker can coexist
-GPU_MEMORY_RESERVE_PERCENT=0.10
 GPU_MEMORY_MAX_PERCENT=0.90
 ```
 
 #### 16GB VRAM (RTX 4080, A4000)
 ```bash
 # Default settings, may need occasional eviction
-GPU_MEMORY_RESERVE_PERCENT=0.10
 GPU_MEMORY_MAX_PERCENT=0.90
 ENABLE_CPU_OFFLOAD=true
 ```
@@ -161,7 +153,6 @@ ENABLE_CPU_OFFLOAD=true
 #### 8GB VRAM (RTX 3060, RTX 4060)
 ```bash
 # More aggressive eviction
-GPU_MEMORY_RESERVE_PERCENT=0.15
 GPU_MEMORY_MAX_PERCENT=0.85
 ENABLE_CPU_OFFLOAD=true
 EVICTION_IDLE_THRESHOLD_SECONDS=60
@@ -170,7 +161,6 @@ EVICTION_IDLE_THRESHOLD_SECONDS=60
 #### 4GB VRAM
 ```bash
 # Very constrained - may need single model at a time
-GPU_MEMORY_RESERVE_PERCENT=0.20
 GPU_MEMORY_MAX_PERCENT=0.80
 ENABLE_CPU_OFFLOAD=true
 EVICTION_IDLE_THRESHOLD_SECONDS=30
@@ -353,7 +343,7 @@ Response:
 ### OOM Errors Still Occurring
 
 1. **Check pressure level**: If consistently HIGH/CRITICAL, reduce `GPU_MEMORY_MAX_PERCENT`
-2. **Increase reserve**: Try `GPU_MEMORY_RESERVE_PERCENT=0.15` or `0.20`
+2. **Lower memory limit**: Try `GPU_MEMORY_MAX_PERCENT=0.85` or `0.80`
 3. **Reduce batch sizes**: Large batches consume activation memory beyond weights
 4. **Check for memory leaks**: Monitor `/memory/stats` over time
 

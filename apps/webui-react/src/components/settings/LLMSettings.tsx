@@ -1,0 +1,870 @@
+/**
+ * LLM Settings component for configuring LLM providers and models.
+ * Allows users to set API keys, select models for quality tiers,
+ * and view token usage statistics.
+ */
+import { useState, useEffect, useCallback } from 'react';
+import {
+  useLLMSettings,
+  useUpdateLLMSettings,
+  useLLMModels,
+  useTestLLMKey,
+  useLLMUsage,
+  useRefreshLLMModels,
+} from '../../hooks/useLLMSettings';
+import { getInputClassName } from '../../utils/formStyles';
+import type { LLMProviderType, LocalQuantization, AvailableModel } from '../../types/llm';
+
+interface FormState {
+  high_quality_provider: LLMProviderType | null;
+  high_quality_model: string | null;
+  low_quality_provider: LLMProviderType | null;
+  low_quality_model: string | null;
+  anthropic_api_key: string;
+  openai_api_key: string;
+  local_high_quantization: LocalQuantization;
+  local_low_quantization: LocalQuantization;
+  default_temperature: number | null;
+  default_max_tokens: number | null;
+}
+
+const DEFAULT_FORM_STATE: FormState = {
+  high_quality_provider: 'anthropic',
+  high_quality_model: null,
+  low_quality_provider: 'anthropic',
+  low_quality_model: null,
+  anthropic_api_key: '',
+  openai_api_key: '',
+  local_high_quantization: 'int8',
+  local_low_quantization: 'int8',
+  default_temperature: null,
+  default_max_tokens: null,
+};
+
+export default function LLMSettings() {
+  const { data: settings, isLoading, error } = useLLMSettings();
+  const { data: modelsData } = useLLMModels();
+  const updateMutation = useUpdateLLMSettings();
+  const testKeyMutation = useTestLLMKey();
+  const { data: usageData } = useLLMUsage(30, settings);
+  const refreshModelsMutation = useRefreshLLMModels();
+
+  const [formState, setFormState] = useState<FormState>(DEFAULT_FORM_STATE);
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showOpenAIKey, setShowOpenAIKey] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    provider: LLMProviderType;
+    success: boolean;
+    message: string;
+  } | null>(null);
+
+  // Initialize form state from settings
+  useEffect(() => {
+    if (settings) {
+      setFormState({
+        high_quality_provider: (settings.high_quality_provider as LLMProviderType) || 'anthropic',
+        high_quality_model: settings.high_quality_model,
+        low_quality_provider: (settings.low_quality_provider as LLMProviderType) || 'anthropic',
+        low_quality_model: settings.low_quality_model,
+        anthropic_api_key: '',
+        openai_api_key: '',
+        local_high_quantization: (settings.local_high_quantization as LocalQuantization) || 'int8',
+        local_low_quantization: (settings.local_low_quantization as LocalQuantization) || 'int8',
+        default_temperature: settings.default_temperature,
+        default_max_tokens: settings.default_max_tokens,
+      });
+    }
+  }, [settings]);
+
+  const handleChange = useCallback(
+    <K extends keyof FormState>(field: K, value: FormState[K]) => {
+      setFormState((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+
+  const handleProviderChange = useCallback(
+    (tier: 'high' | 'low', provider: LLMProviderType) => {
+      if (tier === 'high') {
+        setFormState((prev) => ({
+          ...prev,
+          high_quality_provider: provider,
+          high_quality_model: null, // Reset model when provider changes
+          // Reset quantization to default when switching to local
+          ...(provider === 'local' && { local_high_quantization: 'int8' as const }),
+        }));
+      } else {
+        setFormState((prev) => ({
+          ...prev,
+          low_quality_provider: provider,
+          low_quality_model: null,
+          ...(provider === 'local' && { local_low_quantization: 'int8' as const }),
+        }));
+      }
+    },
+    []
+  );
+
+  const handleQuantizationChange = useCallback(
+    (tier: 'high' | 'low', quantization: LocalQuantization) => {
+      if (tier === 'high') {
+        setFormState((prev) => ({ ...prev, local_high_quantization: quantization }));
+      } else {
+        setFormState((prev) => ({ ...prev, local_low_quantization: quantization }));
+      }
+    },
+    []
+  );
+
+  const handleSave = useCallback(async () => {
+    const updateData: Record<string, unknown> = {
+      high_quality_provider: formState.high_quality_provider,
+      high_quality_model: formState.high_quality_model,
+      low_quality_provider: formState.low_quality_provider,
+      low_quality_model: formState.low_quality_model,
+      default_temperature: formState.default_temperature,
+      default_max_tokens: formState.default_max_tokens,
+    };
+
+    // Only include API keys if they were provided
+    if (formState.anthropic_api_key) {
+      updateData.anthropic_api_key = formState.anthropic_api_key;
+    }
+    if (formState.openai_api_key) {
+      updateData.openai_api_key = formState.openai_api_key;
+    }
+
+    // Include quantization settings when local provider is selected
+    if (formState.high_quality_provider === 'local') {
+      updateData.local_high_quantization = formState.local_high_quantization;
+    }
+    if (formState.low_quality_provider === 'local') {
+      updateData.local_low_quantization = formState.local_low_quantization;
+    }
+
+    await updateMutation.mutateAsync(updateData);
+
+    // Clear API key fields after successful save
+    setFormState((prev) => ({
+      ...prev,
+      anthropic_api_key: '',
+      openai_api_key: '',
+    }));
+  }, [formState, updateMutation]);
+
+  const handleTestKey = useCallback(
+    async (provider: LLMProviderType) => {
+      const apiKey =
+        provider === 'anthropic' ? formState.anthropic_api_key : formState.openai_api_key;
+      if (!apiKey) return;
+      setTestResult(null); // Clear previous result
+      try {
+        const result = await testKeyMutation.mutateAsync({ provider, api_key: apiKey });
+        setTestResult({
+          provider,
+          success: result.success,
+          message: result.message,
+        });
+      } catch {
+        setTestResult({
+          provider,
+          success: false,
+          message: 'Test failed - check your API key',
+        });
+      }
+    },
+    [formState.anthropic_api_key, formState.openai_api_key, testKeyMutation]
+  );
+
+  // Filter models by provider
+  const getModelsForProvider = useCallback(
+    (provider: LLMProviderType | null): AvailableModel[] => {
+      if (!modelsData?.models || !provider) return [];
+      return modelsData.models.filter((m) => m.provider === provider);
+    },
+    [modelsData]
+  );
+
+  // Refresh models from provider API
+  const handleRefreshModels = useCallback(
+    async (provider: LLMProviderType) => {
+      const apiKey =
+        provider === 'anthropic' ? formState.anthropic_api_key : formState.openai_api_key;
+
+      // Check if we have an API key (either entered or already saved)
+      const hasStoredKey =
+        provider === 'anthropic' ? settings?.anthropic_has_key : settings?.openai_has_key;
+
+      if (!apiKey && !hasStoredKey) {
+        return; // No API key available
+      }
+
+      // If user entered a key, use that; otherwise, we can't refresh (stored keys aren't accessible)
+      if (!apiKey) {
+        return; // Can't use stored key for refresh - user must enter key
+      }
+
+      await refreshModelsMutation.mutateAsync({ provider, apiKey });
+    },
+    [formState.anthropic_api_key, formState.openai_api_key, settings, refreshModelsMutation]
+  );
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <svg className="animate-spin h-8 w-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24">
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+        <span className="ml-3 text-[var(--text-secondary)]">Loading LLM settings...</span>
+      </div>
+    );
+  }
+
+  // Error state (except 404 which means not configured yet)
+  if (error && !error.message.includes('404')) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+        <div className="flex">
+          <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-300">Error loading settings</h3>
+            <p className="mt-1 text-sm text-red-400">{error.message}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const hasAnyKey = settings?.anthropic_has_key || settings?.openai_has_key;
+  const hasLocalProvider = formState.high_quality_provider === 'local' || formState.low_quality_provider === 'local';
+  const hasAnyConfig = hasAnyKey || hasLocalProvider;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">LLM Configuration</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          Configure LLM providers for AI features like HyDE search and document summarization.
+        </p>
+      </div>
+
+      {/* Info box for unconfigured state */}
+      {!hasAnyConfig && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+          <div className="flex">
+            <svg
+              className="h-5 w-5 text-amber-400 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-amber-400">LLM Not Configured</h3>
+              <p className="mt-1 text-sm text-amber-300/80">
+                Add an API key below or select a Local (GPU) provider to enable AI features.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quality Tiers Info */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+        <div className="flex">
+          <svg
+            className="h-5 w-5 text-blue-400 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-300">Quality Tiers</h3>
+            <p className="mt-1 text-sm text-blue-400">
+              <strong>High Quality:</strong> Used for complex tasks like document summarization.
+              <br />
+              <strong>Low Quality:</strong> Used for simple tasks like HyDE query expansion
+              (faster, cheaper).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Local LLM Info (shown when local provider is selected) */}
+      {hasLocalProvider && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+          <div className="flex">
+            <svg
+              className="h-5 w-5 text-blue-400 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+              />
+            </svg>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-300">Local LLM (GPU)</h3>
+              <p className="mt-1 text-sm text-blue-400">
+                Local models run entirely on your GPU. No API key required.
+                First-time model downloads may take several minutes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Keys Section */}
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
+        <div className="px-4 py-5 sm:p-6">
+          <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)] mb-4">API Keys</h3>
+
+          <div className="space-y-4">
+            {/* Anthropic API Key */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
+                Anthropic API Key
+                {settings?.anthropic_has_key && (
+                  <span className="ml-2 text-green-600 text-xs">(configured)</span>
+                )}
+              </label>
+              <div className="mt-1 flex rounded-md shadow-sm">
+                <input
+                  type={showAnthropicKey ? 'text' : 'password'}
+                  value={formState.anthropic_api_key}
+                  onChange={(e) => handleChange('anthropic_api_key', e.target.value)}
+                  placeholder={settings?.anthropic_has_key ? '••••••••••••' : 'sk-ant-...'}
+                  className={getInputClassName(false, false, 'flex-1 min-w-0 block w-full rounded-none rounded-l-md sm:text-sm px-3 py-2 border')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                  className="inline-flex items-center px-3 border border-l-0 border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+                >
+                  {showAnthropicKey ? (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestKey('anthropic')}
+                  disabled={!formState.anthropic_api_key || testKeyMutation.isPending}
+                  className="inline-flex items-center px-4 border border-l-0 border-[var(--border)] rounded-r-md bg-[var(--bg-tertiary)] text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {testKeyMutation.isPending ? 'Testing...' : 'Test'}
+                </button>
+              </div>
+              {testResult && testResult.provider === 'anthropic' && (
+                <div
+                  className={`mt-2 p-2 rounded text-sm ${
+                    testResult.success
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                  }`}
+                >
+                  {testResult.success ? '✓ ' : '✗ '}
+                  {testResult.message}
+                </div>
+              )}
+            </div>
+
+            {/* OpenAI API Key */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-primary)]">
+                OpenAI API Key
+                {settings?.openai_has_key && (
+                  <span className="ml-2 text-green-600 text-xs">(configured)</span>
+                )}
+              </label>
+              <div className="mt-1 flex rounded-md shadow-sm">
+                <input
+                  type={showOpenAIKey ? 'text' : 'password'}
+                  value={formState.openai_api_key}
+                  onChange={(e) => handleChange('openai_api_key', e.target.value)}
+                  placeholder={settings?.openai_has_key ? '••••••••••••' : 'sk-...'}
+                  className={getInputClassName(false, false, 'flex-1 min-w-0 block w-full rounded-none rounded-l-md sm:text-sm px-3 py-2 border')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOpenAIKey(!showOpenAIKey)}
+                  className="inline-flex items-center px-3 border border-l-0 border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+                >
+                  {showOpenAIKey ? (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestKey('openai')}
+                  disabled={!formState.openai_api_key || testKeyMutation.isPending}
+                  className="inline-flex items-center px-4 border border-l-0 border-[var(--border)] rounded-r-md bg-[var(--bg-tertiary)] text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {testKeyMutation.isPending ? 'Testing...' : 'Test'}
+                </button>
+              </div>
+              {testResult && testResult.provider === 'openai' && (
+                <div
+                  className={`mt-2 p-2 rounded text-sm ${
+                    testResult.success
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                  }`}
+                >
+                  {testResult.success ? '✓ ' : '✗ '}
+                  {testResult.message}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* High Quality Tier */}
+      <TierConfigCard
+        title="High Quality Tier"
+        description="Used for complex tasks like document summarization"
+        provider={formState.high_quality_provider}
+        model={formState.high_quality_model}
+        models={getModelsForProvider(formState.high_quality_provider)}
+        onProviderChange={(p) => handleProviderChange('high', p)}
+        onModelChange={(m) => handleChange('high_quality_model', m)}
+        onRefreshModels={handleRefreshModels}
+        canRefresh={
+          formState.high_quality_provider === 'anthropic'
+            ? !!formState.anthropic_api_key
+            : formState.high_quality_provider === 'openai'
+            ? !!formState.openai_api_key
+            : false
+        }
+        isRefreshing={refreshModelsMutation.isPending}
+        tierRecommendation="high"
+        quantization={formState.local_high_quantization}
+        onQuantizationChange={(q) => handleQuantizationChange('high', q)}
+      />
+
+      {/* Low Quality Tier */}
+      <TierConfigCard
+        title="Low Quality Tier"
+        description="Used for simple tasks like HyDE query expansion (faster, cheaper)"
+        provider={formState.low_quality_provider}
+        model={formState.low_quality_model}
+        models={getModelsForProvider(formState.low_quality_provider)}
+        onProviderChange={(p) => handleProviderChange('low', p)}
+        onModelChange={(m) => handleChange('low_quality_model', m)}
+        onRefreshModels={handleRefreshModels}
+        canRefresh={
+          formState.low_quality_provider === 'anthropic'
+            ? !!formState.anthropic_api_key
+            : formState.low_quality_provider === 'openai'
+            ? !!formState.openai_api_key
+            : false
+        }
+        isRefreshing={refreshModelsMutation.isPending}
+        tierRecommendation="low"
+        quantization={formState.local_low_quantization}
+        onQuantizationChange={(q) => handleQuantizationChange('low', q)}
+      />
+
+      {/* Advanced Settings */}
+      <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="w-full px-4 py-4 sm:px-6 flex items-center justify-between text-left"
+        >
+          <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">Advanced Settings</h3>
+          <svg
+            className={`h-5 w-5 text-[var(--text-muted)] transform transition-transform ${
+              showAdvanced ? 'rotate-180' : ''
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showAdvanced && (
+          <div className="px-4 pb-5 sm:px-6 border-t border-[var(--border)] pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
+                  Default Temperature
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={formState.default_temperature ?? ''}
+                  onChange={(e) =>
+                    handleChange(
+                      'default_temperature',
+                      e.target.value ? parseFloat(e.target.value) : null
+                    )
+                  }
+                  placeholder="0.7"
+                  className={getInputClassName(false, false)}
+                />
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">0.0 (deterministic) to 2.0 (creative)</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
+                  Default Max Tokens
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="200000"
+                  value={formState.default_max_tokens ?? ''}
+                  onChange={(e) =>
+                    handleChange(
+                      'default_max_tokens',
+                      e.target.value ? parseInt(e.target.value, 10) : null
+                    )
+                  }
+                  placeholder="4096"
+                  className={getInputClassName(false, false)}
+                />
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">Maximum tokens to generate</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Token Usage */}
+      {hasAnyKey && usageData && (
+        <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
+          <div className="px-4 py-5 sm:p-6">
+            <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)] mb-4">
+              Token Usage (Last 30 Days)
+            </h3>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-center">
+                <div className="text-2xl font-semibold text-[var(--text-primary)]">
+                  {usageData.total_input_tokens.toLocaleString()}
+                </div>
+                <div className="text-sm text-[var(--text-secondary)]">Input Tokens</div>
+              </div>
+              <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-center">
+                <div className="text-2xl font-semibold text-[var(--text-primary)]">
+                  {usageData.total_output_tokens.toLocaleString()}
+                </div>
+                <div className="text-sm text-[var(--text-secondary)]">Output Tokens</div>
+              </div>
+              <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg text-center">
+                <div className="text-2xl font-semibold text-[var(--text-primary)]">
+                  {usageData.total_tokens.toLocaleString()}
+                </div>
+                <div className="text-sm text-[var(--text-secondary)]">Total Tokens</div>
+              </div>
+            </div>
+
+            {Object.keys(usageData.by_feature).length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-[var(--text-primary)] mb-2">By Feature</h4>
+                <table className="min-w-full divide-y divide-[var(--border)]">
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-[var(--text-secondary)] uppercase">
+                        Feature
+                      </th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-secondary)] uppercase">
+                        Input
+                      </th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-secondary)] uppercase">
+                        Output
+                      </th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-secondary)] uppercase">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {Object.entries(usageData.by_feature).map(([feature, tokens]) => (
+                      <tr key={feature}>
+                        <td className="px-3 py-2 text-sm text-[var(--text-primary)] capitalize">{feature}</td>
+                        <td className="px-3 py-2 text-sm text-[var(--text-secondary)] text-right">
+                          {tokens.input_tokens.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-[var(--text-secondary)] text-right">
+                          {tokens.output_tokens.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-[var(--text-primary)] text-right font-medium">
+                          {tokens.total_tokens.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={updateMutation.isPending}
+          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-gray-900 dark:text-gray-900 bg-gray-200 dark:bg-white hover:bg-gray-300 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {updateMutation.isPending ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-900" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Saving...
+            </>
+          ) : (
+            'Save Settings'
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tier Configuration Card subcomponent
+ */
+interface TierConfigCardProps {
+  title: string;
+  description: string;
+  provider: LLMProviderType | null;
+  model: string | null;
+  models: AvailableModel[];
+  onProviderChange: (provider: LLMProviderType) => void;
+  onModelChange: (model: string | null) => void;
+  onRefreshModels: (provider: LLMProviderType) => Promise<void>;
+  canRefresh: boolean;
+  isRefreshing: boolean;
+  tierRecommendation: 'high' | 'low';
+  quantization?: LocalQuantization;
+  onQuantizationChange?: (quantization: LocalQuantization) => void;
+}
+
+function TierConfigCard({
+  title,
+  description,
+  provider,
+  model,
+  models,
+  onProviderChange,
+  onModelChange,
+  onRefreshModels,
+  canRefresh,
+  isRefreshing,
+  tierRecommendation,
+  quantization,
+  onQuantizationChange,
+}: TierConfigCardProps) {
+  // Filter to show recommended models first
+  const sortedModels = [...models].sort((a, b) => {
+    const aRecommended = a.tier_recommendation === tierRecommendation;
+    const bRecommended = b.tier_recommendation === tierRecommendation;
+    if (aRecommended && !bRecommended) return -1;
+    if (!aRecommended && bRecommended) return 1;
+    return a.display_name.localeCompare(b.display_name);
+  });
+
+  return (
+    <div className="bg-[var(--bg-secondary)] shadow rounded-lg border border-[var(--border)]">
+      <div className="px-4 py-5 sm:p-6">
+        <h3 className="text-lg leading-6 font-medium text-[var(--text-primary)]">{title}</h3>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>
+
+        <div className="mt-4 space-y-4">
+          {/* Provider Selection */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">Provider</label>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={() => onProviderChange('anthropic')}
+                className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                  provider === 'anthropic'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
+                    : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Anthropic
+              </button>
+              <button
+                type="button"
+                onClick={() => onProviderChange('openai')}
+                className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                  provider === 'openai'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
+                    : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                OpenAI
+              </button>
+              <button
+                type="button"
+                onClick={() => onProviderChange('local')}
+                className={`flex-1 px-4 py-2 text-sm font-medium rounded-md border ${
+                  provider === 'local'
+                    ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
+                    : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Local (GPU)
+              </button>
+            </div>
+          </div>
+
+          {/* Model Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-[var(--text-primary)]">Model</label>
+              {provider && provider !== 'local' && (
+                <button
+                  type="button"
+                  onClick={() => onRefreshModels(provider)}
+                  disabled={!canRefresh || isRefreshing}
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-muted)] disabled:cursor-not-allowed"
+                  title={canRefresh ? 'Refresh models from API' : 'Enter API key above to refresh'}
+                >
+                  {isRefreshing ? 'Refreshing...' : 'Refresh from API'}
+                </button>
+              )}
+            </div>
+            <select
+              value={model || ''}
+              onChange={(e) => onModelChange(e.target.value || null)}
+              className={getInputClassName(false, false)}
+            >
+              <option value="">Select a model...</option>
+              {sortedModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name}
+                  {m.tier_recommendation === tierRecommendation ? ' (Recommended)' : ''}
+                  {!m.is_curated ? ' *' : ''}
+                </option>
+              ))}
+            </select>
+            {sortedModels.some((m) => !m.is_curated) && (
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">* Fetched from provider API</p>
+            )}
+          </div>
+
+          {/* Quantization Selection (local provider only) */}
+          {provider === 'local' && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">Quantization</label>
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  onClick={() => onQuantizationChange?.('int8')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
+                    quantization === 'int8'
+                      ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                  }`}
+                >
+                  INT8 (Balanced)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onQuantizationChange?.('int4')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border ${
+                    quantization === 'int4'
+                      ? 'bg-gray-100 dark:bg-white/10 border-gray-400 dark:border-white text-gray-800 dark:text-white'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                  }`}
+                >
+                  INT4 (Less VRAM)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Memory Estimate (local provider with selected model) */}
+          {provider === 'local' && model && (() => {
+            const selectedModel = models.find(m => m.id === model);
+            const memoryMb = selectedModel?.memory_mb?.[quantization || 'int8'];
+            if (!memoryMb) return null;
+            return (
+              <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg">
+                <div className="flex items-center text-sm">
+                  <svg className="h-5 w-5 text-[var(--text-muted)] mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  <span className="text-[var(--text-secondary)]">
+                    Estimated VRAM: <strong className="text-[var(--text-primary)]">{memoryMb.toLocaleString()} MB</strong>
+                  </span>
+                </div>
+                {memoryMb > 8000 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    This model requires a GPU with at least {Math.ceil(memoryMb / 1024)} GB VRAM
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}

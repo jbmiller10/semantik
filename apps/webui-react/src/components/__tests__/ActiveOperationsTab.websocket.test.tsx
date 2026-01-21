@@ -216,8 +216,8 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
 
       await vi.advanceTimersByTimeAsync(500)
 
-      // The global operations socket hook should have been called once
-      expect(vi.mocked(useOperationsSocket)).toHaveBeenCalled()
+      // ActiveOperationsTab itself does not own the global WebSocket connection;
+      // Layout.tsx manages it for the full app.
     })
   })
 
@@ -332,9 +332,6 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('No active operations')).toBeInTheDocument()
-
-      // useOperationsSocket is still called once for the global connection
-      expect(vi.mocked(useOperationsSocket)).toHaveBeenCalled()
     })
 
     it('should handle API errors while WebSockets are connected', async () => {
@@ -358,7 +355,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
   })
 
   describe('Performance and Resource Management', () => {
-    it('should use a single global WebSocket for all operations', async () => {
+    it('should not create its own global WebSocket connection', async () => {
       // Create many operations
       const manyOperations = Array.from({ length: 50 }, (_, i) => ({
         ...mockActiveOperations[0],
@@ -381,12 +378,9 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       const initialIndexElements = screen.getAllByText('Initial Index')
       expect(initialIndexElements.length).toBeGreaterThan(0)
 
-      // With the new architecture, only ONE global WebSocket hook is used (via useOperationsSocket)
-      // instead of per-operation connections. This avoids exceeding connection limits.
-      // The hook may be called multiple times due to React StrictMode, but it should be
-      // a small constant number, not proportional to the number of operations (50).
-      const callCount = vi.mocked(useOperationsSocket).mock.calls.length
-      expect(callCount).toBeLessThanOrEqual(5) // Allow for re-renders but not 50 calls
+      // The WebSocket subscription is managed at the app shell level (Layout.tsx).
+      // This component should not open sockets on its own.
+      expect(vi.mocked(useOperationsSocket)).not.toHaveBeenCalled()
     })
 
     it('should clean up WebSocket connections when component unmounts', async () => {

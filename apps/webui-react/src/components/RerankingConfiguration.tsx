@@ -1,4 +1,5 @@
 import { useSearchStore } from '../stores/searchStore';
+import { useUIStore } from '../stores/uiStore';
 import { useCallback } from 'react';
 import { systemApi } from '../services/api/v2/system';
 
@@ -18,6 +19,8 @@ interface RerankingConfigurationProps {
     rerankModel?: string;
     rerankQuantization?: string;
   }) => void;
+  /** Hide the enable checkbox (when toggle is rendered elsewhere) */
+  hideToggle?: boolean;
 }
 
 /**
@@ -41,14 +44,16 @@ export function RerankingConfiguration({
   enabled,
   model,
   quantization,
-  onChange
+  onChange,
+  hideToggle = false
 }: RerankingConfigurationProps) {
-  const { 
-    rerankingAvailable, 
+  const {
+    rerankingAvailable,
     rerankingModelsLoading,
     setRerankingAvailable,
     setRerankingModelsLoading
   } = useSearchStore();
+  const addToast = useUIStore((state) => state.addToast);
 
   const handleEnabledChange = (checked: boolean) => {
     onChange({ useReranker: checked });
@@ -61,7 +66,7 @@ export function RerankingConfiguration({
   const handleQuantizationChange = (value: string) => {
     onChange({ rerankQuantization: value === 'auto' ? undefined : value });
   };
-  
+
   const handleRefreshAvailability = useCallback(async () => {
     setRerankingModelsLoading(true);
     try {
@@ -69,80 +74,85 @@ export function RerankingConfiguration({
       setRerankingAvailable(status.reranking_available);
     } catch (error) {
       console.error('Failed to refresh reranking availability:', error);
+      addToast({ type: 'error', message: 'Failed to check reranking availability. Please try again.' });
     } finally {
       setRerankingModelsLoading(false);
     }
-  }, [setRerankingAvailable, setRerankingModelsLoading]);
+  }, [setRerankingAvailable, setRerankingModelsLoading, addToast]);
 
   return (
-    <div className="mb-4">
-      <div className="bg-gray-50 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => handleEnabledChange(e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded"
-              aria-label="Enable cross-encoder reranking"
-              disabled={rerankingModelsLoading || !rerankingAvailable}
-            />
-            <span className="text-sm font-medium text-gray-700">
-              Enable Cross-Encoder Reranking
-              {rerankingModelsLoading && (
-                <span className="ml-2 text-xs text-gray-500">(Loading...)</span>
-              )}
-            </span>
-          </label>
-          {rerankingModelsLoading && (
-            <svg className="animate-spin h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          )}
-        </div>
-        
-        {!rerankingAvailable && !rerankingModelsLoading && (
-          <div className="mt-3 ml-6">
+    <div className={hideToggle ? '' : 'mb-4'}>
+      <div className={hideToggle ? '' : 'bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border)]'}>
+        {!hideToggle && (
+          <>
             <div className="flex items-center justify-between">
-              <p className="text-xs text-red-600">
-                Reranking is not available. GPU acceleration may be required.
-              </p>
-              <button
-                onClick={handleRefreshAvailability}
-                className="text-xs text-blue-600 hover:text-blue-800 underline"
-                type="button"
-              >
-                Check again
-              </button>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => handleEnabledChange(e.target.checked)}
+                  className="w-4 h-4 rounded bg-[var(--input-bg)] border-[var(--input-border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                  aria-label="Enable cross-encoder reranking"
+                  disabled={rerankingModelsLoading || !rerankingAvailable}
+                />
+                <span className="text-sm font-medium text-[var(--text-primary)]">
+                  Enable Cross-Encoder Reranking
+                  {rerankingModelsLoading && (
+                    <span className="ml-2 text-xs text-[var(--text-muted)]">(Loading...)</span>
+                  )}
+                </span>
+              </label>
+              {rerankingModelsLoading && (
+                <svg className="animate-spin h-4 w-4 text-[var(--text-secondary)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
             </div>
-          </div>
+
+            {!rerankingAvailable && !rerankingModelsLoading && (
+              <div className="mt-3 ml-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Reranking is not available. GPU acceleration may be required.
+                  </p>
+                  <button
+                    onClick={handleRefreshAvailability}
+                    className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] underline"
+                    type="button"
+                  >
+                    Check again
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
-        
-        {enabled && rerankingAvailable && (
-          <div className="mt-3 ml-6" role="region" aria-label="Reranking configuration options">
-            <p className="text-xs text-gray-600 mb-3">
-              Reranking uses a more sophisticated model to re-score the top search results, 
+
+        {(hideToggle || (enabled && rerankingAvailable)) && (
+          <div className={`${hideToggle ? '' : 'mt-3 ml-6'} ${!enabled && hideToggle ? 'opacity-50' : ''}`} role="region" aria-label="Reranking configuration options">
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              Reranking uses a more sophisticated model to re-score the top search results,
               improving accuracy at the cost of slightly increased latency.
             </p>
-            
+
             <div className="space-y-3">
               {/* Reranker Model Selection */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label 
-                    htmlFor="reranker-model" 
-                    className="block text-xs text-gray-700 mb-1"
+                  <label
+                    htmlFor="reranker-model"
+                    className="block text-xs text-[var(--text-secondary)] mb-1"
                   >
-                    Reranker Model <span className="text-gray-500" title="VRAM requirements shown in parentheses">(VRAM)</span>
+                    Reranker Model <span className="text-[var(--text-muted)]" title="VRAM requirements shown in parentheses">(VRAM)</span>
                   </label>
                   <select
                     id="reranker-model"
                     value={model || 'auto'}
                     onChange={(e) => handleModelChange(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--input-bg)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-describedby="model-help"
-                    disabled={rerankingModelsLoading}
+                    disabled={rerankingModelsLoading || !enabled}
                   >
                     <option value="auto">Auto-select</option>
                     <option value="Qwen/Qwen3-Reranker-0.6B">0.6B (Fastest, ~1GB)</option>
@@ -153,11 +163,11 @@ export function RerankingConfiguration({
                     Choose a reranker model based on your performance and accuracy needs
                   </span>
                 </div>
-                
+
                 <div>
-                  <label 
-                    htmlFor="reranker-quantization" 
-                    className="block text-xs text-gray-700 mb-1"
+                  <label
+                    htmlFor="reranker-quantization"
+                    className="block text-xs text-[var(--text-secondary)] mb-1"
                   >
                     Quantization
                   </label>
@@ -165,9 +175,9 @@ export function RerankingConfiguration({
                     id="reranker-quantization"
                     value={quantization || 'auto'}
                     onChange={(e) => handleQuantizationChange(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--input-bg)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-describedby="quantization-help"
-                    disabled={rerankingModelsLoading}
+                    disabled={rerankingModelsLoading || !enabled}
                   >
                     <option value="auto">Auto (match embedding)</option>
                     <option value="float32">Float32 (Full precision)</option>
@@ -179,11 +189,11 @@ export function RerankingConfiguration({
                   </span>
                 </div>
               </div>
-              
+
               {/* Memory usage note */}
-              <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-blue-800">
+              <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs text-blue-700 dark:text-blue-300">
                 <p>
-                  <strong>Memory Usage:</strong> Reranking models require GPU VRAM. 
+                  <strong>Memory Usage:</strong> Reranking models require GPU VRAM.
                   If you encounter memory errors, try a smaller model or use Int8 quantization.
                 </p>
               </div>

@@ -67,10 +67,34 @@ class WebuiConfig(BaseConfig):
     # Artifact storage configuration (for non-file sources like Git, IMAP)
     MAX_ARTIFACT_BYTES: int = 50 * 1024 * 1024  # 50 MB default max artifact size
 
+    # =============================================================================
+    # Benchmarking configuration
+    # =============================================================================
+
+    # Dataset ingest quotas
+    BENCHMARK_DATASET_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    BENCHMARK_DATASET_MAX_QUERIES: int = 1000
+    BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY: int = 100
+
+    # Mapping resolution routing (sync vs async)
+    # Run synchronous HTTP resolution only when BOTH of these are satisfied:
+    # - ref_count <= BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS
+    # - doc_count <= BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS
+    BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS: int = 10_000
+    BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS: int = 50_000
+
+    # Hard wall clock budget for synchronous mapping resolution (ms). If exceeded, switch to async.
+    BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS: int = 8_000
+
     # Connector secrets encryption key (Fernet format: 44 chars, base64-encoded)
     # If not set, connector secrets cannot be stored (passwords, tokens, SSH keys)
     # Generate with: python scripts/generate_secrets_key.py
     CONNECTOR_SECRETS_KEY: str | None = None
+
+    # API Key Management Configuration
+    API_KEY_MAX_PER_USER: int = 20
+    API_KEY_MAX_EXPIRY_DAYS: int = 3650  # ~10 years (0 = no max)
+    API_KEY_DEFAULT_EXPIRY_DAYS: int = 365
 
     # Runtime override hooks (used in tests)
     _document_root: Path | None = None
@@ -128,6 +152,12 @@ class WebuiConfig(BaseConfig):
         "REDIS_CLEANUP_INTERVAL_SECONDS",
         "REDIS_CLEANUP_MAX_CONSECUTIVE_FAILURES",
         "REDIS_CLEANUP_MAX_BACKOFF_SECONDS",
+        "BENCHMARK_DATASET_MAX_UPLOAD_BYTES",
+        "BENCHMARK_DATASET_MAX_QUERIES",
+        "BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY",
+        "BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS",
+        "BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS",
+        "BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS",
     )
     @classmethod
     def _validate_positive_ints(cls, value: int) -> int:

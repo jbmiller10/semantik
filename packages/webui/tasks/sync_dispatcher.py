@@ -47,7 +47,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
     if pg_connection_manager._engine is None:
         await pg_connection_manager.initialize()
 
-    async with pg_connection_manager.session() as session:
+    async with pg_connection_manager.get_session() as session:
         collection_repo = CollectionRepository(session)
         source_repo = CollectionSourceRepository(session)
         sync_run_repo = CollectionSyncRunRepository(session)
@@ -181,11 +181,16 @@ def dispatch_due_syncs(self: Any) -> dict[str, Any]:  # noqa: ARG001
 
     try:
         # Run the async implementation
+        # Reset connection manager to ensure fresh connections for new event loop
+        pg_connection_manager.reset()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(_dispatch_due_syncs_async())
         finally:
+            # Reset connection manager BEFORE closing the loop to properly
+            # dispose of connections while the loop is still running.
+            pg_connection_manager.reset()
             loop.close()
 
         logger.info(

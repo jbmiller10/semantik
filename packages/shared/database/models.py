@@ -127,6 +127,8 @@ class OperationType(str, enum.Enum):
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
+    RETRY_DOCUMENTS = "retry_documents"
+    BENCHMARK = "benchmark"
 
     @classmethod
     def _missing_(cls, value: Any) -> "OperationType | None":
@@ -154,6 +156,58 @@ class ProjectionRunStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class BenchmarkStatus(str, enum.Enum):
+    """Status of a benchmark."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "BenchmarkStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("BenchmarkStatus | None", result)
+        return None
+
+
+class BenchmarkRunStatus(str, enum.Enum):
+    """Status of an individual benchmark run."""
+
+    PENDING = "pending"
+    INDEXING = "indexing"
+    EVALUATING = "evaluating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "BenchmarkRunStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("BenchmarkRunStatus | None", result)
+        return None
+
+
+class MappingStatus(str, enum.Enum):
+    """Status of dataset-collection mapping resolution."""
+
+    PENDING = "pending"
+    RESOLVED = "resolved"
+    PARTIAL = "partial"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "MappingStatus | None":
+        """Provide case-insensitive lookup for enum values."""
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("MappingStatus | None", result)
+        return None
+
+
 class User(Base):
     """User model for authentication."""
 
@@ -177,6 +231,21 @@ class User(Base):
     permissions = relationship("CollectionPermission", back_populates="user", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="user")
     audit_logs = relationship("CollectionAuditLog", back_populates="user")
+    mcp_profiles = relationship("MCPProfile", back_populates="owner", cascade="all, delete-orphan")
+    llm_provider_config = relationship(
+        "LLMProviderConfig",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,  # One-to-one
+        cascade="all, delete-orphan",
+    )
+    benchmark_datasets = relationship("BenchmarkDataset", back_populates="owner", cascade="all, delete-orphan")
+    benchmarks = relationship("Benchmark", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Collection(Base):
@@ -253,6 +322,7 @@ class Collection(Base):
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
+    mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
 
 
 class Document(Base):
@@ -294,6 +364,11 @@ class Document(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
     is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
 
+    # Retry tracking fields (for failed document retry functionality)
+    retry_count = Column(Integer, nullable=False, default=0)  # Number of retry attempts
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)  # When last retry was attempted
+    error_category = Column(String(50), nullable=True)  # 'transient', 'permanent', or 'unknown'
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
@@ -311,6 +386,16 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+        # Index for querying retryable failed documents
+        # Note: DocumentStatus enum uses member NAMES (FAILED) not VALUES (failed) in PostgreSQL
+        Index(
+            "ix_documents_collection_failed_retryable",
+            "collection_id",
+            "status",
+            "error_category",
+            "retry_count",
+            postgresql_where=text("status = 'FAILED'"),
         ),
     )
 
@@ -885,3 +970,690 @@ class Chunk(Base):
             },
         },
     )
+
+
+class MCPProfile(Base):
+    """MCP search profile configuration.
+
+    Defines a named search profile that exposes collections to MCP clients
+    like Claude Desktop. Each profile has scoped collection access and
+    configurable search defaults.
+
+    Profile names must be unique per user and follow the pattern [a-z][a-z0-9_-]*
+    to ensure valid tool naming in MCP clients.
+    """
+
+    __tablename__ = "mcp_profiles"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    name = Column(String(64), nullable=False)  # Tool name: lowercase, no spaces
+    description = Column(Text, nullable=False)  # Shown to LLM as tool description
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    # Search defaults
+    search_type = Column(String(32), nullable=False, default="semantic")  # semantic, hybrid, keyword, question, code
+    result_count = Column(Integer, nullable=False, default=10)
+    use_reranker = Column(Boolean, nullable=False, default=True)
+    score_threshold = Column(Float, nullable=True)
+    hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
+    search_mode = Column(String(16), nullable=False, default="dense")  # dense, sparse, hybrid
+    rrf_k = Column(Integer, nullable=True)  # RRF constant for hybrid mode (default: 60)
+    use_hyde = Column(Boolean, nullable=False, default=False)  # HyDE query expansion
+
+    # Metadata
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="mcp_profiles")
+    collections = relationship("Collection", secondary="mcp_profile_collections", back_populates="mcp_profiles")
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),
+        CheckConstraint(
+            "search_type IN ('semantic', 'hybrid', 'keyword', 'question', 'code')",
+            name="ck_mcp_profiles_search_type",
+        ),
+        CheckConstraint("result_count >= 1 AND result_count <= 100", name="ck_mcp_profiles_result_count"),
+        CheckConstraint(
+            "score_threshold IS NULL OR (score_threshold >= 0 AND score_threshold <= 1)",
+            name="ck_mcp_profiles_score_threshold",
+        ),
+        CheckConstraint(
+            "hybrid_alpha IS NULL OR (hybrid_alpha >= 0 AND hybrid_alpha <= 1)",
+            name="ck_mcp_profiles_hybrid_alpha",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_mcp_profiles_search_mode",
+        ),
+        CheckConstraint(
+            "rrf_k IS NULL OR (rrf_k >= 1 AND rrf_k <= 1000)",
+            name="ck_mcp_profiles_rrf_k",
+        ),
+    )
+
+
+class MCPProfileCollection(Base):
+    """Junction table for MCP profile to collection mapping.
+
+    Maps collections to MCP profiles with an ordering field that determines
+    search priority. Lower order values are searched first and may affect
+    result ranking when searching across multiple collections.
+    """
+
+    __tablename__ = "mcp_profile_collections"
+
+    profile_id = Column(
+        String,
+        ForeignKey("mcp_profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    order = Column(Integer, nullable=False, default=0)  # Lower values = higher priority
+
+
+class LLMProviderConfig(Base):
+    """Per-user LLM provider configuration.
+
+    Stores quality tier settings (high/low) for LLM model selection.
+    Each user has at most one config row (one-to-one with users).
+    API keys are stored separately in LLMProviderApiKey for security.
+    """
+
+    __tablename__ = "llm_provider_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # High-quality tier (complex tasks: summaries, entity extraction)
+    # NULL means "use application default from model registry"
+    high_quality_provider = Column(String(32))  # 'anthropic', 'openai', etc.
+    high_quality_model = Column(String(128))  # Model ID
+
+    # Low-quality tier (simple tasks: HyDE, keywords)
+    low_quality_provider = Column(String(32))
+    low_quality_model = Column(String(128))
+
+    # Optional defaults (can be overridden per-call)
+    default_temperature = Column(Float)
+    default_max_tokens = Column(Integer)
+    provider_config = Column(JSON)  # Provider-specific config
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "default_temperature IS NULL OR (default_temperature >= 0 AND default_temperature <= 2)",
+            name="ck_llm_provider_configs_temperature",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="llm_provider_config")
+    api_keys = relationship(
+        "LLMProviderApiKey",
+        back_populates="config",
+        cascade="all, delete-orphan",
+    )
+
+
+class LLMProviderApiKey(Base):
+    """Encrypted API keys for LLM providers.
+
+    Keys are stored per-provider (not per-tier). If both tiers use the
+    same provider, they share the key. Uses Fernet encryption via
+    SecretEncryption class.
+
+    The key_id field stores SHA-256 fingerprint of the encryption key
+    used, enabling future key rotation support.
+    """
+
+    __tablename__ = "llm_provider_api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    config_id = Column(
+        Integer,
+        ForeignKey("llm_provider_configs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    ciphertext = Column(LargeBinary, nullable=False)  # Fernet-encrypted API key
+    key_id = Column(String(64), nullable=False)  # Encryption key fingerprint
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    last_used_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("config_id", "provider", name="uq_llm_api_keys_config_provider"),)
+
+    # Relationships
+    config = relationship("LLMProviderConfig", back_populates="api_keys")
+
+
+class LLMUsageEvent(Base):
+    """LLM token usage tracking.
+
+    Records usage per-request for both interactive (HyDE search) and
+    background operations (summarization). Uses provider-reported token
+    counts, not approximations.
+
+    Stored in a dedicated table (not OperationMetrics) because:
+    - HyDE runs in request path with no Operation record
+    - Enables per-user usage dashboards without joining Operations
+    """
+
+    __tablename__ = "llm_usage_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # What was called
+    provider = Column(String(32), nullable=False)  # 'anthropic', 'openai', etc.
+    model = Column(String(128), nullable=False)  # Model ID
+    quality_tier = Column(String(16), nullable=False)  # 'high' or 'low'
+    feature = Column(String(50), nullable=False)  # 'hyde', 'summary', 'extraction'
+
+    # Token counts (provider-reported)
+    input_tokens = Column(Integer, nullable=False)
+    output_tokens = Column(Integer, nullable=False)
+
+    # Optional context
+    operation_id = Column(Integer)  # NULL for interactive requests (HyDE)
+    collection_id = Column(String(36))
+    request_metadata = Column(JSON)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_llm_usage_user_created", "user_id", "created_at"),
+        Index("idx_llm_usage_feature", "user_id", "feature"),
+    )
+
+
+class UserPreferences(Base):
+    """Per-user preferences for search, collection defaults, and interface settings.
+
+    Stores user-specific settings for search behavior, collection creation, and UI.
+    Each user has at most one preferences row (one-to-one with users).
+    Missing preferences use application defaults via get_or_create pattern.
+
+    Search preferences:
+    - search_top_k: Number of results to return (1-250, default 10)
+    - search_mode: 'dense', 'sparse', or 'hybrid' (default 'dense')
+    - search_use_reranker: Enable reranking (default false)
+    - search_rrf_k: RRF constant for hybrid fusion (1-100, default 60)
+    - search_similarity_threshold: Minimum similarity score (0-1, NULL for no threshold)
+    - search_use_hyde: Enable HyDE query expansion (default false)
+    - search_hyde_quality_tier: 'high' or 'low' LLM tier for HyDE (default 'low')
+    - search_hyde_timeout_seconds: Timeout for HyDE generation (3-180, default 30)
+
+    Collection defaults:
+    - default_embedding_model: Model ID or NULL for system default
+    - default_quantization: 'float32', 'float16', 'int8' (default 'float16')
+    - default_chunking_strategy: 'character', 'recursive', 'markdown', 'semantic'
+    - default_chunk_size: 256-4096 (default 1024)
+    - default_chunk_overlap: 0-512 (default 200)
+    - default_enable_sparse: Enable sparse indexing (default false)
+    - default_sparse_type: 'bm25' or 'splade' (default 'bm25')
+    - default_enable_hybrid: Enable hybrid search (requires sparse, default false)
+
+    Interface preferences:
+    - data_refresh_interval_ms: Data polling interval in ms (10000-60000, default 30000)
+    - visualization_sample_limit: Max points for UMAP/PCA (10000-500000, default 200000)
+    - animation_enabled: Enable UI animations (default true)
+    """
+
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # Search preferences
+    search_top_k = Column(Integer, nullable=False, default=10)
+    search_mode = Column(String(16), nullable=False, default="dense")
+    search_use_reranker = Column(Boolean, nullable=False, default=False)
+    search_rrf_k = Column(Integer, nullable=False, default=60)
+    search_similarity_threshold = Column(Float, nullable=True)
+    # HyDE settings
+    search_use_hyde = Column(Boolean, nullable=False, default=False)
+    search_hyde_quality_tier = Column(String(4), nullable=False, default="low")
+    search_hyde_timeout_seconds = Column(Integer, nullable=False, default=30)
+
+    # Collection defaults
+    default_embedding_model = Column(String(128), nullable=True)
+    default_quantization = Column(String(16), nullable=False, default="float16")
+    default_chunking_strategy = Column(String(32), nullable=False, default="recursive")
+    default_chunk_size = Column(Integer, nullable=False, default=1024)
+    default_chunk_overlap = Column(Integer, nullable=False, default=200)
+    default_enable_sparse = Column(Boolean, nullable=False, default=False)
+    default_sparse_type = Column(String(16), nullable=False, default="bm25")
+    default_enable_hybrid = Column(Boolean, nullable=False, default=False)
+
+    # Interface preferences
+    data_refresh_interval_ms = Column(Integer, nullable=False, default=30000)
+    visualization_sample_limit = Column(Integer, nullable=False, default=200000)
+    animation_enabled = Column(Boolean, nullable=False, default=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "search_top_k >= 1 AND search_top_k <= 250",
+            name="ck_user_preferences_search_top_k",
+        ),
+        CheckConstraint(
+            "search_mode IN ('dense', 'sparse', 'hybrid')",
+            name="ck_user_preferences_search_mode",
+        ),
+        CheckConstraint(
+            "search_rrf_k >= 1 AND search_rrf_k <= 100",
+            name="ck_user_preferences_search_rrf_k",
+        ),
+        CheckConstraint(
+            "search_similarity_threshold IS NULL OR (search_similarity_threshold >= 0.0 AND search_similarity_threshold <= 1.0)",
+            name="ck_user_preferences_search_similarity_threshold",
+        ),
+        CheckConstraint(
+            "search_hyde_quality_tier IN ('high', 'low')",
+            name="ck_user_preferences_search_hyde_quality_tier",
+        ),
+        CheckConstraint(
+            "search_hyde_timeout_seconds >= 3 AND search_hyde_timeout_seconds <= 180",
+            name="ck_user_preferences_search_hyde_timeout",
+        ),
+        CheckConstraint(
+            "default_quantization IN ('float32', 'float16', 'int8')",
+            name="ck_user_preferences_default_quantization",
+        ),
+        CheckConstraint(
+            "default_chunking_strategy IN ('character', 'recursive', 'markdown', 'semantic')",
+            name="ck_user_preferences_default_chunking_strategy",
+        ),
+        CheckConstraint(
+            "default_chunk_size >= 256 AND default_chunk_size <= 4096",
+            name="ck_user_preferences_default_chunk_size",
+        ),
+        CheckConstraint(
+            "default_chunk_overlap >= 0 AND default_chunk_overlap <= 512",
+            name="ck_user_preferences_default_chunk_overlap",
+        ),
+        CheckConstraint(
+            "default_sparse_type IN ('bm25', 'splade')",
+            name="ck_user_preferences_default_sparse_type",
+        ),
+        CheckConstraint(
+            "default_enable_hybrid = false OR default_enable_sparse = true",
+            name="ck_user_preferences_hybrid_requires_sparse",
+        ),
+        CheckConstraint(
+            "data_refresh_interval_ms >= 10000 AND data_refresh_interval_ms <= 60000",
+            name="ck_user_preferences_data_refresh_interval_ms",
+        ),
+        CheckConstraint(
+            "visualization_sample_limit >= 10000 AND visualization_sample_limit <= 500000",
+            name="ck_user_preferences_visualization_sample_limit",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="preferences")
+
+
+class SystemSettings(Base):
+    """Key-value store for system-wide admin settings.
+
+    This table stores configurable system parameters that can be modified
+    by administrators through the UI instead of requiring environment variables.
+    Values are stored as JSON and support any JSON-serializable type.
+
+    A JSON null value means "use environment variable fallback".
+
+    Example:
+        >>> setting = SystemSettings(
+        ...     key="max_collections_per_user",
+        ...     value=20,
+        ...     updated_by=admin_user_id,
+        ... )
+    """
+
+    __tablename__ = "system_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[updated_by])
+
+
+# =============================================================================
+# Benchmark Models
+# =============================================================================
+
+
+class BenchmarkDataset(Base):
+    """Ground truth dataset for benchmark evaluation.
+
+    Stores the benchmark dataset definition including queries and
+    their relevance judgments. Datasets are reusable across multiple
+    benchmarks and can be mapped to different collections.
+    """
+
+    __tablename__ = "benchmark_datasets"
+
+    id = Column(String, primary_key=True)  # UUID
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    query_count = Column(Integer, nullable=False, default=0)
+    raw_file_path = Column(String(512), nullable=True)
+    schema_version = Column(String(32), nullable=False, default="1.0")
+    meta = Column("metadata", JSON, nullable=True)  # 'metadata' in DB, 'meta' in Python
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="benchmark_datasets")
+    queries = relationship("BenchmarkQuery", back_populates="dataset", cascade="all, delete-orphan")
+    mappings = relationship("BenchmarkDatasetMapping", back_populates="dataset", cascade="all, delete-orphan")
+
+
+class BenchmarkDatasetMapping(Base):
+    """Mapping between a benchmark dataset and a collection.
+
+    Links datasets to collections and tracks the resolution status
+    of document references. A dataset can be mapped to multiple
+    collections for evaluation.
+    """
+
+    __tablename__ = "benchmark_dataset_mappings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(String, ForeignKey("benchmark_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    mapping_status = Column(String(32), nullable=False, default="pending")
+    mapped_count = Column(Integer, nullable=False, default=0)
+    total_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    dataset = relationship("BenchmarkDataset", back_populates="mappings")
+    collection = relationship("Collection")
+    relevance_judgments = relationship("BenchmarkRelevance", back_populates="mapping", cascade="all, delete-orphan")
+    benchmarks = relationship("Benchmark", back_populates="mapping")
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "collection_id", name="uq_benchmark_dataset_mappings_dataset_collection"),
+        CheckConstraint(
+            "mapping_status IN ('pending', 'resolved', 'partial')",
+            name="ck_benchmark_dataset_mappings_status",
+        ),
+    )
+
+
+class BenchmarkQuery(Base):
+    """Individual query within a benchmark dataset.
+
+    Stores the query text and its identifier within the dataset.
+    Queries are associated with relevance judgments that define
+    the expected relevant documents.
+    """
+
+    __tablename__ = "benchmark_queries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(String, ForeignKey("benchmark_datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    query_key = Column(String(255), nullable=False)
+    query_text = Column(Text, nullable=False)
+    query_metadata = Column(JSON, nullable=True)
+
+    # Relationships
+    dataset = relationship("BenchmarkDataset", back_populates="queries")
+    relevance_judgments = relationship("BenchmarkRelevance", back_populates="query", cascade="all, delete-orphan")
+    results = relationship("BenchmarkQueryResult", back_populates="query", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("dataset_id", "query_key", name="uq_benchmark_queries_dataset_key"),)
+
+
+class BenchmarkRelevance(Base):
+    """Query-document relevance judgment.
+
+    Stores the ground truth relevance between a query and a document.
+    Uses a graded relevance scale (0-3) for nuanced evaluation:
+    - 0: Not relevant
+    - 1: Marginally relevant
+    - 2: Relevant
+    - 3: Highly relevant
+
+    The doc_ref contains the original document reference from the dataset
+    (e.g., file path, URL). resolved_document_id links to the actual
+    document in the collection once mapping is resolved.
+    """
+
+    __tablename__ = "benchmark_relevance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    benchmark_query_id = Column(
+        Integer,
+        ForeignKey("benchmark_queries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mapping_id = Column(
+        Integer,
+        ForeignKey("benchmark_dataset_mappings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    doc_ref_hash = Column(String(64), nullable=False, index=True)
+    doc_ref = Column(JSON, nullable=False)
+    resolved_document_id = Column(
+        String,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    relevance_grade = Column(Integer, nullable=False)
+    relevance_metadata = Column(JSON, nullable=True)
+
+    # Relationships
+    query = relationship("BenchmarkQuery", back_populates="relevance_judgments")
+    mapping = relationship("BenchmarkDatasetMapping", back_populates="relevance_judgments")
+    document = relationship("Document")
+
+    __table_args__ = (
+        CheckConstraint(
+            "relevance_grade >= 0 AND relevance_grade <= 3",
+            name="ck_benchmark_relevance_grade",
+        ),
+    )
+
+
+class Benchmark(Base):
+    """Benchmark definition with configuration matrix.
+
+    Represents a benchmark evaluation run with a specific configuration
+    matrix. Each benchmark creates multiple runs, one for each
+    configuration combination in the matrix.
+
+    The config_matrix defines the parameter space to explore:
+    {
+        "embedding_model": ["model-a", "model-b"],
+        "chunking_strategy": ["recursive", "semantic"],
+        "top_k": [5, 10, 20]
+    }
+    """
+
+    __tablename__ = "benchmarks"
+
+    id = Column(String, primary_key=True)  # UUID
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mapping_id = Column(
+        Integer,
+        ForeignKey("benchmark_dataset_mappings.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    operation_uuid = Column(String, ForeignKey("operations.uuid", ondelete="SET NULL"), nullable=True)
+    evaluation_unit = Column(String(32), nullable=False, default="query")
+    config_matrix = Column(JSON, nullable=False)
+    config_matrix_hash = Column(String(64), nullable=False)
+    limits = Column(JSON, nullable=True)
+    collection_snapshot_hash = Column(String(64), nullable=True)
+    reproducibility_metadata = Column(JSON, nullable=True)
+    top_k = Column(Integer, nullable=False, default=10)
+    metrics_to_compute = Column(JSON, nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    total_runs = Column(Integer, nullable=False, default=0)
+    completed_runs = Column(Integer, nullable=False, default=0)
+    failed_runs = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    owner = relationship("User", back_populates="benchmarks")
+    mapping = relationship("BenchmarkDatasetMapping", back_populates="benchmarks")
+    operation = relationship("Operation")
+    runs = relationship("BenchmarkRun", back_populates="benchmark", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_benchmarks_owner_status", "owner_id", "status"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_benchmarks_status",
+        ),
+        CheckConstraint(
+            "top_k >= 1 AND top_k <= 100",
+            name="ck_benchmarks_top_k",
+        ),
+    )
+
+
+class BenchmarkRun(Base):
+    """Individual configuration run within a benchmark.
+
+    Each run evaluates a specific configuration from the config matrix.
+    Stores timing information and status for the indexing and
+    evaluation phases.
+    """
+
+    __tablename__ = "benchmark_runs"
+
+    id = Column(String, primary_key=True)  # UUID
+    benchmark_id = Column(String, ForeignKey("benchmarks.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_order = Column(Integer, nullable=False)
+    config_hash = Column(String(64), nullable=False)
+    config = Column(JSON, nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    status_message = Column(Text, nullable=True)
+    indexing_duration_ms = Column(Integer, nullable=True)
+    evaluation_duration_ms = Column(Integer, nullable=True)
+    total_duration_ms = Column(Integer, nullable=True)
+    dense_collection_name = Column(String(255), nullable=True)
+    sparse_collection_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    # Relationships
+    benchmark = relationship("Benchmark", back_populates="runs")
+    metrics = relationship("BenchmarkRunMetric", back_populates="run", cascade="all, delete-orphan")
+    query_results = relationship("BenchmarkQueryResult", back_populates="run", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_benchmark_runs_benchmark_status", "benchmark_id", "status"),
+        UniqueConstraint("benchmark_id", "run_order", name="uq_benchmark_runs_benchmark_order"),
+        CheckConstraint(
+            "status IN ('pending', 'indexing', 'evaluating', 'completed', 'failed')",
+            name="ck_benchmark_runs_status",
+        ),
+    )
+
+
+class BenchmarkRunMetric(Base):
+    """Aggregate metric value for a benchmark run.
+
+    Stores computed metrics like precision@k, recall@k, MRR, NDCG
+    at various k values for a specific run configuration.
+    """
+
+    __tablename__ = "benchmark_run_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey("benchmark_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric_name = Column(String(64), nullable=False)
+    k_value = Column(Integer, nullable=True)
+    metric_value = Column(Float, nullable=False)
+
+    # Relationships
+    run = relationship("BenchmarkRun", back_populates="metrics")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "metric_name", "k_value", name="uq_benchmark_run_metrics_run_metric_k"),
+    )
+
+
+class BenchmarkQueryResult(Base):
+    """Per-query detailed results for a benchmark run.
+
+    Stores the retrieved documents and per-query metrics for
+    detailed analysis and debugging. Includes timing information
+    for search and reranking phases.
+    """
+
+    __tablename__ = "benchmark_query_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey("benchmark_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    benchmark_query_id = Column(
+        Integer,
+        ForeignKey("benchmark_queries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    retrieved_doc_ids = Column(JSON, nullable=False)
+    retrieved_debug = Column(JSON, nullable=True)
+    precision_at_k = Column(Float, nullable=True)
+    recall_at_k = Column(Float, nullable=True)
+    reciprocal_rank = Column(Float, nullable=True)
+    ndcg_at_k = Column(Float, nullable=True)
+    search_time_ms = Column(Integer, nullable=True)
+    rerank_time_ms = Column(Integer, nullable=True)
+
+    # Relationships
+    run = relationship("BenchmarkRun", back_populates="query_results")
+    query = relationship("BenchmarkQuery", back_populates="results")
+
+    __table_args__ = (UniqueConstraint("run_id", "benchmark_query_id", name="uq_benchmark_query_results_run_query"),)

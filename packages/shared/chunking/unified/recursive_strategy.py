@@ -71,6 +71,37 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
     MAX_RECURSION_DEPTH = 100
     MAX_SPLIT_ITERATIONS = 10_000
 
+    @staticmethod
+    def _merge_small_splits(splits: list[str], min_size: int, max_size: int) -> list[str]:
+        """
+        Merge adjacent small splits when possible without exceeding max_size.
+
+        The recursive splitter should be lossless (never drop content). `min_size`
+        is treated as a soft target; we merge small fragments only when doing so
+        keeps the merged chunk within max_size.
+        """
+        if not splits:
+            return []
+
+        if min_size <= 0:
+            return [s for s in splits if s]
+
+        merged: list[str] = []
+        for split in splits:
+            if not split:
+                continue
+            if merged and len(merged[-1]) < min_size and len(merged[-1]) + len(split) <= max_size:
+                merged[-1] += split
+            else:
+                merged.append(split)
+
+        # Prefer merging a tiny tail into the previous chunk when it fits.
+        if len(merged) >= 2 and len(merged[-1]) < min_size and len(merged[-2]) + len(merged[-1]) <= max_size:
+            merged[-2] += merged[-1]
+            merged.pop()
+
+        return merged
+
     def _init_llama_splitter(self, config: ChunkConfig) -> Any:
         """Initialize LlamaIndex splitter if needed."""
         if not self._use_llama_index or not self._llama_available:
@@ -246,7 +277,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         """
         Chunk using domain implementation (recursive splitting).
         """
-        # Convert token limits to character estimates
+        # Convert token limits to character estimates for initial splitting
+        # Use standard ratio for splitting; we'll truncate to exact tokens later
         chars_per_token = 4
         max_chars = config.max_tokens * chars_per_token
         min_chars = config.min_tokens * chars_per_token
@@ -323,33 +355,44 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if end_offset <= start_offset:
                 continue
 
-            # Create chunk metadata
+            # Check if chunk exceeds max_tokens and needs re-splitting
             token_count = self.count_tokens(chunk_text)
+            if token_count > config.max_tokens:
+                # Re-split at word boundaries to preserve all content
+                sub_texts = self.split_to_token_limit(chunk_text, config.max_tokens)
+            else:
+                sub_texts = [chunk_text]
 
-            metadata = ChunkMetadata(
-                chunk_id=f"{config.strategy_name}_{idx:04d}",
-                document_id="doc",
-                chunk_index=idx,
-                start_offset=start_offset,
-                end_offset=end_offset,
-                token_count=token_count,
-                strategy_name=self.name,
-                semantic_density=0.6,  # Higher for recursive strategy
-                confidence_score=0.9,
-                created_at=datetime.now(tz=UTC),
-            )
+            # Create Chunk entities for each sub-text
+            current_offset = start_offset
+            for sub_text in sub_texts:
+                sub_token_count = self.count_tokens(sub_text)
+                sub_end_offset = current_offset + len(sub_text)
 
-            # Create chunk entity
-            effective_min_tokens = max(1, min(config.min_tokens, token_count))
+                metadata = ChunkMetadata(
+                    chunk_id=f"{config.strategy_name}_{len(chunks):04d}",
+                    document_id="doc",
+                    chunk_index=len(chunks),
+                    start_offset=current_offset,
+                    end_offset=sub_end_offset,
+                    token_count=sub_token_count,
+                    strategy_name=self.name,
+                    semantic_density=0.6,  # Higher for recursive strategy
+                    confidence_score=0.9,
+                    created_at=datetime.now(tz=UTC),
+                )
 
-            chunk = Chunk(
-                content=chunk_text,
-                metadata=metadata,
-                min_tokens=effective_min_tokens,
-                max_tokens=config.max_tokens,
-            )
+                effective_min_tokens = max(1, min(config.min_tokens, sub_token_count))
 
-            chunks.append(chunk)
+                chunk = Chunk(
+                    content=sub_text,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens,
+                )
+
+                chunks.append(chunk)
+                current_offset = sub_end_offset
 
             # Report progress
             if progress_callback:
@@ -402,7 +445,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
 
         # Base case: text is within size limits
         if len(text) <= max_size:
-            return [text] if len(text) >= min_size else []
+            # Lossless: never drop non-empty text due to min_size.
+            return [text] if text else []
 
         if not separators:
             return self._force_split_by_size(text, max_size, min_size)
@@ -424,15 +468,14 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                     # Check if adding this split would exceed max size
                     if current_chunk and len(current_chunk) + len(split) > max_size:
                         # Save current chunk and start new one
-                        if len(current_chunk) >= min_size:
-                            result.append(current_chunk)
+                        result.append(current_chunk)
                         current_chunk = split
                     else:
                         # Add to current chunk
                         current_chunk += split
 
                 # Add final chunk
-                if current_chunk and len(current_chunk) >= min_size:
+                if current_chunk:
                     result.append(current_chunk)
 
                 # Recursively process chunks that are still too large
@@ -452,7 +495,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                     else:
                         final_result.append(chunk)
 
-                return final_result
+                return self._merge_small_splits(final_result, min_size, max_size)
 
         return self._force_split_by_size(text, max_size, min_size)
 
@@ -463,13 +506,27 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         min_size: int,
     ) -> list[str]:
         """Split text by size when no separators work."""
-        result = []
+        if not text:
+            return []
+
+        if max_size <= 0:
+            return [text]
+
+        # Historically, this helper merges a too-small final remainder into the
+        # previous chunk (even if that exceeds max_size), preferring fewer tiny
+        # chunks over strictly enforcing the character budget.
+        result: list[str] = []
         for i in range(0, len(text), max_size):
             chunk = text[i : i + max_size]
-            if len(chunk) >= min_size:
+            if not result:
                 result.append(chunk)
-            elif result:
+                continue
+
+            if min_size > 0 and len(chunk) < min_size:
                 result[-1] += chunk
+            else:
+                result.append(chunk)
+
         return result
 
     @staticmethod

@@ -16,10 +16,13 @@ import httpx
 
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
+from .benchmark import run_benchmark
+from .benchmark_mapping import resolve_mapping as resolve_benchmark_mapping
 from .cleanup import (
     cleanup_old_collections,
     cleanup_old_results,
     cleanup_qdrant_collections,
+    cleanup_stale_benchmarks,
     monitor_partition_health,
     refresh_collection_chunking_stats,
 )
@@ -34,6 +37,7 @@ from .ingestion import (
     process_collection_operation,
     test_task,
 )
+from .model_manager import delete_model, download_model
 from .projection import _process_projection_operation, compute_projection
 from .reindex import (
     _cleanup_staging_resources,
@@ -71,12 +75,15 @@ from .utils import (
     calculate_cleanup_delay,
     celery_app,
     executor,
-    extract_and_serialize_thread_safe,
     logger,
+    parse_file_thread_safe,
     settings,
 )
 
 __all__ = [
+    # Model manager tasks
+    "download_model",
+    "delete_model",
     # Ingestion tasks & helpers
     "process_collection_operation",
     "_process_collection_operation_async",
@@ -95,10 +102,14 @@ __all__ = [
     "_cleanup_staging_resources",
     "_validate_reindex",
     "reindex_handler",
+    # Benchmark tasks
+    "run_benchmark",
+    "resolve_benchmark_mapping",
     # Cleanup tasks
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
+    "cleanup_stale_benchmarks",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
     # Utilities & shared constants
@@ -108,7 +119,7 @@ __all__ = [
     "resolve_celery_chunking_orchestrator",
     "celery_app",
     "executor",
-    "extract_and_serialize_thread_safe",
+    "parse_file_thread_safe",
     "calculate_cleanup_delay",
     "qdrant_manager",
     "settings",
@@ -144,7 +155,19 @@ def _load_module(name: str) -> Any:
     return import_module(f"webui.tasks.{name}")
 
 
-_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "utils"))
+_PROXY_MODULES = tuple(
+    _load_module(name)
+    for name in (
+        "ingestion",
+        "projection",
+        "reindex",
+        "cleanup",
+        "benchmark",
+        "benchmark_mapping",
+        "model_manager",
+        "utils",
+    )
+)
 
 
 def __getattr__(name: str) -> Any:  # noqa: N807

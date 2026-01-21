@@ -1,13 +1,16 @@
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from shared.dtos.ingestion import IngestedDocument
 from webui.tasks import _process_append_operation_impl
+
+# Valid 64-character hex hash for test documents
+_VALID_HASH = "a" * 64
 
 
 class _NullAsyncCM:
@@ -48,30 +51,31 @@ class _FailingRollbackSession(_FakeSession):
         raise RuntimeError("rollback failed")
 
 
-@dataclass(frozen=True)
-class _IngestedDoc:
-    unique_id: str
-    content: str = ""
-    content_hash: str = "hash"
-    file_path: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    source_type: str = "directory"
+def _make_doc(unique_id: str, content: str = "", source_type: str = "directory") -> IngestedDocument:
+    """Create a test IngestedDocument with valid hash."""
+    return IngestedDocument(
+        content=content,
+        unique_id=unique_id,
+        source_type=source_type,
+        metadata={},
+        content_hash=_VALID_HASH,
+    )
 
 
 class _FakeConnector:
-    def __init__(self, docs: list[_IngestedDoc]) -> None:
+    def __init__(self, docs: list[IngestedDocument]) -> None:
         self._docs = docs
 
     async def authenticate(self) -> bool:
         return True
 
-    async def load_documents(self) -> AsyncIterator[_IngestedDoc]:
+    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
         for doc in self._docs:
             yield doc
 
 
 class _FakeCredentialedConnector(_FakeConnector):
-    def __init__(self, docs: list[_IngestedDoc]) -> None:
+    def __init__(self, docs: list[IngestedDocument]) -> None:
         super().__init__(docs)
         self.token: str | None = None
 
@@ -86,7 +90,9 @@ class _FakeRegistry:
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401, ANN401
         return None
 
-    async def register_or_update(self, collection_id: str, ingested: _IngestedDoc, source_id: int) -> dict[str, Any]:
+    async def register_or_update(
+        self, collection_id: str, ingested: IngestedDocument, source_id: int
+    ) -> dict[str, Any]:
         if ingested.unique_id == "bad-doc":
             raise RuntimeError("registration failed")
         return {
@@ -104,7 +110,7 @@ class _FakeChunkRepository:
 
 @pytest.mark.asyncio()
 async def test_append_skips_stale_marking_when_scan_has_errors(monkeypatch) -> None:
-    docs = [_IngestedDoc("good-1"), _IngestedDoc("bad-doc"), _IngestedDoc("good-2")]
+    docs = [_make_doc("good-1"), _make_doc("bad-doc"), _make_doc("good-2")]
     connector = _FakeConnector(docs)
 
     monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
@@ -139,7 +145,7 @@ async def test_append_skips_stale_marking_when_scan_has_errors(monkeypatch) -> N
 
 @pytest.mark.asyncio()
 async def test_append_logs_rollback_failure(monkeypatch, caplog) -> None:
-    docs: list[_IngestedDoc] = []
+    docs: list[IngestedDocument] = []
     connector = _FakeConnector(docs)
 
     monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
@@ -175,7 +181,7 @@ async def test_append_logs_rollback_failure(monkeypatch, caplog) -> None:
 
 @pytest.mark.asyncio()
 async def test_append_marks_stale_when_scan_clean(monkeypatch) -> None:
-    docs = [_IngestedDoc("good-1"), _IngestedDoc("good-2")]
+    docs = [_make_doc("good-1"), _make_doc("good-2")]
     connector = _FakeConnector(docs)
 
     monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
@@ -227,7 +233,7 @@ async def test_append_applies_stored_secrets_before_authenticate(monkeypatch) ->
         async def get_secret(self, source_id: int, secret_type: str) -> str | None:  # noqa: ARG002
             return {"token": "secret-token", "ssh_key": "ssh-private-key"}.get(secret_type)
 
-    docs: list[_IngestedDoc] = []
+    docs: list[IngestedDocument] = []
     connector = _FakeCredentialedConnector(docs)
 
     monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
@@ -270,7 +276,7 @@ async def test_append_skips_stale_marking_when_processing_has_failures(monkeypat
         async def register_or_update(
             self,
             collection_id: str,
-            ingested: _IngestedDoc,
+            ingested: IngestedDocument,
             source_id: int,
         ) -> dict[str, Any]:
             return {
@@ -295,7 +301,7 @@ async def test_append_skips_stale_marking_when_processing_has_failures(monkeypat
     async def _fake_resolve_chunker(*_args: Any, **_kwargs: Any) -> _FailingChunkingService:  # noqa: ANN401
         return _FailingChunkingService()
 
-    docs = [_IngestedDoc("good-1", content="hello")]
+    docs = [_make_doc("good-1", content="hello")]
     connector = _FakeConnector(docs)
 
     monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)

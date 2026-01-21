@@ -258,7 +258,7 @@ class TestResetDatabaseEndpoint:
 
     @pytest.mark.asyncio()
     async def test_handles_db_clear_error(self, monkeypatch, tmp_path) -> None:
-        """Database reset should raise HTTPException on DB clear failure."""
+        """Database reset should propagate exception on DB clear failure (global handler returns 500)."""
         from webui.api import settings as settings_module
 
         monkeypatch.setattr(settings_module, "OUTPUT_DIR", str(tmp_path))
@@ -281,11 +281,9 @@ class TestResetDatabaseEndpoint:
 
         with (
             patch("webui.api.settings.AsyncQdrantClient", return_value=mock_qdrant),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Delete failed"),
         ):
             await settings_module.reset_database_endpoint(current_user={"is_superuser": True}, db=mock_db)
-
-        assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio()
     async def test_closes_qdrant_client_on_error(self, monkeypatch, tmp_path) -> None:

@@ -6,6 +6,9 @@ import {
   clampValue,
   DEFAULT_VALIDATION_RULES
 } from '../utils/searchValidation';
+import type { SearchMode } from '../types/sparse-index';
+import { RRF_DEFAULTS } from '../types/sparse-index';
+import type { HyDEInfo } from '../services/api/v2/types';
 
 export interface SearchResult {
   doc_id: string;
@@ -29,12 +32,28 @@ export interface SearchParams {
   selectedCollections: string[];
   topK: number;
   scoreThreshold: number;
+  /** Embedding mode instruction (semantic/question/code) */
   searchType: 'semantic' | 'question' | 'code' | 'hybrid';
   rerankModel?: string;
   rerankQuantization?: string;
   useReranker: boolean;
+
+  // New sparse/hybrid search parameters
+  /** Search mode: dense (vector), sparse (BM25/SPLADE), or hybrid (RRF fusion) */
+  searchMode: SearchMode;
+  /** RRF constant k for hybrid search (higher values give more weight to top results) */
+  rrfK: number;
+
+  // HyDE query expansion
+  /** Enable HyDE query expansion */
+  useHyde: boolean;
+
+  // Legacy hybrid parameters (deprecated - kept for backward compatibility)
+  /** @deprecated Use searchMode='hybrid' instead */
   hybridAlpha?: number;
+  /** @deprecated Use searchMode='hybrid' instead */
   hybridMode?: 'filter' | 'weighted';
+  /** @deprecated Use searchMode='hybrid' instead */
   keywordMode?: 'any' | 'all';
 }
 
@@ -65,6 +84,9 @@ interface SearchState {
     suggestion: string;
     currentModel: string;
   } | null;
+  // HyDE state
+  hydeUsed: boolean;
+  hydeInfo: HyDEInfo | null;
   validationErrors: ValidationError[];
   touched: Record<string, boolean>;
   abortController: AbortController | null;
@@ -80,6 +102,8 @@ interface SearchState {
   clearResults: () => void;
   setRerankingMetrics: (metrics: SearchState['rerankingMetrics']) => void;
   setGpuMemoryError: (error: SearchState['gpuMemoryError']) => void;
+  setHydeUsed: (used: boolean) => void;
+  setHydeInfo: (info: HyDEInfo | null) => void;
   validateAndUpdateSearchParams: (params: Partial<SearchParams>) => void;
   setFieldTouched: (field: string, isTouched?: boolean) => void;
   clearValidationErrors: () => void;
@@ -101,6 +125,12 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     scoreThreshold: 0.0,
     searchType: 'semantic',
     useReranker: false,
+    // New sparse/hybrid search parameters
+    searchMode: 'dense',
+    rrfK: RRF_DEFAULTS.k,
+    // HyDE query expansion
+    useHyde: false,
+    // Legacy parameters (deprecated)
     hybridAlpha: 0.7,
     hybridMode: 'weighted',
     keywordMode: 'any',
@@ -110,6 +140,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   partialFailure: false,
   rerankingMetrics: null,
   gpuMemoryError: null,
+  hydeUsed: false,
+  hydeInfo: null,
   validationErrors: [],
   touched: {},
   abortController: null,
@@ -125,9 +157,11 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   setCollections: (collections) => set({ collections }),
   setFailedCollections: (failedCollections) => set({ failedCollections }),
   setPartialFailure: (partialFailure) => set({ partialFailure }),
-  clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false }),
+  clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false, hydeUsed: false, hydeInfo: null }),
   setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
   setGpuMemoryError: (gpuMemoryError) => set({ gpuMemoryError }),
+  setHydeUsed: (hydeUsed) => set({ hydeUsed }),
+  setHydeInfo: (hydeInfo) => set({ hydeInfo }),
 
   validateAndUpdateSearchParams: (params) => {
     const currentParams = get().searchParams;
@@ -184,6 +218,23 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }
     if (params.keywordMode !== undefined) {
       updatedParams.keywordMode = params.keywordMode;
+    }
+
+    // New sparse/hybrid search parameters
+    if (params.searchMode !== undefined) {
+      updatedParams.searchMode = params.searchMode;
+    }
+    if (params.rrfK !== undefined) {
+      updatedParams.rrfK = clampValue(
+        params.rrfK,
+        RRF_DEFAULTS.min,
+        RRF_DEFAULTS.max
+      );
+    }
+
+    // HyDE query expansion
+    if (params.useHyde !== undefined) {
+      updatedParams.useHyde = params.useHyde;
     }
 
     // Validate all params but only return errors for touched fields or critical ones

@@ -1,7 +1,7 @@
 """Shared fixtures for service tests."""
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,29 @@ from shared.database.repositories.collection_source_repository import Collection
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
+
+
+def _create_mock_user_prefs() -> MagicMock:
+    """Create a mock UserPreferences with HyDE settings."""
+    prefs = MagicMock()
+    prefs.search_use_hyde = False
+    prefs.search_hyde_quality_tier = "LOW"
+    prefs.search_hyde_timeout_seconds = 30
+    return prefs
+
+
+@pytest.fixture(autouse=True)
+def mock_user_prefs_repo():
+    """Mock UserPreferencesRepository.get_or_create to return proper prefs object.
+
+    This is autouse=True because SearchService now depends on UserPreferencesRepository
+    for HyDE settings, and tests that don't mock it will fail.
+    """
+    with patch("webui.services.search_service.UserPreferencesRepository") as mock_repo_class:
+        mock_repo = AsyncMock()
+        mock_repo.get_or_create = AsyncMock(return_value=_create_mock_user_prefs())
+        mock_repo_class.return_value = mock_repo
+        yield mock_repo_class
 
 
 @pytest.fixture()

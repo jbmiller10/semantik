@@ -468,10 +468,260 @@ async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) ->
         logger.error("Failed to create batch audit logs for collection deletions: %s", exc)
 
 
+@celery_app.task(
+    name="webui.tasks.cleanup_stuck_operations",
+    max_retries=3,
+    default_retry_delay=60,
+)
+def cleanup_stuck_operations(stuck_threshold_minutes: int = 15) -> dict[str, Any]:
+    """Clean up operations stuck in PENDING/PROCESSING state.
+
+    Operations older than the threshold in non-terminal status are checked against
+    Celery to verify the task isn't actually running. Only truly orphaned
+    operations (no active Celery task) are marked as failed.
+
+    This handles:
+    - Celery dispatch failure after DB commit
+    - Worker crash during processing
+    - Task timeout without status update
+
+    Args:
+        stuck_threshold_minutes: Minutes after which an operation is considered stuck
+
+    Returns:
+        Dict with cleaned/skipped counts and operation IDs
+    """
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+
+    stats: dict[str, Any] = {
+        "cleaned": 0,
+        "skipped": 0,
+        "operation_ids": [],
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        log.info("Starting cleanup of stuck operations (threshold: %s min)", stuck_threshold_minutes)
+
+        result = cast(dict[str, Any], resolve_awaitable_sync(_cleanup_stuck_operations_async(stuck_threshold_minutes)))
+        stats.update(result)
+
+        log.info(
+            "Stuck operations cleanup completed: cleaned=%s, skipped=%s",
+            stats["cleaned"],
+            stats["skipped"],
+        )
+
+        return stats
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        log.error("Stuck operations cleanup failed: %s", exc, exc_info=True)
+        stats["errors"].append(str(exc))
+        return stats
+
+
+async def _cleanup_stuck_operations_async(stuck_threshold_minutes: int) -> dict[str, Any]:
+    """Async implementation of stuck operation cleanup."""
+    from celery.result import AsyncResult
+
+    from shared.database.repositories.operation_repository import OperationRepository
+
+    session_factory = await _resolve_session_factory()
+    async with session_factory() as session:
+        repo = OperationRepository(session)
+
+        # Find candidate stuck operations
+        candidates = await repo.get_stuck_operations(
+            stuck_threshold_minutes=stuck_threshold_minutes,
+            limit=100,
+        )
+
+        if not candidates:
+            logger.debug("No stuck operation candidates found")
+            return {"cleaned": 0, "skipped": 0, "operation_ids": []}
+
+        # Filter: only cleanup if Celery task is NOT actively running
+        # NOTE: Celery returns PENDING for unknown task IDs, so we can't trust
+        # PENDING to mean "genuinely waiting". Only STARTED/RETRY/RECEIVED
+        # definitively indicate the task is active.
+        orphaned_ids: list[int] = []
+        skipped = 0
+
+        for op in candidates:
+            if op.task_id:
+                result = AsyncResult(op.task_id, app=celery_app)
+                # Only skip if task is definitively running (not just PENDING)
+                # PENDING is Celery's default for unknown task IDs, so it doesn't
+                # mean the task is actually queued - could be dispatch failure
+                if result.state in ("STARTED", "RETRY", "RECEIVED"):
+                    logger.info(
+                        "Skipping operation %s - Celery task %s still %s",
+                        op.id,
+                        op.task_id,
+                        result.state,
+                    )
+                    skipped += 1
+                    continue
+            # No task_id, task is finished, or task is in PENDING (which could mean
+            # it was never dispatched) - mark as orphaned
+            orphaned_ids.append(op.id)
+
+        if not orphaned_ids:
+            logger.debug("No orphaned operations found (%d still active)", skipped)
+            return {"cleaned": 0, "skipped": skipped, "operation_ids": []}
+
+        # Mark orphaned operations as failed
+        count = await repo.mark_operations_failed(
+            orphaned_ids,
+            error_message="Operation orphaned - task dispatch failed or worker crashed",
+        )
+        await session.commit()
+
+        logger.info(
+            "Cleaned up %d orphaned operations (skipped %d still active)",
+            count,
+            skipped,
+        )
+        return {
+            "cleaned": count,
+            "skipped": skipped,
+            "operation_ids": [str(id) for id in orphaned_ids],
+        }
+
+
+@celery_app.task(name="webui.tasks.cleanup_stale_benchmarks")
+def cleanup_stale_benchmarks(stale_threshold_hours: int = 24) -> dict[str, Any]:
+    """Clean up benchmarks stuck in RUNNING state for too long.
+
+    This task finds benchmarks that have been in RUNNING state longer than
+    the threshold and marks them as FAILED. It also marks any incomplete
+    runs (PENDING/INDEXING/EVALUATING) as FAILED.
+
+    Args:
+        stale_threshold_hours: Hours after which a running benchmark is considered stale
+
+    Returns:
+        Dictionary with cleanup statistics:
+        {
+            "benchmarks_cleaned": 2,
+            "runs_cleaned": 5,
+            "benchmark_ids": ["...", "..."],
+            "errors": []
+        }
+    """
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+
+    stats: dict[str, Any] = {
+        "benchmarks_cleaned": 0,
+        "runs_cleaned": 0,
+        "benchmark_ids": [],
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        log.info("Starting cleanup of stale benchmarks (threshold: %s hours)", stale_threshold_hours)
+
+        result = cast(dict[str, Any], resolve_awaitable_sync(_cleanup_stale_benchmarks_async(stale_threshold_hours)))
+        stats.update(result)
+
+        log.info(
+            "Stale benchmarks cleanup completed: %d benchmarks, %d runs",
+            stats["benchmarks_cleaned"],
+            stats["runs_cleaned"],
+        )
+
+        return stats
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        log.error("Stale benchmarks cleanup failed: %s", exc, exc_info=True)
+        stats["errors"].append(str(exc))
+        return stats
+
+
+async def _cleanup_stale_benchmarks_async(stale_threshold_hours: int) -> dict[str, Any]:
+    """Async implementation of stale benchmark cleanup."""
+    from shared.database.models import Benchmark, BenchmarkRun, BenchmarkRunStatus, BenchmarkStatus
+
+    session_factory = await _resolve_session_factory()
+    async with session_factory() as session:
+        from sqlalchemy import select, update
+
+        # Calculate cutoff time
+        cutoff_time = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
+
+        # Find stale benchmarks (RUNNING with started_at before cutoff)
+        stmt = (
+            select(Benchmark)
+            .where(Benchmark.status == BenchmarkStatus.RUNNING.value)
+            .where(Benchmark.started_at < cutoff_time)
+        )
+        result = await session.execute(stmt)
+        stale_benchmarks = list(result.scalars().all())
+
+        if not stale_benchmarks:
+            logger.debug("No stale benchmarks found")
+            return {
+                "benchmarks_cleaned": 0,
+                "runs_cleaned": 0,
+                "benchmark_ids": [],
+            }
+
+        cleaned_benchmark_ids: list[str] = []
+        total_runs_cleaned = 0
+
+        for benchmark in stale_benchmarks:
+            benchmark_id = str(benchmark.id)
+            cleaned_benchmark_ids.append(benchmark_id)
+
+            # Mark incomplete runs as FAILED
+            incomplete_statuses = [
+                BenchmarkRunStatus.PENDING.value,
+                BenchmarkRunStatus.INDEXING.value,
+                BenchmarkRunStatus.EVALUATING.value,
+            ]
+            run_update_stmt = (
+                update(BenchmarkRun)
+                .where(BenchmarkRun.benchmark_id == benchmark_id)
+                .where(BenchmarkRun.status.in_(incomplete_statuses))
+                .values(
+                    status=BenchmarkRunStatus.FAILED.value,
+                    error_message="Benchmark cleanup: run was stale",
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            run_result = await session.execute(run_update_stmt)
+            runs_cleaned = run_result.rowcount or 0
+            total_runs_cleaned += runs_cleaned
+
+            # Mark benchmark as FAILED
+            benchmark.status = BenchmarkStatus.FAILED.value
+            benchmark.completed_at = datetime.now(UTC)
+
+            logger.info(
+                "Marked stale benchmark %s as FAILED (%d runs cleaned)",
+                benchmark_id,
+                runs_cleaned,
+            )
+
+        await session.commit()
+
+        return {
+            "benchmarks_cleaned": len(cleaned_benchmark_ids),
+            "runs_cleaned": total_runs_cleaned,
+            "benchmark_ids": cleaned_benchmark_ids,
+        }
+
+
 __all__ = [
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
+    "cleanup_stuck_operations",
+    "cleanup_stale_benchmarks",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
 ]

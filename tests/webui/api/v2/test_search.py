@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
 
@@ -233,7 +232,7 @@ class TestMultiCollectionSearch:
         self,
         mock_user: dict[str, Any],
     ) -> None:
-        """Missing collections return 404 (not 403)."""
+        """Missing collections raise EntityNotFoundError (global handler returns 404)."""
         scope = {
             "type": "http",
             "method": "POST",
@@ -250,17 +249,17 @@ class TestMultiCollectionSearch:
             query="missing",
         )
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(EntityNotFoundError) as exc_info:
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 404
+        assert missing_uuid in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_normalizes_legacy_modes(
+    async def test_multi_collection_search_passes_search_mode(
         self,
         mock_user: dict[str, Any],
     ) -> None:
-        """Hybrid/keyword modes are forwarded using canonical values."""
+        """Search mode is passed to the search service."""
 
         scope = {
             "type": "http",
@@ -281,18 +280,54 @@ class TestMultiCollectionSearch:
 
         search_request = CollectionSearchRequest(
             collection_uuids=[str(uuid.uuid4())],
-            query="legacy",
-            search_type="hybrid",
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            query="test search",
+            search_type="semantic",
+            search_mode="hybrid",
+            rrf_k=80,
         )
 
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
-        assert call_kwargs["hybrid_mode"] == "weighted"
-        assert call_kwargs["keyword_mode"] == "any"
+        assert call_kwargs["search_mode"] == "hybrid"
+        assert call_kwargs["rrf_k"] == 80
+
+    @pytest.mark.asyncio()
+    async def test_multi_collection_search_infers_hybrid_search_mode_from_legacy_search_type(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy clients may send search_type='hybrid' without search_mode."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.0,
+                "collection_details": [],
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[str(uuid.uuid4())],
+            query="test search",
+            search_type="hybrid",
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["search_mode"] == "hybrid"
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
@@ -441,14 +476,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=False,
             rerank_model=None,
             reranker_id=None,
-            hybrid_alpha=0.7,
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            use_hyde=None,
         )
 
         assert response.reranking_used is False
@@ -532,14 +567,14 @@ class TestSearchReranking:
             query="test query",
             k=10,
             search_type="semantic",
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=0.0,
             metadata_filter=None,
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             reranker_id=None,
-            hybrid_alpha=0.7,
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -676,15 +711,15 @@ class TestSearchReranking:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=True,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            hybrid_alpha=0.7,
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            use_hyde=None,
         )
 
         assert response.reranking_used is True
@@ -737,15 +772,15 @@ class TestSingleCollectionSearch:
             query=search_request.query,
             k=search_request.k,
             search_type=search_request.search_type,
+            search_mode="dense",
+            rrf_k=60,
             score_threshold=search_request.score_threshold,
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             rerank_model=None,
             reranker_id=None,
             include_content=search_request.include_content,
-            hybrid_alpha=0.7,
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            use_hyde=None,
         )
 
         assert isinstance(response, CollectionSearchResponse)
@@ -755,6 +790,38 @@ class TestSingleCollectionSearch:
         assert response.results[0].score == 0.95
         assert response.total_results == 1
         assert response.search_time_ms == 100
+
+    @pytest.mark.asyncio()
+    async def test_single_collection_search_infers_hybrid_search_mode_from_legacy_search_type(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy clients may send search_type='hybrid' without search_mode."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search/single",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.single_collection_search.return_value = {
+            "results": [],
+            "processing_time_ms": 0,
+        }
+
+        search_request = SingleCollectionSearchRequest(
+            collection_id=str(uuid.uuid4()),
+            query="test search",
+            search_type="hybrid",
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.single_collection_search.call_args.kwargs
+        assert call_kwargs["search_mode"] == "hybrid"
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_not_found(self, mock_user: dict[str, Any]) -> None:
@@ -779,13 +846,12 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(EntityNotFoundError) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 404
-        assert "Collection" in str(exc_info.value.detail)
-        assert search_request.collection_id in str(exc_info.value.detail)
+        assert "Collection" in str(exc_info.value)
+        assert search_request.collection_id in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_access_denied(self, mock_user: dict[str, Any]) -> None:
@@ -810,12 +876,11 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(AccessDeniedError) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 403
-        assert "does not have access" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_single_collection_search_general_error(self, mock_user: dict[str, Any]) -> None:
@@ -838,12 +903,9 @@ class TestSingleCollectionSearch:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Database connection failed"),
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
-
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Search failed"
 
 
 class TestMultiCollectionSearchEdgeCases:
@@ -1080,12 +1142,11 @@ class TestMultiCollectionSearchEdgeCases:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(AccessDeniedError) as exc_info,
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 403
-        assert "does not have access" in str(exc_info.value.detail)
+        assert "does not have access" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_general_error(
@@ -1108,24 +1169,21 @@ class TestMultiCollectionSearchEdgeCases:
 
         with (
             patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="Unexpected error"),
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Search failed"
-
 
 class TestHybridSearchParameters:
-    """Test hybrid search functionality."""
+    """Test hybrid search functionality with search_mode and RRF parameters."""
 
     @pytest.mark.asyncio()
-    async def test_hybrid_search_with_legacy_relative_score_mode(
+    async def test_hybrid_search_with_search_mode(
         self,
         mock_user: dict[str, Any],
         mock_collections: list[MagicMock],
     ) -> None:
-        """Hybrid params should be forwarded and results sorted by reranked score."""
+        """search_mode=hybrid should be forwarded and results sorted by reranked score."""
 
         scope = {
             "type": "http",
@@ -1138,11 +1196,11 @@ class TestHybridSearchParameters:
 
         search_request = CollectionSearchRequest(
             collection_uuids=[c.id for c in mock_collections],
-            query="hybrid legacy mapping",
+            query="hybrid RRF search",
             k=3,
-            search_type="hybrid",
-            hybrid_mode="weighted",
-            keyword_mode="any",
+            search_type="semantic",
+            search_mode="hybrid",
+            rrf_k=60,
             use_reranker=True,
         )
 
@@ -1153,8 +1211,8 @@ class TestHybridSearchParameters:
                     "chunk_id": "chunk_high",
                     "score": 0.40,
                     "reranked_score": 0.92,
-                    "content": "legacy high rerank",
-                    "path": "/legacy_high.md",
+                    "content": "hybrid high rerank",
+                    "path": "/hybrid_high.md",
                     "metadata": {},
                     "collection_id": mock_collections[1].id,
                     "collection_name": mock_collections[1].name,
@@ -1165,8 +1223,8 @@ class TestHybridSearchParameters:
                     "chunk_id": "chunk_low",
                     "score": 0.78,
                     "reranked_score": 0.52,
-                    "content": "legacy low rerank",
-                    "path": "/legacy_low.md",
+                    "content": "hybrid low rerank",
+                    "path": "/hybrid_low.md",
                     "metadata": {},
                     "collection_id": mock_collections[0].id,
                     "collection_name": mock_collections[0].name,
@@ -1196,9 +1254,8 @@ class TestHybridSearchParameters:
 
         mock_search_service.multi_collection_search.assert_awaited_once()
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
-        assert call_kwargs["hybrid_mode"] == "weighted"
-        assert call_kwargs["keyword_mode"] == "any"
-        assert "hybrid_search_mode" not in call_kwargs
+        assert call_kwargs["search_mode"] == "hybrid"
+        assert call_kwargs["rrf_k"] == 60
 
         assert isinstance(response, CollectionSearchResponse)
         assert response.total_results == 2
@@ -1207,10 +1264,10 @@ class TestHybridSearchParameters:
         assert scores == [0.92, 0.52]
 
     @pytest.mark.asyncio()
-    async def test_hybrid_search_with_custom_alpha(
+    async def test_hybrid_search_with_custom_rrf_k(
         self, mock_user: dict[str, Any], mock_collections: list[MagicMock]
     ) -> None:
-        """Test hybrid search with custom alpha parameter."""
+        """Test hybrid search with custom rrf_k parameter."""
         scope = {
             "type": "http",
             "method": "POST",
@@ -1224,10 +1281,9 @@ class TestHybridSearchParameters:
             collection_uuids=[mock_collections[0].id],
             query="test hybrid search",
             k=10,
-            search_type="hybrid",
-            hybrid_alpha=0.3,  # More weight on keyword search
-            hybrid_mode="filter",
-            keyword_mode="all",
+            search_type="semantic",
+            search_mode="hybrid",
+            rrf_k=100,  # Custom RRF constant
         )
 
         mock_search_service.multi_collection_search.return_value = {
@@ -1260,14 +1316,12 @@ class TestHybridSearchParameters:
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
-        # Verify hybrid parameters were passed
+        # Verify search_mode and rrf_k parameters were passed
         call_args = mock_search_service.multi_collection_search.call_args
-        assert call_args.kwargs["search_type"] == "hybrid"
-        assert call_args.kwargs["hybrid_alpha"] == 0.3
-        assert call_args.kwargs["hybrid_mode"] == "filter"
-        assert "hybrid_search_mode" not in call_args.kwargs
+        assert call_args.kwargs["search_mode"] == "hybrid"
+        assert call_args.kwargs["rrf_k"] == 100
 
-        assert response.search_type == "hybrid"
+        assert response.search_type == "semantic"
         assert len(response.results) == 1
 
     @pytest.mark.asyncio()
@@ -1383,18 +1437,18 @@ class TestSearchValidation:
         with pytest.raises(ValidationError, match="Input should be less than or equal to 1"):
             CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, score_threshold=1.1)
 
-    def test_hybrid_alpha_validation(self) -> None:
-        """Test hybrid alpha parameter limits."""
+    def test_rrf_k_validation(self) -> None:
+        """Test rrf_k parameter limits."""
 
         valid_uuid = str(uuid.uuid4())
 
-        # Test negative alpha
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
-            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, hybrid_alpha=-0.1)
+        # Test rrf_k < 1
+        with pytest.raises(ValidationError, match="Input should be greater than or equal to 1"):
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, rrf_k=0)
 
-        # Test alpha > 1.0
-        with pytest.raises(ValidationError, match="Input should be less than or equal to 1"):
-            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, hybrid_alpha=1.1)
+        # Test rrf_k > 1000
+        with pytest.raises(ValidationError, match="Input should be less than or equal to 1000"):
+            CollectionSearchRequest(collection_uuids=[valid_uuid], query="test", k=10, rrf_k=1001)
 
 
 class TestSearchResultFormatting:
@@ -1662,3 +1716,185 @@ class TestSearchResultFormatting:
         assert response.total_time_ms == 123.45
         assert response.reranking_time_ms is None
         assert response.embedding_time_ms is None
+
+
+class TestSearchHyDEAPI:
+    """Test HyDE (Hypothetical Document Embeddings) in search API endpoints."""
+
+    @pytest.fixture()
+    def mock_user(self) -> dict[str, Any]:
+        """Create a mock authenticated user."""
+        return {"id": 1, "username": "testuser", "email": "test@example.com"}
+
+    @pytest.fixture()
+    def mock_collections(self) -> list[MagicMock]:
+        """Create mock collection objects."""
+        collection = MagicMock(spec=Collection)
+        collection.id = str(uuid.uuid4())
+        collection.name = "Test Collection"
+        return [collection]
+
+    @pytest.mark.asyncio()
+    async def test_multi_search_accepts_use_hyde_parameter(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Multi-collection search endpoint accepts use_hyde parameter."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "hyde_used": True,
+                "hyde_info": {
+                    "expanded_query": "Hypothetical document about the topic",
+                    "generation_time_ms": 150.0,
+                    "tokens_used": 100,
+                    "provider": "mock",
+                    "model": "test-model",
+                },
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        # Verify use_hyde is passed to service
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is True
+
+        # Verify response includes HyDE metadata
+        assert response.hyde_used is True
+        assert response.hyde_info is not None
+        assert response.hyde_info.expanded_query == "Hypothetical document about the topic"
+
+    @pytest.mark.asyncio()
+    async def test_multi_search_use_hyde_defaults_to_none(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """use_hyde defaults to None (uses user preference)."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "hyde_used": False,
+                "hyde_info": None,
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            # use_hyde not specified
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is None
+
+    @pytest.mark.asyncio()
+    async def test_single_search_accepts_use_hyde_parameter(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Single collection search endpoint accepts use_hyde parameter."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search/single",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.single_collection_search.return_value = {
+            "results": [],
+            "processing_time_ms": 100,
+            "hyde_used": True,
+            "hyde_info": {
+                "expanded_query": "Generated hypothetical passage",
+                "generation_time_ms": 120.0,
+            },
+        }
+
+        search_request = SingleCollectionSearchRequest(
+            collection_id=str(uuid.uuid4()),
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.single_collection_search.call_args.kwargs
+        assert call_kwargs["use_hyde"] is True
+        assert response.hyde_used is True
+
+    @pytest.mark.asyncio()
+    async def test_response_includes_hyde_warning_on_failure(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Response includes HyDE warning when generation failed."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.1,
+                "collection_details": [],
+                "warnings": ["HyDE skipped: LLM not configured"],
+                "hyde_used": False,
+                "hyde_info": None,
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[mock_collections[0].id],
+            query="test query",
+            use_hyde=True,
+        )
+
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        assert response.hyde_used is False
+        assert response.hyde_info is None
+        assert "HyDE skipped" in response.warnings[0]

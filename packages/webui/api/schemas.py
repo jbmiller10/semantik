@@ -12,24 +12,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 # Enums
-class DocumentStatusEnum(str, Enum):
-    """Document processing status."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    DELETED = "deleted"
-
-
-class PermissionTypeEnum(str, Enum):
-    """Collection permission types."""
-
-    READ = "read"
-    WRITE = "write"
-    ADMIN = "admin"
-
-
 class SyncModeEnum(str, Enum):
     """Sync mode for collections."""
 
@@ -54,17 +36,6 @@ class UserCreate(UserBase):
     password: str
 
 
-class UserUpdate(BaseModel):
-    """Schema for updating a user."""
-
-    username: str | None = None
-    email: str | None = None
-    full_name: str | None = None
-    password: str | None = None
-    is_active: bool | None = None
-    is_superuser: bool | None = None
-
-
 class UserResponse(UserBase):
     """User response schema."""
 
@@ -74,6 +45,27 @@ class UserResponse(UserBase):
     last_login: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Sparse indexing configuration
+class SparseIndexConfig(BaseModel):
+    """Configuration for sparse indexing during collection creation."""
+
+    enabled: bool = Field(default=False, description="Whether to enable sparse indexing")
+    plugin_id: str | None = Field(
+        default=None, description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')"
+    )
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75} for BM25)",
+    )
+
+    @model_validator(mode="after")
+    def validate_plugin_required_when_enabled(self) -> "SparseIndexConfig":
+        """Validate that plugin_id is provided when enabled is True."""
+        if self.enabled and not self.plugin_id:
+            raise ValueError("plugin_id is required when sparse indexing is enabled")
+        return self
 
 
 # Collection schemas
@@ -149,6 +141,12 @@ class CollectionCreate(CollectionBase):
         default=None,
         ge=15,
         description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    # Sparse indexing configuration
+    sparse_index_config: SparseIndexConfig | None = Field(
+        default=None,
+        description="Optional sparse indexing configuration (BM25/SPLADE) for hybrid search",
     )
 
     @model_validator(mode="after")
@@ -358,21 +356,6 @@ class DocumentBase(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-class DocumentCreate(DocumentBase):
-    """Schema for creating a document."""
-
-    file_path: str
-    file_size: int
-    mime_type: str | None = None
-    content_hash: str
-
-
-class DocumentUpdate(BaseModel):
-    """Schema for updating a document."""
-
-    metadata: dict[str, Any] | None = None
-
-
 class DocumentResponse(DocumentBase):
     """Document response schema."""
 
@@ -382,9 +365,13 @@ class DocumentResponse(DocumentBase):
     file_size: int
     mime_type: str | None = None
     content_hash: str
-    status: DocumentStatusEnum
+    status: str  # DocumentStatus value as string
     error_message: str | None = None
     chunk_count: int
+    # Retry tracking fields
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    error_category: str | None = None  # 'transient', 'permanent', 'unknown'
     created_at: datetime
     updated_at: datetime
 
@@ -400,6 +387,15 @@ class DocumentListResponse(BaseModel):
     per_page: int
 
 
+class FailedDocumentCountResponse(BaseModel):
+    """Response for failed document counts by category."""
+
+    transient: int = 0
+    permanent: int = 0
+    unknown: int = 0
+    total: int = 0
+
+
 # API Key schemas
 class ApiKeyBase(BaseModel):
     """Base API key schema."""
@@ -407,10 +403,6 @@ class ApiKeyBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     permissions: dict[str, Any] | None = None
     expires_at: datetime | None = None
-
-
-class ApiKeyCreate(ApiKeyBase):
-    """Schema for creating an API key."""
 
 
 class ApiKeyResponse(ApiKeyBase):
@@ -422,40 +414,6 @@ class ApiKeyResponse(ApiKeyBase):
     last_used_at: datetime | None = None
     created_at: datetime
     is_active: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ApiKeyCreateResponse(ApiKeyResponse):
-    """Response when creating an API key, includes the actual key."""
-
-    api_key: str  # Only returned on creation
-
-
-# Permission schemas
-class CollectionPermissionBase(BaseModel):
-    """Base collection permission schema."""
-
-    permission: PermissionTypeEnum
-
-
-class CollectionPermissionCreate(CollectionPermissionBase):
-    """Schema for creating a collection permission."""
-
-    user_id: int | None = None
-    api_key_id: str | None = None
-
-    model_config = ConfigDict(json_schema_extra={"example": {"user_id": 2, "permission": "read"}})
-
-
-class CollectionPermissionResponse(CollectionPermissionBase):
-    """Collection permission response schema."""
-
-    id: int
-    collection_id: str
-    user_id: int | None = None
-    api_key_id: str | None = None
-    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -492,6 +450,8 @@ class SearchResult(BaseModel):
     metadata: dict[str, Any]
     file_name: str
     file_path: str
+    chunk_index: int | None = None
+    total_chunks: int | None = None
 
 
 class SearchResponse(BaseModel):
@@ -519,28 +479,6 @@ class SearchResponse(BaseModel):
                 "query": "How to implement authentication?",
                 "total_results": 1,
                 "search_time_ms": 125.5,
-            }
-        }
-    )
-
-
-# Batch operations
-class BatchDocumentUpload(BaseModel):
-    """Schema for batch document upload."""
-
-    collection_id: str
-    directory_path: str
-    file_patterns: list[str] | None = Field(default=["*"])
-    recursive: bool = True
-    metadata: dict[str, Any] | None = None
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
-                "directory_path": "/data/documents",
-                "file_patterns": ["*.pdf", "*.md", "*.txt"],
-                "recursive": True,
             }
         }
     )
@@ -707,32 +645,6 @@ class OperationListResponse(BaseModel):
 # Source schemas
 # Note: Sync policy (mode, interval, pause) is now managed at collection level.
 # Sources only track per-source telemetry (last_run_* fields).
-
-
-class SourceCreate(BaseModel):
-    """Schema for creating a source.
-
-    Note: Sync policy is managed at collection level, not source level.
-    """
-
-    source_type: str = Field(
-        default="directory",
-        description="Type of source connector (directory, git, imap)",
-    )
-    source_path: str = Field(
-        ...,
-        min_length=1,
-        description="Display path or identifier for the source",
-    )
-    source_config: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Connector-specific configuration",
-    )
-    secrets: dict[str, str] | None = Field(
-        default=None,
-        description="Connector secrets (write-only, never returned in responses). "
-        "Valid keys: password, token, ssh_key, ssh_passphrase",
-    )
 
 
 class SourceUpdate(BaseModel):
@@ -1048,4 +960,158 @@ class ImapPreviewResponse(BaseModel):
                 "error": None,
             }
         }
+    )
+
+
+# =============================================================================
+# Sparse Index Schemas (Phase 3)
+# =============================================================================
+
+
+class SparseIndexStatusResponse(BaseModel):
+    """Status of sparse indexing for a collection."""
+
+    enabled: bool = Field(
+        description="Whether sparse indexing is enabled for this collection",
+    )
+    plugin_id: str | None = Field(
+        default=None,
+        description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')",
+    )
+    sparse_collection_name: str | None = Field(
+        default=None,
+        description="Name of the Qdrant sparse collection",
+    )
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        alias="model_config",
+        description="Plugin-specific configuration (e.g., BM25 k1/b parameters)",
+    )
+    document_count: int | None = Field(
+        default=None,
+        description="Number of documents in the sparse index",
+    )
+    created_at: str | None = Field(
+        default=None,
+        description="ISO datetime when sparse indexing was enabled",
+    )
+    last_indexed_at: str | None = Field(
+        default=None,
+        description="ISO datetime of last successful indexing",
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "enabled": True,
+                "plugin_id": "bm25-local",
+                "sparse_collection_name": "work_docs_sparse_bm25",
+                "model_config": {"k1": 1.2, "b": 0.75},
+                "document_count": 1234,
+                "created_at": "2025-01-08T12:00:00Z",
+                "last_indexed_at": "2025-01-08T14:30:00Z",
+            }
+        },
+    )
+
+
+class EnableSparseIndexRequest(BaseModel):
+    """Request to enable sparse indexing for a collection."""
+
+    plugin_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Sparse indexer plugin ID (e.g., 'bm25-local', 'splade-local')",
+    )
+    model_config_data: dict[str, Any] | None = Field(
+        default=None,
+        alias="model_config",
+        description="Plugin-specific configuration (e.g., {'k1': 1.2, 'b': 0.75})",
+    )
+    reindex_existing: bool = Field(
+        default=False,
+        description="If True, immediately reindex all existing documents",
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "plugin_id": "bm25-local",
+                "model_config": {"k1": 1.2, "b": 0.75},
+                "reindex_existing": True,
+            }
+        },
+    )
+
+
+class SparseReindexResponse(BaseModel):
+    """Response for sparse index reindex request."""
+
+    job_id: str = Field(
+        description="Celery task ID for tracking progress",
+    )
+    status: str = Field(
+        description="Initial job status (typically 'queued')",
+    )
+    collection_uuid: str = Field(
+        description="UUID of the collection being reindexed",
+    )
+    plugin_id: str = Field(
+        description="Sparse indexer plugin being used",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "abc123-task-id",
+                "status": "queued",
+                "collection_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                "plugin_id": "bm25-local",
+            }
+        },
+    )
+
+
+class SparseReindexProgressResponse(BaseModel):
+    """Response for checking sparse reindex job progress."""
+
+    job_id: str = Field(
+        description="Celery task ID",
+    )
+    status: str = Field(
+        description="Job status: PENDING, STARTED, PROGRESS, SUCCESS, FAILURE",
+    )
+    progress: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Progress percentage (0-100)",
+    )
+    documents_processed: int | None = Field(
+        default=None,
+        description="Number of documents processed so far",
+    )
+    total_documents: int | None = Field(
+        default=None,
+        description="Total documents to process",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if job failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "abc123-task-id",
+                "status": "PROGRESS",
+                "progress": 45.0,
+                "documents_processed": 450,
+                "total_documents": 1000,
+                "error": None,
+            }
+        },
     )

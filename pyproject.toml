@@ -1,11 +1,13 @@
 [project]
 name = "semantik"
-version = "0.7.7"
+version = "0.8.0"
 description = "Private, self-hosted semantic search for your documents."
 authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"
 readme = "README.md"
 dependencies = [
+    "anthropic>=0.39.0,<0.40",
+    "openai>=1.54.0,<2",
     "qdrant-client>=1.9.0,<2",
     "sentence-transformers>=3.0.0,<4",
     "fastapi>=0.116.0,<0.117",
@@ -54,8 +56,13 @@ dependencies = [
     "text-unidecode>=1.3",
     "pytest-base-url>=2.1.0",
     "umap-learn>=0.5.6,<0.6",
+    "mcp>=1.0.0,<2",
     "packages>=0.1.0",
+    "rank-bm25>=0.2.2,<0.3",
 ]
+
+[project.scripts]
+semantik-mcp = "webui.mcp.cli:main"
 
 [project.optional-dependencies]
 cli = [
@@ -75,6 +82,8 @@ chunking-hybrid = "shared.chunking.domain.services.chunking_strategies.hybrid:Hy
 connector-directory = "shared.connectors.local:LocalFileConnector"
 connector-git = "shared.connectors.git:GitConnector"
 connector-imap = "shared.connectors.imap:ImapConnector"
+# Sparse indexer plugins
+sparse_indexer-bm25 = "shared.plugins.builtins.bm25_sparse_indexer:BM25SparseIndexerPlugin"
 
 [dependency-groups]
 dev = [

@@ -6,12 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.exceptions import (
-    AccessDeniedError,
-    EntityNotFoundError,
-    InvalidStateError,
-    ValidationError,
-)
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError, ValidationError
 from shared.database.models import CollectionSource, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.collection_source_repository import CollectionSourceRepository

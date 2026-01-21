@@ -18,31 +18,6 @@ class TestChunkRepositoryIntegration:
     def repository(self, db_session):
         return ChunkRepository(db_session)
 
-    async def test_create_chunk_persists_record(
-        self, repository, db_session, collection_factory, document_factory, test_user_db
-    ):
-        """Creating a chunk should populate partitioned table."""
-        collection = await collection_factory(owner_id=test_user_db.id)
-        document = await document_factory(collection_id=collection.id)
-
-        chunk = await repository.create_chunk(
-            {
-                "collection_id": collection.id,
-                "document_id": document.id,
-                "chunk_index": 0,
-                "content": "hello world",
-                "metadata": {"origin": "integration"},
-            }
-        )
-        await db_session.commit()
-
-        result = await db_session.execute(select(Chunk).where(Chunk.id == chunk.id))
-        persisted = result.scalar_one()
-        assert persisted.collection_id == collection.id
-        assert persisted.document_id == document.id
-        assert persisted.chunk_index == 0
-        assert persisted.metadata["origin"] == "integration"
-
     async def test_create_chunks_bulk_inserts_all(
         self, repository, db_session, collection_factory, document_factory, test_user_db
     ):
@@ -74,15 +49,22 @@ class TestChunkRepositoryIntegration:
         """Fetching by id should return the created chunk when using correct collection id."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
-        chunk = await repository.create_chunk(
-            {
-                "collection_id": collection.id,
-                "document_id": document.id,
-                "chunk_index": 5,
-                "content": "indexed chunk",
-            }
+        await repository.create_chunks_bulk(
+            [
+                {
+                    "collection_id": collection.id,
+                    "document_id": document.id,
+                    "chunk_index": 5,
+                    "content": "indexed chunk",
+                }
+            ]
         )
         await db_session.commit()
+
+        # Fetch the chunk via get_chunks_by_document to get the id
+        chunks = await repository.get_chunks_by_document(document.id, collection.id)
+        assert len(chunks) == 1
+        chunk = chunks[0]
 
         fetched = await repository.get_chunk_by_id(chunk.id, collection.id)
         assert fetched is not None
@@ -96,19 +78,20 @@ class TestChunkRepositoryIntegration:
 
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
-        chunk = await repository.create_chunk(
-            {
-                "collection_id": collection.id,
-                "document_id": document.id,
-                "chunk_index": 7,
-                "content": "vector-mapped chunk",
-            }
-        )
 
-        # Assign a synthetic embedding_vector_id and persist it.
+        # Create chunk with embedding_vector_id directly
         vector_id = str(uuid4())
-        chunk.embedding_vector_id = vector_id
+        chunk = Chunk(
+            collection_id=collection.id,
+            document_id=document.id,
+            chunk_index=7,
+            content="vector-mapped chunk",
+            embedding_vector_id=vector_id,
+            partition_key=int(collection.id.replace("-", "")[:8], 16) % 100,
+        )
+        db_session.add(chunk)
         await db_session.commit()
+        await db_session.refresh(chunk)
 
         fetched = await repository.get_chunk_by_embedding_vector_id(vector_id, collection.id)
         assert fetched is not None
@@ -121,15 +104,17 @@ class TestChunkRepositoryIntegration:
         """Retrieving by document should return chunks in index order."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
-        for idx in range(3):
-            await repository.create_chunk(
+        await repository.create_chunks_bulk(
+            [
                 {
                     "collection_id": collection.id,
                     "document_id": document.id,
                     "chunk_index": idx,
                     "content": f"chunk {idx}",
                 }
-            )
+                for idx in range(3)
+            ]
+        )
         await db_session.commit()
 
         chunks = await repository.get_chunks_by_document(document.id, collection.id)
@@ -167,13 +152,15 @@ class TestChunkRepositoryIntegration:
         """chunk_exists should reflect whether a chunk is stored."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
-        await repository.create_chunk(
-            {
-                "collection_id": collection.id,
-                "document_id": document.id,
-                "chunk_index": 42,
-                "content": "exists",
-            }
+        await repository.create_chunks_bulk(
+            [
+                {
+                    "collection_id": collection.id,
+                    "document_id": document.id,
+                    "chunk_index": 42,
+                    "content": "exists",
+                }
+            ]
         )
         await db_session.commit()
 

@@ -112,8 +112,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "OperationRepository", return_value=mock_operation_repo),
         ):
             mock_pg._engine = MagicMock()  # Simulate initialized engine
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -145,8 +145,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "OperationRepository", return_value=mock_operation_repo),
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -178,8 +178,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "OperationRepository", return_value=mock_operation_repo),
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -220,8 +220,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "celery_app") as mock_celery,
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -298,8 +298,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "celery_app") as mock_celery,
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -362,8 +362,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "celery_app"),
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             result = await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -396,8 +396,8 @@ class TestDispatchDueSyncsAsync:
         ):
             mock_pg._engine = None  # Engine not initialized
             mock_pg.initialize = AsyncMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             await sync_dispatcher_module._dispatch_due_syncs_async()
 
@@ -439,8 +439,8 @@ class TestDispatchDueSyncsAsync:
             patch.object(sync_dispatcher_module, "celery_app"),
         ):
             mock_pg._engine = MagicMock()
-            mock_pg.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_pg.session.return_value.__aexit__ = AsyncMock()
+            mock_pg.get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_pg.get_session.return_value.__aexit__ = AsyncMock()
 
             before_call = datetime.now(UTC)
             await sync_dispatcher_module._dispatch_due_syncs_async()

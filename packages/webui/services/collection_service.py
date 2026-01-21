@@ -75,6 +75,54 @@ class CollectionService:
 
         return self.qdrant_manager
 
+    async def _delete_sparse_collection_if_exists(self, vector_store_name: str) -> None:
+        """Delete sparse collection and config if they exist.
+
+        This is called during collection deletion to clean up any sparse index.
+
+        Args:
+            vector_store_name: Name of the main dense collection
+        """
+        from qdrant_client import AsyncQdrantClient
+
+        from shared.config import settings
+        from shared.database.collection_metadata import delete_sparse_index_config, get_sparse_index_config
+        from vecpipe.sparse import delete_sparse_collection
+
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
+        try:
+            # Check if sparse index config exists
+            sparse_config = await get_sparse_index_config(async_qdrant, vector_store_name)
+
+            if sparse_config and sparse_config.get("enabled"):
+                sparse_collection_name = sparse_config.get("sparse_collection_name")
+                if sparse_collection_name:
+                    try:
+                        await delete_sparse_collection(sparse_collection_name, async_qdrant)
+                        logger.info("Deleted sparse collection: %s", sparse_collection_name)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to delete sparse collection %s: %s",
+                            sparse_collection_name,
+                            e,
+                        )
+
+                # Delete sparse config from metadata
+                await delete_sparse_index_config(async_qdrant, vector_store_name)
+                logger.info("Deleted sparse index config for: %s", vector_store_name)
+        except Exception as e:
+            logger.warning(
+                "Failed to cleanup sparse index for %s: %s",
+                vector_store_name,
+                e,
+            )
+        finally:
+            await async_qdrant.close()
+
     async def create_collection(
         self,
         user_id: int,
@@ -172,6 +220,17 @@ class CollectionService:
                     # Config without strategy is not allowed
                     raise ValueError("chunking_config requires chunking_strategy to be specified")
 
+            # Validate sparse indexing config if provided
+            sparse_index_config = config.get("sparse_index_config") if config else None
+            if sparse_index_config and sparse_index_config.get("enabled"):
+                from shared.plugins import load_plugins, plugin_registry
+
+                load_plugins(plugin_types={"sparse_indexer"})
+                plugin_id = sparse_index_config.get("plugin_id")
+                plugin_record = plugin_registry.find_by_id(plugin_id)
+                if plugin_record is None or plugin_record.plugin_type != "sparse_indexer":
+                    raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
+
             # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
@@ -197,14 +256,19 @@ class CollectionService:
             raise
 
         # Create operation record
+        operation_config: dict[str, Any] = {
+            "sources": [],  # Initial creation has no sources
+            "collection_config": config or {},
+        }
+        # Include sparse_index_config at top level for easier access in INDEX task
+        if sparse_index_config and sparse_index_config.get("enabled"):
+            operation_config["sparse_index_config"] = sparse_index_config
+
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
             operation_type=OperationType.INDEX,
-            config={
-                "sources": [],  # Initial creation has no sources
-                "collection_config": config or {},
-            },
+            config=operation_config,
         )
 
         # Commit the transaction BEFORE dispatching the task
@@ -336,6 +400,9 @@ class CollectionService:
             logger.info(f"Reusing existing CollectionSource {collection_source.id} for collection {collection.id}")
 
         # Create operation record with source_id included
+        # DEBUG: Log source_config to trace path duplication bug
+        logger.info(f"add_source: Creating operation with source_config={source_config}, source_path={source_path}")
+
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
@@ -554,6 +621,9 @@ class CollectionService:
                 except Exception as e:
                     logger.error("Failed to delete Qdrant collection: %s", e, exc_info=True)
                     # Continue with database deletion even if Qdrant deletion fails
+
+                # Cascade delete: Also delete sparse collection if it exists
+                await self._delete_sparse_collection_if_exists(collection.vector_store_name)
 
             # Delete from database (cascade will handle operations, documents, etc.)
             await self.collection_repo.delete(collection_id, user_id)
@@ -1417,3 +1487,306 @@ class CollectionService:
         )
 
         return sync_runs, total
+
+    # =========================================================================
+    # Sparse Index Management Methods (Phase 3)
+    # =========================================================================
+
+    async def get_sparse_index_config(
+        self,
+        collection_id: str,
+        user_id: int,
+    ) -> dict[str, Any] | None:
+        """Get sparse index configuration for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+
+        Returns:
+            Sparse index config dict or None if not enabled
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        from qdrant_client import AsyncQdrantClient
+
+        from shared.config import settings
+        from shared.database.collection_metadata import get_sparse_index_config
+
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Get sparse config from collection metadata
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+        try:
+            result = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+            return cast(dict[str, Any] | None, result)
+        finally:
+            await async_qdrant.close()
+
+    async def enable_sparse_index(
+        self,
+        collection_id: str,
+        user_id: int,
+        plugin_id: str,
+        model_config: dict[str, Any] | None = None,
+        reindex_existing: bool = False,
+    ) -> dict[str, Any]:
+        """Enable sparse indexing for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+            plugin_id: Sparse indexer plugin ID
+            model_config: Plugin-specific configuration
+            reindex_existing: Whether to reindex existing documents
+
+        Returns:
+            Sparse index config dict
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+            InvalidStateError: If sparse indexing already enabled
+            ValidationError: If plugin not found
+        """
+        from qdrant_client import AsyncQdrantClient
+
+        from shared.config import settings
+        from shared.database.collection_metadata import get_sparse_index_config, store_sparse_index_config
+        from shared.plugins import load_plugins, plugin_registry
+        from vecpipe.sparse import ensure_sparse_collection, generate_sparse_collection_name
+
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
+        try:
+            # Check if sparse indexing is already enabled
+            existing_config = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+            if existing_config and existing_config.get("enabled"):
+                raise InvalidStateError(f"Sparse indexing already enabled for collection '{collection_id}'")
+
+            # Ensure sparse indexer plugins are loaded before validation.
+            load_plugins(plugin_types={"sparse_indexer"})
+
+            # Validate plugin exists
+            plugin_record = plugin_registry.find_by_id(plugin_id)
+            if plugin_record is None or plugin_record.plugin_type != "sparse_indexer":
+                raise ValidationError(f"Sparse indexer plugin '{plugin_id}' not found", "plugin_id")
+
+            # Get sparse type from plugin (e.g., "bm25" or "splade")
+            plugin_cls = plugin_record.plugin_class
+            sparse_type = getattr(plugin_cls, "SPARSE_TYPE", "bm25")
+
+            # Generate sparse collection name
+            sparse_collection_name = generate_sparse_collection_name(collection.vector_store_name, sparse_type)
+
+            # Create sparse Qdrant collection
+            await ensure_sparse_collection(sparse_collection_name, async_qdrant)
+
+            # Build sparse config
+            now = datetime.now(UTC).isoformat()
+            sparse_config = {
+                "enabled": True,
+                "plugin_id": plugin_id,
+                "sparse_collection_name": sparse_collection_name,
+                "model_config": model_config or {},
+                "created_at": now,
+                "document_count": 0,
+                "last_indexed_at": None,
+            }
+
+            # Store sparse config in collection metadata
+            await store_sparse_index_config(async_qdrant, collection.vector_store_name, sparse_config)
+
+            # Optionally trigger reindex
+            if reindex_existing:
+                job = celery_app.send_task(
+                    "sparse.reindex_collection",
+                    args=[collection_id, plugin_id, model_config or {}],
+                )
+                logger.info(f"Triggered sparse reindex job {job.id} for collection {collection_id}")
+
+            return sparse_config
+        finally:
+            await async_qdrant.close()
+
+    async def disable_sparse_index(
+        self,
+        collection_id: str,
+        user_id: int,
+    ) -> None:
+        """Disable sparse indexing for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        from qdrant_client import AsyncQdrantClient
+
+        from shared.config import settings
+        from shared.database.collection_metadata import delete_sparse_index_config, get_sparse_index_config
+        from vecpipe.sparse import delete_sparse_collection
+
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
+        try:
+            # Get current sparse config
+            sparse_config = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+
+            if sparse_config:
+                # Delete the sparse Qdrant collection
+                sparse_collection_name = sparse_config.get("sparse_collection_name")
+                if sparse_collection_name:
+                    await delete_sparse_collection(sparse_collection_name, async_qdrant)
+                    logger.info(f"Deleted sparse collection '{sparse_collection_name}'")
+
+                # Remove sparse config from metadata
+                await delete_sparse_index_config(async_qdrant, collection.vector_store_name)
+                logger.info(f"Removed sparse index config for collection {collection_id}")
+        finally:
+            await async_qdrant.close()
+
+    async def trigger_sparse_reindex(
+        self,
+        collection_id: str,
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Trigger a full sparse reindex of the collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+
+        Returns:
+            Dict with job_id, status, and plugin_id
+
+        Raises:
+            EntityNotFoundError: If collection or sparse config not found
+            AccessDeniedError: If user doesn't have permission
+            InvalidStateError: If sparse indexing not enabled
+        """
+        from qdrant_client import AsyncQdrantClient
+
+        from shared.config import settings
+        from shared.database.collection_metadata import get_sparse_index_config
+
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        async_qdrant = AsyncQdrantClient(
+            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+            api_key=settings.QDRANT_API_KEY,
+        )
+
+        try:
+            # Get sparse config
+            sparse_config = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
+
+            if not sparse_config or not sparse_config.get("enabled"):
+                raise EntityNotFoundError(
+                    f"Sparse indexing not enabled for collection '{collection_id}'",
+                    entity_id=collection_id,
+                )
+
+            plugin_id = sparse_config["plugin_id"]
+            model_config = sparse_config.get("model_config", {})
+
+            # Dispatch Celery task
+            job = celery_app.send_task(
+                "sparse.reindex_collection",
+                args=[collection_id, plugin_id, model_config],
+            )
+
+            logger.info(f"Triggered sparse reindex job {job.id} for collection {collection_id}")
+
+            return {
+                "job_id": job.id,
+                "status": "queued",
+                "plugin_id": plugin_id,
+            }
+        finally:
+            await async_qdrant.close()
+
+    async def get_sparse_reindex_progress(
+        self,
+        collection_id: str,
+        user_id: int,
+        job_id: str,
+    ) -> dict[str, Any]:
+        """Get progress of a sparse reindex job.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+            job_id: Celery task ID
+
+        Returns:
+            Dict with status and progress info
+
+        Raises:
+            EntityNotFoundError: If collection or job not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        from celery.result import AsyncResult
+
+        # Get collection with permission check (just for access control)
+        await self.collection_repo.get_by_uuid_with_permission_check(collection_uuid=collection_id, user_id=user_id)
+
+        # Get Celery task result
+        result = AsyncResult(job_id, app=celery_app)
+
+        progress_info: dict[str, Any] = {
+            "status": result.state,
+        }
+
+        if result.state == "PROGRESS":
+            info = result.info or {}
+            progress_info.update(
+                {
+                    "progress": info.get("progress", 0),
+                    "documents_processed": info.get("documents_processed"),
+                    "total_documents": info.get("total_documents"),
+                }
+            )
+        elif result.state == "FAILURE":
+            progress_info["error"] = str(result.result) if result.result else "Unknown error"
+        elif result.state == "SUCCESS":
+            info = result.result or {}
+            progress_info.update(
+                {
+                    "progress": 100.0,
+                    "documents_processed": info.get("documents_processed"),
+                    "total_documents": info.get("total_documents"),
+                }
+            )
+
+        return progress_info

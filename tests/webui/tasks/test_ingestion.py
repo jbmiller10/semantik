@@ -13,12 +13,29 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from shared.dtos.ingestion import IngestedDocument
 from webui.tasks import ingestion as ingestion_module
+
+# Valid 64-character hex hash for test documents
+_VALID_HASH = "a" * 64
+
+
+def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDocument:
+    """Create a test IngestedDocument with valid hash."""
+    return IngestedDocument(
+        content=content,
+        unique_id=unique_id,
+        source_type="directory",
+        metadata={},
+        content_hash=_VALID_HASH,
+    )
+
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -144,23 +161,6 @@ class TestGetEmbeddingConcurrency:
         monkeypatch.setenv("EMBEDDING_CONCURRENCY_PER_WORKER", "not_a_number")
         result = ingestion_module._get_embedding_concurrency()
         assert result == 1
-
-
-# ---------------------------------------------------------------------------
-# Tests for test_task
-# ---------------------------------------------------------------------------
-
-
-class TestTestTask:
-    """Tests for the simple test_task Celery task."""
-
-    def test_returns_success(self):
-        """Test that test_task returns expected success message."""
-        # Call the underlying run method directly (bypassing Celery wrapper)
-        # For bound tasks, we need to access the underlying function
-        result = ingestion_module.test_task.run()
-
-        assert result == {"status": "success", "message": "Celery is working!"}
 
 
 # ---------------------------------------------------------------------------
@@ -515,9 +515,7 @@ class TestHandleTaskFailure:
         einfo = Mock()
 
         with (
-            patch.object(
-                ingestion_module, "_handle_task_failure_async", new_callable=AsyncMock
-            ),
+            patch.object(ingestion_module, "_handle_task_failure_async", new_callable=AsyncMock),
             patch("asyncio.run") as mock_run,
         ):
             mock_run.side_effect = lambda coro: asyncio.get_event_loop().run_until_complete(coro)
@@ -828,7 +826,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -913,7 +913,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -1000,7 +1002,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -1088,7 +1092,9 @@ class TestProcessRemoveSourceOperationWithDocuments:
                 ),
                 patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
                 patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.document_repository.DocumentRepository",
                     return_value=mock_document_repo,
@@ -1154,7 +1160,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1213,7 +1221,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1274,7 +1284,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1319,7 +1331,9 @@ class TestHandleTaskFailureAsyncWithDatabase:
 
         try:
             with (
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1571,7 +1585,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1605,7 +1621,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                result = await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify APPEND handler was called
                 mock_append.assert_called_once()
@@ -1681,7 +1697,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1715,7 +1733,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                result = await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify REMOVE_SOURCE handler was called
                 mock_remove.assert_called_once()
@@ -1750,20 +1768,22 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
                 ),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(ValueError, match="not found in database"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
                 mock_updater.__aexit__ = AsyncMock(return_value=None)
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("nonexistent", mock_celery_task)
+                with pytest.raises(ValueError, match="not found in database"):
+                    await ingestion_module._process_collection_operation_async("nonexistent", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -1809,7 +1829,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1819,7 +1841,6 @@ class TestProcessCollectionOperationAsyncRouting:
                     return_value=mock_collection_repo,
                 ),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(ValueError, match="Collection .* not found"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
@@ -1828,7 +1849,8 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                with pytest.raises(ValueError, match="Collection .* not found"):
+                    await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -1897,7 +1919,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -1922,7 +1946,6 @@ class TestProcessCollectionOperationAsyncRouting:
                 ),
                 patch.object(ingestion_module, "_record_operation_metrics", new_callable=AsyncMock),
                 patch.object(ingestion_module, "CeleryTaskWithOperationUpdates") as mock_updater_class,
-                pytest.raises(RuntimeError, match="Test failure"),
             ):
                 mock_updater = AsyncMock()
                 mock_updater.__aenter__ = AsyncMock(return_value=mock_updater)
@@ -1931,7 +1954,8 @@ class TestProcessCollectionOperationAsyncRouting:
                 mock_updater.set_user_id = Mock()
                 mock_updater_class.return_value = mock_updater
 
-                await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
+                with pytest.raises(RuntimeError, match="Test failure"):
+                    await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker
@@ -2008,7 +2032,7 @@ class TestProcessCollectionOperationAsyncRouting:
 
         captured_collection = None
 
-        async def capture_collection(*args, **kwargs):
+        async def capture_collection(*args, **_kwargs):
             nonlocal captured_collection
             captured_collection = args[1]  # collection is second positional arg
             return {"success": True}
@@ -2016,7 +2040,9 @@ class TestProcessCollectionOperationAsyncRouting:
         try:
             with (
                 patch.object(pg_connection_manager, "initialize", new_callable=AsyncMock),
-                patch("shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)),
+                patch(
+                    "shared.database.database.ensure_async_sessionmaker", AsyncMock(return_value=mock_session_factory)
+                ),
                 patch(
                     "shared.database.repositories.operation_repository.OperationRepository",
                     return_value=mock_operation_repo,
@@ -2422,7 +2448,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2480,12 +2508,10 @@ class TestAppendTransactionHandling:
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
 
-        mock_doc = Mock()
-        mock_doc.unique_id = "test-doc-1"
-        mock_doc.content = "test content"
+        test_doc = _make_test_doc("test-doc-1")
 
         async def load_documents_gen():
-            yield mock_doc
+            yield test_doc
 
         mock_connector.load_documents = load_documents_gen
 
@@ -2499,7 +2525,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2588,7 +2616,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
         ):
             result = await ingestion_module._process_append_operation_impl(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
@@ -2644,12 +2674,10 @@ class TestAppendTransactionHandling:
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
 
-        mock_doc = Mock()
-        mock_doc.unique_id = "test-doc-1"
-        mock_doc.content = "test content"
+        test_doc = _make_test_doc("test-doc-1")
 
         async def load_documents_gen():
-            yield mock_doc
+            yield test_doc
 
         mock_connector.load_documents = load_documents_gen
 
@@ -2665,7 +2693,9 @@ class TestAppendTransactionHandling:
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
             patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
             patch("shared.metrics.collection_metrics.record_document_processed"),
-            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch(
+                "shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))
+            ),
             patch("shared.database.repositories.chunk_repository.ChunkRepository"),
             patch("shared.database.repositories.document_artifact_repository.DocumentArtifactRepository"),
         ):
@@ -2677,3 +2707,414 @@ class TestAppendTransactionHandling:
         assert "errors" in result
         assert len(result["errors"]) == 1
         assert "test-doc-1" in result["errors"][0]["document"]
+
+
+# ---------------------------------------------------------------------------
+# Sparse indexing helpers
+# ---------------------------------------------------------------------------
+
+
+class TestSparseIndexingHelpers:
+    @pytest.mark.asyncio()
+    async def test_setup_sparse_collection_for_index_stores_metadata(self) -> None:
+        plugin_record = Mock()
+        plugin_record.plugin_class = Mock(SPARSE_TYPE="bm25")
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="dense_sparse_bm25") as gen_name,
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()) as ensure_sparse,
+            patch(
+                "shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=True)
+            ) as store,
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            result = await ingestion_module._setup_sparse_collection_for_index(
+                vector_store_name="dense",
+                sparse_config={"plugin_id": "bm25-local", "model_config_data": {"k1": 1.9}},
+            )
+
+        assert result == {"sparse_collection_name": "dense_sparse_bm25", "plugin_id": "bm25-local"}
+        gen_name.assert_called_once_with("dense", "bm25")
+        ensure_sparse.assert_awaited_once()
+        store.assert_awaited_once()
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_setup_sparse_collection_for_index_raises_when_store_fails(self) -> None:
+        plugin_record = Mock()
+        plugin_record.plugin_class = Mock(SPARSE_TYPE="bm25")
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch("vecpipe.sparse.generate_sparse_collection_name", return_value="dense_sparse_bm25"),
+            patch("vecpipe.sparse.ensure_sparse_collection", new=AsyncMock()),
+            patch("shared.database.collection_metadata.store_sparse_index_config", new=AsyncMock(return_value=False)),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            with pytest.raises(ValueError, match="Failed to store sparse index config"):
+                await ingestion_module._setup_sparse_collection_for_index(
+                    vector_store_name="dense",
+                    sparse_config={"plugin_id": "bm25-local", "model_config_data": {}},
+                )
+
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_skips_when_missing_config(self) -> None:
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        with (
+            patch("shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=None)),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(chunks=[], points=[], qdrant_collection_name="dense")
+
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_local_bm25_upserts_and_updates_count(self) -> None:
+        from shared.plugins.types.sparse_indexer import SparseVector
+
+        class DummyIndexer:
+            async def initialize(self, _cfg=None):  # type: ignore[no-untyped-def]
+                return None
+
+            async def cleanup(self) -> None:
+                return None
+
+            async def encode_documents(self, documents):  # type: ignore[no-untyped-def]
+                return [
+                    SparseVector(
+                        indices=(1,), values=(0.1,), chunk_id=doc["chunk_id"], metadata=doc.get("metadata", {})
+                    )
+                    for doc in documents
+                ]
+
+        plugin_record = Mock()
+        plugin_record.plugin_class = DummyIndexer
+
+        sparse_config = {
+            "enabled": True,
+            "plugin_id": "bm25-local",
+            "model_config": {},
+            "sparse_collection_name": "dense_sparse_bm25",
+            "document_count": 5,
+        }
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        upsert = AsyncMock()
+        store = AsyncMock(return_value=True)
+
+        chunks = [
+            {"chunk_id": "orig-1_0", "text": "hello", "metadata": {"doc": 1}},
+            {"chunk_id": "orig-2_0", "text": "world", "metadata": {"doc": 2}},
+        ]
+        points = [SimpleNamespace(id="p1"), SimpleNamespace(id="p2")]
+
+        with (
+            patch("shared.plugins.load_plugins"),
+            patch("shared.plugins.plugin_registry.find_by_id", return_value=plugin_record),
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)
+            ),
+            patch("shared.database.collection_metadata.store_sparse_index_config", store),
+            patch("vecpipe.sparse.upsert_sparse_vectors", upsert),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(
+                chunks=chunks, points=points, qdrant_collection_name="dense"
+            )
+
+        upsert.assert_awaited_once()
+        _args = upsert.await_args.args
+        assert _args[0] == "dense_sparse_bm25"
+        qdrant_vectors = _args[1]
+        assert {v["chunk_id"] for v in qdrant_vectors} == {"p1", "p2"}
+        assert {v["metadata"]["original_chunk_id"] for v in qdrant_vectors} == {"orig-1_0", "orig-2_0"}
+
+        store.assert_awaited_once()
+        stored_cfg = store.await_args.args[2]
+        assert stored_cfg["document_count"] == 7
+        assert stored_cfg["last_indexed_at"] is not None
+        assert mock_qdrant.close.await_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_maybe_generate_sparse_vectors_vecpipe_path_calls_sparse_client(self) -> None:
+        sparse_config = {
+            "enabled": True,
+            "plugin_id": "splade-local",
+            "model_config": {"batch_size": 32},
+            "sparse_collection_name": "dense_sparse_splade",
+            "document_count": 0,
+        }
+
+        mock_qdrant = AsyncMock()
+        mock_qdrant.close = AsyncMock()
+
+        vecpipe_client = AsyncMock()
+        vecpipe_client.encode_documents = AsyncMock(return_value=[{"chunk_id": "p1", "indices": [1], "values": [0.9]}])
+
+        upsert = AsyncMock()
+        store = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "shared.database.collection_metadata.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)
+            ),
+            patch("shared.database.collection_metadata.store_sparse_index_config", store),
+            patch("webui.clients.sparse_client.SparseEncodingClient", return_value=vecpipe_client),
+            patch("vecpipe.sparse.upsert_sparse_vectors", upsert),
+            patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        ):
+            await ingestion_module._maybe_generate_sparse_vectors(
+                chunks=[{"chunk_id": "orig", "text": "hello", "metadata": {}}],
+                points=[SimpleNamespace(id="p1")],
+                qdrant_collection_name="dense",
+            )
+
+        vecpipe_client.encode_documents.assert_awaited_once()
+        upsert.assert_awaited_once()
+        store.assert_awaited_once()
+        assert mock_qdrant.close.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# RETRY_DOCUMENTS Operation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestRetryDocumentsOperation:
+    """Tests for _process_retry_documents_operation."""
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_with_no_pending_returns_early(self) -> None:
+        """When no pending documents exist, operation returns success with 0 counts."""
+        from shared.database.models import DocumentStatus
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.list_by_collection = AsyncMock(return_value=([], 0))
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {"config": {}, "uuid": "op-123"}
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+        assert result["documents_failed"] == 0
+        assert result["vectors_created"] == 0
+        mock_document_repo.list_by_collection.assert_awaited_once_with(
+            collection_id="col-uuid-456",
+            status=DocumentStatus.PENDING,
+            offset=0,
+            limit=10000,
+        )
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_filters_by_document_ids(self) -> None:
+        """When document_ids provided, only those documents are processed."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document that's in PENDING status
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.PENDING.value
+        mock_doc.source_path = "/path/to/doc.txt"
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1", "doc-nonexistent"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        # Mock the parallel processing to avoid complex setup
+        with patch.object(
+            ingestion_module,
+            "process_documents_parallel",
+            new=AsyncMock(return_value={"processed": 1, "failed": 0, "vectors": 10}),
+        ):
+            result = await ingestion_module._process_retry_documents_operation(
+                operation=operation,
+                collection=collection,
+                collection_repo=mock_collection_repo,
+                document_repo=mock_document_repo,
+                updater=mock_updater,
+            )
+
+        # Verify document lookup was called for provided IDs
+        assert mock_document_repo.get_by_id.await_count == 2
+        mock_document_repo.get_by_id.assert_any_await("doc-1")
+        mock_document_repo.get_by_id.assert_any_await("doc-nonexistent")
+
+        # Verify success result
+        assert result["success"] is True
+        assert result["documents_processed"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_excludes_non_pending(self) -> None:
+        """Documents not in PENDING status are excluded from retry."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document that's COMPLETED (not PENDING)
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.COMPLETED.value  # Not PENDING
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        # Should return early with 0 documents since the only doc is not PENDING
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_excludes_wrong_collection(self) -> None:
+        """Documents from different collections are excluded."""
+        from shared.database.models import DocumentStatus
+
+        # Create mock document from a different collection
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "different-collection-id"  # Different!
+        mock_doc.status = DocumentStatus.PENDING.value
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        result = await ingestion_module._process_retry_documents_operation(
+            operation=operation,
+            collection=collection,
+            collection_repo=mock_collection_repo,
+            document_repo=mock_document_repo,
+            updater=mock_updater,
+        )
+
+        # Should return early since document belongs to different collection
+        assert result["success"] is True
+        assert result["documents_processed"] == 0
+
+    @pytest.mark.asyncio()
+    async def test_retry_documents_sends_progress_updates(self) -> None:
+        """Verify progress updates are sent during processing."""
+        from shared.database.models import DocumentStatus
+
+        mock_doc = Mock()
+        mock_doc.id = "doc-1"
+        mock_doc.collection_id = "col-uuid-456"
+        mock_doc.status = DocumentStatus.PENDING.value
+        mock_doc.source_path = "/path/to/doc.txt"
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id = AsyncMock(return_value=mock_doc)
+
+        mock_updater = MockUpdater("op-123")
+
+        operation = {
+            "config": {"document_ids": ["doc-1"]},
+            "uuid": "op-123",
+        }
+        collection = {
+            "id": "col-uuid-456",
+            "vector_store_name": "qdrant_col_123",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "config": {},
+        }
+
+        with patch.object(
+            ingestion_module,
+            "process_documents_parallel",
+            new=AsyncMock(return_value={"processed": 1, "failed": 0, "vectors": 10}),
+        ):
+            await ingestion_module._process_retry_documents_operation(
+                operation=operation,
+                collection=collection,
+                collection_repo=mock_collection_repo,
+                document_repo=mock_document_repo,
+                updater=mock_updater,
+            )
+
+        # Verify processing_progress update was sent
+        progress_updates = [u for u in mock_updater.updates if u[0] == "processing_progress"]
+        assert len(progress_updates) >= 1
+        assert progress_updates[0][1]["total"] == 1

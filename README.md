@@ -13,17 +13,37 @@ By default, models run locally and no document content leaves your machine.
 
 This is a personal project and still pre‑release — expect rough edges and API churn.
 
+<p align="center">
+  <a href="docs/images/dashboard.png"><img src="docs/images/dashboard.png" width="32%" alt="Collections Dashboard" /></a>
+  <a href="docs/images/search.png"><img src="docs/images/search.png" width="32%" alt="Search Interface" /></a>
+  <a href="docs/images/models.png"><img src="docs/images/models.png" width="32%" alt="Model Manager" /></a>
+</p>
+
+<details>
+<summary>More screenshots</summary>
+<p align="center">
+  <a href="docs/images/benchmarks.png"><img src="docs/images/benchmarks.png" width="45%" alt="Benchmarking" /></a>
+  <a href="docs/images/mcp-profiles.png"><img src="docs/images/mcp-profiles.png" width="45%" alt="MCP Profiles" /></a>
+</p>
+</details>
+
 ## What It Does
 - **Collections**: group documents with their own embedding + chunking config.
 - **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
-- **Connectors**: pluggable ingestion sources — built-ins so far are directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
+- **Connectors**: pluggable ingestion sources — built-ins include directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
 - **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
-- **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
+- **Search**: dense (semantic), sparse (BM25/SPLADE), and hybrid modes with RRF fusion. Optional cross‑encoder reranking and HyDE query expansion.
+- **Sparse indexing**: BM25 for fast TF-IDF keyword search, SPLADE for neural sparse vectors 
+- **LLM integration**: multi-provider support (Anthropic, OpenAI, local GPU) for HyDE query expansion and future features. Quality tiers let you balance cost vs capability.
+- **MCP Integration**: connect AI assistants to search your collections via the Model Context Protocol. See `docs/MCP.md`.
+- **API keys**: programmatic access with scoped, revocable keys for integrations and automation.
+- **Model Manager**: download, track, and delete models (embedding, LLM, reranker, SPLADE) with cache visibility and usage tracking.
+- **Benchmarking**: evaluate search quality with standard IR metrics (Precision@K, Recall@K, MRR, nDCG) against ground truth datasets.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
 - **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
-- **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
-- **Visualize:** project embeddings into 2D space & visualize relationships
+- **Embeddings lab**: swap models/quantization per collection
+- **Visualize:** project embeddings into 2D space & visualize relationships (via `embedding-atlas`).
 - **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
 
 ## Sources & Continuous Sync
@@ -94,28 +114,14 @@ Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volume
 If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
 
 ## Configuration
-`make wizard` or `.env.docker.example` covers the common knobs. A few highlights:
-- `JWT_SECRET_KEY` – auth secret (wizard generates one).
-- `POSTGRES_PASSWORD` – database password.
-- `REDIS_PASSWORD` – Redis authentication (v7.1+).
-- `QDRANT_API_KEY` – vector database authentication (v7.1+).
-- `DATABASE_URL`, `REDIS_URL`, `QDRANT_HOST|PORT` – infra wiring.
-- `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
-- `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).
-- `HF_CACHE_DIR` – persistent HuggingFace model cache (avoids re‑downloads).
-- `CONNECTOR_SECRETS_KEY` – Fernet key for encrypting connector credentials in the DB (set to empty to disable).
-- `CELERY_CONCURRENCY`, `CELERY_MAX_CONCURRENCY` – worker parallelism.
-- `EMBEDDING_CONCURRENCY_PER_WORKER` – throttle embed calls per worker (VRAM‑friendly).
+`make wizard` or `.env.docker.example` covers the common knobs. 
 
-Full list + tuning notes: `docs/CONFIGURATION.md`.
+See:`docs/CONFIGURATION.md`.
 
 ## Extensibility
 Semantik is meant to be a sandbox for trying retrieval ideas:
-- **Plugins** (embedding providers, chunking strategies, connectors) load from Python entry points
-  `semantik.plugins`.
-- **Toggles**: `SEMANTIK_ENABLE_PLUGINS` (global), plus per-type flags
-  `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`, `SEMANTIK_ENABLE_CHUNKING_PLUGINS`,
-  `SEMANTIK_ENABLE_CONNECTOR_PLUGINS`.
+- **Plugins** for 6 extension points: embedding providers, chunking strategies, connectors, rerankers, sparse indexers, and extractors. Load via Python entry points (`semantik.plugins`).
+- **Runtime-checkable protocols** let you build external plugins without importing Semantik internals. See `docs/external-plugins.md` and `docs/plugin-protocols.md`.
 
 Plugin loading is idempotent and safe to run without plugins installed.
 
@@ -143,17 +149,20 @@ make dev
 - Frontend: `npm test --prefix apps/webui-react`.
 - Test Postgres profile: `docker compose --profile testing up -d postgres_test` (port 55432).
 
-## Docs
-There’s a lot of detail in `docs/`:
-- `docs/DOCUMENTATION_INDEX.md` – map of all docs.
-- `docs/ARCH.md` – full system architecture.
-- `docs/SEARCH_SYSTEM.md`, `docs/RERANKING.md`, `docs/CHUNKING_FEATURE_OVERVIEW.md` – retrieval/chunking deep dives.
-- `docs/WEBSOCKET_API.md`, `docs/API_REFERENCE.md` – API contracts.
 
-## Roadmap / Ideas
-- Integrated benchmarking tools
-- More connectors (web/Slack/etc.) and richer OCR pipelines.
-- Additional embedding/reranker options and hybrid tuning.
+## Roadmap 
+Next up:
+- Built-in agentic search
+- Improvements to the memory governor system
+- bugfixes
+
+In no particular order:
+- Knowledge graph builder for GraphRAG
+- Expanded benchmarking tools
+- Support for Text+Image embedding models
+- Support for custom embedding models/any sentence-transformers compatible model
+- Expanded visualization options for exploring the embedding space
+- Additional connectors, parsers, chunkers
 
 ## License
 AGPL‑3.0. See `LICENSE`.

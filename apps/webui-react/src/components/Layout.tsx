@@ -2,9 +2,11 @@ import { useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
+import { useOperationsSocket } from '../hooks/useOperationsSocket';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
+import ThemeToggle from './ThemeToggle';
 import { registerNavigationHandler } from '../services/navigation';
 
 function Layout() {
@@ -13,10 +15,14 @@ function Layout() {
   const { user, logout } = useAuthStore();
   const { activeTab, setActiveTab } = useUIStore();
 
+  // Global WebSocket subscription for operation updates
+  // Ensures collection stats update in real-time across all views
+  useOperationsSocket();
+
   useEffect(() => {
     registerNavigationHandler(navigate);
   }, [navigate]);
-  
+
   // Check if we're on the settings page
   const isSettingsPage = location.pathname === '/settings';
 
@@ -25,39 +31,62 @@ function Layout() {
     navigate('/login');
   };
 
+  type TabId = 'search' | 'collections' | 'operations' | 'benchmarks';
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'collections', label: 'Collections' },
+    { id: 'operations', label: 'Active Operations' },
+    { id: 'benchmarks', label: 'Benchmarks' },
+    { id: 'search', label: 'Search' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="sticky top-0 z-50 bg-[var(--bg-secondary)] border-b border-[var(--border)] shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Semantik</h1>
-              <span className="ml-2 text-sm text-gray-500">Document Embedding Pipeline</span>
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-8 bg-ink-900 dark:bg-paper-100 rounded-lg flex items-center justify-center">
+                <span className="text-paper-100 dark:text-ink-900 font-serif font-bold text-xl">S</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-serif font-semibold text-[var(--text-primary)] tracking-tight">Semantik</h1>
+                <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-medium -mt-0.5">Semantic Search</p>
+              </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">{user?.username}</span>
-              {import.meta.env.DEV && (
+              <div className="hidden sm:flex items-center space-x-2 text-sm">
+                <span className="text-[var(--text-muted)]">Signed in as</span>
+                <span className="text-[var(--text-primary)] font-medium">{user?.username}</span>
+              </div>
+
+              <div className="h-4 w-px bg-[var(--border)] hidden sm:block"></div>
+
+              <div className="flex items-center space-x-2">
+                <ThemeToggle />
+
+                {import.meta.env.DEV && (
+                  <Link
+                    to="/verification"
+                    className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-2 py-1"
+                  >
+                    Verify
+                  </Link>
+                )}
                 <Link
-                  to="/verification"
-                  className="text-sm text-purple-600 hover:text-purple-900"
+                  to={isSettingsPage ? "/" : "/settings"}
+                  className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-2 py-1"
                 >
-                  Verification
+                  {isSettingsPage ? "Back" : "Settings"}
                 </Link>
-              )}
-              <Link
-                to={isSettingsPage ? "/" : "/settings"}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                {isSettingsPage ? "← Back" : "Settings"}
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                Logout
-              </button>
+                <button
+                  onClick={handleLogout}
+                  className="btn-secondary text-xs px-3 py-1.5"
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -65,56 +94,35 @@ function Layout() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tabs - Only show on home page */}
+        {/* Tab Navigation - Only show on home page */}
         {!isSettingsPage && (
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('collections')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'collections'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Collections
-              </button>
-              <button
-                onClick={() => setActiveTab('operations')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'operations'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Active Operations
-              </button>
-              <button
-                onClick={() => setActiveTab('search')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'search'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Search
-              </button>
+          <div className="mb-8">
+            <nav className="tab-nav">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`tab-item ${activeTab === tab.id ? 'tab-item-active' : ''}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </nav>
           </div>
         )}
 
         {/* Tab Content */}
-        <div className="mt-8">
+        <div className="animate-fade-in">
           <Outlet />
         </div>
       </main>
 
       {/* Toast Container */}
       <Toast />
-      
+
       {/* Document Viewer Modal */}
       <DocumentViewerModal />
-      
+
       {/* Collection Details Modal */}
       <CollectionDetailsModal />
     </div>

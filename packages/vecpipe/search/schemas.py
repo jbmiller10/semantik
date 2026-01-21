@@ -35,6 +35,9 @@ class PointPayload(BaseModel):
     path: str
     content: str | None = None
     metadata: dict[str, Any] | None = None
+    collection_id: str | None = None
+    chunk_index: int | None = None
+    total_chunks: int | None = None
 
 
 class UpsertPoint(BaseModel):

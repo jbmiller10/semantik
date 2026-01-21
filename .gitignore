@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+reports/**
 
 # Log files
 *.log
@@ -144,6 +145,7 @@ logs/
 data/
 !packages/shared/plugins/data/
 images/
+!docs/images/
 models/
 repomixpy-output.txt
 
@@ -193,8 +195,9 @@ dev-debug.log
 
 # Task files
 tasks.json
-tasks/ 
+tasks/
 !packages/webui/tasks/
+!tests/webui/tasks/
 tickets/
 TICKET*
 ticket_*
@@ -266,3 +269,13 @@ nginx.conf.example
 # Code review chunks (generated files only - scripts and guide are tracked)
 review-chunk-*.txt
 .code/
+
+# Codebase review outputs
+reviews/
+
+research_papers/
+
+# Test data (benchmark datasets)
+test_data/
+documents/
+docs/plans/*

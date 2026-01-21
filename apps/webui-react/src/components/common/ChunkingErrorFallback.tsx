@@ -1,9 +1,9 @@
-import { 
-  AlertTriangle, 
-  RefreshCw, 
-  Settings, 
-  FileText, 
-  Wifi, 
+import {
+  AlertTriangle,
+  RefreshCw,
+  Settings,
+  FileText,
+  Wifi,
   WifiOff,
   Database,
   Zap
@@ -18,29 +18,29 @@ interface ChunkingErrorFallbackProps {
   children?: ReactNode;
 }
 
-export function ChunkingErrorFallback({ 
-  error, 
+export function ChunkingErrorFallback({
+  error,
   resetError,
   variant = 'preview',
   onResetConfiguration
 }: ChunkingErrorFallbackProps) {
-  const isNetworkError = error.message.toLowerCase().includes('network') || 
-                        error.message.toLowerCase().includes('websocket') ||
-                        error.message.toLowerCase().includes('connection');
-  
+  const isNetworkError = error.message.toLowerCase().includes('network') ||
+    error.message.toLowerCase().includes('websocket') ||
+    error.message.toLowerCase().includes('connection');
+
   const isConfigError = error.message.toLowerCase().includes('configuration') ||
-                       error.message.toLowerCase().includes('invalid') ||
-                       error.message.toLowerCase().includes('parameter');
-  
+    error.message.toLowerCase().includes('invalid') ||
+    error.message.toLowerCase().includes('parameter');
+
   const isDataError = error.message.toLowerCase().includes('data') ||
-                     error.message.toLowerCase().includes('parse') ||
-                     error.message.toLowerCase().includes('format');
+    error.message.toLowerCase().includes('parse') ||
+    error.message.toLowerCase().includes('format');
 
   const getIcon = () => {
-    if (isNetworkError) return <WifiOff className="h-6 w-6 text-red-500" />;
-    if (isConfigError) return <Settings className="h-6 w-6 text-orange-500" />;
+    if (isNetworkError) return <WifiOff className="h-6 w-6 text-red-400" />;
+    if (isConfigError) return <Settings className="h-6 w-6 text-orange-400" />;
     if (isDataError) return <Database className="h-6 w-6 text-yellow-500" />;
-    return <AlertTriangle className="h-6 w-6 text-red-500" />;
+    return <AlertTriangle className="h-6 w-6 text-red-400" />;
   };
 
   const getTitle = () => {
@@ -68,7 +68,7 @@ export function ChunkingErrorFallback({
     if (isDataError) {
       return 'The document format may not be supported or the data is corrupted.';
     }
-    
+
     switch (variant) {
       case 'preview':
         return 'Unable to generate preview. Try selecting a different document or adjusting parameters.';
@@ -84,26 +84,26 @@ export function ChunkingErrorFallback({
   };
 
   return (
-    <div className="w-full p-6 bg-gradient-to-br from-red-50 to-orange-50 rounded-lg border border-red-200">
+    <div className="w-full p-6 bg-[var(--bg-secondary)] backdrop-blur rounded-xl border border-red-500/20">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-start space-x-3">
           {getIcon()}
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-bold text-white tracking-tight">
               {getTitle()}
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-gray-300 mt-1">
               {getSuggestion()}
             </p>
           </div>
         </div>
 
         {/* Error Message */}
-        <div className="bg-white/80 backdrop-blur rounded-md p-3 border border-red-100">
+        <div className="bg-red-500/10 backdrop-blur rounded-lg p-3 border border-red-500/20">
           <div className="flex items-start space-x-2">
-            <Zap className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-red-700 font-mono flex-1">
+            <Zap className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-red-200 font-mono flex-1">
               {error.message}
             </p>
           </div>
@@ -127,12 +127,12 @@ export function ChunkingErrorFallback({
         )}
 
         {isConfigError && (
-          <div className="bg-yellow-50 rounded-md p-3 border border-yellow-200">
+          <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/20">
             <div className="flex items-start space-x-2">
-              <Settings className="h-4 w-4 text-yellow-600 mt-0.5" />
-              <div className="text-sm text-yellow-800">
-                <p className="font-medium">Configuration Tips:</p>
-                <ul className="mt-1 ml-4 list-disc">
+              <Settings className="h-4 w-4 text-orange-400 mt-0.5" />
+              <div className="text-sm text-orange-200">
+                <p className="font-bold">Configuration Tips:</p>
+                <ul className="mt-1 ml-4 list-disc text-orange-300">
                   <li>Chunk size should be between 100-10000 characters</li>
                   <li>Overlap should not exceed chunk size</li>
                   <li>Some strategies have specific requirements</li>
@@ -167,7 +167,7 @@ export function ChunkingErrorFallback({
             <RefreshCw className="h-4 w-4" />
             <span>Try Again</span>
           </button>
-          
+
           {(isConfigError || variant === 'configuration') && onResetConfiguration && (
             <button
               onClick={onResetConfiguration}
@@ -202,47 +202,47 @@ export function ChunkingErrorFallback({
 // Specialized variants for specific use cases
 export function PreviewErrorFallback({ error, resetError }: { error: Error; resetError: () => void }) {
   return (
-    <ChunkingErrorFallback 
-      error={error} 
-      resetError={resetError} 
-      variant="preview" 
+    <ChunkingErrorFallback
+      error={error}
+      resetError={resetError}
+      variant="preview"
     />
   );
 }
 
 export function ComparisonErrorFallback({ error, resetError }: { error: Error; resetError: () => void }) {
   return (
-    <ChunkingErrorFallback 
-      error={error} 
-      resetError={resetError} 
-      variant="comparison" 
+    <ChunkingErrorFallback
+      error={error}
+      resetError={resetError}
+      variant="comparison"
     />
   );
 }
 
 export function AnalyticsErrorFallback({ error, resetError }: { error: Error; resetError: () => void }) {
   return (
-    <ChunkingErrorFallback 
-      error={error} 
-      resetError={resetError} 
-      variant="analytics" 
+    <ChunkingErrorFallback
+      error={error}
+      resetError={resetError}
+      variant="analytics"
     />
   );
 }
 
-export function ConfigurationErrorFallback({ 
-  error, 
+export function ConfigurationErrorFallback({
+  error,
   resetError,
-  onResetConfiguration 
-}: { 
-  error: Error; 
+  onResetConfiguration
+}: {
+  error: Error;
   resetError: () => void;
   onResetConfiguration?: () => void;
 }) {
   return (
-    <ChunkingErrorFallback 
-      error={error} 
-      resetError={resetError} 
+    <ChunkingErrorFallback
+      error={error}
+      resetError={resetError}
       variant="configuration"
       onResetConfiguration={onResetConfiguration}
     />

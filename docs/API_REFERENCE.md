@@ -17,6 +17,10 @@ RESTful with JSON.
 
 Collection-based architecture for docs and search.
 
+Feature-specific deep dives:
+- Chunking: [api/CHUNKING_API.md](./api/CHUNKING_API.md)
+- Benchmarks: [api/BENCHMARKS_API.md](./api/BENCHMARKS_API.md)
+
 #### Authentication Endpoints
 
 ##### Register New User

@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.8.0] - 2026-01-20
+
+### Added
+- **Agent plugin system** — SDK-agnostic adapter pattern with Claude Agent SDK integration, streaming, tool use, and session management
+- **Built-in agent tools** — search, chunks, collections, retrieve with dependency injection
+- **Agent sessions** — persistent conversations with forking, token tracking, and message history
+- **MCP server** — stdio transport exposing collections via `semantik-mcp serve` for Claude Desktop and Cursor
+- **MCP profiles** — scoped collection access with per-profile search configuration and client config generation
+- **BM25 sparse indexer** — TF-IDF keyword indexing with IDF statistics persistence (~1000 docs/sec)
+- **SPLADE sparse indexer** — neural sparse indexing via HuggingFace models (10-50 docs/sec GPU)
+- **Hybrid search** — RRF fusion combining dense and sparse results with tunable k parameter
+- **Plugin protocols** — runtime-checkable interfaces for all 6 plugin types enabling external plugin development
+- **DTO adapters** — type-safe conversion layer between plugin outputs and internal types
+- **API Key Management** — programmatic API access with SHA-256 hashed keys, expiration, revocation, and per-user limits
+- **LLM integration** — multi-provider support (Anthropic, OpenAI, local GPU) with quality tiers and encrypted API key storage
+- **HyDE search** — Hypothetical Document Embeddings for query expansion via LLM-generated hypothetical documents
+- **Benchmarking system** — search quality evaluation with Precision@K, Recall@K, MRR, nDCG metrics and ground truth datasets
+- **Model Manager** — centralized LLM lifecycle management with memory estimation and quantization support (int4, int8, float16)
+- **Settings overhaul** — admin panel for deployment-wide settings and user defaults management for search/collections
+- WebSocket streaming for agent responses
+- Search mode selector UI (dense, sparse, hybrid)
+- Sparse index configuration UI per collection
+- Parser refactoring for groundwork on multiple file parser support
+
+### Changed
+- Search API accepts `search_mode`, `rrf_k`, and `use_hyde` parameters
+- Collection stats update in real-time during indexing
+- Settings menu reorganized with Database, Plugins, MCP Profiles, LLM, and API Keys tabs
+
+### Fixed
+- Collection stats not refreshing after indexing completes
+- Chunk numbering display and Qdrant payload construction
+- Source directories showing empty despite indexed files
+- Continuous sync tasks not being consumed by worker
+- WebSocket `operation_completed` message missing `collection_id`
+- Dashboard polling frequency during processing
+
 ## [0.7.7] - 2026-01-05
 
 ### Added

@@ -36,10 +36,8 @@ def memory_budget() -> MemoryBudget:
     """Create a test memory budget with known values."""
     return MemoryBudget(
         total_gpu_mb=16000,  # 16GB GPU
-        gpu_reserve_percent=0.10,
         gpu_max_percent=0.90,
         total_cpu_mb=32000,  # 32GB CPU
-        cpu_reserve_percent=0.20,
         cpu_max_percent=0.50,
     )
 
@@ -49,10 +47,8 @@ def small_memory_budget() -> MemoryBudget:
     """Create a constrained memory budget for small GPU tests."""
     return MemoryBudget(
         total_gpu_mb=8000,  # 8GB GPU
-        gpu_reserve_percent=0.10,
         gpu_max_percent=0.90,
         total_cpu_mb=16000,  # 16GB CPU
-        cpu_reserve_percent=0.20,
         cpu_max_percent=0.50,
     )
 
@@ -91,33 +87,17 @@ class TestMemoryBudget:
 
     def test_usable_gpu_mb_calculation(self, memory_budget: MemoryBudget) -> None:
         """Test GPU usable memory calculation."""
-        # With 16000MB total, 10% reserve, 90% max
-        # effective_max = min(0.90, 1.0 - 0.10) = 0.80
-        # usable = 16000 * 0.80 = 12800
-        # But min(0.90, 0.90) = 0.90, so usable = 16000 * 0.90 = 14400
-        # Actually: effective_max = min(gpu_max_percent, 1.0 - gpu_reserve_percent)
-        # = min(0.90, 0.90) = 0.90
+        # With 16000MB total and 90% max
+        # usable = 16000 * 0.90 = 14400
         expected = int(16000 * 0.90)  # 14400
         assert memory_budget.usable_gpu_mb == expected
 
     def test_usable_cpu_mb_calculation(self, memory_budget: MemoryBudget) -> None:
         """Test CPU usable memory calculation."""
-        # With 32000MB total, 20% reserve, 50% max
-        # effective_max = min(0.50, 1.0 - 0.20) = min(0.50, 0.80) = 0.50
+        # With 32000MB total and 50% max
         # usable = 32000 * 0.50 = 16000
         expected = int(32000 * 0.50)  # 16000
         assert memory_budget.usable_cpu_mb == expected
-
-    def test_reserve_exceeds_max_uses_reserve(self) -> None:
-        """Test that when reserve exceeds max, reserve takes precedence."""
-        budget = MemoryBudget(
-            total_gpu_mb=10000,
-            gpu_reserve_percent=0.50,  # 50% reserve (keep free)
-            gpu_max_percent=0.80,  # 80% max usage
-        )
-        # effective_max = min(0.80, 1.0 - 0.50) = min(0.80, 0.50) = 0.50
-        expected = int(10000 * 0.50)  # 5000
-        assert budget.usable_gpu_mb == expected
 
     def test_auto_detect_cpu_memory(self) -> None:
         """Test that CPU memory is auto-detected via factory function."""
@@ -1005,10 +985,8 @@ class TestCPUOnlyMode:
         """Create a budget with no GPU memory (CPU-only mode)."""
         return MemoryBudget(
             total_gpu_mb=0,  # CPU-only mode
-            gpu_reserve_percent=0.10,
             gpu_max_percent=0.90,
             total_cpu_mb=32000,
-            cpu_reserve_percent=0.20,
             cpu_max_percent=0.50,
         )
 
@@ -1155,12 +1133,8 @@ class TestMemoryBudgetValidation:
     @pytest.mark.parametrize(
         ("field", "value"),
         [
-            ("gpu_reserve_percent", -0.1),
-            ("gpu_reserve_percent", 1.1),
             ("gpu_max_percent", -0.1),
             ("gpu_max_percent", 1.1),
-            ("cpu_reserve_percent", -0.1),
-            ("cpu_reserve_percent", 1.1),
             ("cpu_max_percent", -0.1),
             ("cpu_max_percent", 1.1),
         ],
@@ -1182,14 +1156,14 @@ class TestMemoryBudgetValidation:
             MemoryBudget(total_gpu_mb=8000, total_cpu_mb=-1)
 
     def test_edge_case_percentages_zero_valid(self) -> None:
-        """0.0 is a valid percentage value."""
+        """0.0 is a valid percentage value for max_percent fields."""
         budget = MemoryBudget(
             total_gpu_mb=8000,
-            gpu_reserve_percent=0.0,
-            cpu_reserve_percent=0.0,
+            gpu_max_percent=0.0,
+            cpu_max_percent=0.0,
         )
-        assert budget.gpu_reserve_percent == 0.0
-        assert budget.cpu_reserve_percent == 0.0
+        assert budget.gpu_max_percent == 0.0
+        assert budget.cpu_max_percent == 0.0
 
     def test_edge_case_percentages_one_valid(self) -> None:
         """1.0 is a valid percentage value."""

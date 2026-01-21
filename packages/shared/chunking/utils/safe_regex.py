@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Safe regex operations with ReDoS protection."""
 
+import functools
 import logging
 from functools import lru_cache
 from typing import Any
@@ -76,7 +77,7 @@ class SafeRegex:
         """Clear the compiled pattern cache."""
         _compile_regex_cached.cache_clear()
 
-    def cache_info(self):  # type: ignore[override]
+    def cache_info(self) -> functools._CacheInfo:
         """Return cache statistics for compiled patterns."""
         return _compile_regex_cached.cache_info()
 

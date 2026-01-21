@@ -74,17 +74,21 @@ export function usePrefetchDocuments() {
 // Utility hook to aggregate source directories from documents
 export function useSourceDirectories(documentsData?: DocumentListResponse) {
   if (!documentsData) return [];
-  
+
   const sourceMap = documentsData.documents.reduce((acc: Map<string, { path: string; document_count: number }>, doc) => {
-    if (!acc.has(doc.source_path)) {
-      acc.set(doc.source_path, { 
-        path: doc.source_path, 
-        document_count: 0 
+    // Skip documents without source_path
+    const sourcePath = doc.source_path;
+    if (!sourcePath) return acc;
+
+    if (!acc.has(sourcePath)) {
+      acc.set(sourcePath, {
+        path: sourcePath,
+        document_count: 0
       });
     }
-    acc.get(doc.source_path)!.document_count++;
+    acc.get(sourcePath)!.document_count++;
     return acc;
   }, new Map<string, { path: string; document_count: number }>());
-  
+
   return Array.from(sourceMap.values());
 }

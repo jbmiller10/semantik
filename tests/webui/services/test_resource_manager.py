@@ -51,42 +51,6 @@ async def test_can_allocate_checks_system_resources(monkeypatch):
     assert await manager.can_allocate(user_id=1, resources=estimate) is False
 
 
-@pytest.mark.asyncio()
-async def test_estimate_resources_directory(tmp_path):
-    file = tmp_path / "sample.txt"
-    file.write_bytes(b"a" * 2048)
-
-    manager = ResourceManager(AsyncMock(), AsyncMock(), qdrant_manager=None)
-    estimate = await manager.estimate_resources(str(tmp_path), "sentence-transformers/all-MiniLM-L6-v2")
-
-    assert estimate.memory_mb > 0
-    assert estimate.storage_gb > 0
-    assert estimate.cpu_cores >= 1.0
-
-
-@pytest.mark.asyncio()
-async def test_reserve_and_release_reindex(monkeypatch):
-    collection_repo = AsyncMock()
-    collection_repo.get_by_uuid.return_value = {
-        "total_size_bytes": 5 * 1024 * 1024 * 1024,
-        "id": "col-1",
-    }
-    operation_repo = AsyncMock()
-
-    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=None)
-
-    async def always_ok(_estimate: ResourceEstimate) -> bool:  # noqa: ARG001
-        return True
-
-    monkeypatch.setattr(manager, "_check_system_resources", always_ok)
-
-    assert await manager.reserve_for_reindex("col-1") is True
-    assert "reindex_col-1" in manager._reserved_resources
-
-    await manager.release_reindex_reservation("col-1")
-    assert not manager._reserved_resources
-
-
 @pytest.fixture()
 def frozen_resource_manager_clock(monkeypatch):
     """Freeze resource manager wall clock to control cache expiry in tests."""

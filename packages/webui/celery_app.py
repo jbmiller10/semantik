@@ -14,6 +14,7 @@ if Path(_plugins_dir).is_dir() and _plugins_dir not in sys.path:
 
 from celery import Celery
 from celery.signals import worker_process_init
+from kombu import Queue
 
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
@@ -40,6 +41,13 @@ def _build_base_config() -> dict[str, Any]:
         "result_serializer": "json",
         "timezone": "UTC",
         "enable_utc": True,
+        # Queue configuration
+        # Ensure the worker consumes the model-manager queue even when started without `-Q`.
+        "task_default_queue": "celery",
+        "task_queues": (
+            Queue("celery"),
+            Queue("model-manager"),
+        ),
         # Task execution limits
         "task_soft_time_limit": 3600,  # 1 hour soft limit
         "task_time_limit": 7200,  # 2 hour hard limit
@@ -65,6 +73,10 @@ def _build_base_config() -> dict[str, Any]:
         # Enable task events for monitoring
         "worker_send_task_events": True,
         "task_send_sent_event": True,
+        # Task routing
+        "task_routes": {
+            "webui.tasks.model_manager.*": {"queue": "model-manager"},
+        },
         # Beat schedule for periodic tasks
         "beat_schedule": {
             "cleanup-old-results": {
@@ -75,26 +87,23 @@ def _build_base_config() -> dict[str, Any]:
             "refresh-collection-chunking-stats": {
                 "task": "webui.tasks.refresh_collection_chunking_stats",
                 "schedule": 3600.0,  # Run hourly
-                "options": {
-                    "queue": "default",
-                    "priority": 5,
-                },
             },
             "monitor-partition-health": {
                 "task": "webui.tasks.monitor_partition_health",
                 "schedule": 21600.0,  # Every 6 hours
-                "options": {
-                    "queue": "default",
-                    "priority": 3,
-                },
             },
             "dispatch-sync-sources": {
                 "task": "webui.tasks.dispatch_due_syncs",
                 "schedule": 60.0,  # Every 60 seconds
-                "options": {
-                    "queue": "default",
-                    "priority": 8,  # Higher priority for sync coordination
-                },
+            },
+            "cleanup-stuck-operations": {
+                "task": "webui.tasks.cleanup_stuck_operations",
+                "schedule": 900.0,  # Every 15 minutes
+            },
+            "cleanup-stale-benchmarks": {
+                "task": "webui.tasks.cleanup_stale_benchmarks",
+                "schedule": 21600.0,  # Every 6 hours
+                "args": (24,),  # 24 hour threshold
             },
         },
     }
@@ -141,7 +150,7 @@ def _create_celery_app() -> Celery:
         "webui",
         broker=broker_url,
         backend=backend_url,
-        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher"],
+        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher", "webui.sparse_tasks"],
     )
 
     config = _build_base_config()

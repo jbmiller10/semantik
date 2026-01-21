@@ -4,13 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityNotFoundError,
-)
-from shared.database.repositories.collection_sync_run_repository import (
-    CollectionSyncRunRepository,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError
+from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 
 
 @pytest.fixture()

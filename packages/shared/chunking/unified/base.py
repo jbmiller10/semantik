@@ -9,10 +9,19 @@ combining domain-driven design with optional LlamaIndex integration.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
+
+import tiktoken
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
+
+@lru_cache(maxsize=1)
+def _get_tokenizer() -> tiktoken.Encoding:
+    """Get cached tiktoken encoder."""
+    return tiktoken.get_encoding("cl100k_base")
 
 
 @dataclass
@@ -126,33 +135,131 @@ class UnifiedChunkingStrategy(ABC):
 
     def count_tokens(self, text: str) -> int:
         """
-        Count tokens in text using a simple approximation.
+        Count tokens in text using tiktoken.
 
-        This is a pure business logic function that doesn't depend on
-        any external tokenizer libraries.
+        Uses cl100k_base encoding (GPT-4/ChatGPT tokenizer) for accurate
+        token counting that aligns with most modern embedding models.
 
         Args:
             text: Text to count tokens in
 
         Returns:
-            Approximate token count
+            Exact token count
         """
-        # Business rule: approximate 1 token ≈ 4 characters for English text
-        # This is a domain-level approximation that doesn't require external dependencies
+        if not text:
+            return 0
+        return len(_get_tokenizer().encode(text))
 
-        # Adjust for different text characteristics
-        word_count = len(text.split())
-        char_count = len(text)
+    def truncate_to_tokens(self, text: str, max_tokens: int) -> str:
+        """
+        Truncate text to fit within a maximum token count.
 
-        # Use a weighted average of word-based and character-based estimates
-        # Typically, 1 word ≈ 1.3 tokens, and 4 characters ≈ 1 token
-        word_based_estimate = word_count * 1.3
-        char_based_estimate = char_count / 4
+        Args:
+            text: Text to truncate
+            max_tokens: Maximum number of tokens
 
-        # Weight character-based estimate more heavily for consistency
-        # Ensure at least 1 token for any non-empty text
-        token_count = int(0.3 * word_based_estimate + 0.7 * char_based_estimate)
-        return max(1, token_count) if text else 0
+        Returns:
+            Truncated text that fits within max_tokens
+        """
+        if not text or max_tokens <= 0:
+            return ""
+        tokenizer = _get_tokenizer()
+        tokens = tokenizer.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        return tokenizer.decode(tokens[:max_tokens])
+
+    def split_to_token_limit(self, text: str, max_tokens: int) -> list[str]:
+        """
+        Split text into chunks that fit within max_tokens, breaking at word boundaries.
+
+        This preserves all content by creating multiple chunks rather than truncating.
+        Used when a chunk exceeds max_tokens and needs to be re-split.
+
+        If a single "word" (text without whitespace) exceeds max_tokens, it will be
+        split at the token level to guarantee all chunks fit within the limit.
+
+        Args:
+            text: Text to split
+            max_tokens: Maximum tokens per chunk
+
+        Returns:
+            List of text chunks, each within max_tokens
+        """
+        if not text or max_tokens <= 0:
+            return []
+
+        if self.count_tokens(text) <= max_tokens:
+            return [text]
+
+        chunks = []
+        words = text.split()
+        current_words: list[str] = []
+        current_tokens = 0
+
+        for word in words:
+            word_tokens = self.count_tokens(word)
+
+            # Handle oversized words by splitting at token level
+            if word_tokens > max_tokens:
+                # Flush current buffer first
+                if current_words:
+                    chunks.append(" ".join(current_words))
+                    current_words = []
+                    current_tokens = 0
+
+                # Split the oversized word at token boundaries
+                word_chunks = self._split_word_by_tokens(word, max_tokens)
+                chunks.extend(word_chunks)
+                continue
+
+            # Account for space between words
+            effective_tokens = word_tokens + (1 if current_words else 0)
+
+            if current_tokens + effective_tokens > max_tokens and current_words:
+                chunks.append(" ".join(current_words))
+                current_words = [word]
+                current_tokens = word_tokens
+            else:
+                current_words.append(word)
+                current_tokens += effective_tokens
+
+        if current_words:
+            chunks.append(" ".join(current_words))
+
+        return chunks
+
+    def _split_word_by_tokens(self, word: str, max_tokens: int) -> list[str]:
+        """
+        Split a single word (text without whitespace) into chunks at token boundaries.
+
+        This handles cases like very long URLs, base64 data, or minified code
+        that cannot be split at word boundaries.
+
+        Args:
+            word: The word to split (should not contain whitespace)
+            max_tokens: Maximum tokens per chunk
+
+        Returns:
+            List of text chunks, each within max_tokens
+        """
+        if not word or max_tokens <= 0:
+            return []
+
+        tokenizer = _get_tokenizer()
+        tokens = tokenizer.encode(word)
+
+        if len(tokens) <= max_tokens:
+            return [word]
+
+        chunks = []
+        for i in range(0, len(tokens), max_tokens):
+            chunk_tokens = tokens[i : i + max_tokens]
+            chunk_text = tokenizer.decode(chunk_tokens)
+            if chunk_text:  # Only add non-empty chunks
+                chunks.append(chunk_text)
+
+        return chunks
 
     def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """

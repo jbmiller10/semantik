@@ -126,6 +126,23 @@ DEFAULT_QUANTIZATION=float16  # Options: float32, float16, int8
 MODEL_UNLOAD_AFTER_SECONDS=300  # Auto-unload models after inactivity
 ```
 
+#### Local LLM
+Local LLMs are GPU-intensive and require CUDA for practical performance. If you do not have a compatible
+NVIDIA GPU, set `ENABLE_LOCAL_LLM=false` (the `/llm/health` endpoint will report `disabled`).
+
+```bash
+# Enable local LLM inference in VecPipe
+ENABLE_LOCAL_LLM=true
+# Default quantization for local LLMs (int4, int8, float16)
+DEFAULT_LLM_QUANTIZATION=int8
+# Idle timeout before unloading local LLM models (seconds)
+LLM_UNLOAD_AFTER_SECONDS=300
+# KV cache + runtime buffer per loaded LLM (MB)
+LLM_KV_CACHE_BUFFER_MB=1024
+# Allow models that require remote code (HuggingFace trust_remote_code)
+LLM_TRUST_REMOTE_CODE=false
+```
+
 #### GPU Configuration
 ```bash
 # GPU Selection
@@ -200,6 +217,19 @@ ADAPTIVE_BATCH_SIZING=true # Enable adaptive batching
 | MAX_COLLECTIONS_PER_USER | 10 | Maximum number of collections per user |
 | MAX_STORAGE_GB_PER_USER | 50.0 | Maximum storage per user (GB) |
 | CACHE_DEFAULT_TTL_SECONDS | 300 | Default cache TTL (seconds) |
+
+#### Benchmarking (Configurable)
+
+These control dataset upload quotas and whether mapping resolution runs synchronously in the HTTP request or is queued to Celery. See [api/BENCHMARKS_API.md](./api/BENCHMARKS_API.md) for endpoints, dataset schema, and progress events.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| BENCHMARK_DATASET_MAX_UPLOAD_BYTES | 10485760 | Maximum dataset upload size (bytes) |
+| BENCHMARK_DATASET_MAX_QUERIES | 1000 | Maximum number of queries per dataset |
+| BENCHMARK_DATASET_MAX_JUDGMENTS_PER_QUERY | 100 | Maximum relevance judgments per query |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_REFS | 10000 | Max relevance refs for synchronous mapping resolution |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_DOCS | 50000 | Max collection document count for synchronous mapping resolution |
+| BENCHMARK_MAPPING_RESOLVE_SYNC_MAX_WALL_MS | 8000 | Wall-clock budget (ms) for synchronous mapping resolution |
 
 #### Background Cleanup Circuit Breaker (Configurable)
 

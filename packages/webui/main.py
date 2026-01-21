@@ -48,6 +48,9 @@ from shared.embedding import configure_global_embedding_service
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
+    api_keys as v2_api_keys,
+    benchmark_datasets as v2_benchmark_datasets,
+    benchmarks as v2_benchmarks,
     chunking as v2_chunking,
     collections as v2_collections,
     connectors as v2_connectors,
@@ -55,6 +58,9 @@ from .api.v2 import (
     documents as v2_documents,
     embedding as v2_embedding,
     extractors as v2_extractors,
+    llm_settings as v2_llm_settings,
+    mcp_profiles as v2_mcp_profiles,
+    model_manager as v2_model_manager,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
     plugins as v2_plugins,
@@ -63,6 +69,8 @@ from .api.v2 import (
     search as v2_search,
     sources as v2_sources,
     system as v2_system,
+    system_settings as v2_system_settings,
+    user_preferences as v2_user_preferences,
 )
 from .api.v2.directory_scan import directory_scan_websocket
 from .api.v2.operations import operation_websocket, operation_websocket_global
@@ -335,6 +343,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
+    app.include_router(v2_api_keys.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
     app.include_router(v2_connectors.router)
@@ -342,6 +351,8 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_documents.router)
     app.include_router(v2_embedding.router)
     app.include_router(v2_extractors.router)
+    app.include_router(v2_mcp_profiles.router)
+    app.include_router(v2_model_manager.router)
     app.include_router(v2_operations.router)
     app.include_router(v2_plugins.router)
     app.include_router(v2_projections.router)
@@ -350,6 +361,11 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_search.router)
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
+    app.include_router(v2_system_settings.router)
+    app.include_router(v2_llm_settings.router)
+    app.include_router(v2_user_preferences.router)
+    app.include_router(v2_benchmark_datasets.router)
+    app.include_router(v2_benchmarks.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution

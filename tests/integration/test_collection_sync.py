@@ -11,10 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.exceptions import ValidationError
-from shared.database.models import (
-    CollectionStatus,
-    CollectionSyncRun,
-)
+from shared.database.models import CollectionStatus, CollectionSyncRun
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 

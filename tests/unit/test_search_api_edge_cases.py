@@ -15,17 +15,7 @@ from fastapi.testclient import TestClient
 
 import vecpipe.search_api as search_api_module
 from shared.contracts.search import BatchSearchRequest, SearchRequest
-from vecpipe.search_api import (
-    PointPayload,
-    UpsertPoint,
-    UpsertRequest,
-    app,
-    batch_search,
-    hybrid_search,
-    keyword_search,
-    search_post,
-    upsert_points,
-)
+from vecpipe.search_api import PointPayload, UpsertPoint, UpsertRequest, app, batch_search, search_post, upsert_points
 
 
 @pytest.fixture()
@@ -87,34 +77,7 @@ def mock_embedding_service() -> None:
     return service
 
 
-@pytest.fixture()
-def mock_hybrid_engine() -> Generator[Any, None, None]:
-    """Mock hybrid search engine."""
-    with patch("vecpipe.search_api.HybridSearchEngine") as mock_class:
-        engine = Mock()
-        engine.extract_keywords = Mock(return_value=["test", "query"])
-        engine.hybrid_search = Mock(
-            return_value=[
-                {
-                    "score": 0.95,
-                    "payload": {"path": "/test/file1.txt", "chunk_id": "chunk-1", "doc_id": "doc-1"},
-                    "matched_keywords": ["test"],
-                    "keyword_score": 0.8,
-                    "combined_score": 0.875,
-                }
-            ]
-        )
-        engine.search_by_keywords = Mock(
-            return_value=[
-                {
-                    "payload": {"path": "/test/file1.txt", "chunk_id": "chunk-1", "doc_id": "doc-1"},
-                    "matched_keywords": ["test", "query"],
-                }
-            ]
-        )
-        engine.close = Mock()
-        mock_class.return_value = engine
-        yield engine
+# NOTE: mock_hybrid_engine fixture removed - legacy hybrid search deleted
 
 
 @pytest.fixture()
@@ -340,22 +303,7 @@ class TestSearchAPIEdgeCases:
             assert result.reranking_used is True  # Was attempted
             assert result.reranker_model is None  # But failed
 
-    @pytest.mark.asyncio()
-    async def test_hybrid_search_error_handling(self, mock_settings, mock_qdrant_client) -> None:
-        """Test hybrid search error scenarios."""
-        mock_settings.USE_MOCK_EMBEDDINGS = True
-
-        with (
-            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("vecpipe.search_api.HybridSearchEngine") as mock_engine_class,
-        ):
-            # Make hybrid engine initialization fail
-            mock_engine_class.side_effect = Exception("Failed to initialize hybrid engine")
-
-            with pytest.raises(HTTPException) as exc_info:
-                await hybrid_search(q="test", k=10)
-            assert exc_info.value.status_code == 500
-            assert "Hybrid search error" in str(exc_info.value.detail)
+    # NOTE: test_hybrid_search_error_handling removed - legacy hybrid search deleted
 
     @pytest.mark.asyncio()
     async def test_batch_search_partial_failure(self, mock_settings, mock_qdrant_client, mock_model_manager) -> None:
@@ -667,18 +615,7 @@ class TestSearchAPIEdgeCases:
             # The general exception handler catches all errors and returns 500
             assert exc_info.value.status_code == 500
 
-    @pytest.mark.asyncio()
-    async def test_keyword_search_cleanup(self, mock_hybrid_engine) -> None:
-        """Test that keyword search properly cleans up resources."""
-
-        # Make the search raise an exception
-        mock_hybrid_engine.search_by_keywords.side_effect = Exception("Search failed")
-
-        with pytest.raises(HTTPException):
-            await keyword_search(q="test", k=10)
-
-        # Verify cleanup was called
-        mock_hybrid_engine.close.assert_called_once()
+    # NOTE: test_keyword_search_cleanup removed - use search_mode="sparse" instead
 
     def test_collection_info_error(self, mock_qdrant_client, test_client_for_search_api) -> None:
         """Test collection info endpoint error handling."""

@@ -501,7 +501,8 @@ class TestCollectionServiceIntegration:
         )
         await db_session.commit()
 
-        collections, total = await service.list_for_user(user_id=owner.id)
+        # Use a high limit to avoid pagination affecting results (test DB may have leftover data)
+        collections, total = await service.list_for_user(user_id=owner.id, limit=10000)
 
         ids = {collection.id for collection in collections}
         assert owned["id"] in ids
