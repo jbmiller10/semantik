@@ -110,9 +110,7 @@ async def test_models_endpoint_models_keyed_by_name(
 
     # Use installed_only=false to skip installation check
     with patch("webui.api.models.get_all_supported_models", return_value=mock_models):
-        response = await api_client.get(
-            "/api/models?installed_only=false", headers=api_auth_headers
-        )
+        response = await api_client.get("/api/models?installed_only=false", headers=api_auth_headers)
 
     assert response.status_code == 200, response.text
     data = response.json()

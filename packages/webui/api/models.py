@@ -95,22 +95,14 @@ async def get_models(
                 "HF cache scan encountered errors, model list may be incomplete: %s",
                 cache_info.scan_error,
             )
-        installed_model_ids = {
-            repo_id
-            for (repo_type, repo_id) in cache_info.repos
-            if repo_type == "model"
-        }
+        installed_model_ids = {repo_id for (repo_type, repo_id) in cache_info.repos if repo_type == "model"}
 
         # Get default model from config
         settings = VecpipeConfig()
         default_model = settings.DEFAULT_EMBEDDING_MODEL
 
         # Filter models
-        all_models = [
-            model
-            for model in all_models
-            if _is_model_available(model, installed_model_ids, default_model)
-        ]
+        all_models = [model for model in all_models if _is_model_available(model, installed_model_ids, default_model)]
 
     # Convert list to dict keyed by model_name for backward compatibility
     models_dict = {
