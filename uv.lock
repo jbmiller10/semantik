@@ -2751,11 +2751,11 @@ wheels = [
 
 [[package]]
 name = "pypdf"
-version = "5.6.1"
+version = "6.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f7/8e/9d9346c36bb02fc6d6e5c5412dcc104e422738c3391ef32032bcb7fb183f/pypdf-5.6.1.tar.gz", hash = "sha256:dde36cd67afe3afd733a562a0dd08a3c1dcdf01fe01de13785291319c8a883ff", size = 5025128, upload-time = "2025-06-22T11:05:25.587Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/f4/801632a8b62a805378b6af2b5a3fcbfd8923abf647e0ed1af846a83433b2/pypdf-6.6.0.tar.gz", hash = "sha256:4c887ef2ea38d86faded61141995a3c7d068c9d6ae8477be7ae5de8a8e16592f", size = 5281063, upload-time = "2026-01-09T11:20:11.786Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/16/a5619a9d9bd4601126b95a9026eccfe4ebb74d725b7fdf624680e5a1f502/pypdf-5.6.1-py3-none-any.whl", hash = "sha256:ff09d03d37addbc40f75db3624997a660ff5fe41c61e7ae4db6828dc3f581e4d", size = 304638, upload-time = "2025-06-22T11:05:24.285Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/ba/96f99276194f720e74ed99905a080f6e77810558874e8935e580331b46de/pypdf-6.6.0-py3-none-any.whl", hash = "sha256:bca9091ef6de36c7b1a81e09327c554b7ce51e88dad68f5890c2b4a4417f1fd7", size = 328963, upload-time = "2026-01-09T11:20:09.278Z" },
 ]
 
 [[package]]
@@ -3372,7 +3372,7 @@ wheels = [
 
 [[package]]
 name = "semantik"
-version = "0.7.7"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
@@ -3489,7 +3489,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=15.0.0,<16" },
     { name = "pydantic-settings", specifier = ">=2.10.1,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10.1,<3" },
-    { name = "pypdf", specifier = ">=5.0.0,<6" },
+    { name = "pypdf", specifier = ">=5.0.0,<7" },
     { name = "pytest-base-url", specifier = ">=2.1.0" },
     { name = "python-docx", specifier = ">=1.1.0,<2" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2" },
