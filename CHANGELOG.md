@@ -5,7 +5,7 @@
 ### Added
 - **Built-in agent tools** — search, chunks, collections, retrieve with dependency injection
 - **Agent sessions** — persistent conversations with forking, token tracking, and message history
-- **MCP server** — stdio transport exposing collections via `semantik-mcp serve` for Claude Desktop and Cursor
+- **MCP server** — stdio transport exposing collections via `semantik-mcp serve` 
 - **MCP profiles** — scoped collection access with per-profile search configuration and client config generation
 - **BM25 sparse indexer** — TF-IDF keyword indexing with IDF statistics persistence (~1000 docs/sec)
 - **SPLADE sparse indexer** — neural sparse indexing via HuggingFace models (10-50 docs/sec GPU)
