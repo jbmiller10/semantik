@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Settings,
   Shield,
@@ -8,6 +8,7 @@ import {
   Terminal,
   Key,
   ArrowLeft,
+  Database,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import PreferencesTab from '../components/settings/PreferencesTab';
@@ -16,8 +17,9 @@ import SystemTab from '../components/settings/SystemTab';
 import PluginsSettings from '../components/settings/PluginsSettings';
 import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
 import ApiKeysSettings from '../components/settings/ApiKeysSettings';
+import ModelsSettings from '../components/settings/model-manager/ModelsSettings';
 
-type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys';
+type SettingsTab = 'preferences' | 'admin' | 'system' | 'plugins' | 'mcp' | 'api-keys' | 'models';
 
 interface TabConfig {
   id: SettingsTab;
@@ -33,20 +35,39 @@ const tabs: TabConfig[] = [
   { id: 'plugins', label: 'Plugins', icon: Puzzle },
   { id: 'mcp', label: 'MCP Profiles', icon: Terminal },
   { id: 'api-keys', label: 'API Keys', icon: Key },
+  { id: 'models', label: 'Models', icon: Database, requiresSuperuser: true },
 ];
 
 function SettingsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const isSuperuser = user?.is_superuser ?? false;
-  const [activeTab, setActiveTab] = useState<SettingsTab>('preferences');
 
-  // Redirect non-superuser away from admin tab
-  useEffect(() => {
-    if (activeTab === 'admin' && !isSuperuser) {
-      setActiveTab('preferences');
+  // Initialize active tab from URL query param or default to 'preferences'
+  const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
+  const validTabs: SettingsTab[] = ['preferences', 'admin', 'system', 'plugins', 'mcp', 'api-keys', 'models'];
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'preferences';
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Sync URL when tab changes
+  const handleTabChange = useCallback((tab: SettingsTab) => {
+    setActiveTab(tab);
+    if (tab === 'preferences') {
+      // Remove query param for default tab
+      searchParams.delete('tab');
+    } else {
+      searchParams.set('tab', tab);
     }
-  }, [activeTab, isSuperuser]);
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Redirect non-superuser away from superuser-only tabs
+  useEffect(() => {
+    if ((activeTab === 'admin' || activeTab === 'models') && !isSuperuser) {
+      handleTabChange('preferences');
+    }
+  }, [activeTab, isSuperuser, handleTabChange]);
 
   // Filter tabs based on user permissions
   const visibleTabs = tabs.filter(
@@ -81,7 +102,7 @@ function SettingsPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`
                   whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
                   ${
@@ -111,6 +132,7 @@ function SettingsPage() {
         {activeTab === 'plugins' && <PluginsSettings />}
         {activeTab === 'mcp' && <MCPProfilesSettings />}
         {activeTab === 'api-keys' && <ApiKeysSettings />}
+        {activeTab === 'models' && isSuperuser && <ModelsSettings />}
       </div>
     </div>
   );
