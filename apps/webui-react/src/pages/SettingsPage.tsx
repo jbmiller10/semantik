@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Settings,
   Shield,
@@ -40,16 +40,34 @@ const tabs: TabConfig[] = [
 
 function SettingsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const isSuperuser = user?.is_superuser ?? false;
-  const [activeTab, setActiveTab] = useState<SettingsTab>('preferences');
+
+  // Initialize active tab from URL query param or default to 'preferences'
+  const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
+  const validTabs: SettingsTab[] = ['preferences', 'admin', 'system', 'plugins', 'mcp', 'api-keys', 'models'];
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'preferences';
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Sync URL when tab changes
+  const handleTabChange = useCallback((tab: SettingsTab) => {
+    setActiveTab(tab);
+    if (tab === 'preferences') {
+      // Remove query param for default tab
+      searchParams.delete('tab');
+    } else {
+      searchParams.set('tab', tab);
+    }
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Redirect non-superuser away from superuser-only tabs
   useEffect(() => {
     if ((activeTab === 'admin' || activeTab === 'models') && !isSuperuser) {
-      setActiveTab('preferences');
+      handleTabChange('preferences');
     }
-  }, [activeTab, isSuperuser]);
+  }, [activeTab, isSuperuser, handleTabChange]);
 
   // Filter tabs based on user permissions
   const visibleTabs = tabs.filter(
@@ -84,7 +102,7 @@ function SettingsPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`
                   whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
                   ${

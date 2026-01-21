@@ -56,6 +56,36 @@ def resolve_hf_cache_dir() -> Path:
     return Path.home() / ".cache" / "huggingface" / "hub"
 
 
+def resolve_transformers_cache_dir() -> Path | None:
+    """Resolve the transformers cache directory if different from hub cache.
+
+    The transformers library may download models to TRANSFORMERS_CACHE which
+    can be different from HF_HUB_CACHE. This function returns that path only
+    if it's different from the hub cache.
+
+    Returns:
+        Path to transformers cache if different from hub cache, None otherwise.
+    """
+    # Check TRANSFORMERS_CACHE
+    tf_cache = os.environ.get("TRANSFORMERS_CACHE")
+    if not tf_cache:
+        return None
+
+    tf_path = Path(tf_cache)
+    hub_path = resolve_hf_cache_dir()
+
+    # Only return if different from hub cache and not a parent/child relationship
+    if tf_path != hub_path and tf_path != hub_path.parent:
+        return tf_path
+
+    # Check if transformers cache is the parent of hub cache (common case)
+    # e.g., TRANSFORMERS_CACHE=/app/.cache/huggingface, HF_HUB_CACHE=/app/.cache/huggingface/hub
+    if hub_path.parent == tf_path:
+        return tf_path
+
+    return None
+
+
 @dataclass
 class InstalledModel:
     """Information about a model installed in the HuggingFace cache."""
@@ -87,11 +117,82 @@ class HFCacheInfo:
     scan_error: str | None = None
 
 
+def _scan_single_cache_dir(
+    cache_dir: Path,
+    repos: dict[RepoKey, InstalledModel],
+) -> tuple[int, str | None]:
+    """Scan a single cache directory and add results to repos dict.
+
+    Args:
+        cache_dir: Path to scan.
+        repos: Dictionary to populate with found repos (mutated in place).
+
+    Returns:
+        Tuple of (size_on_disk_bytes, error_message or None).
+    """
+    if not cache_dir.exists():
+        return 0, None
+
+    try:
+        from huggingface_hub import scan_cache_dir
+
+        scan_result = scan_cache_dir(cache_dir)
+
+        for repo in scan_result.repos:
+            # Get the latest revision's last modified time
+            last_accessed = None
+            revisions = []
+            for revision in repo.revisions:
+                revisions.append(revision.commit_hash[:8])
+                if revision.last_modified is not None:
+                    modified_dt = datetime.fromtimestamp(revision.last_modified, tz=UTC)
+                    if last_accessed is None or modified_dt > last_accessed:
+                        last_accessed = modified_dt
+
+            key: RepoKey = (repo.repo_type, repo.repo_id)
+            # Don't overwrite if already found (prefer hub cache over transformers cache)
+            if key not in repos:
+                repos[key] = InstalledModel(
+                    repo_id=repo.repo_id,
+                    size_on_disk_mb=repo.size_on_disk // (1024 * 1024),
+                    repo_type=repo.repo_type,
+                    last_accessed=last_accessed,
+                    revisions=revisions,
+                )
+
+        return scan_result.size_on_disk, None
+
+    except ImportError as e:
+        error = f"huggingface_hub not installed ({e})"
+        logger.debug("huggingface_hub not installed - HF cache scan unavailable (%s)", e)
+        return 0, error
+    except PermissionError as e:
+        error = f"Permission denied scanning cache at {cache_dir}: {e}"
+        logger.warning(
+            "Permission denied scanning cache at %s: %s. Models may show as not installed.",
+            cache_dir,
+            e,
+        )
+        return 0, error
+    except Exception as e:
+        error = f"Failed to scan cache at {cache_dir}: {e}"
+        logger.warning(
+            "Failed to scan cache at %s: %s. Models may show as not installed.",
+            cache_dir,
+            e,
+        )
+        return 0, error
+
+
 def scan_hf_cache(
     force_refresh: bool = False,
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
 ) -> HFCacheInfo:
-    """Scan the HuggingFace cache directory.
+    """Scan the HuggingFace cache directories.
+
+    Scans both the HF Hub cache (HF_HUB_CACHE) and the transformers cache
+    (TRANSFORMERS_CACHE) to find all installed models. This handles the case
+    where models may be downloaded to different locations by different libraries.
 
     This is a SYNCHRONOUS function. In async contexts, use:
         info = await asyncio.to_thread(scan_hf_cache, force_refresh=True)
@@ -116,55 +217,26 @@ def scan_hf_cache(
         if cache_age < ttl_seconds and _cache_path == cache_dir:
             return _cache_result
 
-    # Scan the cache
+    # Scan both cache locations
     repos: dict[RepoKey, InstalledModel] = {}
     total_size_bytes = 0
-    scan_error: str | None = None
+    scan_errors: list[str] = []
 
-    if cache_dir.exists():
-        try:
-            from huggingface_hub import scan_cache_dir
+    # 1. Scan the primary HF Hub cache
+    size, error = _scan_single_cache_dir(cache_dir, repos)
+    total_size_bytes += size
+    if error:
+        scan_errors.append(error)
 
-            scan_result = scan_cache_dir(cache_dir)
-            total_size_bytes = scan_result.size_on_disk
+    # 2. Also scan the transformers cache if it's different
+    tf_cache_dir = resolve_transformers_cache_dir()
+    if tf_cache_dir is not None:
+        tf_size, tf_error = _scan_single_cache_dir(tf_cache_dir, repos)
+        total_size_bytes += tf_size
+        if tf_error:
+            scan_errors.append(tf_error)
 
-            for repo in scan_result.repos:
-                # Get the latest revision's last modified time
-                last_accessed = None
-                revisions = []
-                for revision in repo.revisions:
-                    revisions.append(revision.commit_hash[:8])
-                    if revision.last_modified is not None:
-                        modified_dt = datetime.fromtimestamp(revision.last_modified, tz=UTC)
-                        if last_accessed is None or modified_dt > last_accessed:
-                            last_accessed = modified_dt
-
-                key: RepoKey = (repo.repo_type, repo.repo_id)
-                repos[key] = InstalledModel(
-                    repo_id=repo.repo_id,
-                    size_on_disk_mb=repo.size_on_disk // (1024 * 1024),
-                    repo_type=repo.repo_type,
-                    last_accessed=last_accessed,
-                    revisions=revisions,
-                )
-        except ImportError as e:
-            # huggingface_hub not installed - expected in some deployments
-            scan_error = f"huggingface_hub not installed ({e})"
-            logger.debug("huggingface_hub not installed - HF cache scan unavailable (%s)", e)
-        except PermissionError as e:
-            scan_error = f"Permission denied scanning HF cache at {cache_dir}: {e}"
-            logger.warning(
-                "Permission denied scanning HF cache at %s: %s. Models may show as not installed.",
-                cache_dir,
-                e,
-            )
-        except Exception as e:
-            scan_error = f"Failed to scan HF cache at {cache_dir}: {e}"
-            logger.warning(
-                "Failed to scan HF cache at %s: %s. Models may show as not installed.",
-                cache_dir,
-                e,
-            )
+    scan_error = "; ".join(scan_errors) if scan_errors else None
 
     # If scanning failed, prefer returning the last cached repos over an empty dict.
     # This avoids transient filesystem issues making all models appear "not installed".
@@ -291,5 +363,6 @@ __all__ = [
     "get_model_size_on_disk",
     "is_model_installed",
     "resolve_hf_cache_dir",
+    "resolve_transformers_cache_dir",
     "scan_hf_cache",
 ]

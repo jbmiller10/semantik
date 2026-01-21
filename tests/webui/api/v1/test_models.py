@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -40,7 +40,11 @@ async def test_models_endpoint_includes_plugin_models(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
 ) -> None:
-    """Verify plugin models are returned from /api/models."""
+    """Verify plugin models are returned from /api/models.
+
+    Plugin models (non-dense_local providers) should always be included
+    regardless of installation status.
+    """
 
     # Mock get_all_supported_models to include a plugin model
     mock_models = [
@@ -54,18 +58,28 @@ async def test_models_endpoint_includes_plugin_models(
             "model_name": "test-plugin/custom-model",
             "dimension": 768,
             "description": "Test Plugin Model",
-            "provider": "test_plugin",
+            "provider": "test_plugin",  # Non-dense_local provider
             "supports_quantization": False,
         },
     ]
 
-    with patch("webui.api.models.get_all_supported_models", return_value=mock_models):
+    # Mock installed models - only the default model is "installed"
+    mock_installed = {
+        "Qwen/Qwen3-Embedding-0.6B": MagicMock(repo_id="Qwen/Qwen3-Embedding-0.6B"),
+    }
+
+    with (
+        patch("webui.api.models.get_all_supported_models", return_value=mock_models),
+        patch("webui.api.models.get_installed_models", return_value=mock_installed),
+    ):
         response = await api_client.get("/api/models", headers=api_auth_headers)
 
     assert response.status_code == 200, response.text
     data = response.json()
 
-    # Verify both models are included
+    # Verify both models are included:
+    # - Default model (always included)
+    # - Plugin model (non-dense_local provider, always included)
     assert "Qwen/Qwen3-Embedding-0.6B" in data["models"]
     assert "test-plugin/custom-model" in data["models"]
 
@@ -87,8 +101,11 @@ async def test_models_endpoint_models_keyed_by_name(
         {"model_name": "org/model-b", "dimension": 768, "provider": "test"},
     ]
 
+    # Use installed_only=false to skip installation check
     with patch("webui.api.models.get_all_supported_models", return_value=mock_models):
-        response = await api_client.get("/api/models", headers=api_auth_headers)
+        response = await api_client.get(
+            "/api/models?installed_only=false", headers=api_auth_headers
+        )
 
     assert response.status_code == 200, response.text
     data = response.json()
@@ -99,6 +116,69 @@ async def test_models_endpoint_models_keyed_by_name(
 
     # Each model should be a dict, not a list item
     assert isinstance(data["models"]["org/model-a"], dict)
+
+
+@pytest.mark.asyncio()
+async def test_models_endpoint_filters_non_installed_local_models(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Verify that non-installed dense_local models are filtered out by default.
+
+    Only installed local models, the default model, and plugin models should appear.
+    """
+
+    mock_models = [
+        {
+            "model_name": "Qwen/Qwen3-Embedding-0.6B",  # Default model
+            "dimension": 1024,
+            "description": "Default model",
+            "provider": "dense_local",
+        },
+        {
+            "model_name": "installed/model",  # Installed local model
+            "dimension": 768,
+            "description": "Installed model",
+            "provider": "dense_local",
+        },
+        {
+            "model_name": "not-installed/model",  # NOT installed
+            "dimension": 512,
+            "description": "Not installed model",
+            "provider": "dense_local",
+        },
+        {
+            "model_name": "openai/text-embedding-3-small",  # API-based plugin
+            "dimension": 1536,
+            "description": "OpenAI model",
+            "provider": "openai_embeddings",
+        },
+    ]
+
+    # Only "installed/model" is in the HF cache
+    mock_installed = {
+        "installed/model": MagicMock(repo_id="installed/model"),
+    }
+
+    with (
+        patch("webui.api.models.get_all_supported_models", return_value=mock_models),
+        patch("webui.api.models.get_installed_models", return_value=mock_installed),
+    ):
+        response = await api_client.get("/api/models", headers=api_auth_headers)
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    # Should include:
+    # - Default model (always included even if not installed)
+    # - Installed local model
+    # - API-based plugin model
+    assert "Qwen/Qwen3-Embedding-0.6B" in data["models"]
+    assert "installed/model" in data["models"]
+    assert "openai/text-embedding-3-small" in data["models"]
+
+    # Should NOT include non-installed local model
+    assert "not-installed/model" not in data["models"]
 
 
 @pytest.mark.asyncio()
