@@ -61,12 +61,15 @@ def resolve_transformers_cache_dir() -> Path | None:
 
     The transformers library may download models to TRANSFORMERS_CACHE which
     can be different from HF_HUB_CACHE. This function returns that path only
-    if it's different from the hub cache.
+    if it would add additional scan coverage (i.e., is not the exact same path).
+
+    Common case: TRANSFORMERS_CACHE=/app/.cache/huggingface while
+    HF_HUB_CACHE=/app/.cache/huggingface/hub - the parent directory is returned
+    since it may contain additional models not in the hub subdirectory.
 
     Returns:
         Path to transformers cache if different from hub cache, None otherwise.
     """
-    # Check TRANSFORMERS_CACHE
     tf_cache = os.environ.get("TRANSFORMERS_CACHE")
     if not tf_cache:
         return None
@@ -74,16 +77,10 @@ def resolve_transformers_cache_dir() -> Path | None:
     tf_path = Path(tf_cache)
     hub_path = resolve_hf_cache_dir()
 
-    # Only return if different from hub cache and not a parent/child relationship
-    if tf_path != hub_path and tf_path != hub_path.parent:
-        return tf_path
+    if tf_path == hub_path:
+        return None
 
-    # Check if transformers cache is the parent of hub cache (common case)
-    # e.g., TRANSFORMERS_CACHE=/app/.cache/huggingface, HF_HUB_CACHE=/app/.cache/huggingface/hub
-    if hub_path.parent == tf_path:
-        return tf_path
-
-    return None
+    return tf_path
 
 
 @dataclass
