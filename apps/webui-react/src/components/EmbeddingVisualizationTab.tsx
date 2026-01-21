@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, lazy } from 'react';
+import { Link } from 'react-router-dom';
 import type { DataPoint } from 'embedding-atlas/react';
-import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
+import { AlertCircle, Loader2, Play, Trash2, Eye, X, Maximize2 } from 'lucide-react';
 import { EmbeddingTooltipAdapter } from './EmbeddingTooltip';
 import { ensureEmbeddingAtlasWebgpuCompatibility } from '../utils/embeddingAtlasWebgpuPatch';
 import {
@@ -1120,7 +1121,19 @@ export function EmbeddingVisualizationTab({
       </section>
 
       <section className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-sm p-4">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Projection preview</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Projection preview</h3>
+          {activeProjection.status === 'loaded' && activeProjection.projectionId && (
+            <Link
+              to={`/collections/${collectionId}/atlas/${activeProjection.projectionId}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+              title="Open full Embedding Atlas with coordinated views, table, and filters"
+            >
+              <Maximize2 className="h-4 w-4" />
+              Explore in Full Atlas
+            </Link>
+          )}
+        </div>
         {activeProjection.status === 'idle' && (
           <div className="text-sm text-[var(--text-secondary)]">
             Select a completed projection to load its coordinates and visualize the embedding.

@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import SettingsPage from './pages/SettingsPage';
 import VerificationPage from './pages/VerificationPage';
+import FullAtlasPage from './pages/FullAtlasPage';
 import { queryClient } from './services/queryClient';
 import { AnimationProvider } from './contexts/AnimationContext';
 
@@ -39,6 +40,7 @@ function App() {
               >
                 <Route index element={<HomePage />} />
                 <Route path="collections/:collectionId" element={<HomePage />} />
+                <Route path="collections/:collectionId/atlas/:projectionId" element={<FullAtlasPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
             </Routes>
