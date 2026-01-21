@@ -277,4 +277,4 @@ research_papers/
 # Test data (benchmark datasets)
 test_data/
 documents/
-docs/*
+docs/plans/*
