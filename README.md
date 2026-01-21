@@ -114,28 +114,14 @@ Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volume
 If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
 
 ## Configuration
-`make wizard` or `.env.docker.example` covers the common knobs. A few highlights:
-- `JWT_SECRET_KEY` – auth secret (wizard generates one).
-- `POSTGRES_PASSWORD` – database password.
-- `REDIS_PASSWORD` – Redis authentication (v7.1+).
-- `QDRANT_API_KEY` – vector database authentication (v7.1+).
-- `DATABASE_URL`, `REDIS_URL`, `QDRANT_HOST|PORT` – infra wiring.
-- `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
-- `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).
-- `HF_CACHE_DIR` – persistent HuggingFace model cache (avoids re‑downloads).
-- `CONNECTOR_SECRETS_KEY` – Fernet key for encrypting connector credentials in the DB (set to empty to disable).
-- `CELERY_CONCURRENCY`, `CELERY_MAX_CONCURRENCY` – worker parallelism.
-- `EMBEDDING_CONCURRENCY_PER_WORKER` – throttle embed calls per worker (VRAM‑friendly).
-- `ENABLE_LOCAL_LLM` – enable local LLM inference in VecPipe (default: true).
-- `DEFAULT_LLM_QUANTIZATION` – int4, int8, or float16 for local LLMs (default: int8).
+`make wizard` or `.env.docker.example` covers the common knobs. 
 
-Full list + tuning notes: `docs/CONFIGURATION.md`.
+See:`docs/CONFIGURATION.md`.
 
 ## Extensibility
 Semantik is meant to be a sandbox for trying retrieval ideas:
 - **Plugins** for 6 extension points: embedding providers, chunking strategies, connectors, rerankers, sparse indexers, and extractors. Load via Python entry points (`semantik.plugins`).
 - **Runtime-checkable protocols** let you build external plugins without importing Semantik internals. See `docs/external-plugins.md` and `docs/plugin-protocols.md`.
-- **Toggles**: `SEMANTIK_ENABLE_PLUGINS` (global), plus per-type flags like `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`, `SEMANTIK_ENABLE_RERANKER_PLUGINS`, etc.
 
 Plugin loading is idempotent and safe to run without plugins installed.
 
@@ -163,22 +149,20 @@ make dev
 - Frontend: `npm test --prefix apps/webui-react`.
 - Test Postgres profile: `docker compose --profile testing up -d postgres_test` (port 55432).
 
-## Docs
-There's a lot of detail in `docs/`:
-- `docs/DOCUMENTATION_INDEX.md` – map of all docs.
-- `docs/ARCH.md` – full system architecture.
-- `docs/SEARCH_SYSTEM.md`, `docs/RERANKING.md` – retrieval deep dives.
-- `docs/SPARSE_INDEXING.md` – BM25 and SPLADE sparse search.
-- `docs/LOCAL_LLM.md` – local LLM setup and VRAM requirements.
-- `docs/BENCHMARKING.md` – search quality evaluation.
-- `docs/MCP.md` – MCP integration for AI assistants.
-- `docs/external-plugins.md`, `docs/plugin-protocols.md` – building plugins.
-- `docs/WEBSOCKET_API.md`, `docs/API_REFERENCE.md` – API contracts.
 
-## Roadmap / Ideas
-- More connectors (web/Slack/etc.) and richer OCR pipelines.
-- Additional embedding/reranker options and hybrid tuning.
-- Agent-based retrieval workflows.
+## Roadmap 
+Next up:
+- Built-in agentic search
+- Improvements to the memory governor system
+- bugfixes
+
+In no particular order:
+- Knowledge graph builder for GraphRAG
+- Expanded benchmarking tools
+- Support for Text+Image embedding models
+- Support for custom embedding models/any sentence-transformers compatible model
+- Expanded visualization options for exploring the embedding space
+- Additional connectors, parsers, chunkers
 
 ## License
 AGPL‑3.0. See `LICENSE`.
