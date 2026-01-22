@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import type { MCPProfile } from '../../types/mcp-profile';
 import { useMCPProfileConfig } from '../../hooks/useMCPProfiles';
+import {
+  MCP_CLIENT_TOOLS,
+  DEFAULT_MCP_CLIENT_TOOL_ID,
+  getMCPClientTool,
+} from '../../types/mcp-client-tools';
+import { generateMCPConfig, getConfigBlockLabel } from '../../utils/mcp-config-generator';
 
 interface ConfigModalProps {
   profile: MCPProfile;
@@ -10,6 +16,9 @@ interface ConfigModalProps {
 export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
   const { data: config, isLoading, error } = useMCPProfileConfig(profile.id);
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectedToolId, setSelectedToolId] = useState(DEFAULT_MCP_CLIENT_TOOL_ID);
+
+  const selectedTool = getMCPClientTool(selectedToolId) ?? MCP_CLIENT_TOOLS[0];
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -85,19 +94,11 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
 
   const toolName = `search_${profile.name}`;
 
-  const configJson = config
-    ? JSON.stringify(
-        {
-          [config.server_name]: {
-            command: config.command,
-            args: config.args,
-            env: config.env,
-          },
-        },
-        null,
-        2
-      )
+  const configOutput = config
+    ? generateMCPConfig(config, selectedTool.formatType)
     : '';
+
+  const configBlockLabel = getConfigBlockLabel(selectedTool.formatType);
 
   return (
     <>
@@ -277,41 +278,89 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                 </p>
               </div>
 
-              {/* Config File Locations */}
+              {/* MCP Client Selector */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                  MCP Client
+                </label>
+                <select
+                  value={selectedToolId}
+                  onChange={(e) => setSelectedToolId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white"
+                >
+                  {MCP_CLIENT_TOOLS.map((tool) => (
+                    <option key={tool.id} value={tool.id}>
+                      {tool.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Config File Location */}
               <div>
                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
                   Config File Location
                 </label>
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      ~/Library/Application Support/Claude/claude_desktop_config.json
-                    </code>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      ~/.config/Claude/claude_desktop_config.json
-                    </code>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      %APPDATA%\Claude\claude_desktop_config.json
-                    </code>
-                  </div>
+                  {selectedTool.configPaths.macos && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.macos}
+                      </code>
+                    </div>
+                  )}
+                  {selectedTool.configPaths.linux && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.linux}
+                      </code>
+                    </div>
+                  )}
+                  {selectedTool.configPaths.windows && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.windows}
+                      </code>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* JSON Config */}
+              {/* Tool-specific Note */}
+              {selectedTool.notes && (
+                <div className="bg-gray-500/10 border border-gray-500/20 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <svg
+                      className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0 mt-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      {selectedTool.notes}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Config Output */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                    Add to mcpServers
+                    {configBlockLabel}
                   </label>
                   <button
-                    onClick={() => copyToClipboard(configJson, 'config')}
+                    onClick={() => copyToClipboard(configOutput, 'config')}
                     className="inline-flex items-center px-2 py-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none transition-colors"
                   >
                     {copied === 'config-error' ? (
@@ -363,13 +412,13 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                           />
                         </svg>
-                        Copy JSON
+                        Copy
                       </>
                     )}
                   </button>
                 </div>
                 <pre className="bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-primary)] p-4 rounded-lg text-sm font-mono overflow-x-auto">
-                  {configJson}
+                  {configOutput}
                 </pre>
               </div>
 
