@@ -26,6 +26,8 @@ export function generateMCPConfig(
       return generateOpencodeConfig(config);
     case 'codex':
       return generateCodexConfig(config);
+    case 'claude-code':
+      return generateClaudeCodeConfig(config);
     default:
       return generateStandardConfig(config);
   }
@@ -160,6 +162,41 @@ function generateCodexConfig(config: MCPClientConfig): string {
 }
 
 /**
+ * Claude Code format - CLI command for easy setup.
+ */
+function generateClaudeCodeConfig(config: MCPClientConfig): string {
+  const parts: string[] = ['claude mcp add'];
+
+  // Add environment variables
+  const envKeys = Object.keys(config.env);
+  for (const key of envKeys) {
+    parts.push(`--env ${key}=${shellEscape(config.env[key])}`);
+  }
+
+  // Add server name
+  parts.push(config.server_name);
+
+  // Add command separator and command with args
+  parts.push('--');
+  parts.push(config.command);
+  parts.push(...config.args);
+
+  return parts.join(' \\\n  ');
+}
+
+/**
+ * Escape a string for shell usage.
+ */
+function shellEscape(value: string): string {
+  // If the value contains special characters, wrap in quotes
+  if (/[^a-zA-Z0-9_\-.:/@]/.test(value)) {
+    // Escape any existing quotes and wrap in double quotes
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
+  return value;
+}
+
+/**
  * Escape and quote a string for TOML.
  */
 function tomlString(value: string): string {
@@ -180,6 +217,9 @@ function tomlStringArray(values: string[]): string {
  * Get the label for the config code block based on format type.
  */
 export function getConfigBlockLabel(formatType: FormatType): string {
+  if (formatType === 'claude-code') {
+    return 'Run in terminal';
+  }
   if (formatType === 'codex') {
     return 'Add to config.toml';
   }
@@ -195,6 +235,9 @@ export function getConfigBlockLabel(formatType: FormatType): string {
 /**
  * Get the language for syntax highlighting (if needed in future).
  */
-export function getConfigLanguage(formatType: FormatType): 'json' | 'toml' {
+export function getConfigLanguage(formatType: FormatType): 'json' | 'toml' | 'bash' {
+  if (formatType === 'claude-code') {
+    return 'bash';
+  }
   return formatType === 'codex' ? 'toml' : 'json';
 }

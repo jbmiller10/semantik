@@ -3,7 +3,7 @@
  * Each tool has its own config file location(s) and format requirements.
  */
 
-export type FormatType = 'standard' | 'cline' | 'copilot' | 'amp' | 'opencode' | 'codex';
+export type FormatType = 'standard' | 'cline' | 'copilot' | 'amp' | 'opencode' | 'codex' | 'claude-code';
 
 export interface MCPClientTool {
   id: string;
@@ -28,6 +28,17 @@ export const MCP_CLIENT_TOOLS: MCPClientTool[] = [
     },
     formatType: 'standard',
     notes: 'Restart Claude Desktop after updating config',
+  },
+  {
+    id: 'claude-code',
+    name: 'Claude Code',
+    configPaths: {
+      macos: '~/.claude.json (user) or .mcp.json (project)',
+      linux: '~/.claude.json (user) or .mcp.json (project)',
+      windows: '%USERPROFILE%\\.claude.json (user) or .mcp.json (project)',
+    },
+    formatType: 'claude-code',
+    notes: 'Easiest: use the CLI command shown below instead of editing config files',
   },
   {
     id: 'cursor',
