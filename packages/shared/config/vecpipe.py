@@ -34,6 +34,8 @@ class VecpipeConfig(BaseConfig):
     ENABLE_CPU_OFFLOAD: bool = True  # Offload models to CPU instead of unloading
     EVICTION_IDLE_THRESHOLD_SECONDS: int = 120  # Idle time before model eligible for eviction
     PRESSURE_CHECK_INTERVAL_SECONDS: int = 15  # Background pressure check interval
+    GPU_FREE_PROBE_MODE: str = "fast"  # fast|safe|aggressive
+    GPU_FREE_PROBE_SAFE_THRESHOLD_PERCENT: float = 0.85  # When to upgrade to safe probe
 
     # Adaptive Batch Size Configuration
     ENABLE_ADAPTIVE_BATCH_SIZE: bool = True  # Enables dynamic batch sizing based on GPU memory availability

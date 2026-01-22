@@ -66,6 +66,14 @@ class EvictionAction(Enum):
     UNLOADED = auto()  # Model fully unloaded from memory
 
 
+class ProbeMode(str, Enum):
+    """GPU memory probe mode for accuracy/speed tradeoff."""
+
+    FAST = "fast"  # mem_get_info() only - lowest latency
+    SAFE = "safe"  # synchronize() + mem_get_info() - moderate latency
+    AGGRESSIVE = "aggressive"  # gc + sync + empty_cache + mem_get_info - highest accuracy
+
+
 # =============================================================================
 # Data Classes
 # =============================================================================
@@ -244,6 +252,8 @@ class GPUMemoryGovernor:
         enable_cpu_offload: bool = True,
         eviction_idle_threshold_seconds: int = 120,
         pressure_check_interval_seconds: int = 15,
+        probe_mode: str = "fast",
+        probe_safe_threshold: float = 0.85,
     ):
         """
         Initialize the memory governor.
@@ -253,11 +263,15 @@ class GPUMemoryGovernor:
             enable_cpu_offload: Whether to offload to CPU before unloading
             eviction_idle_threshold_seconds: Idle time before model eligible for eviction
             pressure_check_interval_seconds: Interval for background pressure checks
+            probe_mode: GPU probe mode (fast|safe|aggressive) for memory checks
+            probe_safe_threshold: Usage fraction (0-1) above which to upgrade probe to SAFE
         """
         self._budget = budget or self._detect_budget()
         self._enable_cpu_offload = enable_cpu_offload
         self._eviction_idle_threshold = eviction_idle_threshold_seconds
         self._pressure_check_interval = pressure_check_interval_seconds
+        self._probe_mode = ProbeMode(probe_mode)
+        self._probe_safe_threshold = probe_safe_threshold
 
         # Model tracking: OrderedDict maintains insertion order for LRU
         # Key: model_key (e.g., "embedding:Qwen/Qwen3-Embedding-0.6B:float16")
@@ -361,7 +375,7 @@ class GPUMemoryGovernor:
                     # models to restore our configured free-memory reserve. This
                     # avoids sequential pipelines (embed -> rerank) ending up with
                     # both models resident and too little headroom for activations.
-                    actual_free_mb = self._get_actual_free_gpu_mb()
+                    actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
                     if reserve_free_mb > 0 and actual_free_mb < reserve_free_mb:
                         needed_mb = reserve_free_mb - actual_free_mb
                         logger.info(
@@ -379,7 +393,8 @@ class GPUMemoryGovernor:
                             logger.warning("Eviction unavailable while enforcing reserve for %s: %s", model_key, e)
                             return False
 
-                        actual_free_mb = self._get_actual_free_gpu_mb()
+                        # Use SAFE mode after eviction for accurate reading
+                        actual_free_mb = self._probe_free_gpu_mb(ProbeMode.SAFE)
                         if actual_free_mb < reserve_free_mb:
                             logger.warning(
                                 "Reserve enforcement failed for %s (free=%dMB, reserve=%dMB).",
@@ -398,7 +413,7 @@ class GPUMemoryGovernor:
             # Case 2: Check if we need to make room
             # Use BOTH tracked estimates AND actual GPU memory to catch discrepancies
             current_gpu_usage = self._get_gpu_usage()
-            actual_free_mb = self._get_actual_free_gpu_mb()
+            actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
 
             # Check tracked budget first
             tracked_fits = current_gpu_usage + required_mb <= self._budget.usable_gpu_mb
@@ -726,7 +741,7 @@ class GPUMemoryGovernor:
         # Ensure we have room on GPU
         # Check both tracked budget AND actual GPU memory
         current_gpu_usage = self._get_gpu_usage()
-        actual_free_mb = self._get_actual_free_gpu_mb()
+        actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
 
         # Calculate needed memory from both perspectives
         needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
@@ -1112,46 +1127,66 @@ class GPUMemoryGovernor:
         """Get current CPU memory usage for offloaded models."""
         return sum(m.memory_mb for m in self._models.values() if m.location == ModelLocation.CPU)
 
-    def _get_actual_free_gpu_mb(self) -> int:
-        """Get actual free GPU memory from CUDA, not tracked estimates.
+    def _probe_free_gpu_mb(self, mode: ProbeMode | None = None) -> int:
+        """Probe actual free GPU memory with configurable accuracy/speed tradeoff.
 
-        This catches discrepancies between our tracked memory and actual GPU usage,
-        which can occur due to:
-        - CUDA context overhead
-        - Activation memory from inference
-        - PyTorch memory fragmentation/caching
-        - Gradient storage (if not properly disabled)
+        Args:
+            mode: Override probe mode. If None, uses configured default.
+
+        Probe modes:
+            FAST: torch.cuda.mem_get_info() only - fastest, may be slightly stale
+            SAFE: synchronize() then mem_get_info() - accurate for async ops
+            AGGRESSIVE: gc + sync + empty_cache + mem_get_info - most accurate, slowest
 
         Returns:
             Actual free GPU memory in MB, or usable_gpu_mb if CUDA unavailable
         """
         from vecpipe.search.metrics import gpu_free_probe_latency
 
+        effective_mode = mode or self._probe_mode
         start_time = time.time()
         try:
-            import gc
-
             import torch
 
             if not torch.cuda.is_available():
                 # Fall back to budget-based estimate
                 return self._budget.usable_gpu_mb - self._get_gpu_usage()
 
-            # Synchronize CUDA, garbage collect, and clear PyTorch's cache
-            # CRITICAL: CUDA operations are asynchronous. Without synchronize(),
-            # we might check memory before previous operations (like .to("cpu"))
-            # have actually completed, leading to inaccurate free memory readings.
-            gc.collect()
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
+            if effective_mode == ProbeMode.AGGRESSIVE:
+                gc.collect()
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            elif effective_mode == ProbeMode.SAFE:
+                torch.cuda.synchronize()
+            # FAST mode: just call mem_get_info directly
 
             free_bytes, _ = torch.cuda.mem_get_info()
             return free_bytes // (1024 * 1024)
         except Exception as e:
-            logger.warning("Failed to get actual GPU memory: %s, using tracked estimate", e)
+            logger.warning("Failed to probe GPU memory: %s, using tracked estimate", e)
             return self._budget.usable_gpu_mb - self._get_gpu_usage()
         finally:
             gpu_free_probe_latency.observe(time.time() - start_time)
+
+    def _get_actual_free_gpu_mb(self) -> int:
+        """Compatibility wrapper - uses configured probe mode."""
+        return self._probe_free_gpu_mb()
+
+    def _select_probe_mode(self, force_accurate: bool = False) -> ProbeMode:
+        """Select appropriate probe mode based on current state.
+
+        Args:
+            force_accurate: If True, always return AGGRESSIVE mode.
+
+        Returns:
+            ProbeMode to use for the next probe call.
+        """
+        if force_accurate:
+            return ProbeMode.AGGRESSIVE
+        usage_percent = self._get_usage_percent() / 100.0
+        if usage_percent > self._probe_safe_threshold:
+            return ProbeMode.SAFE
+        return self._probe_mode
 
     def _get_usage_percent(self) -> float:
         """Get GPU usage as percentage of usable budget."""
@@ -1240,6 +1275,7 @@ __all__ = [
     "ModelLocation",
     "ModelType",
     "PressureLevel",
+    "ProbeMode",
     "TrackedModel",
     "EvictionRecord",
     "get_memory_governor",

@@ -125,6 +125,9 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
             enable_cpu_offload=settings.ENABLE_CPU_OFFLOAD,
             enable_preemptive_eviction=True,
             eviction_idle_threshold_seconds=settings.EVICTION_IDLE_THRESHOLD_SECONDS,
+            pressure_check_interval_seconds=settings.PRESSURE_CHECK_INTERVAL_SECONDS,
+            probe_mode=settings.GPU_FREE_PROBE_MODE,
+            probe_safe_threshold=settings.GPU_FREE_PROBE_SAFE_THRESHOLD_PERCENT,
         )
 
         # Start the governor's background monitor

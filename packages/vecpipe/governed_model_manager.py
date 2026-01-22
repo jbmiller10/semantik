@@ -46,6 +46,9 @@ class GovernedModelManager(ModelManager):
         enable_cpu_offload: bool = True,
         enable_preemptive_eviction: bool = True,
         eviction_idle_threshold_seconds: int = 120,
+        pressure_check_interval_seconds: int = 15,
+        probe_mode: str = "fast",
+        probe_safe_threshold: float = 0.85,
     ):
         # Initialize parent ModelManager
         super().__init__(unload_after_seconds=unload_after_seconds)
@@ -55,6 +58,9 @@ class GovernedModelManager(ModelManager):
             budget=budget,
             enable_cpu_offload=enable_cpu_offload,
             eviction_idle_threshold_seconds=eviction_idle_threshold_seconds,
+            pressure_check_interval_seconds=pressure_check_interval_seconds,
+            probe_mode=probe_mode,
+            probe_safe_threshold=probe_safe_threshold,
         )
 
         # Initialize offloader
@@ -79,6 +85,9 @@ class GovernedModelManager(ModelManager):
         self._critical_failures: list[tuple[float, str, Exception]] = []
         self._critical_failures_lock = threading.Lock()
         self._max_critical_failures = 10  # Bounded history
+
+        # Track current reranker for switch detection
+        self._current_reranker_key: str | None = None
 
         logger.info(
             "GovernedModelManager initialized with governor (cpu_offload=%s, preemptive_eviction=%s)",
@@ -328,9 +337,12 @@ class GovernedModelManager(ModelManager):
         if self.is_mock_mode:
             return True
 
-        reranker_key = self._get_model_key(model_name, quantization)
+        new_reranker_key = self._get_model_key(model_name, quantization)
 
         with self.reranker_lock:
+            # Capture current reranker key BEFORE any changes (for switch detection)
+            old_reranker_key = self._current_reranker_key
+
             # Calculate memory requirement
             required_mb = get_model_memory_requirement(model_name, quantization)
 
@@ -353,7 +365,7 @@ class GovernedModelManager(ModelManager):
                 )
 
             # Fast path: already loaded and on GPU (after governor check for restoration)
-            if self.current_reranker_key == reranker_key and self.reranker is not None:
+            if self.current_reranker_key == new_reranker_key and self.reranker is not None:
                 # Touch to update LRU (request_memory may have already touched,
                 # but explicit touch ensures LRU is always updated on inference)
                 self._schedule_governor_coro(self._governor.touch(model_name, ModelType.RERANKER, quantization))
@@ -365,7 +377,27 @@ class GovernedModelManager(ModelManager):
                 result = super().ensure_reranker_loaded(model_name, quantization)
 
                 if result:
-                    # Mark as loaded in governor
+                    # If we switched models, mark old one as unloaded in governor
+                    if old_reranker_key and old_reranker_key != new_reranker_key:
+                        old_parsed = self._parse_model_key(old_reranker_key)
+                        if old_parsed:
+                            old_model, old_quant = old_parsed
+                            # Discard offloader entry for old reranker
+                            offloader_key = f"reranker:{old_model}:{old_quant}"
+                            self._offloader.discard(offloader_key)
+                            # Mark unloaded in governor (critical - state drift risk)
+                            self._schedule_governor_coro(
+                                self._governor.mark_unloaded(old_model, ModelType.RERANKER, old_quant),
+                                critical=True,
+                                description=f"mark_unloaded old reranker {old_reranker_key}",
+                            )
+                            logger.info(
+                                "Switched reranker from %s to %s - marked old as unloaded",
+                                old_reranker_key,
+                                new_reranker_key,
+                            )
+
+                    # Mark new reranker as loaded in governor
                     self._run_governor_coro(
                         self._governor.mark_loaded(
                             model_name,
@@ -374,6 +406,9 @@ class GovernedModelManager(ModelManager):
                             model_ref=self.reranker.model if self.reranker else None,
                         )
                     )
+
+                    # Update current reranker tracking
+                    self._current_reranker_key = new_reranker_key
 
                 return result
 
@@ -404,6 +439,9 @@ class GovernedModelManager(ModelManager):
                     "Cannot notify governor of unload - failed to parse reranker key: %s",
                     self.current_reranker_key,
                 )
+
+        # Clear our tracking
+        self._current_reranker_key = None
 
         super().unload_reranker()
 
