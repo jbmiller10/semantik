@@ -13,39 +13,21 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-import secrets
 import time
-from typing import Any, cast
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
 from . import state as search_state
+from .auth import require_internal_api_key
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sparse", tags=["sparse"])
-
-
-def _get_internal_api_key() -> str | None:
-    """Get the internal API key from settings."""
-    from shared.config import settings
-
-    return cast("str | None", settings.INTERNAL_API_KEY)
-
-
-def require_internal_api_key(
-    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
-) -> None:
-    """Verify the internal API key for protected endpoints."""
-    expected_key = _get_internal_api_key()
-    if not expected_key:
-        raise HTTPException(status_code=500, detail="Internal API key is not configured")
-    if not x_internal_api_key or not secrets.compare_digest(x_internal_api_key, expected_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
 
 
 # === Request/Response Models ===

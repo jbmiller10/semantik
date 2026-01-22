@@ -239,7 +239,7 @@ def test_client_for_search_api(
     with (
         patch("vecpipe.search.service.settings", mock_settings),
         patch("vecpipe.search.lifespan.settings", mock_settings),
-        patch("vecpipe.search.router.settings", mock_settings),
+        patch("vecpipe.search.auth.settings", mock_settings),
         patch("vecpipe.search_api.settings", mock_settings),
         patch("vecpipe.search.lifespan.httpx.AsyncClient", return_value=mock_qdrant_client),
         patch("vecpipe.search.lifespan.start_metrics_server"),

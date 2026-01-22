@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from shared.config import settings
-from vecpipe.search.router import require_internal_api_key
+from vecpipe.search.auth import require_internal_api_key
 from vecpipe.search.state import get_resources
 
 logger = logging.getLogger(__name__)

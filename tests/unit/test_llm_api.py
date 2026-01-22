@@ -107,7 +107,7 @@ class TestLLMGenerateEndpoint:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
@@ -247,7 +247,7 @@ class TestLLMPreloadEndpoint:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
@@ -329,7 +329,7 @@ class TestLLMStreamingPlaceholders:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 

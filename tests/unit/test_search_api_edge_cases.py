@@ -102,7 +102,7 @@ def test_client_for_search_api(
     # Patch settings during test
     with (
         patch("vecpipe.search_api.settings", mock_settings),
-        patch("vecpipe.search.router.settings", mock_settings),
+        patch("vecpipe.search.auth.settings", mock_settings),
     ):
         # Create test client
         client = TestClient(app)

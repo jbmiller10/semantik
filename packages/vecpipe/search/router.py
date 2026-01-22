@@ -4,28 +4,18 @@ from __future__ import annotations
 
 import inspect
 import logging
-import secrets
 from typing import Any, cast
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from shared.config import settings
 from shared.contracts.search import BatchSearchRequest, BatchSearchResponse, SearchMode, SearchRequest, SearchResponse
 from vecpipe.search import service, state as search_state
+from vecpipe.search.auth import require_internal_api_key
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def require_internal_api_key(x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key")) -> None:
-    """Verify the internal API key for protected endpoints."""
-    expected_key = settings.INTERNAL_API_KEY
-    if not expected_key:
-        raise HTTPException(status_code=500, detail="Internal API key is not configured")
-    if not x_internal_api_key or not secrets.compare_digest(x_internal_api_key, expected_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
 
 
 @router.get("/model/status")

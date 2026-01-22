@@ -25,6 +25,7 @@ from vecpipe.llm_model_manager import LLMModelManager
 from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
+from vecpipe.search.runtime import VecpipeRuntime
 from vecpipe.search.state import clear_resources, set_resources
 from vecpipe.sparse_model_manager import SparseModelManager
 
@@ -57,7 +58,7 @@ start_metrics_server = _base_start_metrics_server
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
+async def lifespan(app: FastAPI) -> Any:
     """Manage application lifecycle.
 
     ModelManager now handles embedding provider lifecycle internally using the
@@ -180,24 +181,23 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         llm_mgr=llm_mgr,
     )
 
+    # Create runtime container and attach to app.state
+    runtime = VecpipeRuntime(
+        qdrant_http=qdrant,
+        qdrant_sdk=qdrant_sdk,
+        model_manager=model_mgr,
+        sparse_manager=sparse_mgr,
+        llm_manager=llm_mgr,
+        executor=pool,
+    )
+    app.state.vecpipe_runtime = runtime
+
     # Touch metrics to ensure registered
     search_requests.labels(endpoint="startup", search_type="health").inc()
 
     try:
         yield
     finally:
-        await qdrant.aclose()
-        await qdrant_sdk.close()
-        # Shutdown LLM model manager first (it may hold references to models)
-        if llm_mgr is not None:
-            await llm_mgr.shutdown()
-        # Shutdown sparse model manager (it may hold references to models)
-        await sparse_mgr.shutdown()
-        # Use async shutdown for GovernedModelManager to avoid deadlock
-        if hasattr(model_mgr, "shutdown_async"):
-            await model_mgr.shutdown_async()
-        else:
-            model_mgr.shutdown()
-        pool.shutdown(wait=True)
+        await runtime.aclose()
         clear_resources()
         logger.info("Disconnected from Qdrant")
