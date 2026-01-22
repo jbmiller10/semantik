@@ -567,19 +567,20 @@ class TestSearchAPI:
             }
         }
 
+        sparse_metadata = {
+            "sparse_index_config": {"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+        }
+
         with (
             patch(
-                "vecpipe.search.service._get_sparse_config_for_collection",
-                new=AsyncMock(
-                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
-                ),
+                "vecpipe.search.service._get_cached_collection_metadata",
+                new=AsyncMock(return_value=sparse_metadata),
             ),
             patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
             patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(return_value=payload_map)),
             patch("vecpipe.search.service.search_qdrant") as mock_search,
             patch("vecpipe.search.service.generate_embedding_async") as mock_embed,
             patch("qdrant_client.QdrantClient"),
-            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
         ):
             response = test_client_for_search_api.post(
                 "/search",
@@ -630,17 +631,18 @@ class TestSearchAPI:
             assert filters == expected_filters
             return {"chunk-allowed": allowed_payload}
 
+        sparse_metadata = {
+            "sparse_index_config": {"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+        }
+
         with (
             patch(
-                "vecpipe.search.service._get_sparse_config_for_collection",
-                new=AsyncMock(
-                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
-                ),
+                "vecpipe.search.service._get_cached_collection_metadata",
+                new=AsyncMock(return_value=sparse_metadata),
             ),
             patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
             patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(side_effect=fetch_side_effect)),
             patch("qdrant_client.QdrantClient"),
-            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
         ):
             response = test_client_for_search_api.post(
                 "/search",
@@ -703,17 +705,18 @@ class TestSearchAPI:
             assert filters == expected_filters
             return {}
 
+        sparse_metadata = {
+            "sparse_index_config": {"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
+        }
+
         with (
             patch(
-                "vecpipe.search.service._get_sparse_config_for_collection",
-                new=AsyncMock(
-                    return_value={"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_test"}
-                ),
+                "vecpipe.search.service._get_cached_collection_metadata",
+                new=AsyncMock(return_value=sparse_metadata),
             ),
             patch("vecpipe.search.service._perform_sparse_search", new=AsyncMock(return_value=(sparse_results, 12.34))),
             patch("vecpipe.search.service._fetch_payloads_for_chunk_ids", new=AsyncMock(side_effect=fetch_side_effect)),
             patch("qdrant_client.QdrantClient"),
-            patch("shared.database.collection_metadata.get_collection_metadata", return_value=None),
         ):
             response = test_client_for_search_api.post(
                 "/search",

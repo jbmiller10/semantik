@@ -61,30 +61,6 @@ async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_get_sparse_config_for_collection_includes_api_key() -> None:
-    """_get_sparse_config_for_collection should authenticate when Qdrant API key is set."""
-    from vecpipe.search.service import _get_sparse_config_for_collection
-
-    mock_qdrant_client = AsyncMock()
-    mock_qdrant_client.close = AsyncMock()
-
-    sparse_config = {"enabled": True, "plugin_id": "bm25-local", "sparse_collection_name": "sparse_collection"}
-
-    with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="qdrant-key"),
-        ),
-        patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant_client) as mock_async_qdrant_client,
-        patch("vecpipe.search.service.get_sparse_index_config", new=AsyncMock(return_value=sparse_config)),
-    ):
-        result = await _get_sparse_config_for_collection("dense_collection")
-
-    assert result == sparse_config
-    mock_async_qdrant_client.assert_called_once_with(url="http://localhost:6333", api_key="qdrant-key")
-
-
-@pytest.mark.asyncio()
 async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
     from vecpipe.search.service import _perform_sparse_search
 
