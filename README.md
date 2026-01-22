@@ -28,31 +28,36 @@ This is a personal project and still pre‑release — expect rough edges and AP
 </details>
 
 ## What It Does
-- **Collections**: group documents with their own embedding + chunking config.
-- **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
-- **Connectors**: pluggable ingestion sources — built-ins include directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
-- **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
-- **Search**: dense (semantic), sparse (BM25/SPLADE), and hybrid modes with RRF fusion. Optional cross‑encoder reranking and HyDE query expansion.
-- **Sparse indexing**: BM25 for fast TF-IDF keyword search, SPLADE for neural sparse vectors 
-- **LLM integration**: multi-provider support (Anthropic, OpenAI, local GPU) for HyDE query expansion and future features. Quality tiers let you balance cost vs capability.
-- **MCP Integration**: connect AI assistants to search your collections via the Model Context Protocol. See `docs/MCP.md`.
-- **API keys**: programmatic access with scoped, revocable keys for integrations and automation.
-- **Model Manager**: download, track, and delete models (embedding, LLM, reranker, SPLADE) with cache visibility and usage tracking.
-- **Benchmarking**: evaluate search quality with standard IR metrics (Precision@K, Recall@K, MRR, nDCG) against ground truth datasets.
-- **Live progress** is streamed to the UI over Redis + WebSockets.
-- **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
-- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
-- **Embeddings lab**: swap models/quantization per collection
-- **Visualize:** project embeddings into 2D space & visualize relationships (via `embedding-atlas`).
-- **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
 
-## Sources & Continuous Sync
+Everything is organized around **collections** — each with its own embedding model, chunking strategy, and sources. All models run locally by default; no document content leaves your machine.
 
-Collections support multiple data sources with optional continuous sync:
+### Hybrid Search Stack
+- Dense (semantic) + sparse (BM25/SPLADE) with RRF fusion
+- Cross-encoder reranking for precision
+- HyDE query expansion via pluggable LLMs (Anthropic, OpenAI, or local GPU)
+- All parameters tunable per collection
 
-- **Sync Modes**: `one_time` (manual) or `continuous` (automatic at intervals)
-- **Interval**: Minimum 15 minutes for continuous sync
-- **Encrypted Credentials**: Git tokens, SSH keys, and IMAP passwords stored encrypted at rest
+### Retrieval Lab
+- 6 chunking strategies (character, recursive, markdown, semantic, hierarchical, hybrid)
+- Embedding model and quantization swapping
+- IR benchmarking with Precision@K, Recall@K, MRR, nDCG
+- Embedding space visualization via embedding-atlas
+
+### Data Pipeline
+- Pluggable connectors: directories, Git repos, IMAP mailboxes (credentials encrypted at rest)
+- 15+ document formats via unstructured (PDF, DOCX, Markdown, HTML, and more)
+- Continuous sync with configurable intervals
+- Fully async ingestion with live progress streaming
+
+### Integrations
+- MCP server for AI assistants (Claude, etc.) — see `docs/MCP.md`
+- Scoped, revocable API keys for programmatic access
+- Plugin system with 6 extension points (embedding, chunking, connectors, rerankers, sparse indexers, extractors)
+
+### Operations
+- Zero-downtime reindexing (blue/green staging)
+- Model manager with download tracking and cache visibility
+- Live progress via Redis + WebSockets
 
 ## Architecture
 Three Python packages, one frontend:
