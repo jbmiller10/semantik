@@ -283,3 +283,6 @@ docs/plans/*
 conductor/*
 conductor/**
 conductor/
+
+# Git worktrees
+.worktrees/
