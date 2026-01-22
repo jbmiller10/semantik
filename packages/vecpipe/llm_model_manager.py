@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import gc
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -430,7 +429,9 @@ class LLMModelManager:
         model, tokenizer = model_entry
         del model
         del tokenizer
-        gc.collect()
+        # Note: gc.collect() is NOT called here to avoid redundant GC during
+        # pressure handling chains. The governor's pressure handlers call gc.collect()
+        # once at the end of batch evictions.
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()

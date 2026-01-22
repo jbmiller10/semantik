@@ -794,14 +794,17 @@ class GPUMemoryGovernor:
                 # Use force=True since this is an explicit restore request
                 freed = await self._make_room(needed, exclude_key=model_key, force=True)
                 if freed < needed:
+                    # Re-probe for accurate post-eviction diagnostics
+                    post_gpu_usage = self._get_gpu_usage()
+                    post_free_mb = self._probe_free_gpu_mb(ProbeMode.SAFE)
                     logger.warning(
                         "Cannot restore %s: insufficient GPU memory after eviction "
-                        "(needed=%dMB, freed=%dMB, tracked_usage=%dMB, actual_free=%dMB, usable=%dMB)",
+                        "(needed=%dMB, freed=%dMB, post_usage=%dMB, post_free=%dMB, usable=%dMB)",
                         model_key,
                         needed,
                         freed,
-                        current_gpu_usage,
-                        actual_free_mb,
+                        post_gpu_usage,
+                        post_free_mb,
                         self._budget.usable_gpu_mb,
                     )
                     return False

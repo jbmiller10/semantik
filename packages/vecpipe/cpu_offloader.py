@@ -128,10 +128,12 @@ class ModelOffloader:
         # empty_cache() to ensure all tensors are actually moved to CPU before
         # we try to release GPU memory. Without this, empty_cache() may not
         # release all memory because transfers are still in progress.
+        # Note: gc.collect() is NOT called here to avoid redundant GC during
+        # pressure handling chains. The governor's pressure handlers call gc.collect()
+        # once at the end of batch evictions.
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
-        gc.collect()
 
         # Store typed metadata
         metadata = OffloadMetadata(

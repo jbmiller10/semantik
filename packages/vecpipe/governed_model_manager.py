@@ -6,6 +6,7 @@ capabilities for sophisticated, dynamic memory management.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 import time
@@ -86,6 +87,10 @@ class GovernedModelManager(ModelManager):
         self._critical_failures_lock = threading.Lock()
         self._max_critical_failures = 10  # Bounded history
 
+        # Reusable executor for running governor coroutines from sync context
+        self._sync_executor: concurrent.futures.ThreadPoolExecutor | None = None
+        self._sync_executor_lock = threading.Lock()
+
         # Track current reranker for switch detection
         self._current_reranker_key: str | None = None
 
@@ -143,6 +148,18 @@ class GovernedModelManager(ModelManager):
             self._critical_failures.clear()
             return count
 
+    def _get_sync_executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        """Get or create the reusable executor for sync governor operations."""
+        if self._sync_executor is not None:
+            return self._sync_executor
+        with self._sync_executor_lock:
+            # Double-checked locking
+            if self._sync_executor is None:
+                self._sync_executor = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="gov-sync-"
+                )
+            return self._sync_executor
+
     def _run_governor_coro(self, coro: Coroutine[Any, Any, T], timeout: float = 30.0) -> T:
         """
         Safely run a governor coroutine from sync context.
@@ -152,8 +169,6 @@ class GovernedModelManager(ModelManager):
         - Running loop on different thread: schedules and waits
         - Running loop on same thread: runs in new thread to avoid deadlock
         """
-        import concurrent.futures
-
         try:
             # Check if there's a running loop
             try:
@@ -167,9 +182,9 @@ class GovernedModelManager(ModelManager):
             def run_in_thread() -> T:
                 return asyncio.run(coro)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(run_in_thread)
-                return future.result(timeout=timeout)
+            executor = self._get_sync_executor()
+            future = executor.submit(run_in_thread)
+            return future.result(timeout=timeout)
 
         except Exception as e:
             logger.error("Error running governor coroutine: %s", e)
@@ -650,6 +665,12 @@ class GovernedModelManager(ModelManager):
         except Exception as e:
             logger.error("Error shutting down governor: %s", e)
 
+        # Shutdown sync executor if created
+        with self._sync_executor_lock:
+            if self._sync_executor is not None:
+                self._sync_executor.shutdown(wait=False)
+                self._sync_executor = None
+
         # Clear offloader
         self._offloader.clear()
 
@@ -662,7 +683,6 @@ class GovernedModelManager(ModelManager):
         For async contexts (FastAPI lifespan, etc.), use shutdown_async() instead
         to avoid deadlocks.
         """
-        import concurrent.futures
 
         def _handle_shutdown_error(future: concurrent.futures.Future[None]) -> None:
             """Log errors from async shutdown."""
@@ -691,6 +711,12 @@ class GovernedModelManager(ModelManager):
                 asyncio.run(self._governor.shutdown())
         except Exception as e:
             logger.error("Error shutting down governor: %s", e)
+
+        # Shutdown sync executor if created
+        with self._sync_executor_lock:
+            if self._sync_executor is not None:
+                self._sync_executor.shutdown(wait=False)
+                self._sync_executor = None
 
         # Clear offloader
         self._offloader.clear()
