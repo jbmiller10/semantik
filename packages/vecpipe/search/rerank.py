@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
 from fastapi import HTTPException
 
-from shared.contracts.search import SearchRequest, SearchResult
+if TYPE_CHECKING:
+    import httpx
+
+    from shared.contracts.search import SearchRequest, SearchResult
+
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from vecpipe.search.metrics import rerank_content_fetch_latency
@@ -107,4 +110,3 @@ async def maybe_rerank_results(
     except Exception as exc:  # pragma: no cover - safety path
         logger.error("Reranking failed: %s, falling back to vector search results", exc, exc_info=True)
         return results[: request.k], None, (time.time() - rerank_start) * 1000
-

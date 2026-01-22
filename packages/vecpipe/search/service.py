@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -37,9 +37,11 @@ from vecpipe.search.metrics import (
 )
 from vecpipe.search.payloads import fetch_payloads_for_chunk_ids
 from vecpipe.search.rerank import calculate_candidate_k, maybe_rerank_results
-from vecpipe.search.runtime import VecpipeRuntime
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 from vecpipe.search.sparse_search import _reciprocal_rank_fusion, perform_sparse_search
+
+if TYPE_CHECKING:
+    from vecpipe.search.runtime import VecpipeRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,9 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
     sparse_config: dict[str, Any] | None = None
 
     try:
-        collection_name = await resolve_collection_name(request.collection, request.operation_uuid, cfg.DEFAULT_COLLECTION)
+        collection_name = await resolve_collection_name(
+            request.collection, request.operation_uuid, cfg.DEFAULT_COLLECTION
+        )
 
         vector_dim, collection_info = await get_collection_info(
             collection_name=collection_name,
@@ -387,7 +391,9 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(exc)}") from exc
 
 
-async def perform_batch_search(request: BatchSearchRequest, runtime: VecpipeRuntime | None = None) -> BatchSearchResponse:
+async def perform_batch_search(
+    request: BatchSearchRequest, runtime: VecpipeRuntime | None = None
+) -> BatchSearchResponse:
     """Batch search for multiple queries."""
     cfg = _get_settings()
     rt = _resolve_runtime(runtime)
@@ -555,7 +561,11 @@ async def upsert_points(request: UpsertRequest, runtime: VecpipeRuntime | None =
                 payload = await response_json(response)
                 collection_info = payload.get("result", {}) if isinstance(payload, dict) else {}
                 collection_dim = None
-                if isinstance(collection_info, dict) and "config" in collection_info and "params" in collection_info["config"]:
+                if (
+                    isinstance(collection_info, dict)
+                    and "config" in collection_info
+                    and "params" in collection_info["config"]
+                ):
                     collection_dim = collection_info["config"]["params"]["vectors"]["size"]
 
                 if collection_dim and request.points:
@@ -569,7 +579,9 @@ async def upsert_points(request: UpsertRequest, runtime: VecpipeRuntime | None =
                             )
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
-                    raise HTTPException(status_code=404, detail=f"Collection '{request.collection_name}' not found") from exc
+                    raise HTTPException(
+                        status_code=404, detail=f"Collection '{request.collection_name}' not found"
+                    ) from exc
                 raise
             except DimensionMismatchError as exc:
                 search_errors.labels(endpoint="/upsert", error_type="dimension_mismatch").inc()
@@ -734,7 +746,9 @@ async def list_models(runtime: VecpipeRuntime | None = None) -> dict[str, Any]:
     }
 
 
-async def load_model(model_name: str, quantization: str = "float32", runtime: VecpipeRuntime | None = None) -> dict[str, Any]:
+async def load_model(
+    model_name: str, quantization: str = "float32", runtime: VecpipeRuntime | None = None
+) -> dict[str, Any]:
     """Load a specific embedding model by forcing a warm-up embedding."""
     cfg = _get_settings()
     rt = _resolve_runtime(runtime)

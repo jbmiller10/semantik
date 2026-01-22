@@ -110,4 +110,3 @@ async def fetch_payloads_for_chunk_ids(
     finally:
         if created_client and client is not None:
             await client.aclose()
-

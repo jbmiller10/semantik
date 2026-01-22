@@ -143,9 +143,7 @@ def test_client_governed(
     """Test client with GovernedModelManager."""
     app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=mock_governed_model_manager)
 
-    with (
-        patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-    ):
+    with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
         yield TestClient(app_with_router)
 
 
@@ -179,9 +177,7 @@ def test_client_no_manager(
     """Test client with no model manager."""
     app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=None)
 
-    with (
-        patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-    ):
+    with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
         yield TestClient(app_with_router)
 
 
@@ -623,9 +619,7 @@ class TestEdgeCases:
         mock_basic_model_manager.current_reranker_key = "test-reranker_int8"
         app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=mock_basic_model_manager)
 
-        with (
-            patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-        ):
+        with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
             client = TestClient(app_with_router)
             response = client.get("/memory/models")
 
@@ -660,9 +654,7 @@ class TestEdgeCases:
         manager.unload_model = Mock(side_effect=mock_unload)
         app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=manager)
 
-        with (
-            patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-        ):
+        with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
             client = TestClient(app_with_router)
             response = client.post("/memory/evict/embedding")
 

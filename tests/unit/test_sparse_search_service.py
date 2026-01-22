@@ -66,9 +66,7 @@ async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
     mock_fallbacks = Mock()
     mock_fallbacks.labels.return_value.inc = Mock()
 
-    with (
-        patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
-    ):
+    with (patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),):
         results, time_ms = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",

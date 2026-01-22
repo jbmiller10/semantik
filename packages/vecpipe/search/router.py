@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
@@ -12,8 +12,10 @@ from vecpipe.search import service
 from vecpipe.search.auth import require_internal_api_key
 from vecpipe.search.deps import get_runtime
 from vecpipe.search.errors import maybe_raise_for_status, response_json
-from vecpipe.search.runtime import VecpipeRuntime
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
+
+if TYPE_CHECKING:
+    from vecpipe.search.runtime import VecpipeRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +167,9 @@ async def embedding_info(runtime: VecpipeRuntime = Depends(get_runtime)) -> dict
 
 
 @router.post("/embed", response_model=EmbedResponse, dependencies=[Depends(require_internal_api_key)])
-async def embed_texts(request: EmbedRequest = Body(...), runtime: VecpipeRuntime = Depends(get_runtime)) -> EmbedResponse:
+async def embed_texts(
+    request: EmbedRequest = Body(...), runtime: VecpipeRuntime = Depends(get_runtime)
+) -> EmbedResponse:
     return await service.embed_texts(request, runtime=runtime)
 
 

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -59,4 +60,3 @@ def extract_qdrant_error(exc: httpx.HTTPStatusError) -> str:
         logger.debug("Failed parsing Qdrant error payload: %s", parse_exc, exc_info=True)
 
     return default_detail
-

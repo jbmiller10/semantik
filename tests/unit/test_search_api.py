@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -15,6 +15,9 @@ from shared.contracts.search import SearchResult
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.search.router import router as search_router
 from vecpipe.search.runtime import VecpipeRuntime
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 @pytest.fixture()
@@ -32,7 +35,7 @@ def mock_settings() -> Mock:
 
 
 @pytest.fixture()
-def runtime(mock_settings: Mock) -> Generator[VecpipeRuntime, None, None]:
+def runtime() -> Generator[VecpipeRuntime, None, None]:
     qdrant_http = AsyncMock()
     qdrant_sdk = AsyncMock()
 
@@ -253,4 +256,3 @@ def test_search_response_model_compatible() -> None:
     """SearchResult still validates with required fields."""
     r = SearchResult(doc_id="d", chunk_id="c", score=0.1, path="/p")
     assert r.doc_id == "d"
-

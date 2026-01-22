@@ -23,10 +23,22 @@ from shared.metrics.prometheus import start_metrics_server
 from vecpipe.qwen3_search_config import get_reranker_for_embedding_model
 from vecpipe.search.app import app, create_app
 from vecpipe.search.lifespan import lifespan
-from vecpipe.search.metrics import embedding_generation_latency, get_or_create_metric, search_errors, search_latency, search_requests
+from vecpipe.search.metrics import (
+    embedding_generation_latency,
+    get_or_create_metric,
+    search_errors,
+    search_latency,
+    search_requests,
+)
 from vecpipe.search.router import batch_search, search_post
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, PointPayload, UpsertPoint, UpsertRequest, UpsertResponse
-from vecpipe.search.service import embed_texts, generate_mock_embedding, perform_batch_search, perform_search, upsert_points
+from vecpipe.search.service import (
+    embed_texts,
+    generate_mock_embedding,
+    perform_batch_search,
+    perform_search,
+    upsert_points,
+)
 from vecpipe.search_utils import search_qdrant
 
 __all__ = [

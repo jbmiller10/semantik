@@ -89,7 +89,7 @@ async def test_fetch_payloads_builds_scroll_filter_and_closes_created_client(mon
 
 
 @pytest.mark.asyncio()
-async def test_fetch_payloads_returns_empty_on_http_error(monkeypatch) -> None:
+async def test_fetch_payloads_returns_empty_on_http_error() -> None:
     from vecpipe.search.payloads import fetch_payloads_for_chunk_ids
 
     client = FakeAsyncClient(base_url="http://h:1", timeout=object(), headers={})

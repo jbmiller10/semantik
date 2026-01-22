@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
+if TYPE_CHECKING:
+    import httpx
 
 from vecpipe.search.errors import maybe_raise_for_status, response_json
 from vecpipe.search.metrics import embedding_generation_latency
@@ -133,4 +134,3 @@ async def search_dense_qdrant(
         response = await qdrant_http.post(f"/collections/{collection_name}/points/search", json=search_request)
         await maybe_raise_for_status(response)
         return list((await response_json(response))["result"])
-

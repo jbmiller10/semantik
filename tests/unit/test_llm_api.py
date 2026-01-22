@@ -51,23 +51,23 @@ def mock_llm_manager() -> Mock:
 
 
 @pytest.fixture()
-def app_with_llm_manager(mock_llm_manager: Mock) -> Generator[FastAPI, None, None]:
+def app_with_llm_manager(mock_llm_manager: Mock) -> FastAPI:
     """Create FastAPI app with mocked LLM manager."""
     app = FastAPI()
     app.include_router(router)
     app.state.vecpipe_runtime = Mock(is_closed=False, llm_manager=mock_llm_manager)
 
-    yield app
+    return app
 
 
 @pytest.fixture()
-def app_without_llm_manager() -> Generator[FastAPI, None, None]:
+def app_without_llm_manager() -> FastAPI:
     """Create FastAPI app without LLM manager (disabled)."""
     app = FastAPI()
     app.include_router(router)
     app.state.vecpipe_runtime = Mock(is_closed=False, llm_manager=None)
 
-    yield app
+    return app
 
 
 @pytest.fixture()

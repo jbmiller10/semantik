@@ -21,7 +21,7 @@
 <modules>
   <module path="search_api.py">
     <purpose>Public entrypoint - thin wrapper that exports from search/ submodule</purpose>
-    <note>Uses module-level __getattribute__ to forward state access to search.state</note>
+    <note>No module proxying; runtime wiring happens via FastAPI lifespan and app.state.vecpipe_runtime</note>
   </module>
 
   <module path="search/app.py">
@@ -41,8 +41,8 @@
   <module path="search/service.py">
     <purpose>Core business logic: embedding generation, search execution, reranking</purpose>
     <key-functions>
-      - perform_search(): Semantic/question/code/hybrid search with optional reranking
-      - resolve_collection_name(): Priority resolution (explicit > operation_uuid > default)
+      - perform_search(): Dense/sparse/hybrid search orchestration with optional reranking
+      - resolve_collection_name(): (moved) now in search/collection_info.py
       - embed_texts(): Batch embedding generation
       - upsert_points(): Qdrant vector upsert
     </key-functions>

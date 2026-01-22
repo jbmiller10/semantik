@@ -177,7 +177,9 @@ async def perform_sparse_search(
         if sdk_client is None:
             from qdrant_client import AsyncQdrantClient
 
-            sdk_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", api_key=cfg.QDRANT_API_KEY)
+            sdk_client = AsyncQdrantClient(
+                url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", api_key=cfg.QDRANT_API_KEY
+            )
             qdrant_ad_hoc_client_total.labels(location="sparse_search").inc()
             created_client = True
 
@@ -211,4 +213,3 @@ async def perform_sparse_search(
         logger.error("Sparse search failed for collection %s: %s", collection_name, exc, exc_info=True)
         sparse_search_fallbacks.labels(reason="error").inc()
         return [], (time.time() - start_time) * 1000
-
