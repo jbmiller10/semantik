@@ -1125,6 +1125,9 @@ class GPUMemoryGovernor:
         Returns:
             Actual free GPU memory in MB, or usable_gpu_mb if CUDA unavailable
         """
+        from vecpipe.search.metrics import gpu_free_probe_latency
+
+        start_time = time.time()
         try:
             import gc
 
@@ -1147,6 +1150,8 @@ class GPUMemoryGovernor:
         except Exception as e:
             logger.warning("Failed to get actual GPU memory: %s, using tracked estimate", e)
             return self._budget.usable_gpu_mb - self._get_gpu_usage()
+        finally:
+            gpu_free_probe_latency.observe(time.time() - start_time)
 
     def _get_usage_percent(self) -> float:
         """Get GPU usage as percentage of usable budget."""

@@ -53,7 +53,10 @@ async def search_qdrant(
         pass
 
     # Fallback: create ad-hoc client and ensure proper cleanup
+    from vecpipe.search.metrics import qdrant_ad_hoc_client_total
+
     client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
+    qdrant_ad_hoc_client_total.labels(location="search_utils").inc()
     try:
         results = await client.search(
             collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload

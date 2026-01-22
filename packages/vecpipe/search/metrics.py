@@ -88,6 +88,42 @@ sparse_search_fallbacks = get_or_create_metric(
     ["reason"],  # sparse_not_enabled, plugin_not_found, etc.
 )
 
+# GPU and Infrastructure Metrics
+gpu_free_probe_latency = get_or_create_metric(
+    Histogram,
+    "semantik_gpu_free_probe_seconds",
+    "Time to probe GPU free memory",
+    buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1),
+)
+
+qdrant_ad_hoc_client_total = get_or_create_metric(
+    Counter,
+    "semantik_qdrant_ad_hoc_client_total",
+    "Count of ad-hoc Qdrant client creations",
+    ["location"],
+)
+
+payload_fetch_latency = get_or_create_metric(
+    Histogram,
+    "semantik_payload_fetch_seconds",
+    "Time to fetch dense payloads for sparse/hybrid results",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
+)
+
+rerank_content_fetch_latency = get_or_create_metric(
+    Histogram,
+    "semantik_rerank_content_fetch_seconds",
+    "Time to scroll/fetch content for reranking",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
+)
+
+collection_metadata_fetch_latency = get_or_create_metric(
+    Histogram,
+    "semantik_collection_metadata_fetch_seconds",
+    "Time to fetch collection metadata on cache miss",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2),
+)
+
 
 __all__ = [
     "get_or_create_metric",
@@ -101,4 +137,9 @@ __all__ = [
     "sparse_index_chunks",
     "sparse_search_requests",
     "sparse_search_fallbacks",
+    "gpu_free_probe_latency",
+    "qdrant_ad_hoc_client_total",
+    "payload_fetch_latency",
+    "rerank_content_fetch_latency",
+    "collection_metadata_fetch_latency",
 ]

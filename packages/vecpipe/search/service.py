@@ -33,7 +33,11 @@ from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from vecpipe.search import state as search_state
 from vecpipe.search.metrics import (
+    collection_metadata_fetch_latency,
     embedding_generation_latency,
+    payload_fetch_latency,
+    qdrant_ad_hoc_client_total,
+    rerank_content_fetch_latency,
     rrf_fusion_latency,
     search_errors,
     search_latency,
@@ -162,6 +166,7 @@ async def _get_sparse_config_for_collection(collection_name: str) -> dict[str, A
             url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
             api_key=cfg.QDRANT_API_KEY,
         )
+        qdrant_ad_hoc_client_total.labels(location="sparse_config").inc()
         try:
             sparse_config = await get_sparse_index_config(async_client, collection_name)
             if sparse_config and sparse_config.get("enabled"):
@@ -309,6 +314,7 @@ async def _perform_sparse_search(
             url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
             api_key=cfg.QDRANT_API_KEY,
         )
+        qdrant_ad_hoc_client_total.labels(location="sparse_search").inc()
         try:
             sparse_collection_name = sparse_config.get("sparse_collection_name")
             if not sparse_collection_name:
@@ -372,6 +378,7 @@ async def _fetch_payloads_for_chunk_ids(
             timeout=httpx.Timeout(60.0),
             headers=headers,
         )
+        qdrant_ad_hoc_client_total.labels(location="payload_fetch").inc()
         created_client = True
 
     try:
@@ -406,6 +413,7 @@ async def _fetch_payloads_for_chunk_ids(
             len(chunk_ids),
             scroll_filter,
         )
+        fetch_start = time.time()
         response = await client.post(f"/collections/{collection_name}/points/scroll", json=fetch_request)
 
         # Check for errors before processing
@@ -417,6 +425,7 @@ async def _fetch_payloads_for_chunk_ids(
                 response.status_code,
                 error_text[:500] if error_text else "unknown",
             )
+            payload_fetch_latency.observe(time.time() - fetch_start)
             return {}
 
         payload_map: dict[str, dict[str, Any]] = {}
@@ -433,6 +442,7 @@ async def _fetch_payloads_for_chunk_ids(
             if chunk_id:
                 payload_map[str(chunk_id)] = payload
 
+        payload_fetch_latency.observe(time.time() - fetch_start)
         return payload_map
     finally:
         if created_client:
@@ -774,6 +784,7 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
             timeout=httpx.Timeout(60.0),
             headers=headers,
         )
+        qdrant_ad_hoc_client_total.labels(location="collection_info").inc()
         created_client = True
 
     try:
@@ -810,6 +821,7 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         return cast(dict[str, Any] | None, cached)
 
     # Cache miss - fetch from Qdrant
+    metadata_fetch_start = time.time()
     try:
         from shared.database.collection_metadata import get_collection_metadata_async
 
@@ -818,6 +830,7 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         if sdk_client is not None:
             metadata = await get_collection_metadata_async(sdk_client, collection_name)
             set_collection_metadata(collection_name, metadata)
+            collection_metadata_fetch_latency.observe(time.time() - metadata_fetch_start)
             return cast(dict[str, Any] | None, metadata)
 
         # Fallback: create ad-hoc client (rare - only when state not initialized)
@@ -827,14 +840,17 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
             url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
             api_key=cfg.QDRANT_API_KEY,
         )
+        qdrant_ad_hoc_client_total.labels(location="metadata_fetch").inc()
         try:
             metadata = await get_collection_metadata_async(async_client, collection_name)
             set_collection_metadata(collection_name, metadata)
+            collection_metadata_fetch_latency.observe(time.time() - metadata_fetch_start)
             return cast(dict[str, Any] | None, metadata)
         finally:
             await async_client.close()
     except Exception as e:  # pragma: no cover - best effort path
         logger.warning(f"Could not get collection metadata: {e}")
+        collection_metadata_fetch_latency.observe(time.time() - metadata_fetch_start)
         return None
 
 
@@ -1248,6 +1264,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                     logger.info("Fetching content for reranking from Qdrant")
                     chunk_ids_to_fetch = [r.chunk_id for r in results if not r.content]
                     if chunk_ids_to_fetch:
+                        content_fetch_start = time.time()
                         fetch_request = {
                             "filter": {"must": [{"key": "chunk_id", "match": {"any": chunk_ids_to_fetch}}]},
                             "with_payload": True,
@@ -1271,6 +1288,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                         for r in results:
                             if not r.content and r.chunk_id in content_map:
                                 r.content = content_map[r.chunk_id]
+                        rerank_content_fetch_latency.observe(time.time() - content_fetch_start)
 
                 documents = [
                     r.content if r.content else f"Document from {r.path} (chunk {r.chunk_id})" for r in results
