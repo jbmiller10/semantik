@@ -66,7 +66,9 @@ def runtime() -> Generator[VecpipeRuntime, None, None]:
 
 
 @pytest.mark.asyncio()
-async def test_perform_search_hybrid_maps_sparse_results_to_original_chunk_ids(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_perform_search_hybrid_maps_sparse_results_to_original_chunk_ids(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     request = SearchRequest(query="q", k=3, search_mode="hybrid", search_type="semantic", include_content=True)
 
     dense_payload = {"doc_id": "doc-dense", "chunk_id": "orig-1", "path": "/dense", "content": "dense"}
@@ -120,8 +122,16 @@ async def test_perform_search_hybrid_maps_sparse_results_to_original_chunk_ids(m
                 False,
             ),
         ),
-        patch("vecpipe.search.service.perform_sparse_search", new_callable=AsyncMock, return_value=(sparse_results, 12.0, [])),
-        patch("vecpipe.search.service.fetch_payloads_for_chunk_ids", new_callable=AsyncMock, return_value=payloads_by_chunk_id) as fetch_payloads,
+        patch(
+            "vecpipe.search.service.perform_sparse_search",
+            new_callable=AsyncMock,
+            return_value=(sparse_results, 12.0, []),
+        ),
+        patch(
+            "vecpipe.search.service.fetch_payloads_for_chunk_ids",
+            new_callable=AsyncMock,
+            return_value=payloads_by_chunk_id,
+        ) as fetch_payloads,
         patch("vecpipe.search.service.maybe_rerank_results", new=_fake_rerank),
     ):
         resp = await service.perform_search(request, runtime=runtime)
@@ -166,7 +176,11 @@ async def test_perform_search_sparse_only_skips_dense_embedding(mock_settings: M
         ),
         patch("vecpipe.search.service.generate_embedding", new_callable=AsyncMock) as gen_embed,
         patch("vecpipe.search.service.search_dense_qdrant", new_callable=AsyncMock) as dense_search,
-        patch("vecpipe.search.service.perform_sparse_search", new_callable=AsyncMock, return_value=(sparse_results, 7.0, [])),
+        patch(
+            "vecpipe.search.service.perform_sparse_search",
+            new_callable=AsyncMock,
+            return_value=(sparse_results, 7.0, []),
+        ),
         patch("vecpipe.search.service.maybe_rerank_results", new=_fake_rerank),
     ):
         resp = await service.perform_search(request, runtime=runtime)
@@ -178,7 +192,9 @@ async def test_perform_search_sparse_only_skips_dense_embedding(mock_settings: M
 
 
 @pytest.mark.asyncio()
-async def test_perform_search_falls_back_to_dense_when_sparse_index_unavailable(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_perform_search_falls_back_to_dense_when_sparse_index_unavailable(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     request = SearchRequest(query="q", k=1, search_mode="hybrid", search_type="semantic")
 
     with (
@@ -198,7 +214,10 @@ async def test_perform_search_falls_back_to_dense_when_sparse_index_unavailable(
         patch(
             "vecpipe.search.service.search_dense_qdrant",
             new_callable=AsyncMock,
-            return_value=([{"id": "1", "score": 0.9, "payload": {"doc_id": "d", "chunk_id": "c", "path": "/p"}}], False),
+            return_value=(
+                [{"id": "1", "score": 0.9, "payload": {"doc_id": "d", "chunk_id": "c", "path": "/p"}}],
+                False,
+            ),
         ),
         patch("vecpipe.search.service.perform_sparse_search", new_callable=AsyncMock) as sparse_search,
         patch("vecpipe.search.service.maybe_rerank_results", new_callable=AsyncMock, return_value=([], None, None)),
@@ -211,7 +230,9 @@ async def test_perform_search_falls_back_to_dense_when_sparse_index_unavailable(
 
 
 @pytest.mark.asyncio()
-async def test_perform_search_applies_score_threshold_and_includes_content_for_reranker(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_perform_search_applies_score_threshold_and_includes_content_for_reranker(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     request = SearchRequest(
         query="q",
         k=2,
@@ -240,7 +261,9 @@ async def test_perform_search_applies_score_threshold_and_includes_content_for_r
         ),
         patch("vecpipe.search.service.get_cached_collection_metadata", new_callable=AsyncMock, return_value=None),
         patch("vecpipe.search.service.generate_embedding", new_callable=AsyncMock, return_value=[0.1] * 1024),
-        patch("vecpipe.search.service.search_dense_qdrant", new_callable=AsyncMock, return_value=(dense_results, False)),
+        patch(
+            "vecpipe.search.service.search_dense_qdrant", new_callable=AsyncMock, return_value=(dense_results, False)
+        ),
         patch("vecpipe.search.service.maybe_rerank_results", new=_fake_rerank),
     ):
         resp = await service.perform_search(request, runtime=runtime)
@@ -253,7 +276,9 @@ async def test_perform_search_applies_score_threshold_and_includes_content_for_r
 
 
 @pytest.mark.asyncio()
-async def test_embed_texts_treats_class_name_insufficient_memory_error_as_oom(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_embed_texts_treats_class_name_insufficient_memory_error_as_oom(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     class InsufficientMemoryError(Exception):
         pass
 
@@ -261,7 +286,9 @@ async def test_embed_texts_treats_class_name_insufficient_memory_error_as_oom(mo
 
     with patch("vecpipe.search.service.settings", mock_settings):
         with pytest.raises(HTTPException) as exc_info:
-            await service.embed_texts(EmbedRequest(texts=["a"], model_name="m", quantization="float32", batch_size=1), runtime=runtime)
+            await service.embed_texts(
+                EmbedRequest(texts=["a"], model_name="m", quantization="float32", batch_size=1), runtime=runtime
+            )
 
     assert exc_info.value.status_code == 507
     assert exc_info.value.detail["error"] == "insufficient_memory"
@@ -295,7 +322,9 @@ class _FakeQdrantHttp:
 
 
 @pytest.mark.asyncio()
-async def test_upsert_points_validates_collection_dimension_and_wait_parameter(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_upsert_points_validates_collection_dimension_and_wait_parameter(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     runtime.qdrant_http = _FakeQdrantHttp(collection_dim=3)
 
     req = UpsertRequest(
@@ -319,7 +348,9 @@ async def test_upsert_points_validates_collection_dimension_and_wait_parameter(m
 
 
 @pytest.mark.asyncio()
-async def test_upsert_points_returns_qdrant_error_detail_when_available(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_upsert_points_returns_qdrant_error_detail_when_available(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     runtime.qdrant_http = _FakeQdrantHttp(collection_dim=2, put_status=500, put_payload={"status": {"error": "bad"}})
 
     req = UpsertRequest(
@@ -344,7 +375,9 @@ async def test_upsert_points_returns_qdrant_error_detail_when_available(mock_set
 
 
 @pytest.mark.asyncio()
-async def test_list_models_and_embedding_info_format_current_model(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_list_models_and_embedding_info_format_current_model(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     fake_models = [
         {"name": "A", "provider": "dense_local", "dimension": 1024, "description": "a", "memory_estimate": {}},
         {"model_name": "B", "provider": "plugin_provider", "dimension": 768, "description": "b", "memory_estimate": {}},
@@ -375,7 +408,9 @@ async def test_list_models_and_embedding_info_format_current_model(mock_settings
 
 
 @pytest.mark.asyncio()
-async def test_load_model_rejects_mock_mode_and_suggest_models_cpu_branch(mock_settings: Mock, runtime: VecpipeRuntime) -> None:
+async def test_load_model_rejects_mock_mode_and_suggest_models_cpu_branch(
+    mock_settings: Mock, runtime: VecpipeRuntime
+) -> None:
     mock_settings.USE_MOCK_EMBEDDINGS = True
 
     with patch("vecpipe.search.service.settings", mock_settings):
@@ -408,7 +443,9 @@ async def test_suggest_models_gpu_branch_and_load_model_success(mock_settings: M
     assert out["gpu_memory"]["usage_percent"] == 25.0
 
     runtime.model_manager.generate_embedding_async = AsyncMock(return_value=[0.1])
-    runtime.model_manager.get_status = Mock(return_value={"embedding_provider": "dense_local", "provider_info": {"d": 1}})
+    runtime.model_manager.get_status = Mock(
+        return_value={"embedding_provider": "dense_local", "provider_info": {"d": 1}}
+    )
 
     with patch("vecpipe.search.service.settings", mock_settings):
         loaded = await service.load_model("model-x", "float32", runtime=runtime)

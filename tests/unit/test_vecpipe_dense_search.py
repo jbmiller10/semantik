@@ -150,4 +150,3 @@ async def test_search_dense_qdrant_falls_back_to_rest_when_sdk_fails() -> None:
     assert used_fallback is True
     assert results[0]["payload"]["doc_id"] == "d"
     fake_fallbacks.labels.assert_called_with(reason="sdk_error")
-

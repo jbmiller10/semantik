@@ -420,7 +420,9 @@ class TestCreateGovernedModelManager:
 
     def test_create_governed_model_manager_detects_gpu_memory(self, monkeypatch):
         torch_mod = types.ModuleType("torch")
-        torch_mod.cuda = types.SimpleNamespace(is_available=lambda: True, mem_get_info=lambda: (0, 8 * 1024 * 1024 * 1024))
+        torch_mod.cuda = types.SimpleNamespace(
+            is_available=lambda: True, mem_get_info=lambda: (0, 8 * 1024 * 1024 * 1024)
+        )
         monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
         budget = MemoryBudget(total_gpu_mb=8192, total_cpu_mb=1)

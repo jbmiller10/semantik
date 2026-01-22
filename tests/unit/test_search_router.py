@@ -171,7 +171,11 @@ def test_models_endpoints_proxy_service_calls() -> None:
     with (
         patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"),
         patch("vecpipe.search.router.service.list_models", new_callable=AsyncMock, return_value={"models": []}),
-        patch("vecpipe.search.router.service.suggest_models", new_callable=AsyncMock, return_value={"gpu_available": False}),
+        patch(
+            "vecpipe.search.router.service.suggest_models",
+            new_callable=AsyncMock,
+            return_value={"gpu_available": False},
+        ),
         patch("vecpipe.search.router.service.embedding_info", new_callable=AsyncMock, return_value={"mode": "mock"}),
     ):
         client = make_client()

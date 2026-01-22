@@ -72,4 +72,3 @@ def test_extract_qdrant_error_returns_default_on_unexpected_payloads() -> None:
     resp_parse_error.json.side_effect = ValueError("bad json")
     exc2 = httpx.HTTPStatusError("boom", request=request, response=resp_parse_error)
     assert extract_qdrant_error(exc2) == "Vector database error"
-

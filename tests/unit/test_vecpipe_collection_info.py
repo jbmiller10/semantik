@@ -153,7 +153,9 @@ async def test_get_collection_info_returns_default_on_error_and_closes_client(mo
 
 @pytest.mark.asyncio()
 async def test_lookup_collection_from_operation_returns_none_on_exception() -> None:
-    with patch("shared.database.database.ensure_async_sessionmaker", new_callable=AsyncMock, side_effect=RuntimeError("db")):
+    with patch(
+        "shared.database.database.ensure_async_sessionmaker", new_callable=AsyncMock, side_effect=RuntimeError("db")
+    ):
         assert await lookup_collection_from_operation("op-uuid") is None
 
 
@@ -175,9 +177,15 @@ async def test_get_cached_collection_metadata_creates_and_closes_sdk_client(monk
         patch("vecpipe.search.collection_info.is_cache_miss", return_value=True),
         patch("vecpipe.search.collection_info.set_collection_metadata") as set_cache,
         patch("qdrant_client.AsyncQdrantClient", return_value=mock_sdk) as sdk_ctor,
-        patch("shared.database.collection_metadata.get_collection_metadata_async", new_callable=AsyncMock, return_value=metadata),
+        patch(
+            "shared.database.collection_metadata.get_collection_metadata_async",
+            new_callable=AsyncMock,
+            return_value=metadata,
+        ),
     ):
-        out = await get_cached_collection_metadata(collection_name="col", cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY="k"), qdrant_sdk=None)
+        out = await get_cached_collection_metadata(
+            collection_name="col", cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY="k"), qdrant_sdk=None
+        )
 
     assert out == metadata
     sdk_ctor.assert_called_once_with(url="http://h:1", api_key="k")
@@ -194,8 +202,14 @@ async def test_get_cached_collection_metadata_returns_none_on_fetch_error() -> N
     with (
         patch("vecpipe.search.collection_info.get_collection_metadata", return_value=cache_miss_sentinel),
         patch("vecpipe.search.collection_info.is_cache_miss", return_value=True),
-        patch("shared.database.collection_metadata.get_collection_metadata_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
+        patch(
+            "shared.database.collection_metadata.get_collection_metadata_async",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
     ):
-        out = await get_cached_collection_metadata(collection_name="col", cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None), qdrant_sdk=AsyncMock())
+        out = await get_cached_collection_metadata(
+            collection_name="col", cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None), qdrant_sdk=AsyncMock()
+        )
 
     assert out is None

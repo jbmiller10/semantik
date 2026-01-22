@@ -202,7 +202,9 @@ async def test_perform_sparse_search_uses_managed_sparse_manager_and_skips_plugi
     mock_qdrant = AsyncMock()
     mock_qdrant.close = AsyncMock()
 
-    mock_search_sparse_collection = AsyncMock(return_value=[{"chunk_id": "c1", "score": 0.5, "payload": {"doc_id": "d"}}])
+    mock_search_sparse_collection = AsyncMock(
+        return_value=[{"chunk_id": "c1", "score": 0.5, "payload": {"doc_id": "d"}}]
+    )
 
     with (
         patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
@@ -213,7 +215,11 @@ async def test_perform_sparse_search_uses_managed_sparse_manager_and_skips_plugi
         results, _time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
-            sparse_config={"plugin_id": "splade-local", "sparse_collection_name": "sparse", "model_config": "not-a-dict"},
+            sparse_config={
+                "plugin_id": "splade-local",
+                "sparse_collection_name": "sparse",
+                "model_config": "not-a-dict",
+            },
             query="q",
             k=5,
             sparse_manager=mock_sparse_manager,
