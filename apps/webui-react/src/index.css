@@ -417,3 +417,20 @@ textarea:focus-visible {
   outline: 2px solid var(--accent-highlight);
   outline-offset: 2px;
 }
+
+/* ============================================
+   Highlight Animation for API Key Insertion
+   ============================================ */
+
+@keyframes highlight-pulse {
+  0% {
+    background-color: rgba(251, 191, 36, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.highlight-inserted {
+  animation: highlight-pulse 1.5s ease-out;
+}
