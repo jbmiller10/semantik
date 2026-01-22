@@ -79,7 +79,7 @@ def test_search_error_mapping() -> None:
 def test_search_get_sets_search_mode_hybrid_when_search_type_is_hybrid() -> None:
     captured: dict[str, object] = {}
 
-    async def _fake_perform_search(request, _runtime):  # type: ignore[no-untyped-def]
+    async def _fake_perform_search(request, **_kwargs):  # type: ignore[no-untyped-def]
         captured["search_mode"] = request.search_mode
         return SearchResponse(
             query=request.query,
@@ -103,7 +103,7 @@ def test_search_get_sets_search_mode_hybrid_when_search_type_is_hybrid() -> None
 def test_search_post_legacy_hybrid_sets_search_mode_when_missing() -> None:
     captured: dict[str, object] = {}
 
-    async def _fake_perform_search(request, _runtime):  # type: ignore[no-untyped-def]
+    async def _fake_perform_search(request, **_kwargs):  # type: ignore[no-untyped-def]
         captured["search_mode"] = request.search_mode
         return SearchResponse(
             query=request.query,
