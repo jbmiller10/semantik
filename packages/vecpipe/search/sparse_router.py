@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -22,8 +22,11 @@ from pydantic import BaseModel, Field
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
-from . import state as search_state
 from .auth import require_internal_api_key
+from .deps import get_sparse_manager
+
+if TYPE_CHECKING:
+    from vecpipe.sparse_model_manager import SparseModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +105,10 @@ class SparsePluginsResponse(BaseModel):
 
 
 @router.post("/encode", response_model=SparseEncodeResponse, dependencies=[Depends(require_internal_api_key)])
-async def encode_documents(request: SparseEncodeRequest) -> SparseEncodeResponse:
+async def encode_documents(
+    request: SparseEncodeRequest,
+    sparse_manager: SparseModelManager = Depends(get_sparse_manager),
+) -> SparseEncodeResponse:
     """Encode documents to sparse vectors using specified plugin.
 
     This endpoint encodes a batch of documents to sparse vectors using the
@@ -127,11 +133,6 @@ async def encode_documents(request: SparseEncodeRequest) -> SparseEncodeResponse
             status_code=400,
             detail=f"texts ({len(request.texts)}) and chunk_ids ({len(request.chunk_ids)}) must have same length",
         )
-
-    # Get sparse manager
-    sparse_manager = search_state.sparse_manager
-    if sparse_manager is None:
-        raise HTTPException(status_code=503, detail="Sparse model manager not initialized")
 
     # Encode documents
     start_time = time.time()
@@ -172,7 +173,10 @@ async def encode_documents(request: SparseEncodeRequest) -> SparseEncodeResponse
 
 
 @router.post("/query", response_model=SparseQueryResponse, dependencies=[Depends(require_internal_api_key)])
-async def encode_query(request: SparseQueryRequest) -> SparseQueryResponse:
+async def encode_query(
+    request: SparseQueryRequest,
+    sparse_manager: SparseModelManager = Depends(get_sparse_manager),
+) -> SparseQueryResponse:
     """Encode a search query to sparse vector.
 
     This endpoint encodes a single query to a sparse vector for use in
@@ -190,11 +194,6 @@ async def encode_query(request: SparseQueryRequest) -> SparseQueryResponse:
         HTTPException 500: If encoding fails.
         HTTPException 507: If insufficient GPU memory.
     """
-    # Get sparse manager
-    sparse_manager = search_state.sparse_manager
-    if sparse_manager is None:
-        raise HTTPException(status_code=503, detail="Sparse model manager not initialized")
-
     # Encode query
     start_time = time.time()
     try:
@@ -260,7 +259,7 @@ async def list_sparse_plugins() -> SparsePluginsResponse:
 
 
 @router.get("/status")
-async def sparse_status() -> dict[str, Any]:
+async def sparse_status(sparse_manager: SparseModelManager = Depends(get_sparse_manager)) -> dict[str, Any]:
     """Get status of sparse model manager.
 
     Returns information about loaded sparse plugins and their memory usage.
@@ -268,10 +267,6 @@ async def sparse_status() -> dict[str, Any]:
     Returns:
         Dict with loaded plugins and manager status.
     """
-    sparse_manager = search_state.sparse_manager
-    if sparse_manager is None:
-        return {"status": "not_initialized"}
-
     return {
         "status": "ready",
         "loaded_plugins": sparse_manager.get_loaded_plugins(),

@@ -1,6 +1,6 @@
 """Router-level tests for vecpipe search API."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -13,6 +13,8 @@ def make_client() -> TestClient:
     """Create test client with patched auth settings."""
     app = FastAPI()
     app.include_router(router)
+    # Satisfy VecPipe runtime dependency for endpoints.
+    app.state.vecpipe_runtime = Mock(is_closed=False)
     client = TestClient(app)
     client.headers.update({"X-Internal-Api-Key": "test-internal-key"})
     return client

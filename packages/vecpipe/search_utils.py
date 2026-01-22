@@ -17,6 +17,7 @@ async def search_qdrant(
     k: int,
     with_payload: bool = True,
     api_key: str | None = None,
+    sdk_client: AsyncQdrantClient | None = None,
 ) -> list[dict]:
     """
     Perform vector search in Qdrant
@@ -33,32 +34,14 @@ async def search_qdrant(
     Returns:
         List of search results from Qdrant
     """
-    # Prefer the globally injected SDK client when available (tests patch this)
-    try:
-        from vecpipe.search import state as search_state
-
-        sdk_client = getattr(search_state, "sdk_client", None)
-        if sdk_client is not None:
-            results = await sdk_client.search(
-                collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
-            )
-            return [
-                {
-                    "id": point.id,
-                    "score": point.score,
-                    "payload": point.payload if with_payload else None,
-                }
-                for point in results
-            ]
-    except Exception:
-        # Fall through to default client
-        pass
-
-    # Fallback: create ad-hoc client and ensure proper cleanup
     from vecpipe.search.metrics import qdrant_ad_hoc_client_total
 
-    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}", api_key=api_key)
-    qdrant_ad_hoc_client_total.labels(location="search_utils").inc()
+    created_client = False
+    client = sdk_client
+    if client is None:
+        client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}", api_key=api_key)
+        qdrant_ad_hoc_client_total.labels(location="search_utils").inc()
+        created_client = True
     try:
         results = await client.search(
             collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
@@ -68,7 +51,8 @@ async def search_qdrant(
             for point in results
         ]
     finally:
-        await client.close()
+        if created_client:
+            await client.close()
 
 
 def parse_search_results(qdrant_results: list[dict]) -> list[dict]:

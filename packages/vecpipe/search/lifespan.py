@@ -26,31 +26,9 @@ from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.runtime import VecpipeRuntime
-from vecpipe.search.state import clear_resources, set_resources
 from vecpipe.sparse_model_manager import SparseModelManager
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_start_metrics_server() -> Any:
-    """Return a metrics starter function, honoring any patch on search_api."""
-    # 1) If this module's symbol is patched (common in unit tests), use it.
-    patched_local = globals().get("start_metrics_server")
-    if patched_local and patched_local is not _base_start_metrics_server:
-        return patched_local
-
-    # 2) If the public entrypoint module has been patched, honor that.
-    try:
-        import vecpipe.search_api as search_api
-
-        patched = getattr(search_api, "start_metrics_server", None)
-        if patched and patched is not _base_start_metrics_server:
-            return patched
-    except Exception as e:
-        logger.warning("Failed to check for patched start_metrics_server: %s", e, exc_info=True)
-
-    # 3) Fall back to the base implementation
-    return _base_start_metrics_server
 
 
 # Expose a patchable reference for unit tests that mock vecpipe.search.lifespan.start_metrics_server
@@ -89,8 +67,7 @@ async def lifespan(app: FastAPI) -> Any:
     if external_plugins:
         logger.info("Loaded embedding plugins: %s", ", ".join(external_plugins))
 
-    start_metrics = _resolve_start_metrics_server()
-    start_metrics(settings.METRICS_PORT)
+    start_metrics_server(settings.METRICS_PORT)
     logger.info("Metrics server started on port %s", settings.METRICS_PORT)
 
     # Build Qdrant connection with optional API key authentication
@@ -170,17 +147,6 @@ async def lifespan(app: FastAPI) -> Any:
     else:
         logger.info("Local LLM support disabled (ENABLE_LOCAL_LLM=false)")
 
-    # embed_service is None - ModelManager now manages providers internally
-    set_resources(
-        qdrant=qdrant,
-        model_mgr=model_mgr,
-        embed_service=None,
-        pool=pool,
-        qdrant_sdk=qdrant_sdk,
-        sparse_mgr=sparse_mgr,
-        llm_mgr=llm_mgr,
-    )
-
     # Create runtime container and attach to app.state
     runtime = VecpipeRuntime(
         qdrant_http=qdrant,
@@ -199,5 +165,4 @@ async def lifespan(app: FastAPI) -> Any:
         yield
     finally:
         await runtime.aclose()
-        clear_resources()
         logger.info("Disconnected from Qdrant")

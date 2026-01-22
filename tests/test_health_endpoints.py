@@ -1,11 +1,12 @@
 """Tests for health check endpoints"""
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vecpipe.search_api import app
+from vecpipe.search.router import router as vecpipe_router
 
 
 @pytest.fixture()
@@ -125,7 +126,7 @@ class TestWebuiHealthEndpoints:
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
 
         with (
-            patch("webui.api.health.ws_manager.redis", mock_redis),
+            patch("webui.api.health.ws_manager.redis_client", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
             patch(
                 "webui.api.health._check_embedding_service_health",
@@ -176,7 +177,7 @@ class TestWebuiHealthEndpoints:
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
 
         with (
-            patch("webui.api.health.ws_manager.redis", mock_redis),
+            patch("webui.api.health.ws_manager.redis_client", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
             patch(
                 "webui.api.health._check_embedding_service_health",
@@ -196,82 +197,63 @@ class TestVecpipeHealthEndpoints:
 
     @pytest.fixture()
     def vecpipe_app(self) -> TestClient:
-        """Create vecpipe app for testing"""
-
+        """Create vecpipe app for testing (without lifespan)."""
+        app = FastAPI()
+        app.include_router(vecpipe_router)
+        # Provide a minimal runtime for DI.
+        app.state.vecpipe_runtime = Mock(is_closed=False, qdrant_http=AsyncMock(), model_manager=Mock())
         return TestClient(app)
 
     def test_vecpipe_health_all_healthy(self, vecpipe_app) -> None:
         """Test vecpipe health when all components are healthy"""
-        mock_qdrant = Mock()
+        runtime = vecpipe_app.app.state.vecpipe_runtime
 
-        # Create async mock for qdrant_client.get
-        async def mock_get(_path) -> None:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {"result": {"collections": [{"name": "col1"}, {"name": "col2"}]}}
-            return mock_response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"result": {"collections": [{"name": "col1"}, {"name": "col2"}]}}
+        runtime.qdrant_http.get = AsyncMock(return_value=mock_response)
 
-        mock_qdrant.get = mock_get
-
-        mock_model_manager = Mock()
-        mock_model_manager.get_status.return_value = {
+        runtime.model_manager.get_status.return_value = {
             "embedding_model_loaded": True,
             "current_embedding_model": "test-model_float32",
             "embedding_provider": "dense_local",
             "provider_info": {"dimension": 384},
         }
-
-        with (
-            patch("vecpipe.search.state.qdrant_client", mock_qdrant),
-            patch("vecpipe.search.state.model_manager", mock_model_manager),
-        ):
-            response = vecpipe_app.get("/health")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "healthy"
-            assert data["components"]["qdrant"]["status"] == "healthy"
-            assert data["components"]["embedding"]["status"] == "healthy"
+        response = vecpipe_app.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["components"]["qdrant"]["status"] == "healthy"
+        assert data["components"]["embedding"]["status"] == "healthy"
 
     def test_vecpipe_health_qdrant_unhealthy(self, vecpipe_app) -> None:
         """Test vecpipe health when Qdrant is unhealthy"""
-        mock_model_manager = Mock()
-        mock_model_manager.get_status.return_value = {
+        runtime = vecpipe_app.app.state.vecpipe_runtime
+        runtime.qdrant_http.get = AsyncMock(side_effect=Exception("boom"))
+        runtime.model_manager.get_status.return_value = {
             "embedding_model_loaded": True,
             "current_embedding_model": "test-model_float32",
             "embedding_provider": "dense_local",
             "provider_info": {"dimension": 384},
         }
-
-        with (
-            patch("vecpipe.search.state.qdrant_client", None),
-            patch("vecpipe.search.state.model_manager", mock_model_manager),
-        ):
-            response = vecpipe_app.get("/health")
-            assert response.status_code == 503
-            data = response.json()["detail"]
-            assert data["status"] == "unhealthy"
-            assert data["components"]["qdrant"]["status"] == "unhealthy"
+        response = vecpipe_app.get("/health")
+        assert response.status_code == 503
+        data = response.json()["detail"]
+        assert data["status"] == "unhealthy"
+        assert data["components"]["qdrant"]["status"] == "unhealthy"
 
     def test_vecpipe_health_embedding_degraded(self, vecpipe_app) -> None:
         """Test vecpipe health when model manager is not initialized (degraded)"""
-        mock_qdrant = Mock()
+        runtime = vecpipe_app.app.state.vecpipe_runtime
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"result": {"collections": []}}
+        runtime.qdrant_http.get = AsyncMock(return_value=mock_response)
+        runtime.model_manager = None
 
-        # Create async mock for qdrant_client.get
-        async def mock_get(_path) -> None:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {"result": {"collections": []}}
-            return mock_response
-
-        mock_qdrant.get = mock_get
-
-        with (
-            patch("vecpipe.search.state.qdrant_client", mock_qdrant),
-            patch("vecpipe.search.state.model_manager", None),
-        ):
-            response = vecpipe_app.get("/health")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "degraded"
-            assert data["components"]["qdrant"]["status"] == "healthy"
-            assert data["components"]["embedding"]["status"] == "unhealthy"
+        response = vecpipe_app.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "degraded"
+        assert data["components"]["qdrant"]["status"] == "healthy"
+        assert data["components"]["embedding"]["status"] == "unhealthy"

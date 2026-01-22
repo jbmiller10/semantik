@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from shared.config import settings
 from vecpipe.search.auth import require_internal_api_key
-from vecpipe.search.state import get_resources
+from vecpipe.search.deps import get_llm_manager, require_llm_manager
 
 logger = logging.getLogger(__name__)
 
@@ -100,23 +100,6 @@ class LLMHealthResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------------
-# Helper Functions
-# -----------------------------------------------------------------------------
-
-
-def _get_llm_manager() -> Any:
-    """Get the LLM manager from resources, raising 503 if not initialized."""
-    resources = get_resources()
-    llm_mgr = resources.get("llm_mgr")
-    if llm_mgr is None:
-        raise HTTPException(
-            status_code=503,
-            detail="LLM manager not initialized. Local LLM support may be disabled.",
-        )
-    return llm_mgr
-
-
-# -----------------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------------
 
@@ -126,7 +109,10 @@ def _get_llm_manager() -> Any:
     response_model=LLMGenerateResponse,
     dependencies=[Depends(require_internal_api_key)],
 )
-async def generate_text(request: LLMGenerateRequest) -> LLMGenerateResponse:
+async def generate_text(
+    request: LLMGenerateRequest,
+    llm_manager: Any = Depends(require_llm_manager),
+) -> LLMGenerateResponse:
     """Generate text using local LLM.
 
     Processes prompts sequentially in Phase 1 (batch-shaped API for future parallelism).
@@ -140,8 +126,6 @@ async def generate_text(request: LLMGenerateRequest) -> LLMGenerateResponse:
         HTTPException 507: Insufficient GPU memory
         HTTPException 500: Generation failed
     """
-    llm_manager = _get_llm_manager()
-
     try:
         # Phase 1: sequential processing; preserves "batch-only" API surface without
         # requiring true batched generation support.
@@ -193,7 +177,10 @@ async def list_models() -> dict[str, Any]:
     "/models/load",
     dependencies=[Depends(require_internal_api_key)],
 )
-async def preload_model(request: LLMPreloadRequest) -> dict[str, Any]:
+async def preload_model(
+    request: LLMPreloadRequest,
+    llm_manager: Any = Depends(require_llm_manager),
+) -> dict[str, Any]:
     """Preload a model into GPU memory.
 
     Useful for warming up models before expected usage.
@@ -207,8 +194,6 @@ async def preload_model(request: LLMPreloadRequest) -> dict[str, Any]:
         HTTPException 507: Insufficient GPU memory
         HTTPException 500: Loading failed
     """
-    llm_manager = _get_llm_manager()
-
     try:
         await llm_manager._ensure_model_loaded(request.model_name, request.quantization)
         return {"status": "loaded", "model_name": request.model_name}
@@ -223,7 +208,7 @@ async def preload_model(request: LLMPreloadRequest) -> dict[str, Any]:
 
 
 @router.get("/health", response_model=LLMHealthResponse)
-async def llm_health_check() -> LLMHealthResponse:
+async def llm_health_check(llm_mgr: Any = Depends(get_llm_manager)) -> LLMHealthResponse:
     """Health check - verify LLM subsystem is operational.
 
     Returns status information even if LLM manager is not initialized.
@@ -231,9 +216,6 @@ async def llm_health_check() -> LLMHealthResponse:
     Returns:
         LLMHealthResponse with status, loaded models, and governor state
     """
-    resources = get_resources()
-    llm_mgr = resources.get("llm_mgr")
-
     if llm_mgr is None:
         return LLMHealthResponse(
             status="disabled",

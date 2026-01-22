@@ -7,7 +7,7 @@ import pytest
 async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
     """_perform_sparse_search should accept SparseQueryVector (not just dicts)."""
     from shared.plugins.types.sparse_indexer import SparseQueryVector
-    from vecpipe.search.service import _perform_sparse_search
+    from vecpipe.search.sparse_search import perform_sparse_search
 
     class DummyPlugin:
         SPARSE_TYPE = "bm25"
@@ -33,20 +33,19 @@ async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
     mock_search_sparse_collection = AsyncMock(return_value=[{"chunk_id": "chunk-1", "score": 0.42, "payload": {}}])
 
     with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="qdrant-key"),
-        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=record),
         patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant_client) as mock_async_qdrant_client,
-        patch("vecpipe.search.service.search_sparse_collection", mock_search_sparse_collection),
+        patch("vecpipe.search.sparse_search.search_sparse_collection", mock_search_sparse_collection),
     ):
-        results, _time_ms = await _perform_sparse_search(
+        results, _time_ms = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="qdrant-key"),
             collection_name="dense_collection",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse_collection"},
             query="hello world",
             k=10,
+            sparse_manager=None,
+            qdrant_sdk=None,
         )
 
     assert len(results) == 1
@@ -62,23 +61,22 @@ async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
 
 @pytest.mark.asyncio()
 async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
-    from vecpipe.search.service import _perform_sparse_search
+    from vecpipe.search.sparse_search import perform_sparse_search
 
     mock_fallbacks = Mock()
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
-        ),
-        patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
+        patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, time_ms = await _perform_sparse_search(
+        results, time_ms = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"enabled": True, "sparse_collection_name": "sparse"},
             query="q",
             k=5,
+            sparse_manager=None,
+            qdrant_sdk=None,
         )
 
     assert results == []
@@ -88,25 +86,24 @@ async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
 
 @pytest.mark.asyncio()
 async def test_perform_sparse_search_returns_empty_when_plugin_missing() -> None:
-    from vecpipe.search.service import _perform_sparse_search
+    from vecpipe.search.sparse_search import perform_sparse_search
 
     mock_fallbacks = Mock()
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
-        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=None),
-        patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
+        patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, time_ms = await _perform_sparse_search(
+        results, time_ms = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "missing", "sparse_collection_name": "sparse"},
             query="q",
             k=5,
+            sparse_manager=None,
+            qdrant_sdk=None,
         )
 
     assert results == []
@@ -116,7 +113,7 @@ async def test_perform_sparse_search_returns_empty_when_plugin_missing() -> None
 
 @pytest.mark.asyncio()
 async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type() -> None:
-    from vecpipe.search.service import _perform_sparse_search
+    from vecpipe.search.sparse_search import perform_sparse_search
 
     class DummyPlugin:
         SPARSE_TYPE = "bm25"
@@ -131,19 +128,18 @@ async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
-        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=record),
-        patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
+        patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, _time_ms = await _perform_sparse_search(
+        results, _time_ms = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse"},
             query="q",
             k=5,
+            sparse_manager=None,
+            qdrant_sdk=None,
         )
 
     assert results == []
@@ -152,7 +148,7 @@ async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type
 
 @pytest.mark.asyncio()
 async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch() -> None:
-    from vecpipe.search.service import _perform_sparse_search
+    from vecpipe.search.sparse_search import perform_sparse_search
 
     class DummyPlugin:
         SPARSE_TYPE = "bm25"
@@ -167,19 +163,18 @@ async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch(
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (
-        patch(
-            "vecpipe.search.service._get_settings",
-            return_value=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
-        ),
         patch("shared.plugins.load_plugins"),
         patch("shared.plugins.plugin_registry.get", return_value=record),
-        patch("vecpipe.search.service.sparse_search_fallbacks", mock_fallbacks),
+        patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, _time_ms = await _perform_sparse_search(
+        results, _time_ms = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse"},
             query="q",
             k=5,
+            sparse_manager=None,
+            qdrant_sdk=None,
         )
 
     assert results == []
