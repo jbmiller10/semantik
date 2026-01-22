@@ -89,9 +89,7 @@ class TestEncodeDocuments:
     def test_encode_documents_returns_404_when_plugin_not_found(self) -> None:
         """Test 404 when sparse plugin is not found."""
         mock_sparse_manager = AsyncMock()
-        mock_sparse_manager.encode_documents = AsyncMock(
-            side_effect=ValueError("Plugin 'unknown-plugin' not found")
-        )
+        mock_sparse_manager.encode_documents = AsyncMock(side_effect=ValueError("Plugin 'unknown-plugin' not found"))
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
@@ -131,9 +129,7 @@ class TestEncodeDocuments:
     def test_encode_documents_returns_500_on_runtime_error(self) -> None:
         """Test 500 for other runtime errors."""
         mock_sparse_manager = AsyncMock()
-        mock_sparse_manager.encode_documents = AsyncMock(
-            side_effect=RuntimeError("Model failed to initialize")
-        )
+        mock_sparse_manager.encode_documents = AsyncMock(side_effect=RuntimeError("Model failed to initialize"))
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
@@ -235,9 +231,7 @@ class TestEncodeQuery:
     def test_encode_query_returns_404_when_plugin_not_found(self) -> None:
         """Test 404 when sparse plugin is not found."""
         mock_sparse_manager = AsyncMock()
-        mock_sparse_manager.encode_query = AsyncMock(
-            side_effect=ValueError("Plugin 'nonexistent' not found")
-        )
+        mock_sparse_manager.encode_query = AsyncMock(side_effect=ValueError("Plugin 'nonexistent' not found"))
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
@@ -275,9 +269,7 @@ class TestEncodeQuery:
     def test_encode_query_returns_500_on_runtime_error(self) -> None:
         """Test 500 for other runtime errors."""
         mock_sparse_manager = AsyncMock()
-        mock_sparse_manager.encode_query = AsyncMock(
-            side_effect=RuntimeError("Tokenizer initialization failed")
-        )
+        mock_sparse_manager.encode_query = AsyncMock(side_effect=RuntimeError("Tokenizer initialization failed"))
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
@@ -312,9 +304,7 @@ class TestEncodeQuery:
     def test_encode_query_with_model_config(self) -> None:
         """Test query encoding with custom model configuration."""
         mock_sparse_manager = AsyncMock()
-        mock_sparse_manager.encode_query = AsyncMock(
-            return_value=SparseQueryVector(indices=(1,), values=(0.5,))
-        )
+        mock_sparse_manager.encode_query = AsyncMock(return_value=SparseQueryVector(indices=(1,), values=(0.5,)))
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
@@ -371,7 +361,10 @@ class TestListSparsePlugins:
 
         with (
             patch("vecpipe.search.sparse_router.load_plugins"),
-            patch("vecpipe.search.sparse_router.plugin_registry.get_all", return_value=[mock_record_bm25, mock_record_splade]),
+            patch(
+                "vecpipe.search.sparse_router.plugin_registry.get_all",
+                return_value=[mock_record_bm25, mock_record_splade],
+            ),
         ):
             client = make_client()
             resp = client.get("/sparse/plugins")
@@ -447,9 +440,7 @@ class TestSparseStatus:
     def test_sparse_status_returns_loaded_plugins(self) -> None:
         """Test status endpoint returns loaded plugins info."""
         mock_sparse_manager = Mock()
-        mock_sparse_manager.get_loaded_plugins = Mock(
-            return_value=["bm25-local", "splade-local"]
-        )
+        mock_sparse_manager.get_loaded_plugins = Mock(return_value=["bm25-local", "splade-local"])
 
         with patch("vecpipe.search.auth.settings.INTERNAL_API_KEY", "test-internal-key"):
             client = make_client(sparse_manager=mock_sparse_manager)
