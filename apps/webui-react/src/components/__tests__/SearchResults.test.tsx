@@ -5,6 +5,8 @@ import SearchResults from '../SearchResults'
 import { useSearchStore } from '@/stores/searchStore'
 import { useUIStore } from '@/stores/uiStore'
 import type { MockedFunction } from '@/tests/types/test-types'
+import type { HyDEInfo } from '@/services/api/v2/types'
+import type { SearchResult } from '@/stores/searchStore'
 
 vi.mock('@/stores/searchStore', () => ({
   useSearchStore: vi.fn(),
@@ -56,16 +58,39 @@ describe('SearchResults', () => {
     },
   ]
 
+  type RerankingMetrics =
+    | {
+        rerankingUsed: boolean
+        rerankerModel?: string
+        rerankingTimeMs?: number
+        original_count?: number
+        reranked_count?: number
+      }
+    | null
+
+  type FailedCollection = {
+    collection_id: string
+    collection_name: string
+    error_message?: string
+    error?: string
+  }
+
+  type GpuMemoryError = {
+    message: string
+    suggestion: string
+    currentModel: string
+  }
+
   type SearchState = {
-    results: any[]
+    results: SearchResult[]
     loading: boolean
     error: string | null
-    rerankingMetrics: any
-    failedCollections: any[]
+    rerankingMetrics: RerankingMetrics
+    failedCollections: FailedCollection[]
     partialFailure: boolean
     hydeUsed: boolean
-    hydeInfo: any
-    gpuMemoryError: any
+    hydeInfo: HyDEInfo | null
+    gpuMemoryError: GpuMemoryError | null
   }
 
   let mockSearchState: SearchState
@@ -90,17 +115,17 @@ describe('SearchResults', () => {
 
     setSearchState({})
 
-    ;(useSearchStore as MockedFunction<typeof useSearchStore>).mockImplementation((selector?: any) => {
+    ;(useSearchStore as MockedFunction<typeof useSearchStore>).mockImplementation((selector?: unknown) => {
       if (typeof selector === 'function') {
-        return selector(mockSearchState)
+        return (selector as (state: SearchState) => unknown)(mockSearchState)
       }
       return mockSearchState
     })
 
-    ;(useUIStore as MockedFunction<typeof useUIStore>).mockImplementation((selector?: any) => {
+    ;(useUIStore as MockedFunction<typeof useUIStore>).mockImplementation((selector?: unknown) => {
       const uiState = { setShowDocumentViewer: mockSetShowDocumentViewer }
       if (typeof selector === 'function') {
-        return selector(uiState)
+        return (selector as (state: typeof uiState) => unknown)(uiState)
       }
       return uiState
     })
