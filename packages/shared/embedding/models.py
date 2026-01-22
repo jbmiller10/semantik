@@ -144,6 +144,89 @@ MODEL_CONFIGS = {
         query_prefix="Represent this sentence for searching relevant passages: ",
         document_prefix="",  # No prefix for documents
     ),
+    # =========================================================================
+    # EmbeddingGemma (Google) - On-device optimized
+    # =========================================================================
+    "google/embeddinggemma-300m": ModelConfig(
+        name="google/embeddinggemma-300m",
+        dimension=768,
+        description="Google on-device model, 100+ languages (<200MB RAM)",
+        max_sequence_length=2048,
+        memory_estimate={"float32": 1200, "float16": 600, "int8": 200},
+        pooling_method="mean",
+        is_asymmetric=False,
+    ),
+    # =========================================================================
+    # Nomic Embed (Nomic AI) - Open source with long context
+    # =========================================================================
+    "nomic-ai/nomic-embed-text-v1": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v1",
+        dimension=768,
+        description="8K context, Apache-2.0 open source (137M)",
+        max_sequence_length=8192,
+        memory_estimate={"float32": 550, "float16": 275, "int8": 140},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    "nomic-ai/nomic-embed-text-v1.5": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v1.5",
+        dimension=768,
+        description="8K context + Matryoshka dimensions (137M)",
+        max_sequence_length=8192,
+        memory_estimate={"float32": 550, "float16": 275, "int8": 140},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    "nomic-ai/nomic-embed-text-v2-moe": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v2-moe",
+        dimension=768,
+        description="MoE architecture, 100 languages (475M/305M active)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1900, "float16": 950, "int8": 475},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    # =========================================================================
+    # Stella (dunzhang) - English models with Matryoshka
+    # =========================================================================
+    "dunzhang/stella_en_400M_v5": ModelConfig(
+        name="dunzhang/stella_en_400M_v5",
+        dimension=1024,
+        description="Lightweight English, Matryoshka 512-8192d (400M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1600, "float16": 800, "int8": 400},
+        pooling_method="mean",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    "dunzhang/stella_en_1.5B_v5": ModelConfig(
+        name="dunzhang/stella_en_1.5B_v5",
+        dimension=1024,
+        description="High-quality English, Matryoshka 256-8192d (1.5B)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 6000, "float16": 3000, "int8": 1500},
+        pooling_method="mean",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    # =========================================================================
+    # Stella (dunzhang) - Chinese model
+    # =========================================================================
+    "dunzhang/stella-mrl-large-zh-v3.5-1792d": ModelConfig(
+        name="dunzhang/stella-mrl-large-zh-v3.5-1792d",
+        dimension=1792,
+        description="Chinese embeddings, Matryoshka 128-1792d",
+        max_sequence_length=1024,
+        memory_estimate={"float32": 1600, "float16": 800, "int8": 400},
+        pooling_method="mean",
+        is_asymmetric=False,
+    ),
 }
 
 
