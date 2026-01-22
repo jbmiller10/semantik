@@ -377,3 +377,60 @@ class TestGovernedModelManagerEnsureProviderInitialized:
         assert call.args[1].value == ModelType.EMBEDDING.value
         assert call.args[2] == old_quantization
         empty_cache.assert_called_once()
+
+
+class TestCreateGovernedModelManager:
+    """Tests for create_governed_model_manager() factory branching."""
+
+    def test_create_governed_model_manager_cpu_only_uses_settings_timeout(self, monkeypatch):
+        torch_mod = types.ModuleType("torch")
+        torch_mod.cuda = types.SimpleNamespace(is_available=lambda: False)
+        monkeypatch.setitem(sys.modules, "torch", torch_mod)
+
+        budget = MemoryBudget(total_gpu_mb=0, total_cpu_mb=1)
+
+        with (
+            patch.object(gmm.settings, "MODEL_UNLOAD_AFTER_SECONDS", 123),
+            patch("vecpipe.governed_model_manager.create_memory_budget", return_value=budget) as mk_budget,
+            patch("vecpipe.governed_model_manager.GovernedModelManager") as mk_manager,
+        ):
+            out = gmm.create_governed_model_manager(unload_after_seconds=None, total_gpu_memory_mb=None)
+
+        mk_budget.assert_called_once_with(total_gpu_mb=0)
+        mk_manager.assert_called_once()
+        assert mk_manager.call_args.kwargs["unload_after_seconds"] == 123
+        assert out is mk_manager.return_value
+
+    def test_create_governed_model_manager_respects_total_gpu_override(self, monkeypatch):
+        torch_mod = types.ModuleType("torch")
+        torch_mod.cuda = types.SimpleNamespace(is_available=lambda: True, mem_get_info=lambda: (0, 0))
+        monkeypatch.setitem(sys.modules, "torch", torch_mod)
+
+        budget = MemoryBudget(total_gpu_mb=5555, total_cpu_mb=1)
+
+        with (
+            patch("vecpipe.governed_model_manager.create_memory_budget", return_value=budget) as mk_budget,
+            patch("vecpipe.governed_model_manager.GovernedModelManager") as mk_manager,
+        ):
+            out = gmm.create_governed_model_manager(unload_after_seconds=1, total_gpu_memory_mb=5555)
+
+        mk_budget.assert_called_once_with(total_gpu_mb=5555)
+        mk_manager.assert_called_once()
+        assert out is mk_manager.return_value
+
+    def test_create_governed_model_manager_detects_gpu_memory(self, monkeypatch):
+        torch_mod = types.ModuleType("torch")
+        torch_mod.cuda = types.SimpleNamespace(is_available=lambda: True, mem_get_info=lambda: (0, 8 * 1024 * 1024 * 1024))
+        monkeypatch.setitem(sys.modules, "torch", torch_mod)
+
+        budget = MemoryBudget(total_gpu_mb=8192, total_cpu_mb=1)
+
+        with (
+            patch("vecpipe.governed_model_manager.create_memory_budget", return_value=budget) as mk_budget,
+            patch("vecpipe.governed_model_manager.GovernedModelManager") as mk_manager,
+        ):
+            out = gmm.create_governed_model_manager(unload_after_seconds=1, total_gpu_memory_mb=None)
+
+        mk_budget.assert_called_once_with(total_gpu_mb=8192)
+        mk_manager.assert_called_once()
+        assert out is mk_manager.return_value

@@ -180,9 +180,10 @@ class TestMCPSearchFlow:
                 {
                     "query": "test query",
                     "k": 5,
-                    "search_type": "hybrid",
+                    "search_type": "code",
+                    "search_mode": "hybrid",
+                    "rrf_k": 42,
                     "use_reranker": False,
-                    "hybrid_alpha": 0.3,
                 },
             )
 
@@ -191,9 +192,10 @@ class TestMCPSearchFlow:
             # Verify overrides were applied
             call_kwargs = server.api_client.search.call_args.kwargs
             assert call_kwargs["k"] == 5
-            assert call_kwargs["search_type"] == "hybrid"
+            assert call_kwargs["search_type"] == "code"
+            assert call_kwargs["search_mode"] == "hybrid"
+            assert call_kwargs["rrf_k"] == 42
             assert call_kwargs["use_reranker"] is False
-            assert call_kwargs["hybrid_alpha"] == 0.3
 
         finally:
             await server.api_client.close()

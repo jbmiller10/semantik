@@ -182,3 +182,104 @@ async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch(
     assert results == []
     assert warnings == ["Sparse search skipped: sparse query indices/values mismatch"]
     mock_fallbacks.labels.assert_called_with(reason="invalid_query_vector")
+
+
+@pytest.mark.asyncio()
+async def test_perform_sparse_search_uses_managed_sparse_manager_and_skips_plugin_loading() -> None:
+    """Managed sparse_manager path should call encode_query and avoid direct plugin construction."""
+    from vecpipe.search.sparse_search import perform_sparse_search
+
+    class ManagedVector:
+        _sparse_type = "splade"
+
+        def __init__(self) -> None:
+            self.indices = (1, 2)
+            self.values = (0.3, 0.7)
+
+    mock_sparse_manager = AsyncMock()
+    mock_sparse_manager.encode_query = AsyncMock(return_value=ManagedVector())
+
+    mock_qdrant = AsyncMock()
+    mock_qdrant.close = AsyncMock()
+
+    mock_search_sparse_collection = AsyncMock(return_value=[{"chunk_id": "c1", "score": 0.5, "payload": {"doc_id": "d"}}])
+
+    with (
+        patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant),
+        patch("vecpipe.search.sparse_search.search_sparse_collection", mock_search_sparse_collection),
+        patch("shared.plugins.load_plugins") as load_plugins,
+        patch("shared.plugins.plugin_registry.get") as plugin_get,
+    ):
+        results, _time_ms, warnings = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+            collection_name="dense",
+            sparse_config={"plugin_id": "splade-local", "sparse_collection_name": "sparse", "model_config": "not-a-dict"},
+            query="q",
+            k=5,
+            sparse_manager=mock_sparse_manager,
+            qdrant_sdk=None,
+        )
+
+    assert warnings == []
+    assert results
+    assert results[0]["chunk_id"] == "c1"
+    mock_sparse_manager.encode_query.assert_awaited_once()
+    # sparse_type came from query vector, so plugins should not be consulted
+    load_plugins.assert_not_called()
+    plugin_get.assert_not_called()
+
+
+@pytest.mark.asyncio()
+async def test_perform_sparse_search_returns_empty_when_sparse_collection_name_missing() -> None:
+    from vecpipe.search.sparse_search import perform_sparse_search
+
+    mock_fallbacks = Mock()
+    mock_fallbacks.labels.return_value.inc = Mock()
+
+    sparse_manager = AsyncMock()
+    sparse_manager.encode_query = AsyncMock(return_value={"indices": [1], "values": [0.1]})
+
+    with patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks):
+        results, time_ms, warnings = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+            collection_name="dense",
+            sparse_config={"plugin_id": "bm25-local"},
+            query="q",
+            k=5,
+            sparse_manager=sparse_manager,
+            qdrant_sdk=None,
+        )
+
+    assert results == []
+    assert time_ms == 0.0
+    assert warnings == ["Sparse search skipped: missing sparse_collection_name"]
+    mock_fallbacks.labels.assert_called_with(reason="no_collection_name")
+
+
+@pytest.mark.asyncio()
+async def test_perform_sparse_search_returns_empty_on_sparse_search_exception() -> None:
+    from vecpipe.search.sparse_search import perform_sparse_search
+
+    class Vector:
+        indices = (1,)
+        values = (0.1,)
+
+    sparse_manager = AsyncMock()
+    sparse_manager.encode_query = AsyncMock(return_value=Vector())
+
+    mock_search_sparse_collection = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with patch("vecpipe.search.sparse_search.search_sparse_collection", mock_search_sparse_collection):
+        results, _time_ms, warnings = await perform_sparse_search(
+            cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
+            collection_name="dense",
+            sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse"},
+            query="q",
+            k=5,
+            sparse_manager=sparse_manager,
+            qdrant_sdk=AsyncMock(),  # provided client, won't be closed
+        )
+
+    assert results == []
+    assert warnings
+    assert "Sparse search failed" in warnings[0]

@@ -223,6 +223,47 @@ class TestVecpipeRuntime:
         mock_model_manager.shutdown.assert_called_once()
 
     @pytest.mark.asyncio()
+    async def test_runtime_continues_cleanup_when_all_components_raise(self) -> None:
+        """Each cleanup step is isolated; failures shouldn't stop later shutdown steps."""
+        qdrant_http = AsyncMock()
+        qdrant_http.aclose = AsyncMock(side_effect=RuntimeError("http close failed"))
+
+        qdrant_sdk = AsyncMock()
+        qdrant_sdk.close = AsyncMock(side_effect=RuntimeError("sdk close failed"))
+
+        llm_manager = AsyncMock()
+        llm_manager.shutdown = AsyncMock(side_effect=RuntimeError("llm shutdown failed"))
+
+        sparse_manager = AsyncMock()
+        sparse_manager.shutdown = AsyncMock(side_effect=RuntimeError("sparse shutdown failed"))
+
+        governed_model_manager = Mock(spec=["shutdown", "shutdown_async"])
+        governed_model_manager.shutdown = Mock(side_effect=RuntimeError("shutdown should not be used"))
+        governed_model_manager.shutdown_async = AsyncMock(side_effect=RuntimeError("model shutdown failed"))
+
+        executor = Mock()
+        executor.shutdown = Mock(side_effect=RuntimeError("executor shutdown failed"))
+
+        runtime = VecpipeRuntime(
+            qdrant_http=qdrant_http,
+            qdrant_sdk=qdrant_sdk,
+            model_manager=governed_model_manager,
+            sparse_manager=sparse_manager,
+            llm_manager=llm_manager,
+            executor=executor,
+        )
+
+        await runtime.aclose()
+
+        assert runtime.is_closed
+        qdrant_http.aclose.assert_awaited_once()
+        qdrant_sdk.close.assert_awaited_once()
+        llm_manager.shutdown.assert_awaited_once()
+        sparse_manager.shutdown.assert_awaited_once()
+        governed_model_manager.shutdown_async.assert_awaited_once()
+        executor.shutdown.assert_called_once_with(wait=True)
+
+    @pytest.mark.asyncio()
     async def test_runtime_without_llm_manager(
         self,
         mock_qdrant_http: AsyncMock,
