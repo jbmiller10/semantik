@@ -178,7 +178,8 @@ describe('ConfigModal', () => {
       renderComponent();
 
       expect(screen.getByText('How it works')).toBeInTheDocument();
-      expect(screen.getByText(/Restart Claude/)).toBeInTheDocument();
+      // "Restart Claude" appears in multiple places (tool note + usage note), verify at least one exists
+      expect(screen.getAllByText(/Restart Claude/).length).toBeGreaterThan(0);
     });
 
     it('should have correct dialog role and aria attributes', () => {
@@ -199,12 +200,11 @@ describe('ConfigModal', () => {
       } as ReturnType<typeof useMCPProfileConfig>);
     });
 
-    it('should trigger copy action when Copy button is clicked', async () => {
+    it('should trigger copy action when Copy tool name button is clicked', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      // Find the Copy button (not "Copy JSON")
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       // Verify copy happened by checking UI feedback (Copied/Failed state)
@@ -223,7 +223,7 @@ describe('ConfigModal', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       await waitFor(() => {
@@ -231,12 +231,12 @@ describe('ConfigModal', () => {
       });
     });
 
-    it('should trigger copy action when Copy JSON button is clicked', async () => {
+    it('should trigger copy action when Copy config button is clicked', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyJsonButton = screen.getByRole('button', { name: /copy json/i });
-      await user.click(copyJsonButton);
+      const copyConfigButton = screen.getByRole('button', { name: /copy config/i });
+      await user.click(copyConfigButton);
 
       // Verify copy happened by checking UI feedback
       await waitFor(() => {
@@ -247,12 +247,12 @@ describe('ConfigModal', () => {
       });
     });
 
-    it('should show "Copied!" feedback after copying JSON', async () => {
+    it('should show "Copied!" feedback after copying config', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyJsonButton = screen.getByRole('button', { name: /copy json/i });
-      await user.click(copyJsonButton);
+      const copyConfigButton = screen.getByRole('button', { name: /copy config/i });
+      await user.click(copyConfigButton);
 
       await waitFor(() => {
         expect(screen.getByText('Copied!')).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe('ConfigModal', () => {
 
       renderComponent();
 
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       await waitFor(() => {
