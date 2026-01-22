@@ -8,29 +8,52 @@ import type { FormatType } from '../types/mcp-client-tools';
 
 /**
  * Generate config string for the given MCP client tool format.
+ * @param config - The MCP client configuration
+ * @param formatType - The output format type
+ * @param apiKey - Optional API key to substitute for the placeholder
  */
 export function generateMCPConfig(
   config: MCPClientConfig,
-  formatType: FormatType
+  formatType: FormatType,
+  apiKey?: string
 ): string {
+  // If apiKey is provided, substitute it for the placeholder in env
+  const effectiveConfig = apiKey ? substituteApiKey(config, apiKey) : config;
+
   switch (formatType) {
     case 'standard':
-      return generateStandardConfig(config);
+      return generateStandardConfig(effectiveConfig);
     case 'cline':
-      return generateClineConfig(config);
+      return generateClineConfig(effectiveConfig);
     case 'copilot':
-      return generateCopilotConfig(config);
+      return generateCopilotConfig(effectiveConfig);
     case 'amp':
-      return generateAmpConfig(config);
+      return generateAmpConfig(effectiveConfig);
     case 'opencode':
-      return generateOpencodeConfig(config);
+      return generateOpencodeConfig(effectiveConfig);
     case 'codex':
-      return generateCodexConfig(config);
+      return generateCodexConfig(effectiveConfig);
     case 'claude-code':
-      return generateClaudeCodeConfig(config);
+      return generateClaudeCodeConfig(effectiveConfig);
     default:
-      return generateStandardConfig(config);
+      return generateStandardConfig(effectiveConfig);
   }
+}
+
+/**
+ * Substitute API key placeholder with actual value in config env.
+ */
+function substituteApiKey(config: MCPClientConfig, apiKey: string): MCPClientConfig {
+  const newEnv = { ...config.env };
+  for (const key of Object.keys(newEnv)) {
+    if (newEnv[key] === '<your-access-token-or-api-key>') {
+      newEnv[key] = apiKey;
+    }
+  }
+  return {
+    ...config,
+    env: newEnv,
+  };
 }
 
 /**
