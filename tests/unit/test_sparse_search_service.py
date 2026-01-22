@@ -38,7 +38,7 @@ async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
         patch("qdrant_client.AsyncQdrantClient", return_value=mock_qdrant_client) as mock_async_qdrant_client,
         patch("vecpipe.search.sparse_search.search_sparse_collection", mock_search_sparse_collection),
     ):
-        results, _time_ms = await perform_sparse_search(
+        results, _time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="localhost", QDRANT_PORT=6333, QDRANT_API_KEY="qdrant-key"),
             collection_name="dense_collection",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse_collection"},
@@ -50,6 +50,7 @@ async def test_perform_sparse_search_accepts_dataclass_query_vector() -> None:
 
     assert len(results) == 1
     assert results[0]["chunk_id"] == "chunk-1"
+    assert warnings == []
     mock_search_sparse_collection.assert_awaited_once()
     call_kwargs = mock_search_sparse_collection.await_args.kwargs
     assert call_kwargs["query_indices"] == [1, 2, 3]
@@ -67,7 +68,7 @@ async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
     mock_fallbacks.labels.return_value.inc = Mock()
 
     with (patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),):
-        results, time_ms = await perform_sparse_search(
+        results, time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"enabled": True, "sparse_collection_name": "sparse"},
@@ -79,6 +80,7 @@ async def test_perform_sparse_search_returns_empty_when_no_plugin_id() -> None:
 
     assert results == []
     assert time_ms == 0.0
+    assert warnings == ["Sparse search skipped: missing sparse plugin_id"]
     mock_fallbacks.labels.assert_called_with(reason="no_plugin_id")
 
 
@@ -94,7 +96,7 @@ async def test_perform_sparse_search_returns_empty_when_plugin_missing() -> None
         patch("shared.plugins.plugin_registry.get", return_value=None),
         patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, time_ms = await perform_sparse_search(
+        results, time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "missing", "sparse_collection_name": "sparse"},
@@ -106,6 +108,7 @@ async def test_perform_sparse_search_returns_empty_when_plugin_missing() -> None
 
     assert results == []
     assert time_ms == 0.0
+    assert warnings == ["Sparse search skipped: plugin 'missing' not found"]
     mock_fallbacks.labels.assert_called_with(reason="plugin_not_found")
 
 
@@ -130,7 +133,7 @@ async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type
         patch("shared.plugins.plugin_registry.get", return_value=record),
         patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, _time_ms = await perform_sparse_search(
+        results, _time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse"},
@@ -141,6 +144,7 @@ async def test_perform_sparse_search_returns_empty_for_invalid_query_vector_type
         )
 
     assert results == []
+    assert warnings == ["Sparse search skipped: sparse query encoder returned unsupported vector type"]
     mock_fallbacks.labels.assert_called_with(reason="invalid_query_vector")
 
 
@@ -165,7 +169,7 @@ async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch(
         patch("shared.plugins.plugin_registry.get", return_value=record),
         patch("vecpipe.search.sparse_search.sparse_search_fallbacks", mock_fallbacks),
     ):
-        results, _time_ms = await perform_sparse_search(
+        results, _time_ms, warnings = await perform_sparse_search(
             cfg=Mock(QDRANT_HOST="h", QDRANT_PORT=1, QDRANT_API_KEY=None),
             collection_name="dense",
             sparse_config={"plugin_id": "bm25-local", "sparse_collection_name": "sparse"},
@@ -176,4 +180,5 @@ async def test_perform_sparse_search_returns_empty_when_indices_values_mismatch(
         )
 
     assert results == []
+    assert warnings == ["Sparse search skipped: sparse query indices/values mismatch"]
     mock_fallbacks.labels.assert_called_with(reason="invalid_query_vector")

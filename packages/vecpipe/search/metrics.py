@@ -88,6 +88,14 @@ sparse_search_fallbacks = get_or_create_metric(
     ["reason"],  # sparse_not_enabled, plugin_not_found, etc.
 )
 
+# Dense search metrics
+dense_search_fallbacks = get_or_create_metric(
+    Counter,
+    "semantik_dense_search_fallbacks_total",
+    "Total dense search fallbacks",
+    ["reason"],  # sdk_error, etc.
+)
+
 # GPU and Infrastructure Metrics
 gpu_free_probe_latency = get_or_create_metric(
     Histogram,
@@ -117,6 +125,13 @@ rerank_content_fetch_latency = get_or_create_metric(
     buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
 )
 
+rerank_fallbacks = get_or_create_metric(
+    Counter,
+    "semantik_rerank_fallbacks_total",
+    "Total rerank fallbacks",
+    ["reason"],  # error, etc.
+)
+
 collection_metadata_fetch_latency = get_or_create_metric(
     Histogram,
     "semantik_collection_metadata_fetch_seconds",
@@ -137,9 +152,11 @@ __all__ = [
     "sparse_index_chunks",
     "sparse_search_requests",
     "sparse_search_fallbacks",
+    "dense_search_fallbacks",
     "gpu_free_probe_latency",
     "qdrant_ad_hoc_client_total",
     "payload_fetch_latency",
     "rerank_content_fetch_latency",
+    "rerank_fallbacks",
     "collection_metadata_fetch_latency",
 ]

@@ -315,13 +315,14 @@
      - "sparse": Sparse-only search (if sparse index exists), fallback to dense with warning
      - "hybrid": Dense + sparse search with RRF fusion (rrf_k parameter)
   4. Embed query using same model that indexed the collection
-  5. Search Qdrant for top-k similar vectors
+  5. Search Qdrant for top-k similar vectors (prefers SDK for unfiltered; REST for filters; SDK errors fallback to REST with warning)
   6. Filter results by score_threshold (BEFORE reranking)
   7. If use_reranker=true:
      a. Fetch 5x candidates (min=20, max=200)
      b. Ensure content is available (fetch from Qdrant if needed)
      c. Rerank with matched Qwen3-Reranker model
-  8. Return results with timing metadata
+     d. If reranking fails, return un-reranked results with warning (reranking_used reflects actual reranking)
+  8. Return results with timing metadata and warnings (SearchResponse.warnings)
 </search-flow>
 
 <collection-resolution>

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import httpx
 
 from vecpipe.search.errors import maybe_raise_for_status, response_json
-from vecpipe.search.metrics import embedding_generation_latency
+from vecpipe.search.metrics import dense_search_fallbacks, embedding_generation_latency
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ async def search_dense_qdrant(
     qdrant_http: httpx.AsyncClient,
     qdrant_sdk: Any,
     filters: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Search Qdrant for dense vectors, preferring SDK with REST fallback.
 
     REST is required for filtered search in this codebase (kept as fallback).
@@ -95,7 +95,7 @@ async def search_dense_qdrant(
         }
         response = await qdrant_http.post(f"/collections/{collection_name}/points/search", json=search_request)
         await maybe_raise_for_status(response)
-        return list((await response_json(response))["result"])
+        return list((await response_json(response))["result"]), False
 
     try:
         results = await qdrant_sdk.search(
@@ -122,9 +122,10 @@ async def search_dense_qdrant(
                         "payload": getattr(point, "payload", {}) or {},
                     }
                 )
-        return converted
+        return converted, False
     except Exception as exc:  # pragma: no cover - best effort fallback
         logger.warning("SDK dense search failed; falling back to REST: %s", exc, exc_info=True)
+        dense_search_fallbacks.labels(reason="sdk_error").inc()
         search_request = {
             "vector": query_vector,
             "limit": limit,
@@ -133,4 +134,4 @@ async def search_dense_qdrant(
         }
         response = await qdrant_http.post(f"/collections/{collection_name}/points/search", json=search_request)
         await maybe_raise_for_status(response)
-        return list((await response_json(response))["result"])
+        return list((await response_json(response))["result"]), True

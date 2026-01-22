@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +15,11 @@ if TYPE_CHECKING:
     from vecpipe.sparse_model_manager import SparseModelManager
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _SupportsAsyncShutdown(Protocol):
+    async def shutdown_async(self) -> None: ...
 
 
 @dataclass
@@ -63,7 +68,7 @@ class VecpipeRuntime:
 
         # Use async shutdown for GovernedModelManager to avoid deadlock
         try:
-            if hasattr(self.model_manager, "shutdown_async"):
+            if isinstance(self.model_manager, _SupportsAsyncShutdown):
                 await self.model_manager.shutdown_async()
             else:
                 self.model_manager.shutdown()

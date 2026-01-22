@@ -58,7 +58,7 @@ async def root(runtime: VecpipeRuntime = Depends(get_runtime)) -> dict[str, Any]
         return health_info
     except Exception as e:  # pragma: no cover - health fallback
         logger.error("Health check failed: %s", e)
-        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}") from e
+        raise HTTPException(status_code=503, detail=f"Service unavailable ({type(e).__name__}): {str(e)}") from e
 
 
 @router.get("/health")

@@ -6,7 +6,6 @@ import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, Mock
 
 import httpx
 from fastapi import HTTPException
@@ -57,6 +56,11 @@ SEARCH_INSTRUCTIONS = {
 
 def _get_settings() -> Any:
     return settings
+
+
+def _is_mock_object(obj: object) -> bool:
+    # Avoid importing unittest.mock in production code.
+    return bool(getattr(obj, "_is_mock_object", False)) or obj.__class__.__module__ == "unittest.mock"
 
 
 def _resolve_runtime(runtime: VecpipeRuntime | None) -> VecpipeRuntime:
@@ -203,7 +207,7 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
                     ) from exc
 
             search_start = time.time()
-            qdrant_results = await search_dense_qdrant(
+            qdrant_results, dense_sdk_fallback_used = await search_dense_qdrant(
                 collection_name=collection_name,
                 query_vector=query_vector,
                 limit=search_k,
@@ -212,6 +216,8 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
                 filters=request.filters,
             )
             search_time_ms = (time.time() - search_start) * 1000
+            if dense_sdk_fallback_used:
+                warnings.append("Dense search SDK failed; used REST fallback")
 
             for point in qdrant_results:
                 payload = point.get("payload") or {}
@@ -228,7 +234,7 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
 
         # Perform sparse search if needed
         if search_mode_used in ("sparse", "hybrid") and sparse_config:
-            sparse_results, sparse_search_time_ms = await perform_sparse_search(
+            sparse_results, sparse_search_time_ms, sparse_warnings = await perform_sparse_search(
                 cfg=cfg,
                 collection_name=collection_name,
                 sparse_config=sparse_config,
@@ -237,6 +243,7 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
                 sparse_manager=rt.sparse_manager,
                 qdrant_sdk=rt.qdrant_sdk,
             )
+            warnings.extend(sparse_warnings)
 
             if sparse_results:
                 sparse_to_original: dict[str, str] = {}
@@ -341,6 +348,8 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
             embedding_model_name=model_name,
             embedding_quantization=quantization,
         )
+        if request.use_reranker and results and reranking_time_ms is not None and reranker_model_used is None:
+            warnings.append("Reranking failed; returning un-reranked results")
 
         total_time_ms = (time.time() - start_time) * 1000
         msg = f"Search completed in {total_time_ms:.2f}ms (embed: {embed_time_ms:.2f}ms, search: {search_time_ms:.2f}ms"
@@ -364,7 +373,7 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
             model_used=f"{model_name}/{quantization}" if not cfg.USE_MOCK_EMBEDDINGS else "mock",
             embedding_time_ms=embed_time_ms,
             search_time_ms=search_time_ms,
-            reranking_used=request.use_reranker,
+            reranking_used=bool(reranker_model_used),
             reranker_model=reranker_model_used,
             reranking_time_ms=reranking_time_ms,
             search_mode_used=search_mode_used,
@@ -433,7 +442,8 @@ async def perform_batch_search(
         all_results = await asyncio.gather(*search_tasks)
 
         responses: list[SearchResponse] = []
-        for query, results in zip(request.queries, all_results, strict=False):
+        for query, result_tuple in zip(request.queries, all_results, strict=False):
+            results, dense_sdk_fallback_used = result_tuple
             parsed_results: list[SearchResult] = []
             for point in results:
                 payload = point.get("payload") or {}
@@ -465,7 +475,7 @@ async def perform_batch_search(
                     search_mode_used="dense",
                     sparse_search_time_ms=None,
                     rrf_fusion_time_ms=None,
-                    warnings=[],
+                    warnings=["Dense search SDK failed; used REST fallback"] if dense_sdk_fallback_used else [],
                 )
             )
 
@@ -552,7 +562,7 @@ async def upsert_points(request: UpsertRequest, runtime: VecpipeRuntime | None =
     search_requests.labels(endpoint="/upsert", search_type="vector_upload").inc()
 
     try:
-        test_mode = isinstance(client, AsyncMock | Mock)
+        test_mode = _is_mock_object(client)
 
         if not test_mode:
             try:

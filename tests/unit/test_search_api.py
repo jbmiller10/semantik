@@ -152,7 +152,7 @@ def test_search_post_basic(client: TestClient) -> None:
         patch(
             "vecpipe.search.service.search_dense_qdrant",
             new_callable=AsyncMock,
-            return_value=[{"id": "1", "score": 0.95, "payload": dense_payload}],
+            return_value=([{"id": "1", "score": 0.95, "payload": dense_payload}], False),
         ),
     ):
         out = client.post("/search", json={"query": "test", "k": 1})
@@ -182,7 +182,7 @@ def test_search_dimension_mismatch_returns_400(client: TestClient) -> None:
         patch(
             "vecpipe.search.service.search_dense_qdrant",
             new_callable=AsyncMock,
-            return_value=[{"id": "1", "score": 0.95, "payload": dense_payload}],
+            return_value=([{"id": "1", "score": 0.95, "payload": dense_payload}], False),
         ),
     ):
         out = client.post("/search", json={"query": "test", "k": 1})
@@ -256,3 +256,108 @@ def test_search_response_model_compatible() -> None:
     """SearchResult still validates with required fields."""
     r = SearchResult(doc_id="d", chunk_id="c", score=0.1, path="/p")
     assert r.doc_id == "d"
+
+
+def test_search_rerank_failure_adds_warning_and_marks_reranking_unused(client: TestClient) -> None:
+    dense_payload = {
+        "path": "/test/file1.txt",
+        "chunk_id": "chunk-1",
+        "doc_id": "doc-1",
+        "content": "hello",
+    }
+
+    async def _fake_maybe_rerank_results(**kwargs):  # type: ignore[no-untyped-def]
+        results = kwargs["results"]
+        request = kwargs["request"]
+        return results[: request.k], None, 12.3
+
+    with (
+        patch(
+            "vecpipe.search.service.get_collection_info",
+            new_callable=AsyncMock,
+            return_value=(1024, {"config": {"params": {"vectors": {"size": 1024}}}}),
+        ),
+        patch("vecpipe.search.service.get_cached_collection_metadata", new_callable=AsyncMock, return_value=None),
+        patch("vecpipe.search.service.generate_embedding", new_callable=AsyncMock, return_value=[0.1] * 1024),
+        patch(
+            "vecpipe.search.service.search_dense_qdrant",
+            new_callable=AsyncMock,
+            return_value=([{"id": "1", "score": 0.95, "payload": dense_payload}], False),
+        ),
+        patch("vecpipe.search.service.maybe_rerank_results", new=_fake_maybe_rerank_results),
+    ):
+        out = client.post("/search", json={"query": "test", "k": 1, "use_reranker": True})
+        assert out.status_code == 200
+        body = out.json()
+        assert body["reranking_used"] is False
+        assert body["reranker_model"] is None
+        assert "Reranking failed; returning un-reranked results" in body["warnings"]
+
+
+def test_search_dense_sdk_fallback_adds_warning(client: TestClient) -> None:
+    dense_payload = {
+        "path": "/test/file1.txt",
+        "chunk_id": "chunk-1",
+        "doc_id": "doc-1",
+        "content": "hello",
+    }
+
+    with (
+        patch(
+            "vecpipe.search.service.get_collection_info",
+            new_callable=AsyncMock,
+            return_value=(1024, {"config": {"params": {"vectors": {"size": 1024}}}}),
+        ),
+        patch("vecpipe.search.service.get_cached_collection_metadata", new_callable=AsyncMock, return_value=None),
+        patch("vecpipe.search.service.generate_embedding", new_callable=AsyncMock, return_value=[0.1] * 1024),
+        patch(
+            "vecpipe.search.service.search_dense_qdrant",
+            new_callable=AsyncMock,
+            return_value=([{"id": "1", "score": 0.95, "payload": dense_payload}], True),
+        ),
+    ):
+        out = client.post("/search", json={"query": "test", "k": 1})
+        assert out.status_code == 200
+        assert "Dense search SDK failed; used REST fallback" in out.json()["warnings"]
+
+
+def test_batch_search_sets_per_query_warnings_for_dense_sdk_fallback(client: TestClient) -> None:
+    dense_payload_1 = {
+        "path": "/test/file1.txt",
+        "chunk_id": "chunk-1",
+        "doc_id": "doc-1",
+    }
+    dense_payload_2 = {
+        "path": "/test/file2.txt",
+        "chunk_id": "chunk-2",
+        "doc_id": "doc-2",
+    }
+
+    with (
+        patch("vecpipe.search.service.generate_embedding", new_callable=AsyncMock, return_value=[0.1] * 1024),
+        patch(
+            "vecpipe.search.service.search_dense_qdrant",
+            new_callable=AsyncMock,
+            side_effect=[
+                ([{"id": "1", "score": 0.95, "payload": dense_payload_1}], False),
+                ([{"id": "2", "score": 0.85, "payload": dense_payload_2}], True),
+            ],
+        ),
+    ):
+        out = client.post(
+            "/search/batch",
+            json={
+                "queries": ["q1", "q2"],
+                "k": 1,
+                "search_type": "semantic",
+                "collection": "test_collection",
+            },
+        )
+
+    assert out.status_code == 200
+    body = out.json()
+    assert len(body["responses"]) == 2
+    assert body["responses"][0]["results"][0]["doc_id"] == "doc-1"
+    assert body["responses"][0]["warnings"] == []
+    assert body["responses"][1]["results"][0]["doc_id"] == "doc-2"
+    assert "Dense search SDK failed; used REST fallback" in body["responses"][1]["warnings"]

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
-from vecpipe.search.metrics import rerank_content_fetch_latency
+from vecpipe.search.metrics import rerank_content_fetch_latency, rerank_fallbacks
 from vecpipe.search.payloads import fetch_payloads_for_chunk_ids
 
 logger = logging.getLogger(__name__)
@@ -109,4 +109,5 @@ async def maybe_rerank_results(
         ) from exc
     except Exception as exc:  # pragma: no cover - safety path
         logger.error("Reranking failed: %s, falling back to vector search results", exc, exc_info=True)
+        rerank_fallbacks.labels(reason="error").inc()
         return results[: request.k], None, (time.time() - rerank_start) * 1000
