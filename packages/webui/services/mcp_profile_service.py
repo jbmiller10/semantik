@@ -254,17 +254,17 @@ class MCPProfileService:
                 server_name=f"semantik-{profile.name}",
                 url=mcp_http_url or "http://localhost:9090/mcp",
             )
-        else:
-            return MCPClientConfig(
-                transport="stdio",
-                server_name=f"semantik-{profile.name}",
-                command="semantik-mcp",
-                args=["serve", "--profile", profile.name],
-                env={
-                    "SEMANTIK_WEBUI_URL": webui_url,
-                    "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
-                },
-            )
+
+        return MCPClientConfig(
+            transport="stdio",
+            server_name=f"semantik-{profile.name}",
+            command="semantik-mcp",
+            args=["serve", "--profile", profile.name],
+            env={
+                "SEMANTIK_WEBUI_URL": webui_url,
+                "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
+            },
+        )
 
     async def _get_by_name(self, name: str, owner_id: int) -> MCPProfile | None:
         """Get a profile by name for a user."""

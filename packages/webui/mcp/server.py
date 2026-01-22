@@ -8,7 +8,6 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +18,6 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
@@ -36,7 +34,10 @@ from webui.mcp.tools import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from mcp import Tool
+    from starlette.requests import Request
 
 
 # --------------------------------------------------------------------------
@@ -668,14 +669,14 @@ class SemantikMCPServer:
         )
 
         @asynccontextmanager
-        async def lifespan(app: Starlette) -> AsyncGenerator[None, None]:
+        async def lifespan(_app: Starlette) -> AsyncGenerator[None, None]:
             async with session_manager.run():
                 try:
                     yield
                 finally:
                     await self.api_client.close()
 
-        async def health_endpoint(request: Any) -> JSONResponse:
+        async def health_endpoint(_request: Request) -> JSONResponse:
             return JSONResponse({"status": "healthy", "server": "semantik-mcp"})
 
         # Build middleware list
