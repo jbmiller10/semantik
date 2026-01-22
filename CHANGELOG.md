@@ -21,6 +21,12 @@
 - **Frontend theme consistency** — Updated `CollectionMultiSelect` and `SearchResults` components to use CSS variables instead of hardcoded colors
 
 ### Added
+- **Embedding model families** — BGE-M3 (multilingual 8K context with dense/sparse/colbert), E5 family (including e5-mistral-7b-instruct), Nomic Embed v1/v1.5/v2-moe, Stella, and EmbeddingGemma (~17 new models with proper asymmetric embedding support)
+- **Claude Code MCP client** — Added to supported MCP clients with CLI command generation (`claude mcp add ...`)
+- **Multi-tool config format support** — MCP profiles now generate configs for Claude Code, Kiro, and other tools with proper shell escaping
+- **Registration page UX** — 7 enhancements: confirm password field, show/hide password toggles, remember me checkbox, real-time validation with visual feedback, auto-login after registration, field help text
+- **GPU Memory Governor metrics** — Prometheus metrics for model eviction (`semantik_eviction_seconds`, `semantik_evictions_total`), CPU restore (`semantik_restore_from_cpu_seconds`), memory requests (`semantik_memory_request_seconds`), pressure events (`semantik_pressure_events_total`, `semantik_models_evicted_per_event`), and degraded state gauge (`semantik_governor_degraded`)
+- **Memory health endpoint** (`GET /memory/health`) — Returns governor health status for Kubernetes probes (healthy state, pressure level, circuit breaker triggers, model counts)
 - **Observability metrics** — New Prometheus metrics for dense search fallbacks, rerank fallbacks, GPU probe latency, payload fetch latency, ad-hoc client tracking
 - **Benchmark harness** (`tests/vecpipe_search_benchmark.py`) — Standalone CLI tool for VecPipe search performance benchmarking with configurable concurrency, search modes, p50/p95/p99 latencies, and JSON output
 - **Runtime DI tests** (`tests/unit/test_vecpipe_runtime_di.py`) — Comprehensive tests for runtime container lifecycle, dependency injection, authentication, and shutdown ordering

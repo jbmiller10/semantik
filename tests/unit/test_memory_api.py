@@ -603,9 +603,7 @@ class TestMemoryHealthEndpoint:
         assert result["healthy"] is True
         assert result["mode"] == "cpu"
 
-    def test_health_degraded_state(
-        self, test_client_governed: TestClient, mock_governed_model_manager: Mock
-    ) -> None:
+    def test_health_degraded_state(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
         """Test health check when governor is in degraded state."""
         mock_governed_model_manager._governor.get_memory_stats.return_value = {
             "cuda_available": True,
