@@ -88,6 +88,7 @@ const mockProfiles: MCPProfile[] = [
 ];
 
 const mockConfig: MCPClientConfig = {
+  transport: 'stdio',
   server_name: 'semantik-test-profile',
   command: 'npx',
   args: ['-y', '@anthropic/mcp-server-semantik', '--profile', 'test-profile'],
@@ -111,7 +112,18 @@ describe('useMCPProfiles hooks', () => {
       expect(mcpProfileKeys.details()).toEqual(['mcp-profiles', 'detail']);
       expect(mcpProfileKeys.detail('profile-1')).toEqual(['mcp-profiles', 'detail', 'profile-1']);
       expect(mcpProfileKeys.configs()).toEqual(['mcp-profiles', 'config']);
-      expect(mcpProfileKeys.config('profile-1')).toEqual(['mcp-profiles', 'config', 'profile-1']);
+      expect(mcpProfileKeys.config('profile-1')).toEqual([
+        'mcp-profiles',
+        'config',
+        'profile-1',
+        { transport: 'stdio' },
+      ]);
+      expect(mcpProfileKeys.config('profile-1', 'http')).toEqual([
+        'mcp-profiles',
+        'config',
+        'profile-1',
+        { transport: 'http' },
+      ]);
     });
   });
 
@@ -200,7 +212,7 @@ describe('useMCPProfiles hooks', () => {
   });
 
   describe('useMCPProfileConfig', () => {
-    it('should fetch profile config', async () => {
+    it('should fetch profile config with default transport', async () => {
       vi.mocked(mcpProfilesApi.getConfig).mockResolvedValue({ data: mockConfig });
 
       const queryClient = createTestQueryClient();
@@ -213,7 +225,23 @@ describe('useMCPProfiles hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockConfig);
-      expect(mcpProfilesApi.getConfig).toHaveBeenCalledWith('profile-1');
+      expect(mcpProfilesApi.getConfig).toHaveBeenCalledWith('profile-1', 'stdio');
+    });
+
+    it('should fetch profile config with http transport', async () => {
+      vi.mocked(mcpProfilesApi.getConfig).mockResolvedValue({ data: mockConfig });
+
+      const queryClient = createTestQueryClient();
+      const { result } = renderHook(() => useMCPProfileConfig('profile-1', 'http'), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.data).toEqual(mockConfig);
+      expect(mcpProfilesApi.getConfig).toHaveBeenCalledWith('profile-1', 'http');
     });
   });
 
