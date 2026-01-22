@@ -16,6 +16,7 @@ async def search_qdrant(
     query_vector: list[float],
     k: int,
     with_payload: bool = True,
+    api_key: str | None = None,
 ) -> list[dict]:
     """
     Perform vector search in Qdrant
@@ -27,6 +28,7 @@ async def search_qdrant(
         query_vector: Query embedding vector
         k: Number of results to return
         with_payload: Whether to include payload in results
+        api_key: Qdrant API key (optional)
 
     Returns:
         List of search results from Qdrant
@@ -55,7 +57,7 @@ async def search_qdrant(
     # Fallback: create ad-hoc client and ensure proper cleanup
     from vecpipe.search.metrics import qdrant_ad_hoc_client_total
 
-    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
+    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}", api_key=api_key)
     qdrant_ad_hoc_client_total.labels(location="search_utils").inc()
     try:
         results = await client.search(

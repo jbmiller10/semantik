@@ -81,8 +81,10 @@ async def test_fetch_payloads_builds_scroll_filter_and_closes_created_client(mon
     assert inst.posts
     path, body = inst.posts[0]
     assert path == "/collections/dense/points/scroll"
+    # Filter should be flattened: chunk_id condition first, then user conditions
     assert body["filter"]["must"][0]["key"] == "chunk_id"
-    assert body["filter"]["must"][1] == filters
+    # User filter conditions are merged (not nested)
+    assert body["filter"]["must"][1] == {"key": "tenant", "match": {"value": "t1"}}
 
 
 @pytest.mark.asyncio()

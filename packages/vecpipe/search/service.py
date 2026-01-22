@@ -25,7 +25,6 @@ from shared.contracts.search import (
     SearchResponse,
     SearchResult,
 )
-from shared.database.collection_metadata import get_sparse_index_config
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import validate_dimension_compatibility
 from shared.metrics.prometheus import metrics_collector
@@ -147,36 +146,6 @@ def _reciprocal_rank_fusion(
             fused_results.append(fused_result)
 
     return fused_results
-
-
-async def _get_sparse_config_for_collection(collection_name: str) -> dict[str, Any] | None:
-    """Get sparse index configuration for a collection.
-
-    Args:
-        collection_name: Name of the collection
-
-    Returns:
-        Sparse config dict if enabled, None if not available
-    """
-    cfg = _get_settings()
-    try:
-        from qdrant_client import AsyncQdrantClient
-
-        async_client = AsyncQdrantClient(
-            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
-            api_key=cfg.QDRANT_API_KEY,
-        )
-        qdrant_ad_hoc_client_total.labels(location="sparse_config").inc()
-        try:
-            sparse_config = await get_sparse_index_config(async_client, collection_name)
-            if sparse_config and sparse_config.get("enabled"):
-                return cast(dict[str, Any], sparse_config)
-            return None
-        finally:
-            await async_client.close()
-    except Exception as e:
-        logger.warning("Failed to get sparse config for collection %s: %s", collection_name, e)
-        return None
 
 
 async def _perform_sparse_search(
@@ -307,14 +276,20 @@ async def _perform_sparse_search(
             # Empty sparse vector => no results; avoid unnecessary Qdrant call.
             return [], (time.time() - start_time) * 1000
 
-        # Search the sparse collection
-        from qdrant_client import AsyncQdrantClient
+        # Search the sparse collection - prefer shared SDK client from state
+        sdk_client = search_state.sdk_client
+        created_client = False
 
-        async_client = AsyncQdrantClient(
-            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
-            api_key=cfg.QDRANT_API_KEY,
-        )
-        qdrant_ad_hoc_client_total.labels(location="sparse_search").inc()
+        if sdk_client is None:
+            from qdrant_client import AsyncQdrantClient
+
+            sdk_client = AsyncQdrantClient(
+                url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+                api_key=cfg.QDRANT_API_KEY,
+            )
+            qdrant_ad_hoc_client_total.labels(location="sparse_search").inc()
+            created_client = True
+
         try:
             sparse_collection_name = sparse_config.get("sparse_collection_name")
             if not sparse_collection_name:
@@ -328,7 +303,7 @@ async def _perform_sparse_search(
                 query_indices=query_indices,
                 query_values=query_values,
                 limit=k,
-                qdrant_client=async_client,
+                qdrant_client=sdk_client,
             )
             qdrant_search_time = time.time() - search_start
             sparse_search_latency.labels(sparse_type=sparse_type).observe(qdrant_search_time)
@@ -344,12 +319,42 @@ async def _perform_sparse_search(
             )
             return results, total_time
         finally:
-            await async_client.close()
+            if created_client:
+                await sdk_client.close()
 
     except Exception as e:
         logger.error("Sparse search failed for collection %s: %s", collection_name, e, exc_info=True)
         sparse_search_fallbacks.labels(reason="error").inc()
         return [], (time.time() - start_time) * 1000
+
+
+def _normalize_qdrant_filter(filters: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize filter to standard form with must/should/must_not keys.
+
+    Qdrant filters can be:
+    1. A proper filter: {"must": [...], "should": [...], "must_not": [...]}
+    2. A single condition: {"key": "field", "match": {"value": "x"}}
+
+    This function normalizes both forms to the proper filter structure.
+    """
+    if filters is None:
+        return {"must": []}
+    # If already a proper filter (has must/should/must_not), return as-is
+    if any(k in filters for k in ("must", "should", "must_not")):
+        return filters
+    # Single condition - wrap in must
+    return {"must": [filters]}
+
+
+def _merge_filters(base: dict[str, Any], additional_must: list[dict[str, Any]]) -> dict[str, Any]:
+    """Merge additional must conditions into base filter.
+
+    Preserves existing must/should/must_not from base filter while adding
+    additional_must conditions to the must array.
+    """
+    result = dict(base)
+    result["must"] = additional_must + list(result.get("must") or [])
+    return result
 
 
 async def _fetch_payloads_for_chunk_ids(
@@ -390,16 +395,10 @@ async def _fetch_payloads_for_chunk_ids(
             "match": {"any": chunk_ids},
         }
 
-        if filters and isinstance(filters, dict):
-            # Combine user filters with chunk_id filter using "must"
-            scroll_filter = {
-                "must": [
-                    chunk_id_condition,
-                    filters,
-                ]
-            }
-        else:
-            scroll_filter = {"must": [chunk_id_condition]}
+        # Normalize and merge filters to avoid invalid nesting
+        # (e.g., {"must": [{"must": [...]}]} is invalid in Qdrant)
+        normalized = _normalize_qdrant_filter(filters)
+        scroll_filter = _merge_filters(normalized, [chunk_id_condition])
 
         fetch_request = {
             "filter": scroll_filter,
@@ -882,26 +881,51 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             request.collection, request.operation_uuid, cfg.DEFAULT_COLLECTION
         )
 
-        # Check for sparse index availability if needed
+        vector_dim, collection_info = await _get_collection_info(collection_name)
+
+        # Fetch metadata early - used for both model defaults and sparse config
+        metadata = await _get_cached_collection_metadata(collection_name, cfg)
+
+        # Derive sparse config from cached metadata (avoids separate Qdrant call)
         if request.search_mode in ("sparse", "hybrid"):
-            sparse_config = await _get_sparse_config_for_collection(collection_name)
-            if sparse_config:
-                search_mode_used = request.search_mode
+            if metadata:
+                sparse_index_config = metadata.get("sparse_index_config")
+                if (
+                    isinstance(sparse_index_config, dict)
+                    and sparse_index_config.get("enabled")
+                    and sparse_index_config.get("plugin_id")
+                    and sparse_index_config.get("sparse_collection_name")
+                ):
+                    sparse_config = sparse_index_config
+                    search_mode_used = request.search_mode
+                else:
+                    # Sparse config incomplete or disabled
+                    if sparse_index_config and isinstance(sparse_index_config, dict):
+                        logger.warning(
+                            "Sparse config incomplete for %s (enabled=%s, plugin_id=%s, sparse_collection_name=%s), falling back to dense",
+                            collection_name,
+                            sparse_index_config.get("enabled"),
+                            sparse_index_config.get("plugin_id"),
+                            sparse_index_config.get("sparse_collection_name"),
+                        )
+                    warnings.append(
+                        f"Sparse index not available for collection '{collection_name}'. Falling back to dense search."
+                    )
+                    search_mode_used = "dense"
+                    sparse_search_fallbacks.labels(reason="sparse_not_enabled").inc()
             else:
-                # Fallback to dense with warning
+                # No metadata at all
                 warnings.append(
                     f"Sparse index not available for collection '{collection_name}'. Falling back to dense search."
                 )
                 search_mode_used = "dense"
                 sparse_search_fallbacks.labels(reason="sparse_not_enabled").inc()
                 logger.info(
-                    "Sparse index not available for collection %s, falling back to dense search",
+                    "No metadata for collection %s, falling back to dense search",
                     collection_name,
                 )
         else:
             search_mode_used = "dense"
-
-        vector_dim, collection_info = await _get_collection_info(collection_name)
 
         collection_model = None
         collection_quantization = None
@@ -919,7 +943,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             and "size" in collection_info["config"]["params"]["vectors"]
         )
 
-        metadata = await _get_cached_collection_metadata(collection_name, cfg)
+        # Extract model config from metadata (already fetched above)
         if metadata:
             collection_model = metadata.get("model_name")
             collection_quantization = metadata.get("quantization")
