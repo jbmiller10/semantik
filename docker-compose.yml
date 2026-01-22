@@ -298,6 +298,55 @@ services:
       retries: 3
       start_period: 60s
 
+  # MCP Server Service (HTTP transport for remote MCP clients)
+  # Uses internal API key from shared data volume for WebUI communication.
+  # Clients must provide their API key in the Authorization header.
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: semantik-mcp-server
+    user: "${UID:-1000}:${GID:-1000}"
+    command: [ "mcp-server" ]
+    ports:
+      - "127.0.0.1:9090:9090"
+    environment:
+      - PYTHONPATH=/app/packages
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SEMANTIK_WEBUI_URL=http://webui:8080
+      # No auth token needed - uses internal API key from shared data volume
+      - SEMANTIK_MCP_HTTP_HOST=0.0.0.0
+      - SEMANTIK_MCP_HTTP_PORT=9090
+      - SEMANTIK_MCP_LOG_LEVEL=${SEMANTIK_MCP_LOG_LEVEL:-INFO}
+      - SEMANTIK_MCP_PROFILES=${SEMANTIK_MCP_PROFILES:-}
+    volumes:
+      # Mount data directory for internal API key access
+      - ./data:/app/data
+    depends_on:
+      webui:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9090/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Celery Worker Service
   worker:
     build:

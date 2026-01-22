@@ -5,6 +5,7 @@ import type {
   MCPProfileCreate,
   MCPProfileUpdate,
   MCPClientConfig,
+  MCPTransport,
 } from '../../../types/mcp-profile';
 
 /**
@@ -53,7 +54,10 @@ export const mcpProfilesApi = {
   /**
    * Get the MCP client configuration snippet for a profile
    * @param profileId The profile UUID
+   * @param transport Transport type: 'stdio' for local, 'http' for Docker
    */
-  getConfig: (profileId: string) =>
-    apiClient.get<MCPClientConfig>(`/api/v2/mcp/profiles/${profileId}/config`),
+  getConfig: (profileId: string, transport: MCPTransport = 'stdio') =>
+    apiClient.get<MCPClientConfig>(`/api/v2/mcp/profiles/${profileId}/config`, {
+      params: { transport },
+    }),
 };

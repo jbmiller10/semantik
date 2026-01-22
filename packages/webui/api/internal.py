@@ -12,6 +12,7 @@ from shared.config import settings
 from shared.database import get_db
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
+from webui.auth import _verify_api_key
 from webui.dependencies import get_collection_repository
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
@@ -171,4 +172,67 @@ async def complete_reindex(
     # Transaction committed successfully
     return CompleteReindexResponse(
         success=True, old_collection_names=old_collection_names, message="Reindex completed successfully"
+    )
+
+
+# --------------------------------------------------------------------------
+# API Key Validation Endpoint (for MCP server authentication layer)
+# --------------------------------------------------------------------------
+
+
+class ValidateApiKeyRequest(BaseModel):
+    """Request model for validating a user API key."""
+
+    api_key: str
+
+
+class ValidateApiKeyResponse(BaseModel):
+    """Response model for API key validation."""
+
+    valid: bool
+    user_id: int | None = None
+    username: str | None = None
+    error: str | None = None
+
+
+@router.post(
+    "/validate-api-key",
+    response_model=ValidateApiKeyResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def validate_api_key(request: ValidateApiKeyRequest) -> ValidateApiKeyResponse:
+    """Validate a user API key.
+
+    This endpoint is used by the MCP server to validate client API keys.
+    It requires the internal API key for authentication (service-to-service).
+
+    Args:
+        request: The API key to validate.
+
+    Returns:
+        Validation result with user info if valid.
+    """
+    if not request.api_key or not request.api_key.strip():
+        return ValidateApiKeyResponse(valid=False, error="API key is required")
+
+    # Use the existing internal API key verification
+    api_key_data = await _verify_api_key(request.api_key, update_last_used=False)
+
+    if api_key_data is None:
+        return ValidateApiKeyResponse(valid=False, error="Invalid or expired API key")
+
+    user_info = api_key_data.get("user") or {}
+    user_id = user_info.get("id")
+    username = user_info.get("username")
+
+    if user_id is None:
+        return ValidateApiKeyResponse(valid=False, error="API key has no associated user")
+
+    if not user_info.get("is_active", True):
+        return ValidateApiKeyResponse(valid=False, error="User account is inactive")
+
+    return ValidateApiKeyResponse(
+        valid=True,
+        user_id=user_id,
+        username=username,
     )

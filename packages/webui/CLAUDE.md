@@ -188,14 +188,28 @@
 </services>
 
 <mcp-integration>
-  <purpose>Expose Semantik search to MCP-capable LLM clients (Claude Desktop, Cursor)</purpose>
+  <purpose>Expose Semantik search to MCP-capable LLM clients (Claude Desktop, Cursor, Claude Code)</purpose>
   <location>mcp/</location>
   <components>
-    <component path="mcp/server.py">SemantikMCPServer with stdio transport</component>
-    <component path="mcp/client.py">SemantikAPIClient for WebUI API calls</component>
+    <component path="mcp/server.py">SemantikMCPServer with stdio and HTTP transports</component>
+    <component path="mcp/client.py">SemantikAPIClient for WebUI API calls (user mode and service mode)</component>
     <component path="mcp/tools.py">Tool builders for search, documents, chunks</component>
-    <component path="mcp/cli.py">CLI entry point (semantik-mcp serve)</component>
+    <component path="mcp/cli.py">CLI entry point (semantik-mcp serve --transport stdio|http)</component>
   </components>
+  <transports>
+    <transport name="stdio">
+      - For local process communication (Claude Desktop, Cursor)
+      - Requires --auth-token (user's JWT or API key)
+      - Single user mode: profiles filtered to authenticated user
+    </transport>
+    <transport name="http">
+      - For remote/Docker access (mcp-server service on port 9090)
+      - Server uses internal API key (auto-loaded from shared data volume)
+      - Client authentication: Bearer token in Authorization header (user's API key)
+      - Two-layer auth: server authenticates to WebUI, then validates client keys
+      - MCPAuthMiddleware validates client API keys with 60s TTL cache
+    </transport>
+  </transports>
   <tools>
     - search_{profile_name}: Semantic search scoped to profile collections
     - get_document: Retrieve document metadata
@@ -207,8 +221,12 @@
   <profile-api>
     POST /api/v2/mcp/profiles: Create profile
     GET /api/v2/mcp/profiles: List user profiles
-    GET /api/v2/mcp/profiles/{id}/config: Get Claude Desktop config snippet
+    GET /api/v2/mcp/profiles/{id}/config: Get client config snippet
+    GET /api/v2/mcp/profiles/all: List all profiles (internal, service mode)
   </profile-api>
+  <internal-api>
+    POST /api/internal/validate-api-key: Validate user API key (for MCP server)
+  </internal-api>
 </mcp-integration>
 
 <plugin-system>

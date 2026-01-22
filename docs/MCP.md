@@ -150,6 +150,56 @@ hybrid_alpha: number (0-1) - Override hybrid alpha
 | `SEMANTIK_AUTH_TOKEN` | API key or JWT access token | (required) |
 | `SEMANTIK_MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 
+## Transport Modes
+
+The MCP server supports two transport modes:
+
+### stdio Transport (Local/Default)
+
+For local process communication with Claude Desktop, Cursor, etc. The AI client spawns the MCP server as a subprocess.
+
+```bash
+semantik-mcp serve --transport stdio --auth-token <your-api-key>
+```
+
+- Requires `--auth-token` (user's JWT or API key)
+- Profiles filtered to the authenticated user
+- Best for local development and single-user setups
+
+### HTTP Transport (Remote/Docker)
+
+For remote access via HTTP, typically used with the `mcp-server` Docker service.
+
+```bash
+semantik-mcp serve --transport http --http-host 0.0.0.0 --http-port 9090
+```
+
+- Server runs as a persistent HTTP service
+- Uses internal API key automatically (zero config in Docker)
+- **Client authentication required:** Clients must include their API key in the `Authorization: Bearer <api-key>` header
+- Profiles filtered per-request based on client's authenticated user
+- Best for shared/multi-user deployments
+
+#### Using HTTP Transport
+
+1. Ensure the `mcp-server` service is running in Docker
+2. Create an API key in Settings > API Keys
+3. Configure your client with the HTTP endpoint and your API key:
+
+```json
+{
+  "mcpServers": {
+    "semantik": {
+      "type": "sse",
+      "url": "http://localhost:9090/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-api-key>"
+      }
+    }
+  }
+}
+```
+
 ## Command Line Options
 
 ```bash
@@ -158,7 +208,10 @@ semantik-mcp serve [OPTIONS]
 Options:
   --profile, -p TEXT    Profile(s) to expose (can be repeated)
   --webui-url TEXT      Semantik WebUI base URL
-  --auth-token TEXT     Auth token (JWT or API key)
+  --auth-token TEXT     Auth token (JWT or API key) - required for stdio transport
+  --transport TEXT      Transport type: stdio (default) or http
+  --http-host TEXT      HTTP bind host (default: 0.0.0.0) - for http transport
+  --http-port INTEGER   HTTP bind port (default: 9090) - for http transport
   --log-level TEXT      Logging level
   --verbose, -v         Enable DEBUG logging
 ```
@@ -166,17 +219,20 @@ Options:
 Examples:
 
 ```bash
-# Serve a single profile
-semantik-mcp serve --profile coding
+# Serve a single profile (stdio transport)
+semantik-mcp serve --profile coding --auth-token <your-api-key>
 
 # Serve multiple profiles
-semantik-mcp serve --profile coding --profile work
+semantik-mcp serve --profile coding --profile work --auth-token <your-api-key>
 
 # Serve all enabled profiles (no filter)
-semantik-mcp serve
+semantik-mcp serve --auth-token <your-api-key>
 
 # Enable verbose logging for debugging
-semantik-mcp serve --profile coding --verbose
+semantik-mcp serve --profile coding --verbose --auth-token <your-api-key>
+
+# Start HTTP server (for Docker/remote)
+semantik-mcp serve --transport http --http-port 9090
 ```
 
 ## Troubleshooting
@@ -194,10 +250,16 @@ semantik-mcp serve --profile coding --verbose
 
 **Cause:** Invalid or expired auth token.
 
-**Solutions:**
+**Solutions for stdio transport:**
 - Verify `SEMANTIK_AUTH_TOKEN` is set correctly
-- Generate a new API key in Semantik settings
+- Generate a new API key in Semantik Settings > API Keys
 - If using JWT, ensure it hasn't expired
+
+**Solutions for HTTP transport:**
+- Verify your API key is included in the `Authorization: Bearer <key>` header
+- Generate a new API key in Semantik Settings > API Keys
+- Check the API key hasn't been revoked
+- Ensure the `mcp-server` service can reach the WebUI service
 
 ### "Profile not found"
 

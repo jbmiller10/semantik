@@ -16,11 +16,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, status
 
 from shared.config import settings as shared_settings
+from webui.api.internal import verify_internal_api_key
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.mcp_schemas import (
     CollectionSummary,
     MCPClientConfig,
     MCPProfileCreate,
+    MCPProfileInternalListResponse,
+    MCPProfileInternalResponse,
     MCPProfileListResponse,
     MCPProfileResponse,
     MCPProfileUpdate,
@@ -204,6 +207,7 @@ async def delete_profile(
 )
 async def get_profile_config(
     profile_id: str,
+    transport: str = Query("stdio", description="Transport type: 'stdio' for local, 'http' for Docker"),
     current_user: dict[str, Any] = Depends(get_current_user),
     service: MCPProfileService = Depends(get_mcp_profile_service),
 ) -> MCPClientConfig:
@@ -213,13 +217,71 @@ async def get_profile_config(
     or other MCP clients. The configuration includes the command,
     arguments, and environment variables needed to connect.
 
-    Note: The auth token in the response is a placeholder. Replace it
-    with a valid API key or access token.
+    Transport options:
+    - stdio: Local process communication (requires semantik-mcp CLI installed locally)
+    - http: Remote HTTP access (connects to Docker-hosted MCP server on port 9090)
+
+    Note: For stdio transport, the auth token in the response is a placeholder.
+    Replace it with a valid API key or access token.
     """
     webui_url = shared_settings.WEBUI_URL or "http://localhost:8080"
+    mcp_http_url = shared_settings.MCP_HTTP_URL or "http://localhost:9090/mcp"
 
     return await service.get_config(
         profile_id=profile_id,
         owner_id=int(current_user["id"]),
         webui_url=webui_url,
+        transport=transport,
+        mcp_http_url=mcp_http_url,
+    )
+
+
+# --------------------------------------------------------------------------
+# Internal Endpoints (service-to-service communication)
+# --------------------------------------------------------------------------
+
+
+def _profile_to_internal_response(profile: Any) -> MCPProfileInternalResponse:
+    """Convert MCPProfile model to internal response schema (includes owner_id)."""
+    return MCPProfileInternalResponse(
+        id=profile.id,
+        name=profile.name,
+        description=profile.description,
+        enabled=profile.enabled,
+        owner_id=profile.owner_id,
+        search_type=profile.search_type,
+        result_count=profile.result_count,
+        use_reranker=profile.use_reranker,
+        score_threshold=profile.score_threshold,
+        hybrid_alpha=profile.hybrid_alpha,
+        search_mode=profile.search_mode,
+        rrf_k=profile.rrf_k,
+        use_hyde=profile.use_hyde,
+        collections=[CollectionSummary(id=c.id, name=c.name) for c in profile.collections],
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+@router.get(
+    "/all",
+    response_model=MCPProfileInternalListResponse,
+    dependencies=[Depends(verify_internal_api_key)],
+    include_in_schema=False,  # Hide from OpenAPI docs
+)
+async def list_all_profiles(
+    service: MCPProfileService = Depends(get_mcp_profile_service),
+) -> MCPProfileInternalListResponse:
+    """List all enabled profiles across all users.
+
+    This endpoint is for internal use by the MCP server to get
+    all enabled profiles. Protected by internal API key.
+
+    Returns:
+        All enabled profiles with owner_id for user filtering.
+    """
+    profiles = await service.list_all_enabled()
+    return MCPProfileInternalListResponse(
+        profiles=[_profile_to_internal_response(p) for p in profiles],
+        total=len(profiles),
     )

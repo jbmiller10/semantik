@@ -185,10 +185,32 @@ PY
             --broker=redis://redis:6379/0 \
             --basic_auth="${FLOWER_USERNAME}:${FLOWER_PASSWORD}"
         ;;
-        
+
+    mcp-server)
+        echo "Starting MCP Server (HTTP transport with client auth)..."
+
+        wait_for_service "webui" 8080 "WebUI"
+
+        # HTTP transport uses internal API key (auto-loaded from shared data volume)
+        # Clients must provide their API key in the Authorization header
+        ARGS="serve --transport http"
+        ARGS="$ARGS --http-host ${SEMANTIK_MCP_HTTP_HOST:-0.0.0.0}"
+        ARGS="$ARGS --http-port ${SEMANTIK_MCP_HTTP_PORT:-9090}"
+
+        if [ -n "${SEMANTIK_MCP_PROFILES:-}" ]; then
+            IFS=',' read -ra PROFILES <<< "$SEMANTIK_MCP_PROFILES"
+            for profile in "${PROFILES[@]}"; do
+                ARGS="$ARGS --profile $profile"
+            done
+        fi
+
+        # shellcheck disable=SC2086
+        exec python -m webui.mcp.cli $ARGS
+        ;;
+
     *)
         echo "Unknown service: $SERVICE"
-        echo "Usage: $0 [webui|vecpipe|worker|beat|flower]"
+        echo "Usage: $0 [webui|vecpipe|worker|beat|flower|mcp-server]"
         exit 1
         ;;
 esac

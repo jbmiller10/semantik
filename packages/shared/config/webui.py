@@ -30,6 +30,9 @@ class WebuiConfig(BaseConfig):
     # External service URLs
     SEARCH_API_URL: str = "http://localhost:8000"
 
+    # MCP Server HTTP transport URL (for Docker-hosted MCP server)
+    MCP_HTTP_URL: str = "http://localhost:9090/mcp"
+
     # Search Configuration
     SEARCH_CANDIDATE_MULTIPLIER: int = 3  # How many candidates to retrieve for re-ranking (k * multiplier)
 

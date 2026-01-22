@@ -90,13 +90,25 @@ export interface MCPProfileListResponse {
 }
 
 /**
- * Claude Desktop / MCP client configuration snippet
+ * Transport type for MCP connections
+ */
+export type MCPTransport = 'stdio' | 'http';
+
+/**
+ * Claude Desktop / MCP client configuration snippet.
+ * Supports two transport modes:
+ * - stdio: Local process communication (command + args + env)
+ * - http: Remote HTTP access (url)
  */
 export interface MCPClientConfig {
+  transport: MCPTransport;
   server_name: string;
-  command: string;
-  args: string[];
-  env: Record<string, string>;
+  // stdio transport fields
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  // http transport fields
+  url?: string;
 }
 
 /**

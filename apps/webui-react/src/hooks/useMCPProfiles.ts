@@ -7,6 +7,7 @@ import type {
   MCPProfileCreate,
   MCPProfileUpdate,
   MCPClientConfig,
+  MCPTransport,
 } from '../types/mcp-profile';
 
 /**
@@ -19,7 +20,8 @@ export const mcpProfileKeys = {
   details: () => [...mcpProfileKeys.all, 'detail'] as const,
   detail: (id: string) => [...mcpProfileKeys.details(), id] as const,
   configs: () => [...mcpProfileKeys.all, 'config'] as const,
-  config: (id: string) => [...mcpProfileKeys.configs(), id] as const,
+  config: (id: string, transport: MCPTransport = 'stdio') =>
+    [...mcpProfileKeys.configs(), id, { transport }] as const,
 };
 
 /**
@@ -67,13 +69,14 @@ export function useMCPProfile(profileId: string) {
 /**
  * Hook to fetch the MCP client configuration for a profile
  * @param profileId The profile UUID
+ * @param transport Transport type: 'stdio' for local, 'http' for Docker
  */
-export function useMCPProfileConfig(profileId: string) {
+export function useMCPProfileConfig(profileId: string, transport: MCPTransport = 'stdio') {
   return useQuery({
-    queryKey: mcpProfileKeys.config(profileId),
+    queryKey: mcpProfileKeys.config(profileId, transport),
     queryFn: async (): Promise<MCPClientConfig> => {
       try {
-        const response = await mcpProfilesApi.getConfig(profileId);
+        const response = await mcpProfilesApi.getConfig(profileId, transport);
         return response.data;
       } catch (error) {
         console.error(`Failed to fetch MCP profile config ${profileId}:`, error);

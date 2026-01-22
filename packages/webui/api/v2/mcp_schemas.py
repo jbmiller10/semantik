@@ -234,40 +234,96 @@ class MCPProfileListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MCPClientConfig(BaseModel):
-    """Claude Desktop / MCP client configuration snippet."""
+class MCPProfileInternalResponse(BaseModel):
+    """Response schema for MCP profile with owner_id (internal use)."""
 
+    id: str
+    name: str
+    description: str
+    enabled: bool
+    owner_id: int
+    search_type: Literal["semantic", "hybrid", "keyword", "question", "code"]
+    result_count: int
+    use_reranker: bool
+    score_threshold: float | None
+    hybrid_alpha: float | None
+    search_mode: Literal["dense", "sparse", "hybrid"]
+    rrf_k: int | None
+    use_hyde: bool
+    collections: list[CollectionSummary]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MCPProfileInternalListResponse(BaseModel):
+    """Response for listing all MCP profiles (internal use)."""
+
+    profiles: list[MCPProfileInternalResponse]
+    total: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MCPClientConfig(BaseModel):
+    """Claude Desktop / MCP client configuration snippet.
+
+    Supports two transport modes:
+    - stdio: Local process communication (command + args + env)
+    - http: Remote HTTP access (url)
+    """
+
+    transport: Literal["stdio", "http"] = Field(
+        default="stdio",
+        description="Transport type: 'stdio' for local, 'http' for remote Docker",
+    )
     server_name: str = Field(
         ...,
         description="Suggested name for the MCP server entry",
         json_schema_extra={"example": "semantik-coding"},
     )
-    command: str = Field(
-        ...,
-        description="Command to run the MCP server",
+    # stdio transport fields
+    command: str | None = Field(
+        default=None,
+        description="Command to run the MCP server (stdio transport only)",
         json_schema_extra={"example": "semantik-mcp"},
     )
-    args: list[str] = Field(
-        ...,
-        description="Arguments for the MCP server command",
+    args: list[str] | None = Field(
+        default=None,
+        description="Arguments for the MCP server command (stdio transport only)",
         json_schema_extra={"example": ["serve", "--profile", "coding"]},
     )
-    env: dict[str, str] = Field(
-        ...,
-        description="Environment variables for the MCP server",
+    env: dict[str, str] | None = Field(
+        default=None,
+        description="Environment variables for the MCP server (stdio transport only)",
+    )
+    # http transport fields
+    url: str | None = Field(
+        default=None,
+        description="MCP server URL (http transport only)",
+        json_schema_extra={"example": "http://localhost:9090/mcp"},
     )
 
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
-            "example": {
-                "server_name": "semantik-coding",
-                "command": "semantik-mcp",
-                "args": ["serve", "--profile", "coding"],
-                "env": {
-                    "SEMANTIK_WEBUI_URL": "http://localhost:8080",
-                    "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
+            "examples": [
+                {
+                    "transport": "stdio",
+                    "server_name": "semantik-coding",
+                    "command": "semantik-mcp",
+                    "args": ["serve", "--profile", "coding"],
+                    "env": {
+                        "SEMANTIK_WEBUI_URL": "http://localhost:8080",
+                        "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
+                    },
                 },
-            }
+                {
+                    "transport": "http",
+                    "server_name": "semantik-coding",
+                    "url": "http://localhost:9090/mcp",
+                },
+            ]
         },
     )

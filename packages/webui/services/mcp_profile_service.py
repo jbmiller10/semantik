@@ -108,6 +108,25 @@ class MCPProfileService:
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_all_enabled(self) -> list[MCPProfile]:
+        """List all enabled profiles across all users (service mode).
+
+        This method is intended for internal services (like the MCP server)
+        that need access to all profiles, not filtered by user.
+
+        Returns:
+            List of MCPProfile instances with collections and owner_id.
+        """
+        stmt = (
+            select(MCPProfile)
+            .where(MCPProfile.enabled == True)  # noqa: E712
+            .options(selectinload(MCPProfile.collections))
+            .order_by(MCPProfile.owner_id, MCPProfile.name)
+        )
+
+        result = await self.db_session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get(self, profile_id: str, owner_id: int) -> MCPProfile:
         """Get a profile by ID with owner check.
 
@@ -203,13 +222,22 @@ class MCPProfileService:
         await self.db_session.delete(profile)
         await self.db_session.flush()
 
-    async def get_config(self, profile_id: str, owner_id: int, webui_url: str) -> MCPClientConfig:
+    async def get_config(
+        self,
+        profile_id: str,
+        owner_id: int,
+        webui_url: str,
+        transport: str = "stdio",
+        mcp_http_url: str | None = None,
+    ) -> MCPClientConfig:
         """Get MCP client configuration for a profile.
 
         Args:
             profile_id: UUID of the profile.
             owner_id: ID of the profile owner.
             webui_url: Base URL of the Semantik WebUI.
+            transport: Transport type ('stdio' or 'http').
+            mcp_http_url: MCP HTTP server URL (for http transport).
 
         Returns:
             MCPClientConfig with server configuration.
@@ -220,15 +248,23 @@ class MCPProfileService:
         """
         profile = await self.get(profile_id, owner_id)
 
-        return MCPClientConfig(
-            server_name=f"semantik-{profile.name}",
-            command="semantik-mcp",
-            args=["serve", "--profile", profile.name],
-            env={
-                "SEMANTIK_WEBUI_URL": webui_url,
-                "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
-            },
-        )
+        if transport == "http":
+            return MCPClientConfig(
+                transport="http",
+                server_name=f"semantik-{profile.name}",
+                url=mcp_http_url or "http://localhost:9090/mcp",
+            )
+        else:
+            return MCPClientConfig(
+                transport="stdio",
+                server_name=f"semantik-{profile.name}",
+                command="semantik-mcp",
+                args=["serve", "--profile", profile.name],
+                env={
+                    "SEMANTIK_WEBUI_URL": webui_url,
+                    "SEMANTIK_AUTH_TOKEN": "<your-access-token-or-api-key>",
+                },
+            )
 
     async def _get_by_name(self, name: str, owner_id: int) -> MCPProfile | None:
         """Get a profile by name for a user."""

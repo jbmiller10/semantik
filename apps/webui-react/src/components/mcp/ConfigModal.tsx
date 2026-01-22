@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import type { MCPProfile } from '../../types/mcp-profile';
+import type { MCPProfile, MCPTransport } from '../../types/mcp-profile';
 import { useMCPProfileConfig } from '../../hooks/useMCPProfiles';
 import {
   MCP_CLIENT_TOOLS,
@@ -15,7 +15,8 @@ interface ConfigModalProps {
 }
 
 export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
-  const { data: config, isLoading, error } = useMCPProfileConfig(profile.id);
+  const [selectedTransport, setSelectedTransport] = useState<MCPTransport>('stdio');
+  const { data: config, isLoading, error } = useMCPProfileConfig(profile.id, selectedTransport);
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedToolId, setSelectedToolId] = useState(DEFAULT_MCP_CLIENT_TOOL_ID);
   const [insertedApiKey, setInsertedApiKey] = useState<string | null>(null);
@@ -218,6 +219,40 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
           {/* Config Content */}
           {config && (
             <>
+              {/* Transport Selector */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                  Connection Mode
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedTransport('stdio')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                      selectedTransport === 'stdio'
+                        ? 'bg-gray-200 dark:bg-white text-gray-900 border-gray-400 dark:border-white'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-primary)]'
+                    }`}
+                  >
+                    Local (stdio)
+                  </button>
+                  <button
+                    onClick={() => setSelectedTransport('http')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                      selectedTransport === 'http'
+                        ? 'bg-gray-200 dark:bg-white text-gray-900 border-gray-400 dark:border-white'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-primary)]'
+                    }`}
+                  >
+                    Docker (http)
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {selectedTransport === 'stdio'
+                    ? 'Requires semantik-mcp CLI installed locally'
+                    : 'Connects to Docker-hosted MCP server on port 9090'}
+                </p>
+              </div>
+
               {/* Tool Name */}
               <div>
                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
@@ -309,44 +344,48 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                 </select>
               </div>
 
-              {/* API Key Selector */}
-              <ApiKeySelector
-                profileName={profile.name}
-                onKeySelected={handleApiKeySelected}
-              />
+              {/* API Key Selector - only for stdio transport */}
+              {selectedTransport === 'stdio' && (
+                <ApiKeySelector
+                  profileName={profile.name}
+                  onKeySelected={handleApiKeySelected}
+                />
+              )}
 
-              {/* Config File Location */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                  Config File Location
-                </label>
-                <div className="space-y-2 text-sm">
-                  {selectedTool.configPaths.macos && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
-                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                        {selectedTool.configPaths.macos}
-                      </code>
-                    </div>
-                  )}
-                  {selectedTool.configPaths.linux && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
-                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                        {selectedTool.configPaths.linux}
-                      </code>
-                    </div>
-                  )}
-                  {selectedTool.configPaths.windows && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
-                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                        {selectedTool.configPaths.windows}
-                      </code>
-                    </div>
-                  )}
+              {/* Config File Location - only for stdio transport */}
+              {selectedTransport === 'stdio' && (
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                    Config File Location
+                  </label>
+                  <div className="space-y-2 text-sm">
+                    {selectedTool.configPaths.macos && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
+                        <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                          {selectedTool.configPaths.macos}
+                        </code>
+                      </div>
+                    )}
+                    {selectedTool.configPaths.linux && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
+                        <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                          {selectedTool.configPaths.linux}
+                        </code>
+                      </div>
+                    )}
+                    {selectedTool.configPaths.windows && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
+                        <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                          {selectedTool.configPaths.windows}
+                        </code>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Tool-specific Note */}
               {selectedTool.notes && (
@@ -442,8 +481,35 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                 </pre>
               </div>
 
-              {/* Token Status Banner - Green success when key is inserted, Amber warning when not */}
-              {insertedApiKey ? (
+              {/* Token Status Banner - Transport-aware */}
+              {selectedTransport === 'http' ? (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                  <div className="flex">
+                    <svg
+                      className="h-5 w-5 text-green-500 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-green-600 dark:text-green-400">
+                        Config ready to copy
+                      </h3>
+                      <p className="mt-1 text-sm text-green-700 dark:text-green-300/80">
+                        Docker-hosted MCP server uses server-level authentication.
+                        Configure <code className="bg-green-500/20 px-1 rounded text-xs">MCP_SERVER_AUTH_TOKEN</code> in your Docker environment.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : insertedApiKey ? (
                 <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
                   <div className="flex">
                     <svg
