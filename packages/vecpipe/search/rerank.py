@@ -108,6 +108,19 @@ async def maybe_rerank_results(
             },
         ) from exc
     except Exception as exc:  # pragma: no cover - safety path
-        logger.error("Reranking failed: %s, falling back to vector search results", exc, exc_info=True)
+        logger.error("Reranking failed: %s", exc, exc_info=True)
         rerank_fallbacks.labels(reason="error").inc()
+
+        # Check if user wants to fail on error instead of fallback
+        if getattr(request, "rerank_on_error", "fallback") == "error":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "reranking_failed",
+                    "message": f"Reranking failed: {exc}",
+                    "suggestion": "Set rerank_on_error='fallback' to return un-reranked results on failure",
+                },
+            ) from exc
+
+        logger.warning("Falling back to vector search results due to reranking failure")
         return results[: request.k], None, (time.time() - rerank_start) * 1000

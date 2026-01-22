@@ -52,6 +52,10 @@ class SearchRequest(BaseModel):
         le=1000,
         description="RRF constant for hybrid search score fusion (higher = more emphasis on lower ranks)",
     )
+    rerank_on_error: Literal["fallback", "error"] = Field(
+        default="fallback",
+        description="Behavior when reranking fails: 'fallback' returns un-reranked results, 'error' raises HTTP 503",
+    )
 
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
