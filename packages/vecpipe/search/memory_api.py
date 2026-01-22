@@ -381,7 +381,8 @@ async def memory_health_check(runtime: VecpipeRuntime = Depends(get_runtime)) ->
     """
     Memory health check endpoint.
 
-    Returns overall health status based on memory pressure.
+    Returns overall health status based on memory pressure and degraded state.
+    Unhealthy if degraded OR critical pressure.
     """
     stats = await get_memory_stats(runtime)
 
@@ -392,25 +393,38 @@ async def memory_health_check(runtime: VecpipeRuntime = Depends(get_runtime)) ->
             "message": "Running in CPU mode",
         }
 
+    degraded = stats.get("degraded_state", False)
     pressure = stats.get("pressure_level", "UNKNOWN")
+
+    # Unhealthy if degraded OR critical pressure
+    is_healthy = not degraded and pressure != "CRITICAL"
+
+    if degraded:
+        return {
+            "healthy": False,
+            "pressure_level": pressure,
+            "degraded_state": True,
+            "circuit_breaker_triggers": stats.get("circuit_breaker_triggers", 0),
+            "models_loaded": stats.get("models_loaded", 0),
+            "models_offloaded": stats.get("models_offloaded", 0),
+            "message": "Memory governor in degraded state - circuit breaker triggered",
+        }
 
     if pressure == "CRITICAL":
         return {
             "healthy": False,
-            "pressure": pressure,
+            "pressure_level": pressure,
+            "degraded_state": False,
             "used_percent": stats.get("used_percent", 0),
             "message": "Critical memory pressure - OOM risk",
         }
-    if pressure == "HIGH":
-        return {
-            "healthy": True,
-            "pressure": pressure,
-            "used_percent": stats.get("used_percent", 0),
-            "message": "High memory pressure - eviction active",
-        }
+
     return {
-        "healthy": True,
-        "pressure": pressure,
+        "healthy": is_healthy,
+        "pressure_level": pressure,
+        "degraded_state": False,
         "used_percent": stats.get("used_percent", 0),
-        "message": "Memory usage normal",
+        "models_loaded": stats.get("models_loaded", 0),
+        "models_offloaded": stats.get("models_offloaded", 0),
+        "message": "High memory pressure - eviction active" if pressure == "HIGH" else "Memory usage normal",
     }

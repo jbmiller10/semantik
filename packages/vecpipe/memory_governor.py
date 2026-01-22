@@ -355,105 +355,121 @@ class GPUMemoryGovernor:
         Returns:
             True if memory can be allocated, False otherwise
         """
-        async with self._lock:
-            # CPU-only mode: no GPU budget to enforce, always allow
-            if self._budget.total_gpu_mb == 0:
-                logger.debug(
-                    "CPU-only mode: allowing %s load without GPU budget check",
-                    model_name,
-                )
-                return True
+        from vecpipe.search.metrics import memory_request_latency_seconds
 
-            model_key = self._make_key(model_name, model_type, quantization)
-            reserve_free_mb = max(0, self._budget.total_gpu_mb - self._budget.usable_gpu_mb)
+        start = time.time()
+        outcome = "failed"
+        try:
+            async with self._lock:
+                # CPU-only mode: no GPU budget to enforce, always allow
+                if self._budget.total_gpu_mb == 0:
+                    logger.debug(
+                        "CPU-only mode: allowing %s load without GPU budget check",
+                        model_name,
+                    )
+                    outcome = "success"
+                    return True
 
-            # Case 1: Model already on GPU
-            if model_key in self._models:
-                tracked = self._models[model_key]
-                if tracked.location == ModelLocation.GPU:
-                    # Even if a model is already on GPU, we may need to evict other
-                    # models to restore our configured free-memory reserve. This
-                    # avoids sequential pipelines (embed -> rerank) ending up with
-                    # both models resident and too little headroom for activations.
-                    actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
-                    if reserve_free_mb > 0 and actual_free_mb < reserve_free_mb:
-                        needed_mb = reserve_free_mb - actual_free_mb
-                        logger.info(
-                            "Already-loaded model %s below reserve (free=%dMB, reserve=%dMB). Evicting %dMB.",
-                            model_key,
-                            actual_free_mb,
-                            reserve_free_mb,
-                            needed_mb,
-                        )
-                        try:
-                            await self._make_room(needed_mb, exclude_key=model_key, force=True)
-                        except RuntimeError as e:
-                            # If callbacks are not registered we cannot evict anything; treat
-                            # this as a failed allocation request rather than crashing.
-                            logger.warning("Eviction unavailable while enforcing reserve for %s: %s", model_key, e)
-                            return False
+                model_key = self._make_key(model_name, model_type, quantization)
+                reserve_free_mb = max(0, self._budget.total_gpu_mb - self._budget.usable_gpu_mb)
 
-                        # Use SAFE mode after eviction for accurate reading
-                        actual_free_mb = self._probe_free_gpu_mb(ProbeMode.SAFE)
-                        if actual_free_mb < reserve_free_mb:
-                            logger.warning(
-                                "Reserve enforcement failed for %s (free=%dMB, reserve=%dMB).",
+                # Case 1: Model already on GPU
+                if model_key in self._models:
+                    tracked = self._models[model_key]
+                    if tracked.location == ModelLocation.GPU:
+                        # Even if a model is already on GPU, we may need to evict other
+                        # models to restore our configured free-memory reserve. This
+                        # avoids sequential pipelines (embed -> rerank) ending up with
+                        # both models resident and too little headroom for activations.
+                        actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
+                        if reserve_free_mb > 0 and actual_free_mb < reserve_free_mb:
+                            needed_mb = reserve_free_mb - actual_free_mb
+                            logger.info(
+                                "Already-loaded model %s below reserve (free=%dMB, reserve=%dMB). Evicting %dMB.",
                                 model_key,
                                 actual_free_mb,
                                 reserve_free_mb,
+                                needed_mb,
                             )
-                            return False
+                            try:
+                                await self._make_room(needed_mb, exclude_key=model_key, force=True)
+                            except RuntimeError as e:
+                                # If callbacks are not registered we cannot evict anything; treat
+                                # this as a failed allocation request rather than crashing.
+                                logger.warning("Eviction unavailable while enforcing reserve for %s: %s", model_key, e)
+                                outcome = "failed"
+                                return False
 
-                    self._touch_model(model_key)
+                            # Use SAFE mode after eviction for accurate reading
+                            actual_free_mb = self._probe_free_gpu_mb(ProbeMode.SAFE)
+                            if actual_free_mb < reserve_free_mb:
+                                logger.warning(
+                                    "Reserve enforcement failed for %s (free=%dMB, reserve=%dMB).",
+                                    model_key,
+                                    actual_free_mb,
+                                    reserve_free_mb,
+                                )
+                                outcome = "failed"
+                                return False
+
+                        self._touch_model(model_key)
+                        outcome = "already_loaded"
+                        return True
+                    if tracked.location == ModelLocation.CPU:
+                        # Model is offloaded, need to restore
+                        result = await self._restore_from_cpu(model_key, required_mb)
+                        outcome = "success" if result else "failed"
+                        return result
+
+                # Case 2: Check if we need to make room
+                # Use BOTH tracked estimates AND actual GPU memory to catch discrepancies
+                current_gpu_usage = self._get_gpu_usage()
+                actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
+
+                # Check tracked budget first
+                tracked_fits = current_gpu_usage + required_mb <= self._budget.usable_gpu_mb
+                # Also check actual GPU memory (the ground truth)
+                actual_fits = actual_free_mb >= required_mb
+
+                if tracked_fits and actual_fits:
+                    # Both checks pass - memory is available
+                    logger.debug(
+                        "Memory request approved: %s needs %dMB, tracked=%dMB, actual_free=%dMB, budget=%dMB",
+                        model_key,
+                        required_mb,
+                        current_gpu_usage,
+                        actual_free_mb,
+                        self._budget.usable_gpu_mb,
+                    )
+                    outcome = "success"
                     return True
-                if tracked.location == ModelLocation.CPU:
-                    # Model is offloaded, need to restore
-                    return await self._restore_from_cpu(model_key, required_mb)
 
-            # Case 2: Check if we need to make room
-            # Use BOTH tracked estimates AND actual GPU memory to catch discrepancies
-            current_gpu_usage = self._get_gpu_usage()
-            actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
+                # Case 3: Need to make room
+                # Calculate how much we need to free based on the tighter constraint
+                needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
+                needed_from_actual = max(0, required_mb - actual_free_mb)
+                needed_mb = max(needed_from_tracked, needed_from_actual)
 
-            # Check tracked budget first
-            tracked_fits = current_gpu_usage + required_mb <= self._budget.usable_gpu_mb
-            # Also check actual GPU memory (the ground truth)
-            actual_fits = actual_free_mb >= required_mb
-
-            if tracked_fits and actual_fits:
-                # Both checks pass - memory is available
-                logger.debug(
-                    "Memory request approved: %s needs %dMB, tracked=%dMB, actual_free=%dMB, budget=%dMB",
+                logger.info(
+                    "Memory request requires eviction: %s needs %dMB, must free %dMB "
+                    "(tracked_usage=%dMB, actual_free=%dMB, budget=%dMB)",
                     model_key,
                     required_mb,
+                    needed_mb,
                     current_gpu_usage,
                     actual_free_mb,
                     self._budget.usable_gpu_mb,
                 )
-                return True
+                # Use force=True for explicit allocation requests - this bypasses
+                # the 5-second grace period since we're not doing background eviction,
+                # we're responding to an explicit request that needs memory NOW
+                freed_mb = await self._make_room(needed_mb, exclude_key=model_key, force=True)
 
-            # Case 3: Need to make room
-            # Calculate how much we need to free based on the tighter constraint
-            needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
-            needed_from_actual = max(0, required_mb - actual_free_mb)
-            needed_mb = max(needed_from_tracked, needed_from_actual)
-
-            logger.info(
-                "Memory request requires eviction: %s needs %dMB, must free %dMB "
-                "(tracked_usage=%dMB, actual_free=%dMB, budget=%dMB)",
-                model_key,
-                required_mb,
-                needed_mb,
-                current_gpu_usage,
-                actual_free_mb,
-                self._budget.usable_gpu_mb,
-            )
-            # Use force=True for explicit allocation requests - this bypasses
-            # the 5-second grace period since we're not doing background eviction,
-            # we're responding to an explicit request that needs memory NOW
-            freed_mb = await self._make_room(needed_mb, exclude_key=model_key, force=True)
-
-            return freed_mb >= needed_mb
+                result = freed_mb >= needed_mb
+                outcome = "success" if result else "failed"
+                return result
+        finally:
+            memory_request_latency_seconds.labels(outcome=outcome).observe(time.time() - start)
 
     async def mark_loaded(
         self,
@@ -629,6 +645,8 @@ class GPUMemoryGovernor:
         Raises:
             RuntimeError: If no offload callback is registered for the model type
         """
+        from vecpipe.search.metrics import eviction_latency_seconds, evictions_total
+
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
             raise RuntimeError(
@@ -636,35 +654,44 @@ class GPUMemoryGovernor:
                 f"Call register_callbacks() before memory operations."
             )
 
+        start = time.time()
         last_error: Exception | None = None
-        for attempt in range(retries + 1):
-            try:
-                await callback(tracked.model_name, tracked.quantization, "cpu")
-                tracked.location = ModelLocation.CPU
+        try:
+            for attempt in range(retries + 1):
+                try:
+                    await callback(tracked.model_name, tracked.quantization, "cpu")
+                    tracked.location = ModelLocation.CPU
 
-                self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.OFFLOADED)
+                    self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.OFFLOADED)
 
-                logger.info(
-                    "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
-                    tracked.model_key,
-                    tracked.memory_mb,
-                    tracked.idle_seconds,
-                )
-                return True
-            except Exception as e:
-                last_error = e
-                if attempt < retries:
-                    logger.warning(
-                        "Offload attempt %d/%d failed for %s: %s, retrying...",
-                        attempt + 1,
-                        retries + 1,
+                    evictions_total.labels(
+                        model_type=tracked.model_type.name.lower(),
+                        action="offload",
+                    ).inc()
+
+                    logger.info(
+                        "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
                         tracked.model_key,
-                        e,
+                        tracked.memory_mb,
+                        tracked.idle_seconds,
                     )
-                    await asyncio.sleep(0.1)  # Short delay before retry
+                    return True
+                except Exception as e:
+                    last_error = e
+                    if attempt < retries:
+                        logger.warning(
+                            "Offload attempt %d/%d failed for %s: %s, retrying...",
+                            attempt + 1,
+                            retries + 1,
+                            tracked.model_key,
+                            e,
+                        )
+                        await asyncio.sleep(0.1)  # Short delay before retry
 
-        logger.error("Failed to offload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
-        return False
+            logger.error("Failed to offload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
+            return False
+        finally:
+            eviction_latency_seconds.labels(action="offload").observe(time.time() - start)
 
     async def _unload_model(self, tracked: TrackedModel, retries: int = 1) -> bool:
         """Fully unload a model via callback.
@@ -676,6 +703,8 @@ class GPUMemoryGovernor:
         Raises:
             RuntimeError: If no unload callback is registered for the model type
         """
+        from vecpipe.search.metrics import eviction_latency_seconds, evictions_total
+
         callback = self._callbacks.get(tracked.model_type, {}).get("unload")
         if not callback:
             raise RuntimeError(
@@ -683,39 +712,48 @@ class GPUMemoryGovernor:
                 f"Call register_callbacks() before memory operations."
             )
 
+        start = time.time()
         last_error: Exception | None = None
-        for attempt in range(retries + 1):
-            try:
-                await callback(tracked.model_name, tracked.quantization)
+        try:
+            for attempt in range(retries + 1):
+                try:
+                    await callback(tracked.model_name, tracked.quantization)
 
-                self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.UNLOADED)
+                    self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.UNLOADED)
 
-                # Remove from tracking
-                model_key = tracked.model_key
-                if model_key in self._models:
-                    del self._models[model_key]
+                    evictions_total.labels(
+                        model_type=tracked.model_type.name.lower(),
+                        action="unload",
+                    ).inc()
 
-                logger.info(
-                    "Unloaded %s (freed %dMB, idle %.1fs)",
-                    model_key,
-                    tracked.memory_mb,
-                    tracked.idle_seconds,
-                )
-                return True
-            except Exception as e:
-                last_error = e
-                if attempt < retries:
-                    logger.warning(
-                        "Unload attempt %d/%d failed for %s: %s, retrying...",
-                        attempt + 1,
-                        retries + 1,
-                        tracked.model_key,
-                        e,
+                    # Remove from tracking
+                    model_key = tracked.model_key
+                    if model_key in self._models:
+                        del self._models[model_key]
+
+                    logger.info(
+                        "Unloaded %s (freed %dMB, idle %.1fs)",
+                        model_key,
+                        tracked.memory_mb,
+                        tracked.idle_seconds,
                     )
-                    await asyncio.sleep(0.1)  # Short delay before retry
+                    return True
+                except Exception as e:
+                    last_error = e
+                    if attempt < retries:
+                        logger.warning(
+                            "Unload attempt %d/%d failed for %s: %s, retrying...",
+                            attempt + 1,
+                            retries + 1,
+                            tracked.model_key,
+                            e,
+                        )
+                        await asyncio.sleep(0.1)  # Short delay before retry
 
-        logger.error("Failed to unload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
-        return False
+            logger.error("Failed to unload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
+            return False
+        finally:
+            eviction_latency_seconds.labels(action="unload").observe(time.time() - start)
 
     async def _restore_from_cpu(self, model_key: str, required_mb: int) -> bool:
         """Restore an offloaded model from CPU to GPU.
@@ -730,60 +768,66 @@ class GPUMemoryGovernor:
         Raises:
             RuntimeError: If no offload callback is registered for the model type
         """
-        tracked = self._models.get(model_key)
-        if not tracked:
-            logger.warning("Cannot restore %s: model not found in tracking", model_key)
-            return False
-        if tracked.location != ModelLocation.CPU:
-            logger.warning("Cannot restore %s: model is on %s, not CPU", model_key, tracked.location.name)
-            return False
+        from vecpipe.search.metrics import restore_latency_seconds
 
-        # Ensure we have room on GPU
-        # Check both tracked budget AND actual GPU memory
-        current_gpu_usage = self._get_gpu_usage()
-        actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
-
-        # Calculate needed memory from both perspectives
-        needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
-        needed_from_actual = max(0, required_mb - actual_free_mb)
-        needed = max(needed_from_tracked, needed_from_actual)
-
-        if needed > 0:
-            # Use force=True since this is an explicit restore request
-            freed = await self._make_room(needed, exclude_key=model_key, force=True)
-            if freed < needed:
-                logger.warning(
-                    "Cannot restore %s: insufficient GPU memory after eviction "
-                    "(needed=%dMB, freed=%dMB, tracked_usage=%dMB, actual_free=%dMB, usable=%dMB)",
-                    model_key,
-                    needed,
-                    freed,
-                    current_gpu_usage,
-                    actual_free_mb,
-                    self._budget.usable_gpu_mb,
-                )
+        start = time.time()
+        try:
+            tracked = self._models.get(model_key)
+            if not tracked:
+                logger.warning("Cannot restore %s: model not found in tracking", model_key)
+                return False
+            if tracked.location != ModelLocation.CPU:
+                logger.warning("Cannot restore %s: model is on %s, not CPU", model_key, tracked.location.name)
                 return False
 
-        # Restore via callback
-        callback = self._callbacks.get(tracked.model_type, {}).get("offload")
-        if not callback:
-            raise RuntimeError(
-                f"No offload callback registered for {tracked.model_type.name}. "
-                f"Call register_callbacks() before memory operations."
-            )
+            # Ensure we have room on GPU
+            # Check both tracked budget AND actual GPU memory
+            current_gpu_usage = self._get_gpu_usage()
+            actual_free_mb = self._probe_free_gpu_mb(self._select_probe_mode())
 
-        try:
-            await callback(tracked.model_name, tracked.quantization, "cuda")
-            tracked.location = ModelLocation.GPU
-            tracked.last_used = time.time()
-            self._models.move_to_end(model_key)
-            self._total_restorations += 1
+            # Calculate needed memory from both perspectives
+            needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
+            needed_from_actual = max(0, required_mb - actual_free_mb)
+            needed = max(needed_from_tracked, needed_from_actual)
 
-            logger.info("Restored %s from CPU to GPU", model_key)
-            return True
-        except Exception as e:
-            logger.error("Failed to restore %s from CPU to GPU: %s (type: %s)", model_key, e, type(e).__name__)
-            return False
+            if needed > 0:
+                # Use force=True since this is an explicit restore request
+                freed = await self._make_room(needed, exclude_key=model_key, force=True)
+                if freed < needed:
+                    logger.warning(
+                        "Cannot restore %s: insufficient GPU memory after eviction "
+                        "(needed=%dMB, freed=%dMB, tracked_usage=%dMB, actual_free=%dMB, usable=%dMB)",
+                        model_key,
+                        needed,
+                        freed,
+                        current_gpu_usage,
+                        actual_free_mb,
+                        self._budget.usable_gpu_mb,
+                    )
+                    return False
+
+            # Restore via callback
+            callback = self._callbacks.get(tracked.model_type, {}).get("offload")
+            if not callback:
+                raise RuntimeError(
+                    f"No offload callback registered for {tracked.model_type.name}. "
+                    f"Call register_callbacks() before memory operations."
+                )
+
+            try:
+                await callback(tracked.model_name, tracked.quantization, "cuda")
+                tracked.location = ModelLocation.GPU
+                tracked.last_used = time.time()
+                self._models.move_to_end(model_key)
+                self._total_restorations += 1
+
+                logger.info("Restored %s from CPU to GPU", model_key)
+                return True
+            except Exception as e:
+                logger.error("Failed to restore %s from CPU to GPU: %s (type: %s)", model_key, e, type(e).__name__)
+                return False
+        finally:
+            restore_latency_seconds.observe(time.time() - start)
 
     # -------------------------------------------------------------------------
     # Memory Pressure Monitoring
@@ -821,6 +865,8 @@ class GPUMemoryGovernor:
         - Each subsequent trigger doubles the backoff (up to max_backoff_seconds)
         - Backoff resets after successful_iterations_to_reset successful cycles
         """
+        from vecpipe.search.metrics import governor_degraded
+
         consecutive_failures = 0
         max_consecutive_failures = 5
         base_backoff_seconds = 30  # Initial backoff: 30 seconds
@@ -873,6 +919,7 @@ class GPUMemoryGovernor:
                     current_backoff = base_backoff_seconds
                     self._circuit_breaker_triggers = 0
                     self._degraded_state = False
+                    governor_degraded.set(0)
                     successful_iterations = 0
 
             except asyncio.CancelledError:
@@ -898,6 +945,7 @@ class GPUMemoryGovernor:
                     # Check for degraded state after repeated triggers
                     if self._circuit_breaker_triggers >= self._max_circuit_breaker_triggers:
                         self._degraded_state = True
+                        governor_degraded.set(1)
                         logger.critical(
                             "Memory monitor in DEGRADED STATE after %d circuit breaker triggers. "
                             "Manual intervention may be required. Memory pressure handling is unreliable.",
@@ -927,13 +975,19 @@ class GPUMemoryGovernor:
 
         Continues processing remaining models even if individual unloads fail.
         """
+        from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
+
+        pressure_events_total.labels(level="critical").inc()
+        evicted_count = 0
         async with self._lock:
             failed_models: list[str] = []
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 5:
                     try:
                         result = await self._unload_model(tracked)
-                        if not result:
+                        if result:
+                            evicted_count += 1
+                        else:
                             failed_models.append(tracked.model_key)
                             logger.warning(
                                 "Failed to unload %s during critical pressure (callback returned False)",
@@ -947,12 +1001,17 @@ class GPUMemoryGovernor:
                 logger.warning(
                     "Critical pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
+        models_evicted_per_event.labels(level="critical").observe(evicted_count)
 
     async def _handle_high_pressure(self) -> None:
         """Handle high memory pressure - aggressive offloading.
 
         Continues processing remaining models even if individual operations fail.
         """
+        from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
+
+        pressure_events_total.labels(level="high").inc()
+        evicted_count = 0
         async with self._lock:
             failed_models: list[str] = []
             for tracked in list(self._models.values()):
@@ -964,7 +1023,9 @@ class GPUMemoryGovernor:
                             result = await self._offload_model(tracked)
                         else:
                             result = await self._unload_model(tracked)
-                        if not result:
+                        if result:
+                            evicted_count += 1
+                        else:
                             failed_models.append(tracked.model_key)
                             logger.warning(
                                 "Failed to evict %s during high pressure (callback returned False)",
@@ -977,12 +1038,17 @@ class GPUMemoryGovernor:
                 logger.warning(
                     "High pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
+        models_evicted_per_event.labels(level="high").observe(evicted_count)
 
     async def _handle_moderate_pressure(self) -> None:
         """Handle moderate pressure - preemptive offloading of idle models.
 
         Continues processing remaining models even if individual offloads fail.
         """
+        from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
+
+        pressure_events_total.labels(level="moderate").inc()
+        evicted_count = 0
         async with self._lock:
             failed_models: list[str] = []
             for tracked in list(self._models.values()):
@@ -995,7 +1061,9 @@ class GPUMemoryGovernor:
                 if is_idle_on_gpu and can_offload:
                     try:
                         result = await self._offload_model(tracked)
-                        if not result:
+                        if result:
+                            evicted_count += 1
+                        else:
                             failed_models.append(tracked.model_key)
                             logger.warning(
                                 "Failed to offload %s during moderate pressure (callback returned False)",
@@ -1008,6 +1076,7 @@ class GPUMemoryGovernor:
                 logger.warning(
                     "Moderate pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
+        models_evicted_per_event.labels(level="moderate").observe(evicted_count)
 
     # -------------------------------------------------------------------------
     # Callback Registration
@@ -1079,6 +1148,8 @@ class GPUMemoryGovernor:
             "total_offloads": self._total_offloads,
             "total_restorations": self._total_restorations,
             "total_unloads": self._total_unloads,
+            "degraded_state": self._degraded_state,
+            "circuit_breaker_triggers": self._circuit_breaker_triggers,
         }
 
     def get_loaded_models(self) -> list[dict[str, Any]]:

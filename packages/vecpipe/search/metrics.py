@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 from shared.metrics.prometheus import registry
 
@@ -139,6 +139,59 @@ collection_metadata_fetch_latency = get_or_create_metric(
     buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2),
 )
 
+# === Memory Governor Metrics ===
+
+eviction_latency_seconds = get_or_create_metric(
+    Histogram,
+    "semantik_eviction_seconds",
+    "Time to evict a model from GPU",
+    ["action"],  # "offload" or "unload"
+    buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+)
+
+evictions_total = get_or_create_metric(
+    Counter,
+    "semantik_evictions_total",
+    "Total model evictions",
+    ["model_type", "action"],
+)
+
+restore_latency_seconds = get_or_create_metric(
+    Histogram,
+    "semantik_restore_from_cpu_seconds",
+    "Time to restore model from CPU to GPU",
+    buckets=(0.5, 1, 2, 5, 10, 15, 30),
+)
+
+memory_request_latency_seconds = get_or_create_metric(
+    Histogram,
+    "semantik_memory_request_seconds",
+    "Total time for request_memory including any eviction",
+    ["outcome"],  # "success", "failed", "already_loaded"
+    buckets=(0.001, 0.01, 0.1, 0.5, 1, 5, 10),
+)
+
+pressure_events_total = get_or_create_metric(
+    Counter,
+    "semantik_pressure_events_total",
+    "Memory pressure events handled",
+    ["level"],
+)
+
+models_evicted_per_event = get_or_create_metric(
+    Histogram,
+    "semantik_models_evicted_per_event",
+    "Number of models evicted per pressure event",
+    ["level"],
+    buckets=(0, 1, 2, 3, 5, 10),
+)
+
+governor_degraded = get_or_create_metric(
+    Gauge,
+    "semantik_governor_degraded",
+    "Memory governor degraded state (1=degraded, 0=healthy)",
+)
+
 
 __all__ = [
     "get_or_create_metric",
@@ -159,4 +212,12 @@ __all__ = [
     "rerank_content_fetch_latency",
     "rerank_fallbacks",
     "collection_metadata_fetch_latency",
+    # Memory Governor Metrics
+    "eviction_latency_seconds",
+    "evictions_total",
+    "restore_latency_seconds",
+    "memory_request_latency_seconds",
+    "pressure_events_total",
+    "models_evicted_per_event",
+    "governor_degraded",
 ]

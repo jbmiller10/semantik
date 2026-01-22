@@ -550,7 +550,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is True
-        assert result["pressure"] == "LOW"
+        assert result["pressure_level"] == "LOW"
         assert "normal" in result["message"].lower()
 
     def test_health_high_pressure(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
@@ -567,7 +567,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is True
-        assert result["pressure"] == "HIGH"
+        assert result["pressure_level"] == "HIGH"
         assert "eviction active" in result["message"].lower()
 
     def test_health_critical_pressure(
@@ -586,7 +586,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is False
-        assert result["pressure"] == "CRITICAL"
+        assert result["pressure_level"] == "CRITICAL"
         assert "OOM risk" in result["message"]
 
     def test_health_cpu_mode(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
@@ -602,6 +602,29 @@ class TestMemoryHealthEndpoint:
 
         assert result["healthy"] is True
         assert result["mode"] == "cpu"
+
+    def test_health_degraded_state(
+        self, test_client_governed: TestClient, mock_governed_model_manager: Mock
+    ) -> None:
+        """Test health check when governor is in degraded state."""
+        mock_governed_model_manager._governor.get_memory_stats.return_value = {
+            "cuda_available": True,
+            "pressure_level": "MODERATE",
+            "degraded_state": True,
+            "circuit_breaker_triggers": 3,
+            "models_loaded": 2,
+            "models_offloaded": 1,
+        }
+
+        response = test_client_governed.get("/memory/health")
+
+        assert response.status_code == 200
+        result = response.json()
+
+        assert result["healthy"] is False
+        assert result["degraded_state"] is True
+        assert result["circuit_breaker_triggers"] == 3
+        assert "degraded state" in result["message"].lower()
 
 
 # =============================================================================
