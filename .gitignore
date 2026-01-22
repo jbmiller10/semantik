@@ -272,6 +272,7 @@ review-chunk-*.txt
 
 # Codebase review outputs
 reviews/
+docs/local/
 
 research_papers/
 
