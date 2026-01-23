@@ -25,31 +25,10 @@ from vecpipe.llm_model_manager import LLMModelManager
 from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
-from vecpipe.search.state import clear_resources, set_resources
+from vecpipe.search.runtime import VecpipeRuntime
 from vecpipe.sparse_model_manager import SparseModelManager
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_start_metrics_server() -> Any:
-    """Return a metrics starter function, honoring any patch on search_api."""
-    # 1) If this module's symbol is patched (common in unit tests), use it.
-    patched_local = globals().get("start_metrics_server")
-    if patched_local and patched_local is not _base_start_metrics_server:
-        return patched_local
-
-    # 2) If the public entrypoint module has been patched, honor that.
-    try:
-        import vecpipe.search_api as search_api
-
-        patched = getattr(search_api, "start_metrics_server", None)
-        if patched and patched is not _base_start_metrics_server:
-            return patched
-    except Exception as e:
-        logger.warning("Failed to check for patched start_metrics_server: %s", e, exc_info=True)
-
-    # 3) Fall back to the base implementation
-    return _base_start_metrics_server
 
 
 # Expose a patchable reference for unit tests that mock vecpipe.search.lifespan.start_metrics_server
@@ -57,7 +36,7 @@ start_metrics_server = _base_start_metrics_server
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
+async def lifespan(app: FastAPI) -> Any:
     """Manage application lifecycle.
 
     ModelManager now handles embedding provider lifecycle internally using the
@@ -88,8 +67,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     if external_plugins:
         logger.info("Loaded embedding plugins: %s", ", ".join(external_plugins))
 
-    start_metrics = _resolve_start_metrics_server()
-    start_metrics(settings.METRICS_PORT)
+    start_metrics_server(settings.METRICS_PORT)
     logger.info("Metrics server started on port %s", settings.METRICS_PORT)
 
     # Build Qdrant connection with optional API key authentication
@@ -125,6 +103,9 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
             enable_cpu_offload=settings.ENABLE_CPU_OFFLOAD,
             enable_preemptive_eviction=True,
             eviction_idle_threshold_seconds=settings.EVICTION_IDLE_THRESHOLD_SECONDS,
+            pressure_check_interval_seconds=settings.PRESSURE_CHECK_INTERVAL_SECONDS,
+            probe_mode=settings.GPU_FREE_PROBE_MODE,
+            probe_safe_threshold=settings.GPU_FREE_PROBE_SAFE_THRESHOLD_PERCENT,
         )
 
         # Start the governor's background monitor
@@ -166,16 +147,16 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     else:
         logger.info("Local LLM support disabled (ENABLE_LOCAL_LLM=false)")
 
-    # embed_service is None - ModelManager now manages providers internally
-    set_resources(
-        qdrant=qdrant,
-        model_mgr=model_mgr,
-        embed_service=None,
-        pool=pool,
+    # Create runtime container and attach to app.state
+    runtime = VecpipeRuntime(
+        qdrant_http=qdrant,
         qdrant_sdk=qdrant_sdk,
-        sparse_mgr=sparse_mgr,
-        llm_mgr=llm_mgr,
+        model_manager=model_mgr,
+        sparse_manager=sparse_mgr,
+        llm_manager=llm_mgr,
+        executor=pool,
     )
+    app.state.vecpipe_runtime = runtime
 
     # Touch metrics to ensure registered
     search_requests.labels(endpoint="startup", search_type="health").inc()
@@ -183,18 +164,5 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     try:
         yield
     finally:
-        await qdrant.aclose()
-        await qdrant_sdk.close()
-        # Shutdown LLM model manager first (it may hold references to models)
-        if llm_mgr is not None:
-            await llm_mgr.shutdown()
-        # Shutdown sparse model manager (it may hold references to models)
-        await sparse_mgr.shutdown()
-        # Use async shutdown for GovernedModelManager to avoid deadlock
-        if hasattr(model_mgr, "shutdown_async"):
-            await model_mgr.shutdown_async()
-        else:
-            model_mgr.shutdown()
-        pool.shutdown(wait=True)
-        clear_resources()
+        await runtime.aclose()
         logger.info("Disconnected from Qdrant")

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 
 def test_reciprocal_rank_fusion_empty_inputs() -> None:
-    from vecpipe.search.service import _reciprocal_rank_fusion
+    from vecpipe.search.sparse_search import _reciprocal_rank_fusion
 
     assert _reciprocal_rank_fusion([], [], k=10) == []
 
 
 def test_reciprocal_rank_fusion_prefers_dense_payload_and_adds_ranks() -> None:
-    from vecpipe.search.service import _reciprocal_rank_fusion
+    from vecpipe.search.sparse_search import _reciprocal_rank_fusion
 
     dense = [
         {"chunk_id": "a", "score": 0.9, "payload": {"from": "dense"}},
@@ -32,7 +32,7 @@ def test_reciprocal_rank_fusion_prefers_dense_payload_and_adds_ranks() -> None:
 
 
 def test_reciprocal_rank_fusion_normalizes_when_all_scores_equal() -> None:
-    from vecpipe.search.service import _reciprocal_rank_fusion
+    from vecpipe.search.sparse_search import _reciprocal_rank_fusion
 
     # Make two independent single-source results with identical rank contribution.
     dense = [{"chunk_id": "a", "score": 0.9}]

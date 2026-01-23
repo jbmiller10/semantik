@@ -9,11 +9,12 @@ import logging
 import time
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from vecpipe.cpu_offloader import defragment_cuda_memory, get_cuda_memory_fragmentation, get_offloader
-from vecpipe.search.state import get_resources
+from vecpipe.search.deps import get_runtime
+from vecpipe.search.runtime import VecpipeRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ class PreloadResponse(BaseModel):
 
 
 @router.get("/stats", response_model=MemoryStatsResponse)
-async def get_memory_stats() -> dict[str, Any]:
+async def get_memory_stats(runtime: VecpipeRuntime = Depends(get_runtime)) -> dict[str, Any]:
     """
     Get current GPU memory statistics.
 
@@ -127,8 +128,7 @@ async def get_memory_stats() -> dict[str, Any]:
     - Pressure level
     - Loaded model count
     """
-    resources = get_resources()
-    model_mgr = resources.get("model_mgr")
+    model_mgr = runtime.model_manager
 
     if model_mgr is None:
         raise HTTPException(
@@ -163,15 +163,14 @@ async def get_memory_stats() -> dict[str, Any]:
 
 
 @router.get("/models", response_model=list[LoadedModelInfo])
-async def get_loaded_models() -> list[dict[str, Any]]:
+async def get_loaded_models(runtime: VecpipeRuntime = Depends(get_runtime)) -> list[dict[str, Any]]:
     """
     Get information about currently loaded models.
 
     Returns list of models with their location (GPU/CPU), memory usage,
     and idle time.
     """
-    resources = get_resources()
-    model_mgr = resources.get("model_mgr")
+    model_mgr = runtime.model_manager
 
     if model_mgr is None:
         raise HTTPException(
@@ -222,15 +221,14 @@ async def get_loaded_models() -> list[dict[str, Any]]:
 
 
 @router.get("/evictions", response_model=list[EvictionInfo])
-async def get_eviction_history() -> list[dict[str, Any]]:
+async def get_eviction_history(runtime: VecpipeRuntime = Depends(get_runtime)) -> list[dict[str, Any]]:
     """
     Get recent model eviction history.
 
     Useful for understanding memory pressure patterns and model lifecycle.
     Returns empty list if using non-governed ModelManager (no eviction tracking).
     """
-    resources = get_resources()
-    model_mgr = resources.get("model_mgr")
+    model_mgr = runtime.model_manager
 
     if model_mgr is None:
         raise HTTPException(
@@ -267,7 +265,7 @@ async def trigger_defragment() -> dict[str, str]:
 
 
 @router.post("/evict/{model_type}")
-async def evict_model(model_type: str) -> dict[str, Any]:
+async def evict_model(model_type: str, runtime: VecpipeRuntime = Depends(get_runtime)) -> dict[str, Any]:
     """
     Manually evict a model to free GPU memory.
 
@@ -277,8 +275,7 @@ async def evict_model(model_type: str) -> dict[str, Any]:
     Returns:
         Status dict with 'evicted' (bool) and details about what was unloaded.
     """
-    resources = get_resources()
-    model_mgr = resources.get("model_mgr")
+    model_mgr = runtime.model_manager
 
     if model_mgr is None:
         raise HTTPException(status_code=503, detail="Model manager not available")
@@ -342,14 +339,13 @@ async def evict_model(model_type: str) -> dict[str, Any]:
 
 
 @router.post("/preload", response_model=PreloadResponse)
-async def preload_models(request: PreloadRequest) -> dict[str, Any]:
+async def preload_models(request: PreloadRequest, runtime: VecpipeRuntime = Depends(get_runtime)) -> dict[str, Any]:
     """
     Preload models for expected requests.
 
     This allows warming up models before they're needed.
     """
-    resources = get_resources()
-    model_mgr = resources.get("model_mgr")
+    model_mgr = runtime.model_manager
 
     if model_mgr is None:
         raise HTTPException(status_code=503, detail="Model manager not available")
@@ -381,13 +377,14 @@ async def get_offloaded_models() -> list[dict[str, Any]]:
 
 
 @router.get("/health")
-async def memory_health_check() -> dict[str, Any]:
+async def memory_health_check(runtime: VecpipeRuntime = Depends(get_runtime)) -> dict[str, Any]:
     """
     Memory health check endpoint.
 
-    Returns overall health status based on memory pressure.
+    Returns overall health status based on memory pressure and degraded state.
+    Unhealthy if degraded OR critical pressure.
     """
-    stats = await get_memory_stats()
+    stats = await get_memory_stats(runtime)
 
     if not stats.get("cuda_available"):
         return {
@@ -396,25 +393,38 @@ async def memory_health_check() -> dict[str, Any]:
             "message": "Running in CPU mode",
         }
 
+    degraded = stats.get("degraded_state", False)
     pressure = stats.get("pressure_level", "UNKNOWN")
+
+    # Unhealthy if degraded OR critical pressure
+    is_healthy = not degraded and pressure != "CRITICAL"
+
+    if degraded:
+        return {
+            "healthy": False,
+            "pressure_level": pressure,
+            "degraded_state": True,
+            "circuit_breaker_triggers": stats.get("circuit_breaker_triggers", 0),
+            "models_loaded": stats.get("models_loaded", 0),
+            "models_offloaded": stats.get("models_offloaded", 0),
+            "message": "Memory governor in degraded state - circuit breaker triggered",
+        }
 
     if pressure == "CRITICAL":
         return {
             "healthy": False,
-            "pressure": pressure,
+            "pressure_level": pressure,
+            "degraded_state": False,
             "used_percent": stats.get("used_percent", 0),
             "message": "Critical memory pressure - OOM risk",
         }
-    if pressure == "HIGH":
-        return {
-            "healthy": True,
-            "pressure": pressure,
-            "used_percent": stats.get("used_percent", 0),
-            "message": "High memory pressure - eviction active",
-        }
+
     return {
-        "healthy": True,
-        "pressure": pressure,
+        "healthy": is_healthy,
+        "pressure_level": pressure,
+        "degraded_state": False,
         "used_percent": stats.get("used_percent", 0),
-        "message": "Memory usage normal",
+        "models_loaded": stats.get("models_loaded", 0),
+        "models_offloaded": stats.get("models_offloaded", 0),
+        "message": "High memory pressure - eviction active" if pressure == "HIGH" else "Memory usage normal",
     }

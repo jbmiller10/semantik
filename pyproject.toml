@@ -1,6 +1,6 @@
 [project]
 name = "semantik"
-version = "0.8.0"
+version = "0.8.1"
 description = "Private, self-hosted semantic search for your documents."
 authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"
@@ -20,7 +20,7 @@ dependencies = [
     "prometheus-client>=0.19.0,<0.20",
     "psutil>=5.9.0,<6",
     "gputil>=1.4.0,<2",
-    "pypdf>=5.0.0,<6",
+    "pypdf>=5.0.0,<7",
     "python-docx>=1.1.0,<2",
     "websockets>=11.0.3,<12",
     "unstructured[all-docs]>=0.18.1,<0.19",

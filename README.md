@@ -27,34 +27,50 @@ This is a personal project and still pre‑release — expect rough edges and AP
 </p>
 </details>
 
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [License](#license)
+
 ## What It Does
-- **Collections**: group documents with their own embedding + chunking config.
-- **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
-- **Connectors**: pluggable ingestion sources — built-ins include directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
-- **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
-- **Search**: dense (semantic), sparse (BM25/SPLADE), and hybrid modes with RRF fusion. Optional cross‑encoder reranking and HyDE query expansion.
-- **Sparse indexing**: BM25 for fast TF-IDF keyword search, SPLADE for neural sparse vectors 
-- **LLM integration**: multi-provider support (Anthropic, OpenAI, local GPU) for HyDE query expansion and future features. Quality tiers let you balance cost vs capability.
-- **MCP Integration**: connect AI assistants to search your collections via the Model Context Protocol. See `docs/MCP.md`.
-- **API keys**: programmatic access with scoped, revocable keys for integrations and automation.
-- **Model Manager**: download, track, and delete models (embedding, LLM, reranker, SPLADE) with cache visibility and usage tracking.
-- **Benchmarking**: evaluate search quality with standard IR metrics (Precision@K, Recall@K, MRR, nDCG) against ground truth datasets.
-- **Live progress** is streamed to the UI over Redis + WebSockets.
-- **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
-- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
-- **Embeddings lab**: swap models/quantization per collection
-- **Visualize:** project embeddings into 2D space & visualize relationships (via `embedding-atlas`).
-- **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
 
-## Sources & Continuous Sync
+Everything is organized around **collections** — each with its own embedding model, chunking strategy, and sources. All models run locally by default; no document content leaves your machine.
 
-Collections support multiple data sources with optional continuous sync:
+### Hybrid Search Stack
+- Dense (semantic) + sparse (BM25/SPLADE) with RRF fusion
+- Cross-encoder reranking for precision
+- HyDE query expansion via pluggable LLMs (Anthropic, OpenAI, or local GPU)
+- All parameters tunable per collection
 
-- **Sync Modes**: `one_time` (manual) or `continuous` (automatic at intervals)
-- **Interval**: Minimum 15 minutes for continuous sync
-- **Encrypted Credentials**: Git tokens, SSH keys, and IMAP passwords stored encrypted at rest
+### Retrieval Lab
+- 6 chunking strategies (character, recursive, markdown, semantic, hierarchical, hybrid)
+- Embedding model and quantization swapping
+- IR benchmarking with Precision@K, Recall@K, MRR, nDCG
+- Embedding space visualization via embedding-atlas
+
+### Data Pipeline
+- Pluggable connectors: directories, Git repos, IMAP mailboxes (credentials encrypted at rest)
+- 15+ document formats via unstructured (PDF, DOCX, Markdown, HTML, and more)
+- Continuous sync with configurable intervals
+- Fully async ingestion with live progress streaming
+
+### Integrations
+- MCP server for AI assistants (Claude, etc.) — see `docs/MCP.md`
+- Scoped, revocable API keys for programmatic access
+- Plugin system with 6 extension points (embedding, chunking, connectors, rerankers, sparse indexers, extractors)
+
+### Operations
+- Zero-downtime reindexing (blue/green staging)
+- Model manager with download tracking and cache visibility
+- Live progress via Redis + WebSockets
 
 ## Architecture
+
 Three Python packages, one frontend:
 - `packages/webui/` – FastAPI app serving REST + WebSocket APIs and the React UI; owns Postgres state.
 - `packages/vecpipe/` – embedding + search HTTP service that talks to Qdrant.
@@ -77,8 +93,14 @@ flowchart LR
   V <--> Q[(Qdrant)]
 ```
 
-## Quickstart (Docker)
-Prereqs: Docker + Compose. NVIDIA runtime if you want GPU acceleration.
+## Getting Started
+
+### Prerequisites
+
+- Docker + Docker Compose
+- NVIDIA runtime (optional, for GPU acceleration)
+
+### Installation
 
 ```bash
 git clone https://github.com/jbmiller10/semantik.git
@@ -97,74 +119,79 @@ cp .env.docker.example .env
 make docker-up
 ```
 
-Endpoints after boot:
-- Web UI + API: `http://localhost:8080`
-- Vecpipe API (internal-only by default): `http://vecpipe:8000` (expose port 8000 if you need host access)
-- Qdrant: `http://localhost:6333`
+### Endpoints
 
-First run note: open the UI and create an account. The very first user is made admin/superuser automatically.
+| Service | URL |
+|---------|-----|
+| Web UI + API | `http://localhost:8080` |
+| Qdrant | `http://localhost:6333` |
+| Vecpipe (internal) | `http://vecpipe:8000` |
 
-Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volumes).
+### First Steps
 
-## Usage
-1. Open the UI at `http://localhost:8080` and create a collection.
-2. Add one or more sources (directories; optionally Git repos / IMAP mailboxes). Semantik will index in the background.
-3. Search across one or more collections.
+1. Open the UI at `http://localhost:8080` and create an account. The first user is automatically an admin.
+2. Create a collection and add sources (directories, Git repos, or IMAP mailboxes).
+3. Semantik indexes in the background — search when ready.
 
-If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
+For programmatic access, see the v2 API at `/api/v2/*` — documented in `docs/API_REFERENCE.md`.
+
+### Stopping
+
+```bash
+make docker-down        # Stop (keep volumes)
+make docker-down-clean  # Stop and remove volumes
+```
 
 ## Configuration
-`make wizard` or `.env.docker.example` covers the common knobs. 
 
-See:`docs/CONFIGURATION.md`.
+The setup wizard (`make wizard`) or `.env.docker.example` covers common settings. For detailed configuration options, see `docs/CONFIGURATION.md`.
 
-## Extensibility
-Semantik is meant to be a sandbox for trying retrieval ideas:
-- **Plugins** for 6 extension points: embedding providers, chunking strategies, connectors, rerankers, sparse indexers, and extractors. Load via Python entry points (`semantik.plugins`).
-- **Runtime-checkable protocols** let you build external plugins without importing Semantik internals. See `docs/external-plugins.md` and `docs/plugin-protocols.md`.
+## Development
 
-Plugin loading is idempotent and safe to run without plugins installed.
+### Backend
 
-## Dev Notes
-Backend:
 ```bash
-make dev-install
-make run        # FastAPI hot reload on :8080
+make dev-install        # Install dependencies
+make run                # FastAPI hot reload on :8080
+make dev                # Full stack: API + worker + vecpipe
 ```
 
-Frontend:
+### Frontend
+
 ```bash
-make frontend-install
-make frontend-dev   # Vite on :5173, proxies /api and /ws to backend
+make frontend-install   # npm install
+make frontend-dev       # Vite on :5173, proxies to backend
 ```
 
-Integrated dev stack (API + worker + vecpipe):
+### Testing
+
 ```bash
-make dev
+make test               # Run all tests (Pytest)
+make test-coverage      # Tests with coverage report
+make test-e2e           # E2E tests (requires running stack)
 ```
 
-## Testing
-- Backend: `make test` (Pytest) or `make test-coverage`.
-- E2E (requires running stack): `make test-e2e`.
-- Frontend: `npm test --prefix apps/webui-react`.
-- Test Postgres profile: `docker compose --profile testing up -d postgres_test` (port 55432).
+Frontend tests: `npm test --prefix apps/webui-react`
 
+Test database: `docker compose --profile testing up -d postgres_test` (port 55432)
 
-## Roadmap 
-Next up:
+## Roadmap
+
+**Near-term:**
 - Built-in agentic search
-- Improvements to the memory governor system
-- bugfixes
+- Memory governor improvements
+- Bug fixes
 
-In no particular order:
+**Planned:**
 - Knowledge graph builder for GraphRAG
 - Expanded benchmarking tools
-- Support for Text+Image embedding models
-- Support for custom embedding models/any sentence-transformers compatible model
-- Expanded visualization options for exploring the embedding space
-- Additional connectors, parsers, chunkers
+- Text+image embedding models
+- Custom/sentence-transformers model support
+- Additional visualization options
+- More connectors, parsers, and chunkers
 
 ## License
-AGPL‑3.0. See `LICENSE`.
+
+AGPL‑3.0 — see `LICENSE`.
 
 _Active development; breaking changes are possible._

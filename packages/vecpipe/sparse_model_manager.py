@@ -17,7 +17,6 @@ focuses on GPU-based sparse indexers like SPLADE.
 from __future__ import annotations
 
 import asyncio
-import gc
 import hashlib
 import logging
 import time
@@ -222,9 +221,11 @@ class SparseModelManager:
             if hasattr(plugin, "cleanup") and callable(plugin.cleanup):
                 await plugin.cleanup()
 
-            # Force garbage collection
+            # Release reference
+            # Note: gc.collect() is NOT called here to avoid redundant GC during
+            # pressure handling chains. The governor's pressure handlers call gc.collect()
+            # once at the end of batch evictions.
             del plugin
-            gc.collect()
 
             # Clear CUDA cache
             try:

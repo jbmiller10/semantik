@@ -17,7 +17,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vecpipe.search import state as search_state
 from vecpipe.search.llm_api import router
 
 # =============================================================================
@@ -52,24 +51,23 @@ def mock_llm_manager() -> Mock:
 
 
 @pytest.fixture()
-def app_with_llm_manager(mock_llm_manager: Mock) -> Generator[FastAPI, None, None]:
+def app_with_llm_manager(mock_llm_manager: Mock) -> FastAPI:
     """Create FastAPI app with mocked LLM manager."""
     app = FastAPI()
     app.include_router(router)
+    app.state.vecpipe_runtime = Mock(is_closed=False, llm_manager=mock_llm_manager)
 
-    # Patch the state module
-    with patch.object(search_state, "llm_manager", mock_llm_manager):
-        yield app
+    return app
 
 
 @pytest.fixture()
-def app_without_llm_manager() -> Generator[FastAPI, None, None]:
+def app_without_llm_manager() -> FastAPI:
     """Create FastAPI app without LLM manager (disabled)."""
     app = FastAPI()
     app.include_router(router)
+    app.state.vecpipe_runtime = Mock(is_closed=False, llm_manager=None)
 
-    with patch.object(search_state, "llm_manager", None):
-        yield app
+    return app
 
 
 @pytest.fixture()
@@ -107,7 +105,7 @@ class TestLLMGenerateEndpoint:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
@@ -185,16 +183,14 @@ class TestLLMGenerateEndpoint:
     ) -> None:
         """Test generate returns 507 on OOM."""
         mock_llm_manager.generate.side_effect = RuntimeError("Insufficient GPU memory")
-
-        with patch.object(search_state, "llm_manager", mock_llm_manager):
-            response = client_with_manager.post(
-                "/llm/generate",
-                headers=auth_headers,
-                json={
-                    "model_name": "Qwen/Qwen2.5-7B-Instruct",
-                    "prompts": ["Test prompt"],
-                },
-            )
+        response = client_with_manager.post(
+            "/llm/generate",
+            headers=auth_headers,
+            json={
+                "model_name": "Qwen/Qwen2.5-7B-Instruct",
+                "prompts": ["Test prompt"],
+            },
+        )
         assert response.status_code == 507
 
     def test_generate_invalid_quantization(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
@@ -247,7 +243,7 @@ class TestLLMPreloadEndpoint:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 
@@ -279,13 +275,11 @@ class TestLLMPreloadEndpoint:
     ) -> None:
         """Test preload returns 507 on OOM."""
         mock_llm_manager._ensure_model_loaded.side_effect = RuntimeError("Insufficient GPU memory")
-
-        with patch.object(search_state, "llm_manager", mock_llm_manager):
-            response = client_with_manager.post(
-                "/llm/models/load",
-                headers=auth_headers,
-                json={"model_name": "Qwen/Qwen2.5-7B-Instruct"},
-            )
+        response = client_with_manager.post(
+            "/llm/models/load",
+            headers=auth_headers,
+            json={"model_name": "Qwen/Qwen2.5-7B-Instruct"},
+        )
         assert response.status_code == 507
 
     def test_preload_invalid_quantization(self, client_with_manager: TestClient, auth_headers: dict[str, str]) -> None:
@@ -329,7 +323,7 @@ class TestLLMStreamingPlaceholders:
     @pytest.fixture(autouse=True)
     def _setup_api_key(self, valid_api_key: str) -> Generator[None, None, None]:
         """Patch settings to use test API key."""
-        with patch("vecpipe.search.router.settings") as mock_settings:
+        with patch("vecpipe.search.auth.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = valid_api_key
             yield
 

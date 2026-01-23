@@ -9,14 +9,12 @@ Tests cover:
 
 import time
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vecpipe.search import state as search_state
 from vecpipe.search.memory_api import router
 
 # =============================================================================
@@ -143,20 +141,10 @@ def test_client_governed(
     mock_offloader: Mock,
 ) -> Generator[TestClient, None, None]:
     """Test client with GovernedModelManager."""
-    original_model_manager = getattr(search_state, "model_manager", None)
+    app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=mock_governed_model_manager)
 
-    # Patch get_resources to return our mock
-    def mock_get_resources() -> dict[str, Any]:
-        return {"model_mgr": mock_governed_model_manager}
-
-    with (
-        patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
-        patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-    ):
+    with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
         yield TestClient(app_with_router)
-
-    if original_model_manager is not None:
-        search_state.model_manager = original_model_manager
 
 
 @pytest.fixture()
@@ -166,14 +154,10 @@ def test_client_basic(
     mock_offloader: Mock,
 ) -> Generator[TestClient, None, None]:
     """Test client with basic ModelManager (no governor)."""
-
-    # Patch get_resources to return our mock
-    def mock_get_resources() -> dict[str, Any]:
-        return {"model_mgr": mock_basic_model_manager}
+    app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=mock_basic_model_manager)
 
     # Patch torch at the module level since it's imported inside the function
     with (
-        patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
         patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
         patch.dict("sys.modules", {"torch": Mock()}),
     ):
@@ -191,14 +175,9 @@ def test_client_no_manager(
     mock_offloader: Mock,
 ) -> Generator[TestClient, None, None]:
     """Test client with no model manager."""
+    app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=None)
 
-    def mock_get_resources() -> dict[str, Any]:
-        return {"model_mgr": None}
-
-    with (
-        patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
-        patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-    ):
+    with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
         yield TestClient(app_with_router)
 
 
@@ -571,7 +550,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is True
-        assert result["pressure"] == "LOW"
+        assert result["pressure_level"] == "LOW"
         assert "normal" in result["message"].lower()
 
     def test_health_high_pressure(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
@@ -588,7 +567,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is True
-        assert result["pressure"] == "HIGH"
+        assert result["pressure_level"] == "HIGH"
         assert "eviction active" in result["message"].lower()
 
     def test_health_critical_pressure(
@@ -607,7 +586,7 @@ class TestMemoryHealthEndpoint:
         result = response.json()
 
         assert result["healthy"] is False
-        assert result["pressure"] == "CRITICAL"
+        assert result["pressure_level"] == "CRITICAL"
         assert "OOM risk" in result["message"]
 
     def test_health_cpu_mode(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
@@ -624,6 +603,27 @@ class TestMemoryHealthEndpoint:
         assert result["healthy"] is True
         assert result["mode"] == "cpu"
 
+    def test_health_degraded_state(self, test_client_governed: TestClient, mock_governed_model_manager: Mock) -> None:
+        """Test health check when governor is in degraded state."""
+        mock_governed_model_manager._governor.get_memory_stats.return_value = {
+            "cuda_available": True,
+            "pressure_level": "MODERATE",
+            "degraded_state": True,
+            "circuit_breaker_triggers": 3,
+            "models_loaded": 2,
+            "models_offloaded": 1,
+        }
+
+        response = test_client_governed.get("/memory/health")
+
+        assert response.status_code == 200
+        result = response.json()
+
+        assert result["healthy"] is False
+        assert result["degraded_state"] is True
+        assert result["circuit_breaker_triggers"] == 3
+        assert "degraded state" in result["message"].lower()
+
 
 # =============================================================================
 # Edge Cases and Error Handling
@@ -638,14 +638,9 @@ class TestEdgeCases:
     ) -> None:
         """Test basic manager with both embedding and reranker loaded."""
         mock_basic_model_manager.current_reranker_key = "test-reranker_int8"
+        app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=mock_basic_model_manager)
 
-        def mock_get_resources() -> dict[str, Any]:
-            return {"model_mgr": mock_basic_model_manager}
-
-        with (
-            patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
-            patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-        ):
+        with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
             client = TestClient(app_with_router)
             response = client.get("/memory/models")
 
@@ -678,14 +673,9 @@ class TestEdgeCases:
             manager.current_model_key = None
 
         manager.unload_model = Mock(side_effect=mock_unload)
+        app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=manager)
 
-        def mock_get_resources() -> dict[str, Any]:
-            return {"model_mgr": manager}
-
-        with (
-            patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
-            patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-        ):
+        with (patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),):
             client = TestClient(app_with_router)
             response = client.post("/memory/evict/embedding")
 
@@ -698,15 +688,16 @@ class TestEdgeCases:
         manager = Mock(spec=["current_model_key", "current_reranker_key"])
         manager.current_model_key = "test-model_float32"
         manager.current_reranker_key = None
-
-        def mock_get_resources() -> dict[str, Any]:
-            return {"model_mgr": manager}
+        app_with_router.state.vecpipe_runtime = Mock(is_closed=False, model_manager=manager)
 
         with (
-            patch("vecpipe.search.memory_api.get_resources", mock_get_resources),
             patch("vecpipe.search.memory_api.get_offloader", return_value=mock_offloader),
-            patch("torch.cuda.is_available", return_value=False),
+            patch.dict("sys.modules", {"torch": Mock()}),
         ):
+            import sys
+
+            mock_torch = sys.modules["torch"]
+            mock_torch.cuda.is_available.return_value = False
             client = TestClient(app_with_router)
             response = client.get("/memory/stats")
 

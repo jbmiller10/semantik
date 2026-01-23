@@ -73,10 +73,10 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
         className={`
           w-full px-3 py-2 text-left border rounded-lg flex items-center justify-between
           ${disabled || readyCollections.length === 0
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-white hover:bg-gray-50 cursor-pointer'
+            ? 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] cursor-not-allowed'
+            : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-secondary)] cursor-pointer'
           }
-          ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-300'}
+          ${isOpen ? 'ring-2 ring-[var(--accent-primary)] border-[var(--accent-primary)]' : 'border-[var(--border)]'}
         `}
         aria-label="Select collections"
         aria-expanded={isOpen}
@@ -91,24 +91,24 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
             : `${selectedCount} collections selected`}
         </span>
         {isOpen ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg" role="listbox" aria-label="Available collections">
+        <div className="absolute z-10 w-full mt-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg shadow-lg" role="listbox" aria-label="Available collections">
           {/* Search input */}
-          <div className="p-2 border-b border-gray-200">
+          <div className="p-2 border-b border-[var(--border-subtle)]">
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-2 top-2.5 w-4 h-4 text-[var(--text-muted)]" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search collections..."
-                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-2 text-sm input-field"
                 onClick={(e) => e.stopPropagation()}
                 aria-label="Search through collections"
               />
@@ -116,11 +116,11 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
           </div>
 
           {/* Select/Clear all buttons */}
-          <div className="flex gap-2 px-2 py-2 border-b border-gray-200">
+          <div className="flex gap-2 px-2 py-2 border-b border-[var(--border-subtle)]">
             <button
               type="button"
               onClick={handleSelectAll}
-              className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded"
+              className="px-3 py-1 text-xs font-medium text-[var(--accent-primary)] hover:bg-[var(--bg-secondary)] rounded"
               aria-label="Select all filtered collections"
             >
               Select All
@@ -128,7 +128,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
             <button
               type="button"
               onClick={handleClearAll}
-              className="px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded"
+              className="px-3 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] rounded"
               aria-label="Clear all selections"
             >
               Clear All
@@ -138,7 +138,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
           {/* Collections list */}
           <div className="max-h-64 overflow-y-auto" role="group" aria-label="Collection list">
             {filteredCollections.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-gray-500 text-center">
+              <div className="px-3 py-4 text-sm text-[var(--text-secondary)] text-center">
                 {searchTerm
                   ? 'No collections found'
                   : readyCollections.length === 0
@@ -149,7 +149,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
               filteredCollections.map((collection) => (
                 <label
                   key={collection.id}
-                  className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                  className="flex items-center px-3 py-2 hover:bg-[var(--bg-secondary)] cursor-pointer text-[var(--text-primary)]"
                   role="option"
                   aria-selected={selectedCollections.includes(collection.id)}
                 >
@@ -157,12 +157,12 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
                     type="checkbox"
                     checked={selectedCollections.includes(collection.id)}
                     onChange={() => handleToggle(collection.id)}
-                    className="mr-3 text-blue-600 rounded focus:ring-blue-500"
+                    className="mr-3 text-[var(--accent-primary)] rounded focus:ring-[var(--accent-primary)]"
                     aria-label={`Select ${collection.name}`}
                   />
                   <div className="flex-1">
                     <div className="text-sm font-medium">{collection.name}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-[var(--text-secondary)]">
                       {collection.document_count} documents • {collection.vector_count} vectors
                       {collection.embedding_model && (
                         <span className="ml-2">• {collection.embedding_model.split('/').pop()}</span>
@@ -170,7 +170,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
                     </div>
                   </div>
                   {selectedCollections.includes(collection.id) && (
-                    <Check className="w-4 h-4 text-blue-600 ml-2" />
+                    <Check className="w-4 h-4 text-[var(--accent-primary)] ml-2" />
                   )}
                 </label>
               ))
@@ -179,7 +179,7 @@ export const CollectionMultiSelect: React.FC<CollectionMultiSelectProps> = ({
 
           {/* Info about non-ready collections */}
           {collections.some((col) => col.status !== 'ready' || col.vector_count === 0) && (
-            <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200" role="note">
+            <div className="px-3 py-2 text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] border-t border-[var(--border-subtle)]" role="note">
               Only showing collections that are ready with indexed vectors
             </div>
           )}

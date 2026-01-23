@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.8.1] - 2026-01-22
+
+### Changed
+- **VecPipe search architecture refactoring** — Decomposed monolithic `service.py` (~1900 lines → ~900 lines) into focused, single-responsibility modules:
+  - `runtime.py`: `VecpipeRuntime` dataclass container for all runtime resources with idempotent async shutdown
+  - `deps.py`: FastAPI dependency injection helpers (`get_runtime()`, typed component accessors)
+  - `dense_search.py`: Dense embedding generation and Qdrant vector search with SDK-to-REST fallback
+  - `sparse_search.py`: Sparse/hybrid search with BM25/SPLADE encoding and RRF fusion
+  - `rerank.py`: Cross-encoder reranking helpers with payload fetching
+  - `collection_info.py`: Collection resolution and cached metadata fetching
+  - `payloads.py`: Qdrant payload fetching and filter normalization
+  - `metrics.py`: Consolidated Prometheus metrics with `get_or_create_metric()` helper
+  - `auth.py`: Centralized internal API key authentication
+  - `errors.py`: Shared error helpers for async-safe responses
+- **Dependency injection via RuntimeContainer** — Replaced module-level globals with immutable `VecpipeRuntime` dataclass attached to FastAPI's `app.state`; endpoints receive runtime via `Depends(get_runtime)`
+- **GPU probe mode configuration** — Three probe modes (fast/safe/aggressive) for memory probing with different accuracy vs performance trade-offs
+- **Search warnings propagation** — Dense SDK fallbacks, sparse fallbacks, and rerank failures now surface as warnings in search responses
+- **README restructured** — Added table of contents, reorganized features into clearer categories (Hybrid Search Stack, Retrieval Lab, Data Pipeline, Integrations, Operations), improved Getting Started guide
+- **Frontend theme consistency** — Updated `CollectionMultiSelect` and `SearchResults` components to use CSS variables instead of hardcoded colors
+
+### Added
+- **Embedding model families** — BGE-M3 (multilingual 8K context with dense/sparse/colbert), E5 family (including e5-mistral-7b-instruct), Nomic Embed v1/v1.5/v2-moe, Stella, and EmbeddingGemma (~17 new models with proper asymmetric embedding support)
+- **Claude Code MCP client** — Added to supported MCP clients with CLI command generation (`claude mcp add ...`)
+- **Multi-tool config format support** — MCP profiles now generate configs for Claude Code, Kiro, and other tools with proper shell escaping
+- **Registration page UX** — 7 enhancements: confirm password field, show/hide password toggles, remember me checkbox, real-time validation with visual feedback, auto-login after registration, field help text
+- **GPU Memory Governor metrics** — Prometheus metrics for model eviction (`semantik_eviction_seconds`, `semantik_evictions_total`), CPU restore (`semantik_restore_from_cpu_seconds`), memory requests (`semantik_memory_request_seconds`), pressure events (`semantik_pressure_events_total`, `semantik_models_evicted_per_event`), and degraded state gauge (`semantik_governor_degraded`)
+- **Memory health endpoint** (`GET /memory/health`) — Returns governor health status for Kubernetes probes (healthy state, pressure level, circuit breaker triggers, model counts)
+- **Observability metrics** — New Prometheus metrics for dense search fallbacks, rerank fallbacks, GPU probe latency, payload fetch latency, ad-hoc client tracking
+- **Benchmark harness** (`tests/vecpipe_search_benchmark.py`) — Standalone CLI tool for VecPipe search performance benchmarking with configurable concurrency, search modes, p50/p95/p99 latencies, and JSON output
+- **Runtime DI tests** (`tests/unit/test_vecpipe_runtime_di.py`) — Comprehensive tests for runtime container lifecycle, dependency injection, authentication, and shutdown ordering
+- **Metrics tests** (`tests/unit/test_vecpipe_observability_metrics.py`) — Tests for Prometheus metric registration and idempotence
+- **Setup wizard tests** (`tests/test_setup_wizard_tui.py`) — Tests for credential generation and `.env` file creation
+
+### Fixed
+- **Setup wizard stability** — Proper exit codes on failures, Docker Compose v1/v2 compatibility, secure file permissions (0600 for `.env`), cross-platform path handling with tilde expansion
+- **Flower password generation** — Removed `:` and `#` characters that broke basic_auth parsing and `.env` file parsing
+- **Reranking response field** — `reranking_used` now reflects whether reranking actually succeeded (not just whether it was requested)
+- **Test compatibility** — Updated tests to use new module structure and dependency injection patterns
+
+### Removed
+- `state.py` — Replaced by `runtime.py` + `deps.py`
+- Legacy integration tests — Removed tests that relied on old global state pattern (`test_search_api_integration.py`, `test_search_api_embedding_flow.py`, `test_search_api_edge_cases.py`)
+
+### Dependencies
+- Updated `pypdf` constraint to allow v6.x
+- Refreshed transitive dependencies (aiohttp 3.13.3, urllib3 2.6.3, filelock 3.20.3, pyasn1 0.6.2)
+
 ## [0.8.0] - 2026-01-20
 
 ### Added

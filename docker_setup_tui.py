@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Interactive Docker Setup TUI for Semantik"""
 
+import contextlib
 import json
 import os
 import platform
@@ -10,7 +11,6 @@ import shutil
 import string
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 from textwrap import dedent
@@ -26,7 +26,9 @@ from rich.table import Table
 console = Console()
 
 
-FLOWER_PASSWORD_SYMBOLS = "!@#$%^*-_=+"
+# Avoid characters like ':' (breaks basic_auth parsing) and '#'
+# (can be treated as a comment by some .env parsers).
+FLOWER_PASSWORD_SYMBOLS = "!@$%^*-_=+"
 MIN_FLOWER_PASSWORD_LENGTH = 16
 
 
@@ -68,6 +70,7 @@ class DockerSetupTUI:
         self.gpu_available = False
         self.docker_available = False
         self.compose_available = False
+        self.compose_cmd: list[str] = ["docker", "compose"]
         self.docker_gpu_available = False
         self.buildx_available = False
         self.driver_version: str | None = None
@@ -78,7 +81,7 @@ class DockerSetupTUI:
         try:
             self.show_welcome()
             if not self.check_system():
-                return
+                sys.exit(1)
 
             # Check for existing configuration
             if self._check_existing_config():
@@ -177,15 +180,13 @@ class DockerSetupTUI:
             console.print("For manual installation: https://docs.docker.com/compose/install/")
             return False
 
-        # Check Docker Buildx plugin (required for Bake-based builds)
+        # Check Docker Buildx plugin (required for modern Docker Compose builds)
         self.buildx_available = self._check_docker_buildx()
         if self.buildx_available:
             console.print("[green]✓[/green] Docker Buildx plugin found")
         else:
             console.print("[red]✗[/red] Docker Buildx plugin not found")
-            console.print(
-                "\n[yellow]Docker Buildx is required because Semantik's Docker Compose configuration uses Bake for builds.[/yellow]"
-            )
+            console.print("\n[yellow]Docker Buildx is required for Semantik's Docker Compose build workflow.[/yellow]")
             system_name = platform.system()
             if system_name == "Linux":
                 console.print("Install the Buildx plugin using your package manager, for example:")
@@ -244,12 +245,20 @@ class DockerSetupTUI:
             # Try new syntax first
             result = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
             if result.returncode == 0:
+                self.compose_cmd = ["docker", "compose"]
                 return True
-
-            # Try old syntax
-            return shutil.which("docker-compose") is not None
-        except Exception:
+        except FileNotFoundError:
             return False
+        except Exception:
+            # Fall back to checking docker-compose below.
+            pass
+
+        # Fall back to docker-compose (Compose v1)
+        if shutil.which("docker-compose") is not None:
+            self.compose_cmd = ["docker-compose"]
+            return True
+
+        return False
 
     def _check_docker_buildx(self) -> bool:
         """Check if docker buildx plugin is available"""
@@ -371,18 +380,19 @@ class DockerSetupTUI:
                 return self._install_nvidia_toolkit_rhel()
             if distro_info and ("arch" in distro_info.lower() or "manjaro" in distro_info.lower()):
                 return self._install_nvidia_toolkit_arch()
-                # Generic Linux instructions
-                console.print("[yellow]Automatic installation not available for your Linux distribution.[/yellow]")
-                console.print("\nPlease install manually by following:")
-                console.print("https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
-                return False
 
-        elif system == "Darwin":
+            # Generic Linux instructions
+            console.print("[yellow]Automatic installation not available for your Linux distribution.[/yellow]")
+            console.print("\nPlease install manually by following:")
+            console.print("https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
+            return False
+
+        if system == "Darwin":
             console.print("[red]GPU support is not available on macOS.[/red]")
             console.print("Docker Desktop for Mac does not support GPU passthrough.")
             return False
 
-        elif system == "Windows":
+        if system == "Windows":
             console.print("[yellow]On Windows, GPU support requires WSL2.[/yellow]")
             console.print("\nPlease ensure:")
             console.print("1. You are using Docker Desktop with WSL2 backend")
@@ -524,19 +534,18 @@ class DockerSetupTUI:
         console.print("\nPossible solutions:")
 
         if self.is_wsl2:
-            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
-            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
-            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
-            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
+            console.print("• [bold]WSL2 detected.[/bold] Ensure Docker Desktop uses the WSL2 backend")
+            console.print("• Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("• Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("• Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
-            console.print("2. Or manually run:")
-            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
-            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
-            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+            console.print("• Manually reconfigure the Docker runtime:")
+            console.print("  [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("  [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("  [cyan]sudo systemctl restart docker[/cyan]")
 
-        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
-        console.print("6. As a last resort, reboot the system")
+        console.print("• Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("• As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
         console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
         return False
@@ -628,19 +637,18 @@ class DockerSetupTUI:
         console.print("\nPossible solutions:")
 
         if self.is_wsl2:
-            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
-            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
-            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
-            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
+            console.print("• [bold]WSL2 detected.[/bold] Ensure Docker Desktop uses the WSL2 backend")
+            console.print("• Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("• Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("• Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
-            console.print("2. Or manually run:")
-            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
-            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
-            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+            console.print("• Manually reconfigure the Docker runtime:")
+            console.print("  [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("  [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("  [cyan]sudo systemctl restart docker[/cyan]")
 
-        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
-        console.print("6. As a last resort, reboot the system")
+        console.print("• Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("• As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
         console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
         return False
@@ -711,19 +719,18 @@ class DockerSetupTUI:
         console.print("\nPossible solutions:")
 
         if self.is_wsl2:
-            console.print("1. [bold]WSL2 detected![/bold] Run: [cyan]sudo bash fix_wsl2_gpu.sh[/cyan]")
-            console.print("2. Ensure Windows has NVIDIA drivers installed (not WSL)")
-            console.print("3. Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
-            console.print("4. Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
+            console.print("• [bold]WSL2 detected.[/bold] Ensure Docker Desktop uses the WSL2 backend")
+            console.print("• Ensure Windows has NVIDIA drivers installed (not WSL)")
+            console.print("• Restart WSL from Windows: [cyan]wsl --shutdown[/cyan]")
+            console.print("• Check WSL2 GPU support: [cyan]ls -la /dev/dxg[/cyan]")
         else:
-            console.print("1. Run the fix script: [cyan]sudo bash fix_nvidia_toolkit.sh[/cyan]")
-            console.print("2. Or manually run:")
-            console.print("   [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
-            console.print("   [cyan]sudo systemctl daemon-reload[/cyan]")
-            console.print("   [cyan]sudo systemctl restart docker[/cyan]")
+            console.print("• Manually reconfigure the Docker runtime:")
+            console.print("  [cyan]sudo nvidia-ctk runtime configure --runtime=docker[/cyan]")
+            console.print("  [cyan]sudo systemctl daemon-reload[/cyan]")
+            console.print("  [cyan]sudo systemctl restart docker[/cyan]")
 
-        console.print("5. Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
-        console.print("6. As a last resort, reboot the system")
+        console.print("• Check Docker logs: [cyan]sudo journalctl -u docker -n 50[/cyan]")
+        console.print("• As a last resort, reboot the system")
         console.print("\nYou can continue with CPU mode for now and enable GPU later.")
         console.print("To retry GPU setup later, run: [cyan]make wizard[/cyan]")
         return False
@@ -922,7 +929,7 @@ class DockerSetupTUI:
                     console.print("[yellow]You must add at least one directory[/yellow]")
                     continue
 
-                selected_dir = Path(path_input).resolve()
+                selected_dir = Path(path_input).expanduser().resolve()
 
             # Validate and add directory
             if selected_dir and selected_dir not in document_dirs:
@@ -947,7 +954,7 @@ class DockerSetupTUI:
                     break
 
         # Store document paths
-        self.config["DOCUMENT_PATHS"] = ":".join(str(d) for d in document_dirs)
+        self.config["DOCUMENT_PATHS"] = os.pathsep.join(str(d) for d in document_dirs)
         # For now, Docker compose only supports one path, so use the first one
         self.config["DOCUMENT_PATH"] = str(document_dirs[0])
 
@@ -1007,6 +1014,10 @@ class DockerSetupTUI:
                 if selection is None or "Cancel" in selection:
                     return None
 
+                if "more directories not shown" in selection:
+                    console.print("[yellow]Tip:[/yellow] Use the manual path option to navigate deeper.")
+                    continue
+
                 if "Select this directory" in selection:
                     return current_path
 
@@ -1017,7 +1028,7 @@ class DockerSetupTUI:
                 if "Type a path" in selection:
                     manual_path = questionary.text("Enter directory path:", default=str(current_path)).ask()
                     if manual_path:
-                        typed_path = Path(manual_path).resolve()
+                        typed_path = Path(manual_path).expanduser().resolve()
                         if typed_path.exists() and typed_path.is_dir():
                             return typed_path
                         console.print("[red]Invalid directory path[/red]")
@@ -1245,7 +1256,7 @@ class DockerSetupTUI:
         table.add_row("Deployment Type", "GPU" if self.config["USE_GPU"] == "true" else "CPU")
 
         # Show document directories
-        doc_dirs = self.config["DOCUMENT_PATHS"].split(":")
+        doc_dirs = [p for p in self.config["DOCUMENT_PATHS"].split(os.pathsep) if p]
         if len(doc_dirs) == 1:
             table.add_row("Documents Directory", doc_dirs[0])
         else:
@@ -1334,7 +1345,7 @@ class DockerSetupTUI:
         # Backup existing .env if present
         env_path = Path(".env")
         if env_path.exists():
-            backup_path = env_path.with_suffix(".env.backup")
+            backup_path = env_path.with_name(env_path.name + ".backup")
             shutil.copy(env_path, backup_path)
             console.print(f"[yellow]Backed up existing .env to {backup_path}[/yellow]")
 
@@ -1346,45 +1357,56 @@ class DockerSetupTUI:
         with template_path.open() as f:
             content = f.read()
 
-        # Replace values
-        replacements = {
-            "CHANGE_THIS_TO_A_STRONG_SECRET_KEY": self.config["JWT_SECRET_KEY"],
-            "CHANGE_THIS_TO_A_FERNET_KEY": self.config.get("CONNECTOR_SECRETS_KEY", ""),
-            "ACCESS_TOKEN_EXPIRE_MINUTES=1440": f"ACCESS_TOKEN_EXPIRE_MINUTES={self.config['ACCESS_TOKEN_EXPIRE_MINUTES']}",
-            "DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B": f"DEFAULT_EMBEDDING_MODEL={self.config['DEFAULT_EMBEDDING_MODEL']}",
-            "DEFAULT_QUANTIZATION=float16": f"DEFAULT_QUANTIZATION={self.config['DEFAULT_QUANTIZATION']}",
-            "ENABLE_LOCAL_LLM=true": f"ENABLE_LOCAL_LLM={self.config['ENABLE_LOCAL_LLM']}",
-            "DEFAULT_LLM_QUANTIZATION=int8": f"DEFAULT_LLM_QUANTIZATION={self.config['DEFAULT_LLM_QUANTIZATION']}",
-            "LLM_UNLOAD_AFTER_SECONDS=300": f"LLM_UNLOAD_AFTER_SECONDS={self.config['LLM_UNLOAD_AFTER_SECONDS']}",
-            "LLM_KV_CACHE_BUFFER_MB=1024": f"LLM_KV_CACHE_BUFFER_MB={self.config['LLM_KV_CACHE_BUFFER_MB']}",
-            "LLM_TRUST_REMOTE_CODE=false": f"LLM_TRUST_REMOTE_CODE={self.config['LLM_TRUST_REMOTE_CODE']}",
-            "DOCUMENT_PATH=./documents": f"DOCUMENT_PATH={self.config['DOCUMENT_PATH']}",
-            "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
-            "POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"POSTGRES_PASSWORD={self.config['POSTGRES_PASSWORD']}",
-            "REDIS_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"REDIS_PASSWORD={self.config['REDIS_PASSWORD']}",
-            "QDRANT_API_KEY=CHANGE_THIS_TO_A_STRONG_API_KEY": f"QDRANT_API_KEY={self.config['QDRANT_API_KEY']}",
-            "LOG_LEVEL=INFO": f"LOG_LEVEL={self.config['LOG_LEVEL']}",
-            "HF_CACHE_DIR=./models": f"HF_CACHE_DIR={self.config['HF_CACHE_DIR']}",
-            "HF_HUB_OFFLINE=false": f"HF_HUB_OFFLINE={self.config['HF_HUB_OFFLINE']}",
-            "DEFAULT_COLLECTION=work_docs": f"DEFAULT_COLLECTION={self.config['DEFAULT_COLLECTION']}",
-            "FLOWER_USERNAME=replace-me-with-flower-user": f"FLOWER_USERNAME={self.config['FLOWER_USERNAME']}",
-            "FLOWER_PASSWORD=replace-me-with-strong-flower-password": f"FLOWER_PASSWORD={self.config['FLOWER_PASSWORD']}",
+        updates: dict[str, str] = {
+            "JWT_SECRET_KEY": self.config["JWT_SECRET_KEY"],
+            "ACCESS_TOKEN_EXPIRE_MINUTES": self.config["ACCESS_TOKEN_EXPIRE_MINUTES"],
+            "FLOWER_USERNAME": self.config["FLOWER_USERNAME"],
+            "FLOWER_PASSWORD": self.config["FLOWER_PASSWORD"],
+            "CONNECTOR_SECRETS_KEY": self.config.get("CONNECTOR_SECRETS_KEY", ""),
+            "DEFAULT_EMBEDDING_MODEL": self.config["DEFAULT_EMBEDDING_MODEL"],
+            "DEFAULT_QUANTIZATION": self.config["DEFAULT_QUANTIZATION"],
+            "ENABLE_LOCAL_LLM": self.config["ENABLE_LOCAL_LLM"],
+            "DEFAULT_LLM_QUANTIZATION": self.config["DEFAULT_LLM_QUANTIZATION"],
+            "LLM_UNLOAD_AFTER_SECONDS": self.config["LLM_UNLOAD_AFTER_SECONDS"],
+            "LLM_KV_CACHE_BUFFER_MB": self.config["LLM_KV_CACHE_BUFFER_MB"],
+            "LLM_TRUST_REMOTE_CODE": self.config["LLM_TRUST_REMOTE_CODE"],
+            "POSTGRES_PASSWORD": self.config["POSTGRES_PASSWORD"],
+            "REDIS_PASSWORD": self.config["REDIS_PASSWORD"],
+            "QDRANT_API_KEY": self.config["QDRANT_API_KEY"],
+            "DEFAULT_COLLECTION": self.config["DEFAULT_COLLECTION"],
+            "DOCUMENT_PATH": self.config["DOCUMENT_PATH"],
+            "WEBUI_WORKERS": self.config.get("WEBUI_WORKERS", "auto"),
+            "LOG_LEVEL": self.config["LOG_LEVEL"],
+            "HF_CACHE_DIR": self.config["HF_CACHE_DIR"],
+            "HF_HUB_OFFLINE": self.config["HF_HUB_OFFLINE"],
         }
 
-        if self.config["USE_GPU"] == "true":
-            replacements.update(
-                {
-                    "CUDA_VISIBLE_DEVICES=0": f"CUDA_VISIBLE_DEVICES={self.config['CUDA_VISIBLE_DEVICES']}",
-                    "MODEL_MAX_MEMORY_GB=8": f"MODEL_MAX_MEMORY_GB={self.config['MODEL_MAX_MEMORY_GB']}",
-                }
-            )
+        if self.config.get("USE_GPU") == "true":
+            if "CUDA_VISIBLE_DEVICES" in self.config:
+                updates["CUDA_VISIBLE_DEVICES"] = self.config["CUDA_VISIBLE_DEVICES"]
+            if "MODEL_MAX_MEMORY_GB" in self.config:
+                updates["MODEL_MAX_MEMORY_GB"] = self.config["MODEL_MAX_MEMORY_GB"]
 
-        for old, new in replacements.items():
-            content = content.replace(old, new)
+        rendered_lines: list[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in line:
+                rendered_lines.append(line)
+                continue
+
+            key, _ = line.split("=", 1)
+            key = key.strip()
+            if key in updates:
+                rendered_lines.append(f"{key}={updates[key]}")
+            else:
+                rendered_lines.append(line)
+
+        rendered_env = "\n".join(rendered_lines).rstrip() + "\n"
 
         # Write .env
-        with Path(".env").open("w") as f:
-            f.write(content)
+        env_path.write_text(rendered_env, encoding="utf-8")
+        with contextlib.suppress(OSError):
+            env_path.chmod(0o600)
 
         env_test_written = False
 
@@ -1415,6 +1437,8 @@ class DockerSetupTUI:
 
             with env_test_path.open("w") as f:
                 f.write(env_test_content + "\n")
+            with contextlib.suppress(OSError):
+                env_test_path.chmod(0o600)
 
             env_test_written = True
 
@@ -1426,7 +1450,7 @@ class DockerSetupTUI:
 
         # Check ports availability
         if not self._check_ports():
-            return
+            sys.exit(1)
 
         # Choose action
         action = questionary.select(
@@ -1455,10 +1479,13 @@ class DockerSetupTUI:
                 console.print("• Subsequent builds will be much faster due to Docker layer caching")
                 console.print()
 
-            self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
-            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+            if not self._run_docker_command(self.compose_cmd + compose_files + ["build"], "Building images"):
+                sys.exit(1)
+            if not self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services"):
+                sys.exit(1)
         elif "Start services" in action:
-            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+            if not self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services"):
+                sys.exit(1)
         else:
             if self.config.get("USE_GPU") == "true":
                 console.print("[bold yellow]GPU Build Notice:[/bold yellow]")
@@ -1467,12 +1494,13 @@ class DockerSetupTUI:
                 console.print("• Subsequent builds will be much faster due to Docker layer caching")
                 console.print()
 
-            self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
+            if not self._run_docker_command(self.compose_cmd + compose_files + ["build"], "Building images"):
+                sys.exit(1)
             return
 
         # Check services
         console.print("\n[bold]Checking service status...[/bold]")
-        self._run_docker_command(["docker", "compose"] + compose_files + ["ps"], "Service status")
+        self._show_service_status()
 
         # Success message
         console.print("\n[bold green]Setup Complete![/bold green]")
@@ -1488,7 +1516,7 @@ class DockerSetupTUI:
 
         if view_logs:
             console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
-            subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f"])
+            subprocess.run(self.compose_cmd + compose_files + ["logs", "-f"])
 
     def _run_docker_command(self, cmd: list[str], description: str) -> bool:
         """Run a Docker command with progress display"""
@@ -1521,6 +1549,9 @@ class DockerSetupTUI:
 
                     if cmd_result.returncode == 0:
                         progress.update(task, completed=True)
+                        stdout = (cmd_result.stdout or "").strip()
+                        if stdout:
+                            console.print(stdout)
                         return True
                     error_msg = cmd_result.stderr if cmd_result.stderr else "Unknown error"
                     console.print(f"\n[red]Error: {error_msg}[/red]")
@@ -1579,28 +1610,10 @@ class DockerSetupTUI:
         config_path = Path(".semantik-config.json")
         with config_path.open("w") as f:
             json.dump(self.config, f, indent=2)
+        # Best-effort (e.g., Windows or restrictive FS)
+        with contextlib.suppress(OSError):
+            config_path.chmod(0o600)
         console.print(f"[green]Configuration saved to {config_path}[/green]")
-
-    def _select_with_timeout(self, prompt: str, choices: list[str], timeout: int = 5) -> str | None:
-        """Select menu with timeout for auto-refresh"""
-        result: str | None = None
-        event = threading.Event()
-
-        def get_input() -> None:
-            nonlocal result
-            result = questionary.select(prompt, choices=choices).ask()
-            event.set()
-
-        # Start input thread
-        input_thread = threading.Thread(target=get_input)
-        input_thread.daemon = True
-        input_thread.start()
-
-        # Wait for input or timeout
-        if event.wait(timeout):
-            return result
-        # Timeout occurred, return None to trigger refresh
-        return None
 
     def _service_monitor(self) -> None:
         """Interactive service monitoring and management interface"""
@@ -1613,11 +1626,10 @@ class DockerSetupTUI:
             self._show_service_status()
 
             console.print("\n[bold]Service Management[/bold]")
-            console.print("[dim]Auto-refresh in 10 seconds...[/dim]")
-
-            action = self._select_with_timeout(
+            action = questionary.select(
                 "What would you like to do?",
                 choices=[
+                    "Refresh status",
                     "Start all services",
                     "Stop all services",
                     "Restart all services",
@@ -1628,16 +1640,13 @@ class DockerSetupTUI:
                     "Check service health",
                     "Exit monitor",
                 ],
-                timeout=10,
-            )
-
-            # If timeout occurred, refresh
-            if action is None:
-                continue
+            ).ask()
 
             # If user selected Exit
-            if "Exit" in action:
+            if action is None or "Exit" in action:
                 break
+            if "Refresh" in action:
+                continue
 
             compose_files = self._get_compose_files()
 
@@ -1649,14 +1658,14 @@ class DockerSetupTUI:
                 # Check if services are already running
                 if self._are_services_running():
                     console.print("[yellow]Services are already running. Restarting...[/yellow]")
-                    self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services")
-                    self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+                    self._run_docker_command(self.compose_cmd + compose_files + ["down"], "Stopping services")
+                    self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services")
                 else:
-                    self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+                    self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services")
             elif "Stop all" in action:
-                self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services")
+                self._run_docker_command(self.compose_cmd + compose_files + ["down"], "Stopping services")
             elif "Restart all" in action:
-                self._run_docker_command(["docker", "compose"] + compose_files + ["restart"], "Restarting services")
+                self._run_docker_command(self.compose_cmd + compose_files + ["restart"], "Restarting services")
             elif "Rebuild" in action:
                 if self.config.get("USE_GPU") == "true":
                     console.print("\n[bold yellow]GPU Rebuild Notice:[/bold yellow]")
@@ -1664,23 +1673,22 @@ class DockerSetupTUI:
                     console.print("• This may take several minutes")
                     console.print()
 
-                self._run_docker_command(["docker", "compose"] + compose_files + ["build"], "Building images")
-                self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+                self._run_docker_command(self.compose_cmd + compose_files + ["build"], "Building images")
+                self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services")
             elif "View logs" in action and "specific" not in action:
                 console.print("\n[yellow]Press Ctrl+C to exit logs[/yellow]\n")
-                subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f", "--tail", "50"])
+                subprocess.run(self.compose_cmd + compose_files + ["logs", "-f", "--tail", "50"])
             elif "specific service" in action:
                 services = self._get_services()
                 if services:
                     service = questionary.select("Select service:", choices=services).ask()
                     if service:
                         console.print(f"\n[yellow]Viewing logs for {service}. Press Ctrl+C to exit[/yellow]\n")
-                        subprocess.run(["docker", "compose"] + compose_files + ["logs", "-f", "--tail", "50", service])
+                        subprocess.run(self.compose_cmd + compose_files + ["logs", "-f", "--tail", "50", service])
             elif "health" in action:
                 self._check_service_health()
 
-            if "Exit" not in action:
-                questionary.press_any_key_to_continue("Press any key to continue...").ask()
+            questionary.press_any_key_to_continue("Press any key to continue...").ask()
 
     def _handle_database_reset(self) -> None:
         """Interactively confirm and execute a destructive database reset."""
@@ -1706,7 +1714,7 @@ class DockerSetupTUI:
         """Stop services, delete database volume, and optionally restart services."""
         compose_files = self._get_compose_files()
 
-        if not self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services"):
+        if not self._run_docker_command(self.compose_cmd + compose_files + ["down"], "Stopping services"):
             console.print("[red]Unable to stop services. Database reset halted.[/red]")
             return
 
@@ -1731,9 +1739,9 @@ class DockerSetupTUI:
 
         restart = questionary.confirm("Start Semantik services now?", default=True).ask()
         if restart:
-            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+            self._run_docker_command(self.compose_cmd + compose_files + ["up", "-d"], "Starting services")
         else:
-            console.print("[yellow]Services remain stopped. Run `docker compose up -d` when ready.[/yellow]")
+            console.print("[yellow]Services remain stopped. Run `make docker-up` when ready.[/yellow]")
 
     def _get_compose_project_name(self) -> str:
         """Determine the Docker Compose project name used for volume prefixes."""
@@ -1785,7 +1793,9 @@ class DockerSetupTUI:
         compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose"] + compose_files + ["ps", "--format", "json"], capture_output=True, text=True
+            self.compose_cmd + compose_files + ["ps", "--format", "json"],
+            capture_output=True,
+            text=True,
         )
 
         if result.returncode == 0 and result.stdout:
@@ -1836,7 +1846,7 @@ class DockerSetupTUI:
                         table.add_row(name, status, port_str or "None", health)
             except Exception:
                 # Fallback to simple ps output
-                result = subprocess.run(["docker", "compose"] + compose_files + ["ps"], capture_output=True, text=True)
+                result = subprocess.run(self.compose_cmd + compose_files + ["ps"], capture_output=True, text=True)
                 console.print("[yellow]Service Status:[/yellow]")
                 console.print(result.stdout)
                 return
@@ -1850,7 +1860,9 @@ class DockerSetupTUI:
         compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose"] + compose_files + ["config", "--services"], capture_output=True, text=True
+            self.compose_cmd + compose_files + ["config", "--services"],
+            capture_output=True,
+            text=True,
         )
 
         if result.returncode == 0:
@@ -1859,55 +1871,67 @@ class DockerSetupTUI:
 
     def _check_service_health(self) -> None:
         """Check detailed health status of services"""
-        console.print("\n[bold]Checking service health...[/bold]\n")
+        console.print("\n[bold]Checking service health (Docker Compose)...[/bold]\n")
 
-        services = self._get_services()
-        for service in services:
-            console.print(f"[cyan]{service}:[/cyan]")
+        compose_files = self._get_compose_files()
+        result = subprocess.run(
+            self.compose_cmd + compose_files + ["ps", "--format", "json"],
+            capture_output=True,
+            text=True,
+        )
 
-            # Try to access health endpoint
-            port_map = {"webui": 8080, "vecpipe": 8000, "qdrant": 6333, "postgres": 5432, "redis": 6379, "flower": 5555}
+        if result.returncode != 0:
+            console.print("[red]Unable to query Docker Compose service status.[/red]")
+            stderr = (result.stderr or "").strip()
+            if stderr:
+                console.print(stderr)
+            return
 
-            if service in port_map:
-                port = port_map[service]
-                # Special handling for services without HTTP health endpoints
-                if service == "worker":
-                    # Worker health is checked via docker healthcheck
-                    result = subprocess.run(
-                        ["docker", "inspect", "--format", "{{.State.Health.Status}}", "semantik-worker"],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode == 0:
-                        health_status = result.stdout.strip()
-                        if health_status == "healthy":
-                            console.print("  [green]✓ Health check passed (Docker healthcheck)[/green]")
-                        else:
-                            console.print(f"  [yellow]! Health status: {health_status}[/yellow]")
-                    else:
-                        console.print("  [red]✗ Could not check health status[/red]")
-                else:
-                    try:
-                        import requests
+        if not result.stdout.strip():
+            console.print("[yellow]No services found. Are the containers running?[/yellow]")
+            return
 
-                        response = requests.get(f"http://localhost:{port}/health", timeout=5)
-                        if response.status_code == 200:
-                            console.print("  [green]✓ Health check passed[/green]")
-                        else:
-                            console.print(f"  [yellow]! Health check returned {response.status_code}[/yellow]")
-                    except Exception as e:
-                        console.print(f"  [red]✗ Health check failed: {str(e)}[/red]")
-            else:
-                console.print("  [dim]No health endpoint[/dim]")
+        services: list[dict[str, Any]] = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            try:
+                services.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
 
-            console.print()
+        if not services:
+            console.print("[yellow]No parsable service status returned by Docker Compose.[/yellow]")
+            return
+
+        table = Table(title="Service Health")
+        table.add_column("Service", style="cyan")
+        table.add_column("State", style="green")
+        table.add_column("Health", style="magenta")
+        table.add_column("Hint", style="yellow")
+
+        for svc in sorted(services, key=lambda s: s.get("Service", "")):
+            name = svc.get("Service", "Unknown")
+            state = svc.get("State", "Unknown")
+            health = svc.get("Health") or "N/A"
+
+            hint = ""
+            if state != "running" or (isinstance(health, str) and "unhealthy" in health.lower()):
+                hint = f"docker compose logs {name}"
+
+            table.add_row(str(name), str(state), str(health), hint)
+
+        console.print(table)
+        console.print()
 
     def _are_services_running(self) -> bool:
         """Check if any services are currently running"""
         compose_files = self._get_compose_files()
 
         result = subprocess.run(
-            ["docker", "compose"] + compose_files + ["ps", "--format", "json"], capture_output=True, text=True
+            self.compose_cmd + compose_files + ["ps", "--format", "json"],
+            capture_output=True,
+            text=True,
         )
 
         if result.returncode == 0 and result.stdout:
@@ -1921,7 +1945,9 @@ class DockerSetupTUI:
             except Exception:
                 # Fallback - check with simple ps
                 result = subprocess.run(
-                    ["docker", "compose"] + compose_files + ["ps", "-q"], capture_output=True, text=True
+                    self.compose_cmd + compose_files + ["ps", "-q"],
+                    capture_output=True,
+                    text=True,
                 )
                 return bool(result.stdout.strip())
 
@@ -1967,10 +1993,10 @@ class DockerSetupTUI:
 
         required_ports = [
             (8080, "WebUI"),
-            (8000, "VecPipe API"),
             (6333, "Qdrant"),
             (6334, "Qdrant gRPC"),
             (5432, "PostgreSQL"),
+            (6379, "Redis"),
         ]
 
         blocked_ports = []
@@ -2001,11 +2027,10 @@ class DockerSetupTUI:
 
             # Offer to try stopping existing Semantik containers
             if questionary.confirm("\nWould you like to try stopping existing Semantik containers?").ask():
-                compose_file = (
-                    "docker-compose.yml" if self.config.get("USE_GPU") == "true" else "docker-compose-cpu-only.yml"
-                )
+                compose_files = self._get_compose_files()
                 self._run_docker_command(
-                    ["docker", "compose", "-f", compose_file, "down"], "Stopping existing containers"
+                    self.compose_cmd + compose_files + ["down"],
+                    "Stopping existing containers",
                 )
                 console.print("\nPlease run the setup again.")
 

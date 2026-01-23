@@ -147,7 +147,9 @@ def run_wizard() -> None:
     print("\n🧙 Starting interactive setup wizard...\n")
     try:
         uv_cmd = get_uv_cmd()
-        subprocess.run([uv_cmd, "run", "python", "docker_setup_tui.py"])
+        result = subprocess.run([uv_cmd, "run", "python", "docker_setup_tui.py"])
+        if result.returncode != 0:
+            sys.exit(result.returncode)
     except KeyboardInterrupt:
         print("\n\nSetup cancelled by user")
         sys.exit(0)

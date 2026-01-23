@@ -144,6 +144,210 @@ MODEL_CONFIGS = {
         query_prefix="Represent this sentence for searching relevant passages: ",
         document_prefix="",  # No prefix for documents
     ),
+    # =========================================================================
+    # EmbeddingGemma (Google) - On-device optimized
+    # =========================================================================
+    "google/embeddinggemma-300m": ModelConfig(
+        name="google/embeddinggemma-300m",
+        dimension=768,
+        description="Google on-device model, 100+ languages (<200MB RAM)",
+        max_sequence_length=2048,
+        memory_estimate={"float32": 1200, "float16": 600, "int8": 200},
+        pooling_method="mean",
+        is_asymmetric=False,
+    ),
+    # =========================================================================
+    # Nomic Embed (Nomic AI) - Open source with long context
+    # =========================================================================
+    "nomic-ai/nomic-embed-text-v1": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v1",
+        dimension=768,
+        description="8K context, Apache-2.0 open source (137M)",
+        max_sequence_length=8192,
+        memory_estimate={"float32": 550, "float16": 275, "int8": 140},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    "nomic-ai/nomic-embed-text-v1.5": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v1.5",
+        dimension=768,
+        description="8K context + Matryoshka dimensions (137M)",
+        max_sequence_length=8192,
+        memory_estimate={"float32": 550, "float16": 275, "int8": 140},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    "nomic-ai/nomic-embed-text-v2-moe": ModelConfig(
+        name="nomic-ai/nomic-embed-text-v2-moe",
+        dimension=768,
+        description="MoE architecture, 100 languages (475M/305M active)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1900, "float16": 950, "int8": 475},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="search_query: ",
+        document_prefix="search_document: ",
+    ),
+    # =========================================================================
+    # Stella (dunzhang) - English models with Matryoshka
+    # =========================================================================
+    "dunzhang/stella_en_400M_v5": ModelConfig(
+        name="dunzhang/stella_en_400M_v5",
+        dimension=1024,
+        description="Lightweight English, Matryoshka 512-8192d (400M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1600, "float16": 800, "int8": 400},
+        pooling_method="mean",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    "dunzhang/stella_en_1.5B_v5": ModelConfig(
+        name="dunzhang/stella_en_1.5B_v5",
+        dimension=1024,
+        description="High-quality English, Matryoshka 256-8192d (1.5B)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 6000, "float16": 3000, "int8": 1500},
+        pooling_method="mean",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    # =========================================================================
+    # Stella (dunzhang) - Chinese model
+    # =========================================================================
+    "dunzhang/stella-mrl-large-zh-v3.5-1792d": ModelConfig(
+        name="dunzhang/stella-mrl-large-zh-v3.5-1792d",
+        dimension=1792,
+        description="Chinese embeddings, Matryoshka 128-1792d",
+        max_sequence_length=1024,
+        memory_estimate={"float32": 1600, "float16": 800, "int8": 400},
+        pooling_method="mean",
+        is_asymmetric=False,
+    ),
+    # =========================================================================
+    # BGE-M3 (BAAI) - Multilingual with 8K context
+    # =========================================================================
+    "BAAI/bge-m3": ModelConfig(
+        name="BAAI/bge-m3",
+        dimension=1024,
+        description="Multilingual 8K context, dense/sparse/colbert (568M)",
+        max_sequence_length=8192,
+        memory_estimate={"float32": 2300, "float16": 1150, "int8": 575},
+        pooling_method="cls",
+        is_asymmetric=False,  # No prefix needed for bge-m3
+    ),
+    # =========================================================================
+    # BGE English variants (BAAI) - smaller sizes
+    # =========================================================================
+    "BAAI/bge-base-en-v1.5": ModelConfig(
+        name="BAAI/bge-base-en-v1.5",
+        dimension=768,
+        description="Mid-size English embeddings (109M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 440, "float16": 220, "int8": 110},
+        pooling_method="cls",
+        is_asymmetric=True,
+        query_prefix="Represent this sentence for searching relevant passages: ",
+        document_prefix="",
+    ),
+    "BAAI/bge-small-en-v1.5": ModelConfig(
+        name="BAAI/bge-small-en-v1.5",
+        dimension=384,
+        description="Lightweight English embeddings (33M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 130, "float16": 65, "int8": 33},
+        pooling_method="cls",
+        is_asymmetric=True,
+        query_prefix="Represent this sentence for searching relevant passages: ",
+        document_prefix="",
+    ),
+    # =========================================================================
+    # E5-Mistral (intfloat) - LLM-based embeddings
+    # =========================================================================
+    "intfloat/e5-mistral-7b-instruct": ModelConfig(
+        name="intfloat/e5-mistral-7b-instruct",
+        dimension=4096,
+        description="LLM-based embeddings, highest quality English (7B)",
+        max_sequence_length=4096,
+        memory_estimate={"float32": 28000, "float16": 14000, "int8": 7000},
+        pooling_method="last_token",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    # =========================================================================
+    # Multilingual E5 (intfloat) - 100 languages
+    # =========================================================================
+    "intfloat/multilingual-e5-large-instruct": ModelConfig(
+        name="intfloat/multilingual-e5-large-instruct",
+        dimension=1024,
+        description="Instruction-tuned multilingual, 100 languages (560M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 2200, "float16": 1100, "int8": 550},
+        pooling_method="mean",
+        is_asymmetric=True,
+        default_query_instruction="Given a web search query, retrieve relevant passages that answer the query",
+    ),
+    "intfloat/multilingual-e5-large": ModelConfig(
+        name="intfloat/multilingual-e5-large",
+        dimension=1024,
+        description="Multilingual embeddings, 100 languages (560M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 2200, "float16": 1100, "int8": 550},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="query: ",
+        document_prefix="passage: ",
+    ),
+    "intfloat/multilingual-e5-base": ModelConfig(
+        name="intfloat/multilingual-e5-base",
+        dimension=768,
+        description="Mid-size multilingual, 100 languages (278M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1100, "float16": 550, "int8": 275},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="query: ",
+        document_prefix="passage: ",
+    ),
+    # =========================================================================
+    # E5 v2 English (intfloat) - English-optimized
+    # =========================================================================
+    "intfloat/e5-large-v2": ModelConfig(
+        name="intfloat/e5-large-v2",
+        dimension=1024,
+        description="High-quality English embeddings (335M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 1300, "float16": 650, "int8": 325},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="query: ",
+        document_prefix="passage: ",
+    ),
+    "intfloat/e5-base-v2": ModelConfig(
+        name="intfloat/e5-base-v2",
+        dimension=768,
+        description="Mid-size English embeddings (109M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 440, "float16": 220, "int8": 110},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="query: ",
+        document_prefix="passage: ",
+    ),
+    "intfloat/e5-small-v2": ModelConfig(
+        name="intfloat/e5-small-v2",
+        dimension=384,
+        description="Lightweight English embeddings (33M)",
+        max_sequence_length=512,
+        memory_estimate={"float32": 130, "float16": 65, "int8": 33},
+        pooling_method="mean",
+        is_asymmetric=True,
+        query_prefix="query: ",
+        document_prefix="passage: ",
+    ),
 }
 
 

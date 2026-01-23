@@ -255,10 +255,10 @@ class TestGPUMemoryGovernorCore:
         governor.register_callbacks(ModelType.RERANKER, unload_fn=AsyncMock(), offload_fn=AsyncMock())
 
         # Make free-memory calculation deterministic (independent of CUDA availability)
-        def _free_mb() -> int:
+        def _free_mb(_mode=None) -> int:
             return governor._budget.usable_gpu_mb - governor._get_gpu_usage()
 
-        with patch.object(governor, "_get_actual_free_gpu_mb", side_effect=_free_mb):
+        with patch.object(governor, "_probe_free_gpu_mb", side_effect=_free_mb):
             result = await governor.request_memory("rerank", ModelType.RERANKER, "float16", required_mb=7000)
 
         assert result is True
@@ -279,10 +279,10 @@ class TestGPUMemoryGovernorCore:
             await governor.mark_loaded("embed", ModelType.EMBEDDING, "float16")
             await governor.mark_loaded("rerank", ModelType.RERANKER, "float16")
 
-        def _free_mb() -> int:
+        def _free_mb(_mode=None) -> int:
             return governor._budget.usable_gpu_mb - governor._get_gpu_usage()
 
-        with patch.object(governor, "_get_actual_free_gpu_mb", side_effect=_free_mb):
+        with patch.object(governor, "_probe_free_gpu_mb", side_effect=_free_mb):
             result = await governor.request_memory("rerank", ModelType.RERANKER, "float16", required_mb=7000)
 
         assert result is False
@@ -1433,4 +1433,138 @@ class TestPressureHandlerContinuation:
         await gov._handle_critical_pressure()
 
         # Handler should complete without raising
+        await gov.shutdown()
+
+
+# =============================================================================
+# Probe Mode Tests
+# =============================================================================
+
+
+class TestProbeMode:
+    """Tests for GPU probe mode configuration."""
+
+    @pytest.mark.asyncio()
+    async def test_fast_probe_does_not_call_empty_cache(self, memory_budget: MemoryBudget) -> None:
+        """Fast probe mode should not call torch.cuda.empty_cache()."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="fast")
+
+        with patch("torch.cuda.empty_cache") as mock_empty:
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.mem_get_info", return_value=(8_000_000_000, 16_000_000_000)):
+                    with patch("torch.cuda.is_available", return_value=True):
+                        gov._probe_free_gpu_mb(ProbeMode.FAST)
+
+        mock_empty.assert_not_called()
+        mock_sync.assert_not_called()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_safe_probe_calls_synchronize_only(self, memory_budget: MemoryBudget) -> None:
+        """Safe probe mode should call synchronize but not empty_cache."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="safe")
+
+        with patch("torch.cuda.empty_cache") as mock_empty:
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.mem_get_info", return_value=(8_000_000_000, 16_000_000_000)):
+                    with patch("torch.cuda.is_available", return_value=True):
+                        gov._probe_free_gpu_mb(ProbeMode.SAFE)
+
+        mock_empty.assert_not_called()
+        mock_sync.assert_called_once()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_aggressive_probe_calls_gc_sync_and_empty_cache(self, memory_budget: MemoryBudget) -> None:
+        """Aggressive probe mode should call gc, synchronize, and empty_cache."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="aggressive")
+
+        with patch("torch.cuda.empty_cache") as mock_empty:
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.mem_get_info", return_value=(8_000_000_000, 16_000_000_000)):
+                    with patch("torch.cuda.is_available", return_value=True):
+                        with patch("gc.collect") as mock_gc:
+                            gov._probe_free_gpu_mb(ProbeMode.AGGRESSIVE)
+
+        mock_gc.assert_called_once()
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_probe_mode_upgrade_under_pressure(self, memory_budget: MemoryBudget) -> None:
+        """Should upgrade to SAFE mode when usage exceeds threshold."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="fast", probe_safe_threshold=0.85)
+
+        # Load model to push usage above 85%
+        # Budget is 14400 usable (16000 * 0.9), so 13000 is ~90%
+        with patch.object(gov, "_get_model_memory", return_value=13000):
+            await gov.mark_loaded("big-model", ModelType.EMBEDDING, "float16")
+
+        mode = gov._select_probe_mode()
+        assert mode == ProbeMode.SAFE
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_probe_mode_stays_fast_under_threshold(self, memory_budget: MemoryBudget) -> None:
+        """Should stay in FAST mode when usage is below threshold."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="fast", probe_safe_threshold=0.85)
+
+        # Load small model - usage well below 85%
+        with patch.object(gov, "_get_model_memory", return_value=2000):
+            await gov.mark_loaded("small-model", ModelType.EMBEDDING, "float16")
+
+        mode = gov._select_probe_mode()
+        assert mode == ProbeMode.FAST
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_force_accurate_returns_aggressive(self, memory_budget: MemoryBudget) -> None:
+        """force_accurate=True should always return AGGRESSIVE mode."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="fast")
+
+        # Even with no models loaded, force_accurate should return AGGRESSIVE
+        mode = gov._select_probe_mode(force_accurate=True)
+        assert mode == ProbeMode.AGGRESSIVE
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_default_probe_mode_from_init(self, memory_budget: MemoryBudget) -> None:
+        """Probe mode set in __init__ should be used by default."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="safe")
+
+        assert gov._probe_mode == ProbeMode.SAFE
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_probe_override_mode_parameter(self, memory_budget: MemoryBudget) -> None:
+        """Explicit mode parameter should override default."""
+        from vecpipe.memory_governor import ProbeMode
+
+        gov = GPUMemoryGovernor(memory_budget, probe_mode="fast")
+
+        # Even though default is fast, passing aggressive should use aggressive
+        with patch("torch.cuda.empty_cache") as mock_empty:
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.mem_get_info", return_value=(8_000_000_000, 16_000_000_000)):
+                    with patch("torch.cuda.is_available", return_value=True):
+                        with patch("gc.collect"):
+                            gov._probe_free_gpu_mb(ProbeMode.AGGRESSIVE)
+
+        mock_empty.assert_called_once()
+        mock_sync.assert_called_once()
         await gov.shutdown()

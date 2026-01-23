@@ -21,7 +21,7 @@
 <modules>
   <module path="search_api.py">
     <purpose>Public entrypoint - thin wrapper that exports from search/ submodule</purpose>
-    <note>Uses module-level __getattribute__ to forward state access to search.state</note>
+    <note>No module proxying; runtime wiring happens via FastAPI lifespan and app.state.vecpipe_runtime</note>
   </module>
 
   <module path="search/app.py">
@@ -41,8 +41,8 @@
   <module path="search/service.py">
     <purpose>Core business logic: embedding generation, search execution, reranking</purpose>
     <key-functions>
-      - perform_search(): Semantic/question/code/hybrid search with optional reranking
-      - resolve_collection_name(): Priority resolution (explicit > operation_uuid > default)
+      - perform_search(): Dense/sparse/hybrid search orchestration with optional reranking
+      - resolve_collection_name(): (moved) now in search/collection_info.py
       - embed_texts(): Batch embedding generation
       - upsert_points(): Qdrant vector upsert
     </key-functions>
@@ -315,13 +315,14 @@
      - "sparse": Sparse-only search (if sparse index exists), fallback to dense with warning
      - "hybrid": Dense + sparse search with RRF fusion (rrf_k parameter)
   4. Embed query using same model that indexed the collection
-  5. Search Qdrant for top-k similar vectors
+  5. Search Qdrant for top-k similar vectors (prefers SDK for unfiltered; REST for filters; SDK errors fallback to REST with warning)
   6. Filter results by score_threshold (BEFORE reranking)
   7. If use_reranker=true:
      a. Fetch 5x candidates (min=20, max=200)
      b. Ensure content is available (fetch from Qdrant if needed)
      c. Rerank with matched Qwen3-Reranker model
-  8. Return results with timing metadata
+     d. If reranking fails, return un-reranked results with warning (reranking_used reflects actual reranking)
+  8. Return results with timing metadata and warnings (SearchResponse.warnings)
 </search-flow>
 
 <collection-resolution>

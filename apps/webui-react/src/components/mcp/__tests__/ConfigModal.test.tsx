@@ -4,14 +4,23 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ConfigModal from '../ConfigModal';
 import { useMCPProfileConfig } from '../../../hooks/useMCPProfiles';
+import { useApiKeys, useCreateApiKey } from '../../../hooks/useApiKeys';
 import type { MCPProfile, MCPClientConfig } from '../../../types/mcp-profile';
+import type { ApiKeyResponse, ApiKeyCreateResponse } from '../../../types/api-key';
 
 // Mock the hooks
 vi.mock('../../../hooks/useMCPProfiles', () => ({
   useMCPProfileConfig: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useApiKeys', () => ({
+  useApiKeys: vi.fn(),
+  useCreateApiKey: vi.fn(),
+}));
+
 const mockUseMCPProfileConfig = useMCPProfileConfig as vi.MockedFunction<typeof useMCPProfileConfig>;
+const mockUseApiKeys = useApiKeys as vi.MockedFunction<typeof useApiKeys>;
+const mockUseCreateApiKey = useCreateApiKey as vi.MockedFunction<typeof useCreateApiKey>;
 
 // Clipboard mock - will be properly set up in beforeEach
 let mockWriteText: ReturnType<typeof vi.fn>;
@@ -42,6 +51,28 @@ const mockConfig: MCPClientConfig = {
   },
 };
 
+// API Key test data
+const mockActiveApiKey: ApiKeyResponse = {
+  id: 'key-1',
+  name: 'Test API Key',
+  is_active: true,
+  permissions: null,
+  last_used_at: null,
+  expires_at: null,
+  created_at: '2025-01-01T00:00:00Z',
+};
+
+const mockCreatedApiKeyResponse: ApiKeyCreateResponse = {
+  id: 'key-new',
+  name: 'MCP: test-profile',
+  is_active: true,
+  permissions: null,
+  last_used_at: null,
+  expires_at: null,
+  created_at: '2025-01-10T00:00:00Z',
+  api_key: 'smtk_newlycreatedapikey123456',
+};
+
 const defaultProps = {
   profile: mockProfile,
   onClose: vi.fn(),
@@ -64,8 +95,14 @@ const renderComponent = (props = {}) => {
 };
 
 describe('ConfigModal', () => {
+  let mockMutateAsync: ReturnType<typeof vi.fn>;
+  let mockRefetch: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockMutateAsync = vi.fn();
+    mockRefetch = vi.fn();
 
     // Set up fresh clipboard mock for each test
     mockWriteText = vi.fn().mockResolvedValue(undefined);
@@ -78,6 +115,20 @@ describe('ConfigModal', () => {
     // Mock execCommand for fallback (it doesn't exist in JSDOM by default)
     // @ts-expect-error - execCommand is deprecated
     document.execCommand = vi.fn().mockReturnValue(true);
+
+    // Default API key mocks
+    mockUseApiKeys.mockReturnValue({
+      data: [mockActiveApiKey],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useApiKeys>);
+
+    mockUseCreateApiKey.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCreateApiKey>);
   });
 
   describe('Loading State', () => {
@@ -178,7 +229,8 @@ describe('ConfigModal', () => {
       renderComponent();
 
       expect(screen.getByText('How it works')).toBeInTheDocument();
-      expect(screen.getByText(/Restart Claude/)).toBeInTheDocument();
+      // "Restart Claude" appears in multiple places (tool note + usage note), verify at least one exists
+      expect(screen.getAllByText(/Restart Claude/).length).toBeGreaterThan(0);
     });
 
     it('should have correct dialog role and aria attributes', () => {
@@ -199,12 +251,11 @@ describe('ConfigModal', () => {
       } as ReturnType<typeof useMCPProfileConfig>);
     });
 
-    it('should trigger copy action when Copy button is clicked', async () => {
+    it('should trigger copy action when Copy tool name button is clicked', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      // Find the Copy button (not "Copy JSON")
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       // Verify copy happened by checking UI feedback (Copied/Failed state)
@@ -223,7 +274,7 @@ describe('ConfigModal', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       await waitFor(() => {
@@ -231,12 +282,12 @@ describe('ConfigModal', () => {
       });
     });
 
-    it('should trigger copy action when Copy JSON button is clicked', async () => {
+    it('should trigger copy action when Copy config button is clicked', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyJsonButton = screen.getByRole('button', { name: /copy json/i });
-      await user.click(copyJsonButton);
+      const copyConfigButton = screen.getByRole('button', { name: /copy config/i });
+      await user.click(copyConfigButton);
 
       // Verify copy happened by checking UI feedback
       await waitFor(() => {
@@ -247,12 +298,12 @@ describe('ConfigModal', () => {
       });
     });
 
-    it('should show "Copied!" feedback after copying JSON', async () => {
+    it('should show "Copied!" feedback after copying config', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyJsonButton = screen.getByRole('button', { name: /copy json/i });
-      await user.click(copyJsonButton);
+      const copyConfigButton = screen.getByRole('button', { name: /copy config/i });
+      await user.click(copyConfigButton);
 
       await waitFor(() => {
         expect(screen.getByText('Copied!')).toBeInTheDocument();
@@ -276,7 +327,7 @@ describe('ConfigModal', () => {
 
       renderComponent();
 
-      const copyButton = screen.getByRole('button', { name: 'Copy' });
+      const copyButton = screen.getByRole('button', { name: /copy tool name/i });
       await user.click(copyButton);
 
       await waitFor(() => {
@@ -350,6 +401,159 @@ describe('ConfigModal', () => {
 
       // Tool name appears multiple times, check it exists
       expect(screen.getAllByText('search_my-profile_v2').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('ApiKeySelector Integration', () => {
+    beforeEach(() => {
+      mockUseMCPProfileConfig.mockReturnValue({
+        data: mockConfig,
+        isLoading: false,
+        error: null,
+      } as ReturnType<typeof useMCPProfileConfig>);
+    });
+
+    it('should render ApiKeySelector above config block', () => {
+      renderComponent();
+
+      // Check for ApiKeySelector by looking for its label
+      expect(screen.getByText('API Key')).toBeInTheDocument();
+
+      // Should have the dropdown with placeholder
+      const selects = screen.getAllByRole('combobox');
+      const apiKeySelect = selects.find(s =>
+        Array.from(s.querySelectorAll('option')).some(opt => opt.value === '__create_new__')
+      );
+      expect(apiKeySelect).toBeInTheDocument();
+    });
+
+    it('should show amber warning when no key selected', () => {
+      renderComponent();
+
+      // The amber warning should be visible by default (no API key selected)
+      expect(screen.getByText('Replace the auth token')).toBeInTheDocument();
+      // The placeholder text should be in the config
+      const preElement = document.querySelector('pre');
+      expect(preElement?.textContent).toContain('<your-access-token-or-api-key>');
+    });
+
+    it('should show green success banner when key is selected', async () => {
+      const user = userEvent.setup();
+
+      mockMutateAsync.mockResolvedValue(mockCreatedApiKeyResponse);
+
+      renderComponent();
+
+      // Find the ApiKeySelector dropdown
+      const selects = screen.getAllByRole('combobox');
+      const apiKeySelect = selects.find(s =>
+        Array.from(s.querySelectorAll('option')).some(opt => opt.value === '__create_new__')
+      );
+      expect(apiKeySelect).toBeInTheDocument();
+
+      // Select "Create new key"
+      await user.selectOptions(apiKeySelect!, '__create_new__');
+
+      // Wait for the API key to be created and selected
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+
+      // After key is inserted, should show green success banner instead of amber warning
+      await waitFor(() => {
+        expect(screen.getByText('Config ready to copy')).toBeInTheDocument();
+      });
+
+      // The amber warning should no longer be visible
+      expect(screen.queryByText('Replace the auth token')).not.toBeInTheDocument();
+    });
+
+    it('should insert API key into config when selected', async () => {
+      const user = userEvent.setup();
+
+      mockMutateAsync.mockResolvedValue(mockCreatedApiKeyResponse);
+
+      renderComponent();
+
+      // Find and click "Create new key"
+      const selects = screen.getAllByRole('combobox');
+      const apiKeySelect = selects.find(s =>
+        Array.from(s.querySelectorAll('option')).some(opt => opt.value === '__create_new__')
+      );
+
+      await user.selectOptions(apiKeySelect!, '__create_new__');
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+
+      // The config should now contain the actual API key, not the placeholder
+      await waitFor(() => {
+        const preElement = document.querySelector('pre');
+        expect(preElement?.textContent).toContain('smtk_newlycreatedapikey123456');
+        expect(preElement?.textContent).not.toContain('<your-access-token-or-api-key>');
+      });
+    });
+
+    it('should apply highlight-inserted class when key is selected', async () => {
+      const user = userEvent.setup();
+
+      mockMutateAsync.mockResolvedValue(mockCreatedApiKeyResponse);
+
+      renderComponent();
+
+      // Find and click "Create new key"
+      const selects = screen.getAllByRole('combobox');
+      const apiKeySelect = selects.find(s =>
+        Array.from(s.querySelectorAll('option')).some(opt => opt.value === '__create_new__')
+      );
+
+      await user.selectOptions(apiKeySelect!, '__create_new__');
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+
+      // The pre element should have the highlight-inserted class initially
+      await waitFor(() => {
+        const preElement = document.querySelector('pre');
+        expect(preElement).toHaveClass('highlight-inserted');
+      });
+    });
+
+    it('should remove highlight-inserted class after 1.5s timeout', async () => {
+      const user = userEvent.setup();
+
+      mockMutateAsync.mockResolvedValue(mockCreatedApiKeyResponse);
+
+      renderComponent();
+
+      // Find and click "Create new key"
+      const selects = screen.getAllByRole('combobox');
+      const apiKeySelect = selects.find(s =>
+        Array.from(s.querySelectorAll('option')).some(opt => opt.value === '__create_new__')
+      );
+
+      await user.selectOptions(apiKeySelect!, '__create_new__');
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+
+      // Wait for the highlight to be applied
+      await waitFor(() => {
+        const preElement = document.querySelector('pre');
+        expect(preElement).toHaveClass('highlight-inserted');
+      });
+
+      // Wait for the highlight to be removed (1.5s + buffer)
+      await waitFor(
+        () => {
+          const preElement = document.querySelector('pre');
+          expect(preElement).not.toHaveClass('highlight-inserted');
+        },
+        { timeout: 2000 }
+      );
     });
   });
 });

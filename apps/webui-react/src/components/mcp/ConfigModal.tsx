@@ -1,6 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import type { MCPProfile } from '../../types/mcp-profile';
 import { useMCPProfileConfig } from '../../hooks/useMCPProfiles';
+import {
+  MCP_CLIENT_TOOLS,
+  DEFAULT_MCP_CLIENT_TOOL_ID,
+  getMCPClientTool,
+} from '../../types/mcp-client-tools';
+import { generateMCPConfig, getConfigBlockLabel } from '../../utils/mcp-config-generator';
+import ApiKeySelector from './ApiKeySelector';
 
 interface ConfigModalProps {
   profile: MCPProfile;
@@ -10,6 +17,11 @@ interface ConfigModalProps {
 export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
   const { data: config, isLoading, error } = useMCPProfileConfig(profile.id);
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectedToolId, setSelectedToolId] = useState(DEFAULT_MCP_CLIENT_TOOL_ID);
+  const [insertedApiKey, setInsertedApiKey] = useState<string | null>(null);
+  const [showHighlight, setShowHighlight] = useState(false);
+
+  const selectedTool = getMCPClientTool(selectedToolId) ?? MCP_CLIENT_TOOLS[0];
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -85,19 +97,20 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
 
   const toolName = `search_${profile.name}`;
 
-  const configJson = config
-    ? JSON.stringify(
-        {
-          [config.server_name]: {
-            command: config.command,
-            args: config.args,
-            env: config.env,
-          },
-        },
-        null,
-        2
-      )
+  const configOutput = config
+    ? generateMCPConfig(config, selectedTool.formatType, insertedApiKey ?? undefined)
     : '';
+
+  // Handler for when an API key is selected via ApiKeySelector
+  const handleApiKeySelected = (apiKey: string) => {
+    setInsertedApiKey(apiKey);
+    setShowHighlight(true);
+    setTimeout(() => {
+      setShowHighlight(false);
+    }, 1500);
+  };
+
+  const configBlockLabel = getConfigBlockLabel(selectedTool.formatType);
 
   return (
     <>
@@ -216,6 +229,7 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                   </code>
                   <button
                     onClick={() => copyToClipboard(toolName, 'toolName')}
+                    aria-label="Copy tool name"
                     className="inline-flex items-center px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white transition-colors"
                   >
                     {copied === 'toolName-error' ? (
@@ -277,41 +291,96 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                 </p>
               </div>
 
-              {/* Config File Locations */}
+              {/* MCP Client Selector */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                  MCP Client
+                </label>
+                <select
+                  value={selectedToolId}
+                  onChange={(e) => setSelectedToolId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-white"
+                >
+                  {MCP_CLIENT_TOOLS.map((tool) => (
+                    <option key={tool.id} value={tool.id}>
+                      {tool.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* API Key Selector */}
+              <ApiKeySelector
+                profileName={profile.name}
+                onKeySelected={handleApiKeySelected}
+              />
+
+              {/* Config File Location */}
               <div>
                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
                   Config File Location
                 </label>
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      ~/Library/Application Support/Claude/claude_desktop_config.json
-                    </code>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      ~/.config/Claude/claude_desktop_config.json
-                    </code>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
-                    <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
-                      %APPDATA%\Claude\claude_desktop_config.json
-                    </code>
-                  </div>
+                  {selectedTool.configPaths.macos && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">macOS:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.macos}
+                      </code>
+                    </div>
+                  )}
+                  {selectedTool.configPaths.linux && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Linux:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.linux}
+                      </code>
+                    </div>
+                  )}
+                  {selectedTool.configPaths.windows && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--text-muted)] w-16 flex-shrink-0">Windows:</span>
+                      <code className="bg-[var(--bg-tertiary)] border border-[var(--border)] px-2 py-1 rounded text-xs font-mono text-[var(--text-secondary)] break-all">
+                        {selectedTool.configPaths.windows}
+                      </code>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* JSON Config */}
+              {/* Tool-specific Note */}
+              {selectedTool.notes && (
+                <div className="bg-gray-500/10 border border-gray-500/20 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <svg
+                      className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0 mt-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      {selectedTool.notes}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Config Output */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                    Add to mcpServers
+                    {configBlockLabel}
                   </label>
                   <button
-                    onClick={() => copyToClipboard(configJson, 'config')}
+                    onClick={() => copyToClipboard(configOutput, 'config')}
+                    aria-label="Copy config"
                     className="inline-flex items-center px-2 py-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none transition-colors"
                   >
                     {copied === 'config-error' ? (
@@ -363,47 +432,75 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
                             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                           />
                         </svg>
-                        Copy JSON
+                        Copy
                       </>
                     )}
                   </button>
                 </div>
-                <pre className="bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-primary)] p-4 rounded-lg text-sm font-mono overflow-x-auto">
-                  {configJson}
+                <pre className={`bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-primary)] p-4 rounded-lg text-sm font-mono overflow-x-auto${showHighlight ? ' highlight-inserted' : ''}`}>
+                  {configOutput}
                 </pre>
               </div>
 
-              {/* Token Warning */}
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-                <div className="flex">
-                  <svg
-                    className="h-5 w-5 text-amber-500 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-amber-600 dark:text-amber-400">
-                      Replace the auth token
-                    </h3>
-                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300/80">
-                      Replace{' '}
-                      <code className="bg-amber-500/20 px-1 rounded text-xs">
-                        &lt;your-access-token-or-api-key&gt;
-                      </code>{' '}
-                      with a valid API key or access token. API keys are recommended
-                      for persistent MCP clients.
-                    </p>
+              {/* Token Status Banner - Green success when key is inserted, Amber warning when not */}
+              {insertedApiKey ? (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                  <div className="flex">
+                    <svg
+                      className="h-5 w-5 text-green-500 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-green-600 dark:text-green-400">
+                        Config ready to copy
+                      </h3>
+                      <p className="mt-1 text-sm text-green-700 dark:text-green-300/80">
+                        Your API key has been inserted into the config above. Copy it and paste into your MCP client config file.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+                  <div className="flex">
+                    <svg
+                      className="h-5 w-5 text-amber-500 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                        Replace the auth token
+                      </h3>
+                      <p className="mt-1 text-sm text-amber-700 dark:text-amber-300/80">
+                        Replace{' '}
+                        <code className="bg-amber-500/20 px-1 rounded text-xs">
+                          &lt;your-access-token-or-api-key&gt;
+                        </code>{' '}
+                        with a valid API key or access token. API keys are recommended
+                        for persistent MCP clients.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Usage Note */}
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
