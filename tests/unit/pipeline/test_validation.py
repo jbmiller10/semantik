@@ -1,12 +1,6 @@
 """Unit tests for pipeline DAG validation."""
 
-
-from shared.pipeline.types import (
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 from shared.pipeline.validation import SOURCE_NODE, validate_dag
 
 
