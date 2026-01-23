@@ -1,9 +1,6 @@
 """Unit tests for ImapConnector."""
 
-import email
 from email.header import Header
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,12 +8,9 @@ import pytest
 from shared.connectors.imap import (
     DEFAULT_MAX_MESSAGES,
     DEFAULT_SINCE_DAYS,
-    MAX_EMAIL_BODY_SIZE,
     ImapConnector,
     _decode_mime_header,
-    _email_to_markdown,
     _format_email_date,
-    _get_email_body,
 )
 
 
@@ -287,92 +281,6 @@ class TestFormatEmailDate:
         assert result == "not a date"
 
 
-class TestGetEmailBody:
-    """Test _get_email_body helper function."""
-
-    def test_get_plain_text_body(self):
-        """Test extracting plain text body from simple message."""
-        msg = email.message_from_string(
-            "Subject: Test\nContent-Type: text/plain; charset=utf-8\n\nHello, this is the body."
-        )
-        result = _get_email_body(msg)
-        assert "Hello, this is the body." in result
-
-    def test_get_multipart_body(self):
-        """Test extracting body from multipart message."""
-        msg = MIMEMultipart("alternative")
-        msg.attach(MIMEText("Plain text body", "plain"))
-        msg.attach(MIMEText("<html><body>HTML body</body></html>", "html"))
-
-        result = _get_email_body(msg)
-        assert "Plain text body" in result
-
-    def test_get_html_fallback_body(self):
-        """Test extracting HTML body when no plain text."""
-        msg = MIMEMultipart()
-        msg.attach(MIMEText("<html><body><p>HTML only body</p></body></html>", "html"))
-
-        result = _get_email_body(msg)
-        assert "HTML only body" in result
-        # HTML tags should be stripped
-        assert "<html>" not in result
-
-    def test_skip_attachment(self):
-        """Test that attachments are skipped."""
-        msg = MIMEMultipart()
-        msg.attach(MIMEText("Main body text", "plain"))
-
-        attachment = MIMEText("Attachment content", "plain")
-        attachment.add_header("Content-Disposition", "attachment", filename="test.txt")
-        msg.attach(attachment)
-
-        result = _get_email_body(msg)
-        assert "Main body text" in result
-        assert "Attachment content" not in result
-
-    def test_truncate_large_body(self):
-        """Test that large bodies are truncated."""
-        large_content = "x" * (MAX_EMAIL_BODY_SIZE + 1000)
-        msg = email.message_from_string(f"Subject: Test\nContent-Type: text/plain; charset=utf-8\n\n{large_content}")
-        result = _get_email_body(msg)
-        assert len(result) <= MAX_EMAIL_BODY_SIZE + 100  # Some buffer for truncation message
-        assert "[Truncated" in result
-
-
-class TestEmailToMarkdown:
-    """Test _email_to_markdown helper function."""
-
-    def test_full_email_to_markdown(self):
-        """Test converting full email to markdown."""
-        result = _email_to_markdown(
-            subject="Test Subject",
-            from_addr="sender@example.com",
-            to_addr="recipient@example.com",
-            date="Mon, 12 Dec 2025 10:30:00 -0600",
-            body="This is the email body.",
-        )
-
-        assert "## Test Subject" in result
-        assert "**From:** sender@example.com" in result
-        assert "**To:** recipient@example.com" in result
-        assert "**Date:** Mon, 12 Dec 2025 10:30:00 -0600" in result
-        assert "---" in result
-        assert "This is the email body." in result
-
-    def test_email_to_markdown_no_date(self):
-        """Test converting email without date."""
-        result = _email_to_markdown(
-            subject="Test Subject",
-            from_addr="sender@example.com",
-            to_addr="recipient@example.com",
-            date=None,
-            body="Body text.",
-        )
-
-        assert "## Test Subject" in result
-        assert "**Date:**" not in result
-
-
 class TestImapConnectorConnect:
     """Test _connect method."""
 
@@ -474,12 +382,12 @@ class TestImapConnectorAuthenticate:
             assert "IMAP authentication failed" in str(exc_info.value)
 
 
-class TestImapConnectorLoadDocuments:
-    """Test load_documents method."""
+class TestImapConnectorEnumerate:
+    """Test enumerate method."""
 
     @pytest.mark.asyncio()
-    async def test_load_documents_no_password(self):
-        """Test load_documents fails without password."""
+    async def test_enumerate_no_password(self):
+        """Test enumerate fails without password."""
         connector = ImapConnector(
             {
                 "host": "imap.example.com",
@@ -487,17 +395,17 @@ class TestImapConnectorLoadDocuments:
             }
         )
 
-        async def consume_documents():
-            async for _ in connector.load_documents():
+        async def consume_refs():
+            async for _ in connector.enumerate():
                 pass
 
         with pytest.raises(ValueError, match=r"Password not set") as exc_info:
-            await consume_documents()
+            await consume_refs()
         assert "Password not set" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_load_documents_empty_mailbox(self):
-        """Test load_documents with empty mailbox."""
+    async def test_enumerate_empty_mailbox(self):
+        """Test enumerate with empty mailbox."""
         connector = ImapConnector(
             {
                 "host": "imap.example.com",
@@ -514,16 +422,16 @@ class TestImapConnectorLoadDocuments:
         mock_conn.uid.return_value = ("OK", [b""])  # No messages
 
         with patch.object(connector, "_connect", return_value=mock_conn):
-            documents = []
-            async for doc in connector.load_documents():
-                documents.append(doc)
+            refs = []
+            async for ref in connector.enumerate():
+                refs.append(ref)
 
-            assert len(documents) == 0
+            assert len(refs) == 0
             mock_conn.logout.assert_called()
 
     @pytest.mark.asyncio()
-    async def test_load_documents_with_messages(self):
-        """Test load_documents with messages."""
+    async def test_enumerate_with_messages(self):
+        """Test enumerate with messages yields FileReference objects."""
         connector = ImapConnector(
             {
                 "host": "imap.example.com",
@@ -533,15 +441,13 @@ class TestImapConnectorLoadDocuments:
         )
         connector.set_credentials(password="secret")
 
-        # Create a test email
-        test_email = (
+        # Create test email header
+        test_header = (
             "From: sender@example.com\r\n"
             "To: user@example.com\r\n"
             "Subject: Test Email\r\n"
             "Date: Mon, 12 Dec 2025 10:30:00 -0600\r\n"
             "Message-ID: <test123@example.com>\r\n"
-            "\r\n"
-            "This is a test email body."
         )
 
         mock_conn = MagicMock()
@@ -554,24 +460,34 @@ class TestImapConnectorLoadDocuments:
             if cmd == "SEARCH":
                 return ("OK", [b"100"])
             if cmd == "FETCH":
-                return ("OK", [(b"100 (RFC822 {123}", test_email.encode())])
+                return ("OK", [(b"100 (BODY[HEADER] {123} RFC822.SIZE 5000", test_header.encode()), b"RFC822.SIZE 5000"])
             return ("OK", [])
 
         mock_conn.uid = mock_uid
 
         with patch.object(connector, "_connect", return_value=mock_conn):
-            documents = []
-            async for doc in connector.load_documents():
-                documents.append(doc)
+            refs = []
+            async for ref in connector.enumerate():
+                refs.append(ref)
 
-            assert len(documents) == 1
-            assert "Test Email" in documents[0].content
-            assert documents[0].source_type == "imap"
-            assert "imap://" in documents[0].unique_id
+            assert len(refs) == 1
+            ref = refs[0]
+            assert ref.source_type == "imap"
+            assert ref.content_type == "message"
+            assert ref.uri == "imap://imap.example.com/INBOX;uid=100"
+            assert ref.filename.endswith(".eml")
+            assert ref.extension == ".eml"
+            assert ref.mime_type == "message/rfc822"
+            assert ref.change_hint == "100"  # UID as change_hint
+            assert ref.source_metadata["uid"] == 100
+            assert ref.source_metadata["mailbox"] == "INBOX"
+            assert ref.source_metadata["subject"] == "Test Email"
+            assert ref.source_metadata["from"] == "sender@example.com"
+            assert ref.source_metadata["to"] == "user@example.com"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_max_messages_limit(self):
-        """Test load_documents respects max_messages limit."""
+    async def test_enumerate_max_messages_limit(self):
+        """Test enumerate respects max_messages limit."""
         connector = ImapConnector(
             {
                 "host": "imap.example.com",
@@ -582,15 +498,13 @@ class TestImapConnectorLoadDocuments:
         )
         connector.set_credentials(password="secret")
 
-        # Create test emails
-        def make_email(uid):
+        # Create test header
+        def make_header(uid):
             return (
                 f"From: sender@example.com\r\n"
                 f"To: user@example.com\r\n"
                 f"Subject: Test Email {uid}\r\n"
                 f"Message-ID: <test{uid}@example.com>\r\n"
-                f"\r\n"
-                f"Body {uid}"
             ).encode()
 
         mock_conn = MagicMock()
@@ -606,18 +520,18 @@ class TestImapConnectorLoadDocuments:
             if cmd == "FETCH":
                 uid = int(args[0])
                 fetch_calls.append(uid)
-                return ("OK", [(b"fetch response", make_email(uid))])
+                return ("OK", [(b"fetch response", make_header(uid))])
             return ("OK", [])
 
         mock_conn.uid = mock_uid
 
         with patch.object(connector, "_connect", return_value=mock_conn):
-            documents = []
-            async for doc in connector.load_documents():
-                documents.append(doc)
+            refs = []
+            async for ref in connector.enumerate():
+                refs.append(ref)
 
-            # Should only get 2 documents due to max_messages=2
-            assert len(documents) == 2
+            # Should only get 2 refs due to max_messages=2
+            assert len(refs) == 2
 
 
 class TestImapConnectorCursor:
@@ -636,7 +550,7 @@ class TestImapConnectorCursor:
         connector.set_credentials(password="secret")
         connector.set_cursor({})
 
-        test_email = b"From: sender@example.com\r\nSubject: Test\r\nMessage-ID: <test@example.com>\r\n\r\nBody"
+        test_header = b"From: sender@example.com\r\nSubject: Test\r\nMessage-ID: <test@example.com>\r\n"
 
         mock_conn = MagicMock()
         mock_conn.login.return_value = ("OK", [])
@@ -647,13 +561,13 @@ class TestImapConnectorCursor:
             if cmd == "SEARCH":
                 return ("OK", [b"500"])
             if cmd == "FETCH":
-                return ("OK", [(b"fetch", test_email)])
+                return ("OK", [(b"fetch", test_header)])
             return ("OK", [])
 
         mock_conn.uid = mock_uid
 
         with patch.object(connector, "_connect", return_value=mock_conn):
-            async for _ in connector.load_documents():
+            async for _ in connector.enumerate():
                 pass
 
             cursor = connector.get_cursor()
@@ -696,7 +610,7 @@ class TestImapConnectorCursor:
         mock_conn.uid = mock_uid
 
         with patch.object(connector, "_connect", return_value=mock_conn):
-            async for _ in connector.load_documents():
+            async for _ in connector.enumerate():
                 pass
 
             cursor = connector.get_cursor()

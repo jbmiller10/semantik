@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import fnmatch
 import hashlib
 import logging
@@ -20,50 +19,11 @@ if TYPE_CHECKING:
 
 from shared.config import settings
 from shared.connectors.base import BaseConnector
-from shared.dtos.ingestion import IngestedDocument
-from shared.text_processing.parsers import ExtractionFailedError, ParseResult, UnsupportedFormatError, parse_content
-from shared.utils.hashing import compute_content_hash
+from shared.pipeline.types import FileReference
 
 logger = logging.getLogger(__name__)
 
-# Default supported file extensions for Git sources
-DEFAULT_INCLUDE_EXTENSIONS = {
-    ".md",
-    ".txt",
-    ".rst",
-    ".adoc",  # Documentation
-    ".py",
-    ".js",
-    ".ts",
-    ".tsx",
-    ".jsx",  # Code
-    ".java",
-    ".go",
-    ".rs",
-    ".rb",
-    ".php",  # More code
-    ".c",
-    ".cpp",
-    ".h",
-    ".hpp",
-    ".cs",  # C-family
-    ".html",
-    ".css",
-    ".scss",
-    ".yaml",
-    ".yml",
-    ".json",  # Web/config
-    ".sh",
-    ".bash",
-    ".zsh",  # Scripts
-    ".sql",
-    ".graphql",  # Query languages
-    ".toml",
-    ".ini",
-    ".cfg",  # Config files
-}
-
-# Maximum file size (10 MB default for Git files - smaller than local)
+# Default max file size (10 MB for Git files - smaller than local)
 DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
 
 # Default shallow clone depth
@@ -73,7 +33,7 @@ DEFAULT_SHALLOW_DEPTH = 1
 class GitConnector(BaseConnector):
     """Connector for remote Git repository sources.
 
-    Clones/fetches Git repositories and indexes file contents with
+    Clones/fetches Git repositories and enumerates file references with
     support for HTTPS token or SSH key authentication.
 
     Config keys:
@@ -101,8 +61,8 @@ class GitConnector(BaseConnector):
         connector.set_credentials(token="ghp_xxx...")
 
         if await connector.authenticate():
-            async for doc in connector.load_documents():
-                print(doc.unique_id)
+            async for file_ref in connector.enumerate():
+                print(file_ref.uri, file_ref.change_hint)
         ```
     """
 
@@ -619,15 +579,6 @@ class GitConnector(BaseConnector):
 
         return True
 
-    def _is_supported_extension(self, path: Path) -> bool:
-        """Check if the file extension is supported."""
-        # If include_globs are specified, trust them for extension filtering
-        if self.include_globs:
-            return True
-
-        # Otherwise use default extension list
-        return path.suffix.lower() in DEFAULT_INCLUDE_EXTENSIONS
-
     async def _get_blob_sha(self, file_path: Path) -> str | None:
         """Get the git blob SHA for a file."""
         if not self._repo_dir:
@@ -648,17 +599,51 @@ class GitConnector(BaseConnector):
 
         return None
 
-    async def load_documents(
+    def _infer_content_type(self, file_path: Path) -> str:
+        """Infer semantic content type from file extension.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Content type string (document, code, config)
+        """
+        ext = file_path.suffix.lower()
+
+        # Code files
+        code_extensions = {
+            ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs", ".rb",
+            ".php", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".kt", ".scala",
+            ".sh", ".bash", ".zsh", ".sql", ".graphql",
+        }
+        if ext in code_extensions:
+            return "code"
+
+        # Configuration files
+        config_extensions = {
+            ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf",
+            ".xml", ".env",
+        }
+        if ext in config_extensions:
+            return "config"
+
+        # Default to document for everything else
+        return "document"
+
+    async def enumerate(
         self,
         source_id: int | None = None,
-    ) -> AsyncIterator[IngestedDocument]:
-        """Yield documents from the Git repository.
+    ) -> AsyncIterator[FileReference]:
+        """Yield file references from the Git repository.
+
+        Clones/fetches the repository and yields FileReference objects for
+        each file that matches the patterns. Does not load or parse content.
 
         Args:
             source_id: Optional source ID for cache directory uniqueness
 
         Yields:
-            IngestedDocument for each matching file.
+            FileReference for each matching file.
         """
         repo_dir = await self._clone_or_fetch(source_id)
 
@@ -676,135 +661,75 @@ class GitConnector(BaseConnector):
                 if not self._matches_patterns(rel_path):
                     continue
 
-                # Check extension
-                if not self._is_supported_extension(file_path):
+                # Avoid reading through symlinks (can escape repo root)
+                if file_path.is_symlink():
+                    logger.debug(f"Skipping symlinked file: {rel_path}")
                     continue
 
-                # Process the file
-                doc = await self._process_file(file_path, rel_path)
-                if doc is not None:
-                    yield doc
+                try:
+                    stat = file_path.stat()
 
-    async def _process_file(
-        self,
-        file_path: Path,
-        rel_path: str,
-    ) -> IngestedDocument | None:
-        """Process a single file from the repository.
+                    # Check file size
+                    if stat.st_size > self.max_file_size:
+                        logger.debug(f"Skipping file too large: {rel_path} ({stat.st_size} bytes)")
+                        continue
+
+                    # Skip empty files
+                    if stat.st_size == 0:
+                        logger.debug(f"Skipping empty file: {rel_path}")
+                        continue
+
+                    mime_type, _ = mimetypes.guess_type(str(file_path))
+                    blob_sha = await self._get_blob_sha(file_path)
+
+                    yield FileReference(
+                        uri=f"git://{self.repo_url}/{rel_path}",
+                        source_type="git",
+                        content_type=self._infer_content_type(file_path),
+                        filename=filename,
+                        extension=file_path.suffix.lower() or None,
+                        mime_type=mime_type,
+                        size_bytes=stat.st_size,
+                        change_hint=blob_sha,
+                        source_metadata={
+                            "local_path": str(file_path),
+                            "relative_path": rel_path,
+                            "commit_sha": self._commit_sha,
+                            "ref": self.ref,
+                            "repo_url": self.repo_url,
+                        },
+                    )
+                except OSError as e:
+                    logger.warning(f"Cannot stat {rel_path}: {e}")
+                    continue
+
+    async def load_content(self, file_ref: FileReference) -> bytes:
+        """Load raw content bytes from a cloned repository file.
 
         Args:
-            file_path: Absolute path to the file
-            rel_path: Relative path from repo root
+            file_ref: File reference with local_path in source_metadata
 
         Returns:
-            IngestedDocument or None if file should be skipped
+            Raw content bytes
+
+        Raises:
+            ValueError: If local_path is missing from source_metadata
+            OSError: If file cannot be read
         """
-        # Avoid reading through symlinks (can escape repo root)
-        if file_path.is_symlink():
-            logger.debug(f"Skipping symlinked file: {rel_path}")
-            return None
+        local_path = file_ref.source_metadata.get("local_path")
+        if not local_path:
+            raise ValueError(f"Missing local_path in source_metadata for {file_ref.uri}")
 
-        # Check file size
-        try:
-            stat = file_path.stat()
-            if stat.st_size > self.max_file_size:
-                logger.debug(f"Skipping file too large: {rel_path} ({stat.st_size} bytes)")
-                return None
-            if stat.st_size == 0:
-                logger.debug(f"Skipping empty file: {rel_path}")
-                return None
-            file_size = stat.st_size
-        except Exception as e:
-            logger.error(f"Cannot access file {rel_path}: {e}")
-            return None
+        path = Path(local_path)
 
-        # Get blob SHA for change detection
-        blob_sha = await self._get_blob_sha(file_path)
-
-        mime_type, _ = mimetypes.guess_type(str(file_path))
-        connector_metadata: dict[str, Any] = {
-            "source_type": "git",
-            "source_path": rel_path,
-            # Keep legacy/consumer-facing key for backwards compatibility.
-            "file_path": rel_path,
-            "file_size": file_size,
-            "mime_type": mime_type,
-            "blob_sha": blob_sha,
-            "commit_sha": self._commit_sha,
-            "ref": self.ref,
-            "repo_url": self.repo_url,
-        }
-
-        # Try to extract text content
-        content: str | None = None
-        parse_result: ParseResult | None = None
-
-        # For text files, try direct reading first
-        is_likely_text = (
-            mime_type
-            and (
-                mime_type.startswith("text/")
-                or mime_type in ("application/json", "application/xml", "application/javascript")
-            )
-        ) or file_path.suffix.lower() in {".md", ".rst", ".txt", ".json", ".yaml", ".yml", ".toml"}
-
-        if is_likely_text:
-            with contextlib.suppress(Exception):
-                content = file_path.read_text(encoding="utf-8", errors="replace")
-            if content is not None:
-                parse_result = parse_content(
-                    content,
-                    filename=file_path.name,
-                    file_extension=file_path.suffix.lower(),
-                    mime_type=mime_type,
-                    metadata=connector_metadata,
-                )
-
-        # Fall back to parser for binary formats
-        if content is None:
+        # Validate path is within repo directory if we have one
+        if self._repo_dir:
             try:
-                parse_result = parse_content(
-                    file_path.read_bytes(),
-                    filename=file_path.name,
-                    file_extension=file_path.suffix.lower(),
-                    mime_type=mime_type,
-                    metadata=connector_metadata,
-                )
-                content = parse_result.text
-            except (UnsupportedFormatError, ExtractionFailedError) as e:
-                logger.debug(f"Cannot extract content from {rel_path}: {e}")
-                # Last-resort: read as text anyway (preserves current behavior)
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="replace")
-                    parse_result = parse_content(
-                        content,
-                        filename=file_path.name,
-                        file_extension=file_path.suffix.lower(),
-                        mime_type=mime_type,
-                        metadata=connector_metadata,
-                    )
-                except Exception:
-                    return None
+                path.relative_to(self._repo_dir)
+            except ValueError as e:
+                raise ValueError(f"Path traversal detected: {local_path}") from e
 
-        # Skip empty documents
-        if not content or not content.strip():
-            logger.debug(f"Skipping empty content: {rel_path}")
-            return None
-
-        # Compute content hash
-        content_hash = compute_content_hash(content)
-
-        # Build unique ID: git://{repo_url}/{path}
-        unique_id = f"git://{self.repo_url}/{rel_path}"
-
-        return IngestedDocument(
-            content=content,
-            unique_id=unique_id,
-            source_type="git",
-            metadata=parse_result.metadata if parse_result is not None else connector_metadata,
-            content_hash=content_hash,
-            file_path=None,  # No local file path for git sources
-        )
+        return path.read_bytes()
 
     def cleanup(self) -> None:
         """Remove the cached repository directory."""
