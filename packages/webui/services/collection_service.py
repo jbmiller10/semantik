@@ -231,6 +231,22 @@ class CollectionService:
                 if plugin_record is None or plugin_record.plugin_type != "sparse_indexer":
                     raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
 
+            # Generate default pipeline config
+            from shared.pipeline.defaults import get_default_pipeline
+
+            pipeline_chunk_config = {
+                "chunking_strategy": chunking_strategy,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "chunking_config": chunking_config,
+            }
+            default_pipeline = get_default_pipeline(
+                embedding_model=embedding_model,
+                chunk_config=pipeline_chunk_config,
+            )
+            pipeline_config_dict = default_pipeline.to_dict()
+            persist_originals = config.get("persist_originals", False) if config else False
+
             # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
@@ -247,6 +263,8 @@ class CollectionService:
                 sync_mode=sync_mode,
                 sync_interval_minutes=sync_interval_minutes,
                 sync_next_run_at=sync_next_run_at,
+                pipeline_config=pipeline_config_dict,
+                persist_originals=persist_originals,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -1230,6 +1248,10 @@ class CollectionService:
             "sync_last_run_completed_at": getattr(collection, "sync_last_run_completed_at", None),
             "sync_last_run_status": getattr(collection, "sync_last_run_status", None),
             "sync_last_error": getattr(collection, "sync_last_error", None),
+            # Pipeline DAG support
+            "pipeline_config": getattr(collection, "pipeline_config", None),
+            "pipeline_version": getattr(collection, "pipeline_version", 1),
+            "persist_originals": getattr(collection, "persist_originals", False),
         }
         base["config"] = {
             "embedding_model": base["embedding_model"],

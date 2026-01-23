@@ -50,6 +50,8 @@ class CollectionRepository:
         sync_interval_minutes: int | None = None,
         sync_paused_at: datetime | None = None,
         sync_next_run_at: datetime | None = None,
+        pipeline_config: dict[str, Any] | None = None,
+        persist_originals: bool = False,
     ) -> Collection:
         """Create a new collection.
 
@@ -69,6 +71,8 @@ class CollectionRepository:
             sync_interval_minutes: Sync interval in minutes for continuous mode (min 15)
             sync_paused_at: Timestamp when sync was paused, if applicable
             sync_next_run_at: Timestamp for when next sync should run
+            pipeline_config: Serialized PipelineDAG for document processing
+            persist_originals: Whether to store original document artifacts
 
         Returns:
             Created Collection instance
@@ -116,6 +120,8 @@ class CollectionRepository:
                 sync_interval_minutes=sync_interval_minutes,
                 sync_paused_at=sync_paused_at,
                 sync_next_run_at=sync_next_run_at,
+                pipeline_config=pipeline_config,
+                persist_originals=persist_originals,
             )
 
             self.session.add(collection)

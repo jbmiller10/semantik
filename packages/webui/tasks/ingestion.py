@@ -84,6 +84,111 @@ def _tasks_namespace() -> ModuleType:
     return import_module("webui.tasks")
 
 
+def _create_progress_adapter(
+    updater: CeleryTaskWithOperationUpdates,
+    display_path: str,
+) -> Any:
+    """Create callback that maps ProgressEvent to WebSocket updates.
+
+    Args:
+        updater: The Celery task updater for sending WebSocket messages
+        display_path: Display path for the source being processed
+
+    Returns:
+        Async callback function for handling progress events
+    """
+    from shared.pipeline.executor_types import ProgressEvent  # noqa: TCH001
+
+    stats = {"files_found": 0, "chunks_created": 0}
+
+    async def callback(event: ProgressEvent) -> None:
+        if event.event_type == "pipeline_started":
+            await updater.send_update("scanning_documents", {"status": "scanning", "source": display_path})
+        elif event.event_type == "file_started":
+            stats["files_found"] += 1
+        elif event.event_type == "file_completed":
+            chunks = event.details.get("chunks_created", 0)
+            stats["chunks_created"] += chunks
+            await updater.send_update("document_extracted", {"uri": event.file_uri, "chunks_created": chunks})
+        elif event.event_type == "file_failed":
+            await updater.send_update(
+                "document_failed",
+                {"uri": event.file_uri, "error": event.details.get("error", "Unknown error")},
+            )
+        elif event.event_type == "pipeline_completed":
+            await updater.send_update(
+                "scanning_completed",
+                {
+                    "status": "scanning_completed",
+                    "total_files_found": stats["files_found"],
+                    "chunks_created": stats["chunks_created"],
+                },
+            )
+
+    return callback
+
+
+async def _process_with_pipeline_executor(
+    collection: dict[str, Any],
+    connector: Any,
+    session: Any,
+    updater: CeleryTaskWithOperationUpdates,
+    display_path: str,
+) -> dict[str, Any]:
+    """Process documents using PipelineExecutor.
+
+    This function uses the new DAG-based pipeline abstraction to process
+    documents through enumeration, parsing, and chunking stages.
+
+    Args:
+        collection: Collection dictionary with config including pipeline_config
+        connector: Authenticated connector instance
+        session: Database session
+        updater: Celery task updater for progress reporting
+        display_path: Display path for the source
+
+    Returns:
+        Dict with success flag and processing statistics
+
+    Raises:
+        ValueError: If pipeline_config is missing from collection
+    """
+    from shared.pipeline.executor import PipelineExecutor
+    from shared.pipeline.executor_types import ExecutionMode
+    from shared.pipeline.types import PipelineDAG
+
+    pipeline_config = collection.get("pipeline_config")
+    if not pipeline_config:
+        raise ValueError("pipeline_config required for pipeline executor")
+
+    dag = PipelineDAG.from_dict(pipeline_config)
+    progress_callback = _create_progress_adapter(updater, display_path)
+
+    executor = PipelineExecutor(
+        dag=dag,
+        collection_id=collection["id"],
+        session=session,
+        connector=connector,
+        mode=ExecutionMode.FULL,
+    )
+
+    # Execute pipeline over enumerated files
+    result = await executor.execute(
+        file_refs=connector.enumerate(),
+        progress_callback=progress_callback,
+    )
+
+    return {
+        "success": not result.halted and result.files_failed == 0,
+        "files_processed": result.files_processed,
+        "files_succeeded": result.files_succeeded,
+        "files_failed": result.files_failed,
+        "files_skipped": result.files_skipped,
+        "chunks_created": result.chunks_created,
+        "documents_added": result.files_succeeded,
+    }
+
+
 @celery_app.task(bind=True)
 def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
     """Test task to verify Celery is working."""
@@ -253,6 +358,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "total_size_bytes": getattr(collection_obj, "total_size_bytes", 0) or 0,
                         "extraction_config": getattr(collection_obj, "extraction_config", None),
                         "default_reranker_id": getattr(collection_obj, "default_reranker_id", None),
+                        # Pipeline DAG support
+                        "pipeline_config": getattr(collection_obj, "pipeline_config", None),
+                        "pipeline_version": getattr(collection_obj, "pipeline_version", 1),
+                        "persist_originals": getattr(collection_obj, "persist_originals", False),
                     }
 
                     vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
@@ -2631,4 +2740,6 @@ __all__ = [
     "_process_remove_source_operation",
     "_handle_task_failure",
     "_handle_task_failure_async",
+    "_create_progress_adapter",
+    "_process_with_pipeline_executor",
 ]

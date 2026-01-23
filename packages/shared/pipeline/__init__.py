@@ -76,6 +76,7 @@ Example:
     True
 """
 
+from shared.pipeline.defaults import get_default_pipeline
 from shared.pipeline.executor import PipelineExecutionError, PipelineExecutor
 from shared.pipeline.executor_types import (
     ChunkStats,
@@ -133,4 +134,6 @@ __all__ = [
     # Validation
     "validate_dag",
     "SOURCE_NODE",
+    # Defaults
+    "get_default_pipeline",
 ]
