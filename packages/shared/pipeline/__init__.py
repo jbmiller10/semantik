@@ -1,7 +1,8 @@
 """Pipeline DAG abstraction for document processing.
 
-This package provides data structures and validation logic for representing
-document processing pipelines as directed acyclic graphs (DAGs).
+This package provides data structures, validation logic, and execution engine
+for representing and running document processing pipelines as directed acyclic
+graphs (DAGs).
 
 Core Types:
     - NodeType: Enum of processing node types (PARSER, CHUNKER, EXTRACTOR, EMBEDDER)
@@ -12,6 +13,20 @@ Core Types:
     - PipelineEdge: An edge connecting nodes with optional predicates
     - PipelineDAG: Complete DAG definition with validation
     - DAGValidationError: Error found during validation
+
+Execution Types:
+    - ExecutionMode: Mode of execution (FULL or DRY_RUN)
+    - ExecutionResult: Result of pipeline execution
+    - ProgressEvent: Progress events during execution
+    - ChunkStats: Statistics about chunks created
+    - SampleOutput: Sample output from DRY_RUN mode
+    - StageFailure: Details of a failure at a stage
+
+Execution Components:
+    - PipelineExecutor: Main execution engine
+    - PipelineLoader: Content loading with hash computation
+    - PipelineRouter: DAG edge matching and traversal
+    - ConsecutiveFailureTracker: Failure detection for halt logic
 
 Predicate Matching:
     - matches_predicate: Check if a file matches an edge's predicate
@@ -61,7 +76,19 @@ Example:
     True
 """
 
+from shared.pipeline.executor import PipelineExecutionError, PipelineExecutor
+from shared.pipeline.executor_types import (
+    ChunkStats,
+    ExecutionMode,
+    ExecutionResult,
+    ProgressEvent,
+    SampleOutput,
+    StageFailure,
+)
+from shared.pipeline.failure_tracker import ConsecutiveFailureTracker, FailureRecord
+from shared.pipeline.loader import LoadError, PipelineLoader
 from shared.pipeline.predicates import get_nested_value, match_value, matches_predicate
+from shared.pipeline.router import PipelineRouter
 from shared.pipeline.types import (
     DAGValidationError,
     FileReference,
@@ -75,7 +102,7 @@ from shared.pipeline.types import (
 from shared.pipeline.validation import SOURCE_NODE, validate_dag
 
 __all__ = [
-    # Types
+    # Core Types
     "NodeType",
     "FileReference",
     "LoadResult",
@@ -84,6 +111,21 @@ __all__ = [
     "PipelineEdge",
     "DAGValidationError",
     "PipelineDAG",
+    # Execution Types
+    "ExecutionMode",
+    "ExecutionResult",
+    "ProgressEvent",
+    "ChunkStats",
+    "SampleOutput",
+    "StageFailure",
+    # Execution Components
+    "PipelineExecutor",
+    "PipelineExecutionError",
+    "PipelineLoader",
+    "LoadError",
+    "PipelineRouter",
+    "ConsecutiveFailureTracker",
+    "FailureRecord",
     # Predicates
     "matches_predicate",
     "match_value",
