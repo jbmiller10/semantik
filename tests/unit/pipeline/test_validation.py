@@ -1,9 +1,7 @@
 """Unit tests for pipeline DAG validation."""
 
-import pytest
 
 from shared.pipeline.types import (
-    DAGValidationError,
     NodeType,
     PipelineDAG,
     PipelineEdge,

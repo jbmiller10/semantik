@@ -223,7 +223,7 @@ class TestMatchValue:
 class TestMatchesPredicate:
     """Tests for matches_predicate function."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def pdf_file_ref(self) -> FileReference:
         """Create a PDF file reference for testing."""
         return FileReference(
@@ -237,7 +237,7 @@ class TestMatchesPredicate:
             source_metadata={"language": "en", "pages": 10},
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def markdown_file_ref(self) -> FileReference:
         """Create a Markdown file reference for testing."""
         return FileReference(

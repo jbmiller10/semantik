@@ -35,7 +35,7 @@ class TestNodeType:
 
     def test_invalid_string_raises(self) -> None:
         """Test that invalid string raises ValueError."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="'invalid' is not a valid NodeType"):
             NodeType("invalid")
 
     def test_is_string_subclass(self) -> None:
@@ -251,7 +251,7 @@ class TestFileReference:
 class TestLoadResult:
     """Tests for LoadResult dataclass."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def file_ref(self) -> FileReference:
         """Create a test FileReference."""
         return FileReference(
@@ -327,7 +327,7 @@ class TestLoadResult:
 class TestParseResult:
     """Tests for ParseResult dataclass."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def file_ref(self) -> FileReference:
         """Create a test FileReference."""
         return FileReference(
