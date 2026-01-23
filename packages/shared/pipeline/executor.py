@@ -8,7 +8,6 @@ extraction, and embedding stages.
 from __future__ import annotations
 
 import logging
-import os
 import time
 import traceback
 import uuid
@@ -42,8 +41,14 @@ if TYPE_CHECKING:
 
 
 def _get_internal_api_key() -> str:
-    """Get the internal API key for VecPipe communication."""
-    return os.getenv("INTERNAL_API_KEY", "")
+    """Get the internal API key for VecPipe communication.
+
+    Uses the shared settings which are populated by ensure_internal_api_key()
+    at Celery app startup, falling back to environment variable.
+    """
+    from shared.config import settings
+
+    return settings.INTERNAL_API_KEY or ""
 
 logger = logging.getLogger(__name__)
 
@@ -445,18 +450,19 @@ class PipelineExecutor:
 
         Returns:
             Skip reason if file should be skipped, None to process
+
+        Raises:
+            Exception: Database errors propagate to caller for proper handling
         """
         if self.mode == ExecutionMode.DRY_RUN:
             # In DRY_RUN mode, don't skip anything
             return None
 
-        try:
-            existing = await self._doc_repo.get_by_uri(self.collection_id, file_ref.uri)
-            if existing and existing.content_hash == content_hash:
-                return "unchanged"
-        except Exception as e:
-            # Log but don't fail - proceed with processing
-            logger.warning("Error checking for existing document: %s", e)
+        # get_by_uri returns None if document doesn't exist, so no need to catch
+        # exceptions here. DB connectivity/transaction errors should propagate.
+        existing = await self._doc_repo.get_by_uri(self.collection_id, file_ref.uri)
+        if existing and existing.content_hash == content_hash:
+            return "unchanged"
 
         return None
 

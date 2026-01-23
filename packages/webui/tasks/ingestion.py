@@ -1326,7 +1326,7 @@ async def _process_append_operation_impl(
             current_vector_count = qdrant_info.points_count if qdrant_info else 0
 
             # Get document count from database
-            doc_stats = await document_repo.get_document_statistics(collection["id"])
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
             current_doc_count = int(doc_stats.get("total_documents") or 0)
 
             await collection_repo.update_stats(

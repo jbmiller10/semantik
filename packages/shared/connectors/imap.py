@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import email
 import email.utils
@@ -279,10 +280,11 @@ class ImapConnector(BaseConnector):
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")
 
+        loop = asyncio.get_running_loop()
         try:
-            conn = self._connect()
-            conn.login(self.username, self._password)
-            conn.logout()
+            conn = await loop.run_in_executor(None, self._connect)
+            await loop.run_in_executor(None, conn.login, self.username, self._password)
+            await loop.run_in_executor(None, conn.logout)
             logger.info(f"Successfully authenticated to {self.host} as {self.username}")
             return True
         except imaplib.IMAP4.error as e:
@@ -307,11 +309,12 @@ class ImapConnector(BaseConnector):
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")
 
-        conn = self._connect()
+        loop = asyncio.get_running_loop()
+        conn = await loop.run_in_executor(None, self._connect)
         self._connection = conn
 
         try:
-            conn.login(self.username, self._password)
+            await loop.run_in_executor(None, conn.login, self.username, self._password)
             total_fetched = 0
 
             for mailbox in self.mailboxes:
@@ -324,7 +327,7 @@ class ImapConnector(BaseConnector):
                     yield ref
                     total_fetched += 1
 
-            conn.logout()
+            await loop.run_in_executor(None, conn.logout)
 
         except imaplib.IMAP4.error as e:
             logger.error(f"IMAP error: {e}")
@@ -349,9 +352,12 @@ class ImapConnector(BaseConnector):
         if not self._connection:
             return
 
+        loop = asyncio.get_running_loop()
+        conn = self._connection
+
         # Select mailbox
         try:
-            status, data = self._connection.select(f'"{mailbox}"')
+            status, data = await loop.run_in_executor(None, conn.select, f'"{mailbox}"')
             if status != "OK":
                 logger.warning(f"Cannot select mailbox {mailbox}: {data}")
                 return
@@ -360,7 +366,7 @@ class ImapConnector(BaseConnector):
             return
 
         # Get UIDVALIDITY
-        status, uidvalidity_data = self._connection.response("UIDVALIDITY")
+        status, uidvalidity_data = await loop.run_in_executor(None, conn.response, "UIDVALIDITY")
         uidvalidity: int | None = None
         if status == "OK" and uidvalidity_data and uidvalidity_data[0]:
             with contextlib.suppress(ValueError, TypeError):
@@ -390,7 +396,9 @@ class ImapConnector(BaseConnector):
 
         # Search for messages
         try:
-            status, search_data = self._connection.uid("SEARCH", "", search_criteria)
+            status, search_data = await loop.run_in_executor(
+                None, conn.uid, "SEARCH", "", search_criteria
+            )
             if status != "OK" or not search_data or not search_data[0]:
                 logger.debug(f"No new messages in {mailbox}")
                 # Still update cursor with uidvalidity
@@ -424,8 +432,10 @@ class ImapConnector(BaseConnector):
             uid = int(uid_bytes)
 
             try:
-                # Fetch headers only (no body - defer to executor)
-                status, fetch_data = self._connection.uid("FETCH", str(uid), "(BODY.PEEK[HEADER] RFC822.SIZE)")
+                # Fetch headers only (no body - defer to pipeline executor)
+                status, fetch_data = await loop.run_in_executor(
+                    None, conn.uid, "FETCH", str(uid), "(BODY.PEEK[HEADER] RFC822.SIZE)"
+                )
                 if status != "OK" or not fetch_data or not fetch_data[0]:
                     continue
 
@@ -523,18 +533,22 @@ class ImapConnector(BaseConnector):
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")
 
+        loop = asyncio.get_running_loop()
+
         # Create a new connection for content loading
-        conn = self._connect()
+        conn = await loop.run_in_executor(None, self._connect)
         try:
-            conn.login(self.username, self._password)
+            await loop.run_in_executor(None, conn.login, self.username, self._password)
 
             # Select the mailbox
-            status, data = conn.select(f'"{mailbox}"')
+            status, data = await loop.run_in_executor(None, conn.select, f'"{mailbox}"')
             if status != "OK":
                 raise ValueError(f"Cannot select mailbox {mailbox}: {data}")
 
             # Fetch full message content
-            status, fetch_data = conn.uid("FETCH", str(uid), "(RFC822)")
+            status, fetch_data = await loop.run_in_executor(
+                None, conn.uid, "FETCH", str(uid), "(RFC822)"
+            )
             if status != "OK" or not fetch_data or not fetch_data[0]:
                 raise ValueError(f"Cannot fetch message UID {uid} from {mailbox}")
 
@@ -547,7 +561,7 @@ class ImapConnector(BaseConnector):
 
         finally:
             with contextlib.suppress(Exception):
-                conn.logout()
+                await loop.run_in_executor(None, conn.logout)
 
     def cleanup(self) -> None:
         """Close IMAP connection if open."""

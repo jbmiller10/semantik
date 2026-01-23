@@ -209,6 +209,42 @@ class TestPipelineLoader:
         assert result.content_hash == hashlib.sha256(binary_content).hexdigest()
 
 
+    @pytest.mark.asyncio()
+    async def test_load_permission_denied(self, tmp_path: Path) -> None:
+        """Test loading file with no read permissions raises LoadError."""
+        import sys
+
+        # Skip on Windows - permission model is different
+        if sys.platform == "win32":
+            pytest.skip("Permission test not applicable on Windows")
+
+        restricted_file = tmp_path / "restricted.txt"
+        restricted_file.write_text("secret content")
+        original_mode = restricted_file.stat().st_mode
+
+        try:
+            # Remove read permissions
+            restricted_file.chmod(0o000)
+
+            loader = PipelineLoader()
+            file_ref = FileReference(
+                uri=f"file://{restricted_file}",
+                source_type="directory",
+                content_type="document",
+                size_bytes=14,
+                source_metadata={"local_path": str(restricted_file)},
+            )
+
+            with pytest.raises(LoadError) as exc_info:
+                await loader.load(file_ref)
+
+            assert "Permission denied" in exc_info.value.reason
+
+        finally:
+            # Restore permissions for cleanup
+            restricted_file.chmod(original_mode)
+
+
 class TestLoadError:
     """Tests for LoadError exception."""
 

@@ -178,7 +178,7 @@ class ExecutionResult:
         files_succeeded: Files that completed successfully
         files_failed: Files that failed processing
         files_skipped: Files skipped due to unchanged content
-        chunks_created: Total chunks created (0 in DRY_RUN mode)
+        chunks_created: Total chunks created during execution
         chunk_stats: Statistics about chunks (if available)
         failures: List of failures encountered
         stage_timings: Time spent in each stage (stage_id -> milliseconds)

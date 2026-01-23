@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.database.models import DocumentStatus
 from shared.pipeline.executor import PipelineExecutor
 from shared.pipeline.executor_types import ExecutionMode
 from shared.pipeline.types import (
@@ -577,3 +578,110 @@ class TestPipelineExecutorExecute:
         assert result.chunk_stats.avg_tokens == 200.0
         assert result.chunk_stats.min_tokens == 100
         assert result.chunk_stats.max_tokens == 300
+
+    @pytest.mark.asyncio()
+    async def test_should_skip_unchanged_document_in_full_mode(
+        self,
+        valid_dag: PipelineDAG,
+        temp_file: Path,
+    ) -> None:
+        """Test that unchanged documents are skipped in FULL mode."""
+        # Create mock session
+        mock_session = AsyncMock()
+
+        # Create a mock existing document with matching content hash
+        mock_existing_doc = MagicMock()
+        mock_existing_doc.content_hash = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"  # SHA256 of "Hello World"
+        mock_existing_doc.status = DocumentStatus.COMPLETED
+
+        # Create a mock doc repo that returns the existing document
+        mock_doc_repo = MagicMock()
+        mock_doc_repo.get_by_uri = AsyncMock(return_value=mock_existing_doc)
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=11,
+            source_metadata={"local_path": str(temp_file)},
+        )
+
+        # Write "Hello World" to temp file to match the hash
+        temp_file.write_text("Hello World")
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            yield file_ref
+
+        with patch(
+            "shared.pipeline.executor.DocumentRepository",
+            return_value=mock_doc_repo,
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.FULL,  # FULL mode - change detection enabled
+            )
+
+            result = await executor.execute(file_iterator())
+
+        # Should be skipped due to unchanged content
+        assert result.files_processed == 1
+        assert result.files_skipped == 1
+        assert result.files_succeeded == 0
+        assert result.files_failed == 0
+
+    @pytest.mark.asyncio()
+    async def test_failing_callback_does_not_crash_pipeline(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_parser: MagicMock,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that a failing progress callback doesn't stop execution."""
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            source_metadata={"local_path": str(temp_file)},
+        )
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            yield file_ref
+
+        callback_call_count = 0
+
+        async def failing_callback(event):  # noqa: ARG001
+            nonlocal callback_call_count
+            callback_call_count += 1
+            raise RuntimeError("Callback failed!")
+
+        with (
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            # Execute should complete despite failing callback
+            result = await executor.execute(file_iterator(), progress_callback=failing_callback)
+
+        # Pipeline should complete successfully
+        assert result.files_processed == 1
+        assert result.files_succeeded == 1
+        assert result.files_failed == 0
+        # Callback should have been called multiple times (events still emitted)
+        assert callback_call_count > 0
