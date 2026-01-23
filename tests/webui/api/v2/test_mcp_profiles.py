@@ -865,3 +865,155 @@ async def test_create_profile_with_mix_of_owned_and_unowned_collections_returns_
         },
     )
     assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+# =============================================================================
+# Additional Edge Cases (Phase 9)
+# =============================================================================
+
+
+@pytest.mark.asyncio()
+async def test_list_profiles_filter_by_disabled(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Listing profiles with enabled=false filter should return only disabled profiles."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Create enabled profile
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "enabled-for-filter-test",
+            "description": "Enabled",
+            "collection_ids": [collection.id],
+            "enabled": True,
+        },
+    )
+
+    # Create disabled profile
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "disabled-for-filter-test",
+            "description": "Disabled",
+            "collection_ids": [collection.id],
+            "enabled": False,
+        },
+    )
+
+    # Filter by enabled=false should only return disabled profiles
+    response = await api_client.get("/api/v2/mcp/profiles?enabled=false", headers=api_auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert all(not p["enabled"] for p in payload["profiles"])
+    # Verify our disabled profile is in the results
+    names = {p["name"] for p in payload["profiles"]}
+    assert "disabled-for-filter-test" in names
+    assert "enabled-for-filter-test" not in names
+
+
+@pytest.mark.asyncio()
+async def test_get_profile_config_http_transport(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Getting profile config with HTTP transport returns HTTP-specific configuration."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "http-profile",
+            "description": "Test HTTP transport",
+            "collection_ids": [collection.id],
+        },
+    )
+    profile_id = create_response.json()["id"]
+
+    # Request HTTP transport config
+    response = await api_client.get(
+        f"/api/v2/mcp/profiles/{profile_id}/config?transport=http",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["transport"] == "http"
+    assert payload["server_name"] == "semantik-http-profile"
+    assert "url" in payload
+    assert "/mcp" in payload["url"]
+    # HTTP transport should NOT have command/args/env
+    assert payload.get("command") is None
+    assert payload.get("args") is None
+    assert payload.get("env") is None
+
+
+@pytest.mark.asyncio()
+async def test_update_profile_with_use_hyde(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Updating profile with use_hyde parameter persists correctly."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "hyde-profile",
+            "description": "Test HyDE",
+            "collection_ids": [collection.id],
+            "use_hyde": False,
+        },
+    )
+    profile_id = create_response.json()["id"]
+    assert create_response.json()["use_hyde"] is False
+
+    # Update to enable HyDE
+    response = await api_client.put(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+        json={"use_hyde": True},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["use_hyde"] is True
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_empty_collections_list_validation_error(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Creating a profile with empty collection list should return validation error."""
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "empty-collections-profile",
+            "description": "Profile with no collections",
+            "collection_ids": [],  # Empty list - should fail validation
+        },
+    )
+
+    # Schema requires min_length=1 for collection_ids
+    assert response.status_code == 422
+    payload = response.json()
+    assert "detail" in payload
+    # Verify the error is about collection_ids being too short
+    errors = payload["detail"]
+    assert any(
+        error.get("loc") == ["body", "collection_ids"] and "too_short" in error.get("type", "")
+        for error in errors
+    )

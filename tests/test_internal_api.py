@@ -168,6 +168,354 @@ class TestInternalAPIIntegration:
             assert result == ["work_docs"]
 
 
+class TestValidateApiKeyEndpoint:
+    """Tests for the /api/internal/validate-api-key endpoint."""
+
+    @pytest.fixture()
+    def client_with_mocked_auth(self) -> Generator[TestClient, None, None]:
+        """Create test client with mocked auth verification."""
+        app = FastAPI()
+        app.include_router(router)
+
+        mock_db = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        yield client
+
+        app.dependency_overrides.clear()
+
+    def test_validate_api_key_empty_key_returns_error(self, client_with_mocked_auth) -> None:
+        """Test that empty API key returns validation error."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": ""},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is False
+            assert data["error"] == "API key is required"
+            assert data["user_id"] is None
+            assert data["username"] is None
+
+    def test_validate_api_key_whitespace_only_returns_error(self, client_with_mocked_auth) -> None:
+        """Test that whitespace-only API key returns validation error."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": "   "},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is False
+            assert data["error"] == "API key is required"
+
+    def test_validate_api_key_invalid_key_returns_error(self, client_with_mocked_auth) -> None:
+        """Test that invalid API key returns validation error."""
+        with (
+            patch("webui.api.internal.settings") as mock_settings,
+            patch("webui.api.internal._verify_api_key") as mock_verify,
+        ):
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+            mock_verify.return_value = None  # Invalid key
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": "invalid-user-key"},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is False
+            assert data["error"] == "Invalid or expired API key"
+            mock_verify.assert_called_once_with("invalid-user-key", update_last_used=False)
+
+    def test_validate_api_key_no_user_id_returns_error(self, client_with_mocked_auth) -> None:
+        """Test that API key without user ID returns error."""
+        with (
+            patch("webui.api.internal.settings") as mock_settings,
+            patch("webui.api.internal._verify_api_key") as mock_verify,
+        ):
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+            mock_verify.return_value = {"user": {}}  # No user ID
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": "user-key-without-user"},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is False
+            assert data["error"] == "API key has no associated user"
+
+    def test_validate_api_key_inactive_user_returns_error(self, client_with_mocked_auth) -> None:
+        """Test that API key for inactive user returns error."""
+        with (
+            patch("webui.api.internal.settings") as mock_settings,
+            patch("webui.api.internal._verify_api_key") as mock_verify,
+        ):
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+            mock_verify.return_value = {
+                "user": {"id": 123, "username": "inactive_user", "is_active": False}
+            }
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": "inactive-user-key"},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is False
+            assert data["error"] == "User account is inactive"
+
+    def test_validate_api_key_valid_returns_user_info(self, client_with_mocked_auth) -> None:
+        """Test that valid API key returns user info."""
+        with (
+            patch("webui.api.internal.settings") as mock_settings,
+            patch("webui.api.internal._verify_api_key") as mock_verify,
+        ):
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+            mock_verify.return_value = {
+                "user": {"id": 42, "username": "testuser", "is_active": True}
+            }
+
+            response = client_with_mocked_auth.post(
+                "/api/internal/validate-api-key",
+                json={"api_key": "valid-user-key"},
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is True
+            assert data["user_id"] == 42
+            assert data["username"] == "testuser"
+            assert data["error"] is None
+
+
+class TestCompleteReindexEndpoint:
+    """Tests for the /api/internal/complete-reindex endpoint."""
+
+    @pytest.fixture()
+    def client_with_mocked_repos(self, mock_collection_repository) -> Generator[TestClient, None, None]:
+        """Create test client with mocked repositories."""
+        app = FastAPI()
+        app.include_router(router)
+
+        mock_db = AsyncMock()
+        mock_db.begin = MagicMock(return_value=AsyncMock())
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_collection_repository] = lambda: mock_collection_repository
+
+        client = TestClient(app)
+        yield client
+
+        app.dependency_overrides.clear()
+
+    def test_complete_reindex_collection_not_found(self, client_with_mocked_repos, mock_collection_repository) -> None:
+        """Test 404 when collection does not exist."""
+        mock_collection_repository.get_by_uuid = AsyncMock(return_value=None)
+
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "staging_collection",
+                    "vector_count": 100,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_complete_reindex_wrong_status_returns_409(
+        self, client_with_mocked_repos, mock_collection_repository
+    ) -> None:
+        """Test 409 when collection is not in PROCESSING status."""
+        from shared.database.models import CollectionStatus
+
+        mock_collection = MagicMock()
+        mock_collection.status = CollectionStatus.READY  # Wrong status
+
+        mock_collection_repository.get_by_uuid = AsyncMock(return_value=mock_collection)
+
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "staging_collection",
+                    "vector_count": 100,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 409
+            assert "PROCESSING" in response.json()["detail"]
+
+    def test_complete_reindex_with_config_updates(
+        self, client_with_mocked_repos, mock_collection_repository
+    ) -> None:
+        """Test that new_config is applied during reindex completion."""
+        from shared.database.models import CollectionStatus
+
+        mock_collection = MagicMock()
+        mock_collection.status = CollectionStatus.PROCESSING
+        mock_collection.qdrant_collections = ["old_collection_1"]
+        mock_collection.embedding_model = "old-model"
+        mock_collection.chunk_size = 500
+        mock_collection.chunk_overlap = 50
+
+        mock_collection_repository.get_by_uuid = AsyncMock(return_value=mock_collection)
+        mock_collection_repository.update = AsyncMock()
+
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "new_staging_collection",
+                    "vector_count": 250,
+                    "new_config": {
+                        "embedding_model": "new-model",
+                        "chunk_size": 1000,
+                        "chunk_overlap": 100,
+                    },
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["old_collection_names"] == ["old_collection_1"]
+            assert "successfully" in data["message"].lower()
+
+            # Verify update was called with config values
+            mock_collection_repository.update.assert_called_once()
+            call_args = mock_collection_repository.update.call_args
+            updates = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("updates", {})
+
+            assert updates["qdrant_collections"] == ["new_staging_collection"]
+            assert updates["status"] == CollectionStatus.READY
+            assert updates["vector_count"] == 250
+            assert updates["embedding_model"] == "new-model"
+            assert updates["chunk_size"] == 1000
+            assert updates["chunk_overlap"] == 100
+
+    def test_complete_reindex_success_without_config(
+        self, client_with_mocked_repos, mock_collection_repository
+    ) -> None:
+        """Test successful reindex completion without config updates."""
+        from shared.database.models import CollectionStatus
+
+        mock_collection = MagicMock()
+        mock_collection.status = CollectionStatus.PROCESSING
+        mock_collection.qdrant_collections = ["old_1", "old_2"]
+
+        mock_collection_repository.get_by_uuid = AsyncMock(return_value=mock_collection)
+        mock_collection_repository.update = AsyncMock()
+
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "new_staging",
+                    "vector_count": 50,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["old_collection_names"] == ["old_1", "old_2"]
+
+    def test_complete_reindex_invalid_uuid_format(self, client_with_mocked_repos) -> None:
+        """Test validation error for invalid UUID format."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "not-a-uuid",
+                    "operation_id": "also-not-a-uuid",
+                    "staging_collection_name": "staging",
+                    "vector_count": 10,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 422  # Pydantic validation error
+
+    def test_complete_reindex_negative_vector_count(self, client_with_mocked_repos) -> None:
+        """Test validation error for negative vector count."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "staging",
+                    "vector_count": -1,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 422  # Pydantic validation error
+
+    def test_complete_reindex_empty_staging_name(self, client_with_mocked_repos) -> None:
+        """Test validation error for empty staging collection name."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = "internal-key"
+
+            response = client_with_mocked_repos.post(
+                "/api/internal/complete-reindex",
+                json={
+                    "collection_id": "00000000-0000-0000-0000-000000000001",
+                    "operation_id": "00000000-0000-0000-0000-000000000002",
+                    "staging_collection_name": "",
+                    "vector_count": 10,
+                },
+                headers={"X-Internal-Api-Key": "internal-key"},
+            )
+
+            assert response.status_code == 422  # Pydantic validation error
+
+
 class TestInternalApiKeyConfiguration:
     """Tests for internal API key configuration during app startup."""
 

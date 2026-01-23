@@ -32,6 +32,9 @@ const mockProfile: MCPProfile = {
   description: 'A test profile',
   enabled: true,
   search_type: 'semantic',
+  search_mode: 'dense',
+  rrf_k: null,
+  use_hyde: false,
   result_count: 10,
   use_reranker: true,
   score_threshold: null,
@@ -49,6 +52,7 @@ const mockConfig: MCPClientConfig = {
     SEMANTIK_API_URL: 'http://localhost:8000',
     SEMANTIK_API_KEY: '<your-access-token-or-api-key>',
   },
+  transport: 'stdio',
 };
 
 // API Key test data
@@ -401,6 +405,155 @@ describe('ConfigModal', () => {
 
       // Tool name appears multiple times, check it exists
       expect(screen.getAllByText('search_my-profile_v2').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('HTTP Transport', () => {
+    // Mock config for HTTP transport
+    const mockHttpConfig: MCPClientConfig = {
+      server_name: 'semantik-test-profile',
+      type: 'sse',
+      url: 'http://localhost:9090/mcp/sse',
+      transport: 'http',
+    };
+
+    beforeEach(() => {
+      // Start with stdio config, will switch to HTTP
+      mockUseMCPProfileConfig.mockImplementation((profileId, transport) => {
+        if (transport === 'http') {
+          return {
+            data: mockHttpConfig,
+            isLoading: false,
+            error: null,
+          } as ReturnType<typeof useMCPProfileConfig>;
+        }
+        return {
+          data: mockConfig,
+          isLoading: false,
+          error: null,
+        } as ReturnType<typeof useMCPProfileConfig>;
+      });
+    });
+
+    it('should switch to HTTP transport via Docker button', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // Find and click the "Docker (http)" button
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // Verify the button is now selected (has the selected styles)
+      expect(dockerButton).toHaveClass('bg-gray-200');
+    });
+
+    it('should show HTTP-specific success banner when HTTP transport is selected', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // Should show the HTTP-specific success banner
+      await waitFor(() => {
+        expect(screen.getByText('Config ready to copy')).toBeInTheDocument();
+        expect(screen.getByText(/Docker-hosted MCP server uses server-level authentication/)).toBeInTheDocument();
+        expect(screen.getByText('MCP_SERVER_AUTH_TOKEN')).toBeInTheDocument();
+      });
+    });
+
+    it('should hide ApiKeySelector when HTTP transport is selected', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // In stdio mode, API Key selector should be visible
+      expect(screen.getByText('API Key')).toBeInTheDocument();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // API Key selector should no longer be visible
+      await waitFor(() => {
+        expect(screen.queryByText('API Key')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should hide config file paths when HTTP transport is selected', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // In stdio mode, config file paths should be visible
+      expect(screen.getByText('Config File Location')).toBeInTheDocument();
+      expect(screen.getByText('macOS:')).toBeInTheDocument();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // Config file paths should no longer be visible
+      await waitFor(() => {
+        expect(screen.queryByText('Config File Location')).not.toBeInTheDocument();
+        expect(screen.queryByText('macOS:')).not.toBeInTheDocument();
+        expect(screen.queryByText('Linux:')).not.toBeInTheDocument();
+        expect(screen.queryByText('Windows:')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should show descriptive text for HTTP transport', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // Should show HTTP-specific description
+      await waitFor(() => {
+        expect(screen.getByText(/Connects to Docker-hosted MCP server on port 9090/)).toBeInTheDocument();
+      });
+    });
+
+    it('should not show amber warning banner when HTTP transport is selected', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // In stdio mode without API key, amber warning should be visible
+      expect(screen.getByText('Replace the auth token')).toBeInTheDocument();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      // Amber warning should be replaced with green success banner
+      await waitFor(() => {
+        expect(screen.queryByText('Replace the auth token')).not.toBeInTheDocument();
+        expect(screen.getByText('Config ready to copy')).toBeInTheDocument();
+      });
+    });
+
+    it('should switch back to stdio transport from HTTP', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // Switch to HTTP transport
+      const dockerButton = screen.getByRole('button', { name: /docker \(http\)/i });
+      await user.click(dockerButton);
+
+      await waitFor(() => {
+        expect(screen.queryByText('API Key')).not.toBeInTheDocument();
+      });
+
+      // Switch back to stdio
+      const localButton = screen.getByRole('button', { name: /local \(stdio\)/i });
+      await user.click(localButton);
+
+      // API Key selector should reappear
+      await waitFor(() => {
+        expect(screen.getByText('API Key')).toBeInTheDocument();
+        expect(screen.getByText('Config File Location')).toBeInTheDocument();
+      });
     });
   });
 
