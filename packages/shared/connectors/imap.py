@@ -518,9 +518,7 @@ class ImapConnector(BaseConnector):
         mailbox = file_ref.source_metadata.get("mailbox")
 
         if uid is None or not mailbox:
-            raise ValueError(
-                f"Missing uid or mailbox in source_metadata for {file_ref.uri}"
-            )
+            raise ValueError(f"Missing uid or mailbox in source_metadata for {file_ref.uri}")
 
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")

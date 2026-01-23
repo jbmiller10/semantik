@@ -196,11 +196,13 @@ class TestPipelineExecutorWithLocalConnector:
         mock_session: AsyncMock,
     ) -> None:
         """Test with file include pattern."""
-        connector = LocalFileConnector({
-            "path": str(temp_docs_dir),
-            "recursive": True,
-            "include_patterns": ["*.txt"],
-        })
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "recursive": True,
+                "include_patterns": ["*.txt"],
+            }
+        )
         await connector.authenticate()
 
         file_refs: list[FileReference] = []
@@ -233,10 +235,12 @@ class TestPipelineExecutorWithLocalConnector:
         mock_session: AsyncMock,
     ) -> None:
         """Test progress events are emitted correctly."""
-        connector = LocalFileConnector({
-            "path": str(temp_docs_dir),
-            "include_patterns": ["doc1.txt"],
-        })
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "include_patterns": ["doc1.txt"],
+            }
+        )
         await connector.authenticate()
 
         file_refs: list[FileReference] = []
@@ -309,10 +313,12 @@ class TestPipelineExecutorWithLocalConnector:
         mock_session: AsyncMock,
     ) -> None:
         """Test stage timings are recorded."""
-        connector = LocalFileConnector({
-            "path": str(temp_docs_dir),
-            "include_patterns": ["doc1.txt"],
-        })
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "include_patterns": ["doc1.txt"],
+            }
+        )
         await connector.authenticate()
 
         file_refs: list[FileReference] = []
@@ -462,10 +468,12 @@ class TestPipelineExecutorLoadContent:
         mock_session: AsyncMock,
     ) -> None:
         """Test that content is loaded via connector.load_content()."""
-        connector = LocalFileConnector({
-            "path": str(temp_docs_dir),
-            "include_patterns": ["doc1.txt"],
-        })
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "include_patterns": ["doc1.txt"],
+            }
+        )
         await connector.authenticate()
 
         # Get file ref

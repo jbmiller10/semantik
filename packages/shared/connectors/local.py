@@ -180,17 +180,44 @@ class LocalFileConnector(BaseConnector):
 
         # Code files
         code_extensions = {
-            ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs", ".rb",
-            ".php", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".kt", ".scala",
-            ".sh", ".bash", ".zsh", ".sql", ".graphql",
+            ".py",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".rb",
+            ".php",
+            ".c",
+            ".cpp",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".sql",
+            ".graphql",
         }
         if ext in code_extensions:
             return "code"
 
         # Configuration files
         config_extensions = {
-            ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf",
-            ".xml", ".env",
+            ".yaml",
+            ".yml",
+            ".json",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".xml",
+            ".env",
         }
         if ext in config_extensions:
             return "config"
