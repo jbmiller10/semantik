@@ -460,7 +460,10 @@ class TestImapConnectorEnumerate:
             if cmd == "SEARCH":
                 return ("OK", [b"100"])
             if cmd == "FETCH":
-                return ("OK", [(b"100 (BODY[HEADER] {123} RFC822.SIZE 5000", test_header.encode()), b"RFC822.SIZE 5000"])
+                return (
+                    "OK",
+                    [(b"100 (BODY[HEADER] {123} RFC822.SIZE 5000", test_header.encode()), b"RFC822.SIZE 5000"],
+                )
             return ("OK", [])
 
         mock_conn.uid = mock_uid
