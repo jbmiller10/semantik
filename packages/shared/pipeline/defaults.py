@@ -43,10 +43,13 @@ def get_default_pipeline(
     chunk_size = chunk_config.get("chunk_size", 1000)
     chunk_overlap = chunk_config.get("chunk_overlap", 200)
 
-    # Build chunker config
+    # Build chunker config, ensuring overlap_tokens < min_tokens
+    base_min_tokens = max(100, chunk_size // 10)
+    # Ensure min_tokens is always greater than overlap_tokens
+    min_tokens = max(base_min_tokens, chunk_overlap + 1)
     chunker_config: dict[str, Any] = {
         "max_tokens": chunk_size,
-        "min_tokens": max(100, chunk_size // 10),
+        "min_tokens": min_tokens,
         "overlap_tokens": chunk_overlap,
     }
     # Merge any strategy-specific config

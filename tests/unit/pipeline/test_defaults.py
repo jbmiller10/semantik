@@ -74,24 +74,31 @@ class TestGetDefaultPipeline:
         assert chunker.config["overlap_tokens"] == 150
 
     def test_min_tokens_calculated_from_chunk_size(self) -> None:
-        """Test that min_tokens is derived from chunk_size."""
-        dag = get_default_pipeline(
-            embedding_model="test-model",
-            chunk_config={"chunk_size": 2000},
-        )
-        chunker = next(n for n in dag.nodes if n.type == NodeType.CHUNKER)
-        # min_tokens should be max(100, chunk_size // 10) = max(100, 200) = 200
-        assert chunker.config["min_tokens"] == 200
+        """Test that min_tokens is derived from chunk_size and overlap constraint.
 
-    def test_min_tokens_minimum_value(self) -> None:
-        """Test that min_tokens has a minimum value of 100."""
+        min_tokens = max(base_min, overlap + 1) where base_min = max(100, chunk_size // 10)
+        This ensures min_tokens > overlap_tokens for chunker validation.
+        """
         dag = get_default_pipeline(
             embedding_model="test-model",
-            chunk_config={"chunk_size": 500},
+            chunk_config={"chunk_size": 2000},  # No explicit overlap, defaults to 200
         )
         chunker = next(n for n in dag.nodes if n.type == NodeType.CHUNKER)
-        # min_tokens should be max(100, chunk_size // 10) = max(100, 50) = 100
-        assert chunker.config["min_tokens"] == 100
+        # base_min = max(100, 2000 // 10) = 200
+        # min_tokens = max(200, 200 + 1) = 201 (must exceed overlap)
+        assert chunker.config["min_tokens"] == 201
+
+    def test_min_tokens_always_exceeds_overlap(self) -> None:
+        """Test that min_tokens is always > overlap_tokens to satisfy chunker constraint."""
+        dag = get_default_pipeline(
+            embedding_model="test-model",
+            chunk_config={"chunk_size": 500},  # No explicit overlap, defaults to 200
+        )
+        chunker = next(n for n in dag.nodes if n.type == NodeType.CHUNKER)
+        # base_min = max(100, 500 // 10) = 100
+        # min_tokens = max(100, 200 + 1) = 201 (must exceed overlap of 200)
+        assert chunker.config["min_tokens"] == 201
+        assert chunker.config["min_tokens"] > chunker.config["overlap_tokens"]
 
     def test_merges_chunking_config(self) -> None:
         """Test that strategy-specific config is merged."""

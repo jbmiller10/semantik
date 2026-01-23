@@ -8,13 +8,18 @@ extraction, and embedding stages.
 from __future__ import annotations
 
 import logging
+import os
 import time
 import traceback
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.factory import UnifiedChunkingFactory
+from shared.database.models import DocumentStatus
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.pipeline.executor_types import (
     ChunkStats,
@@ -34,6 +39,11 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.connectors.base import BaseConnector
+
+
+def _get_internal_api_key() -> str:
+    """Get the internal API key for VecPipe communication."""
+    return os.getenv("INTERNAL_API_KEY", "")
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +97,9 @@ class PipelineExecutor:
         connector: BaseConnector | None = None,
         mode: ExecutionMode = ExecutionMode.FULL,
         consecutive_failure_threshold: int = 10,
+        vector_store_name: str | None = None,
+        embedding_model: str | None = None,
+        quantization: str = "float16",
     ) -> None:
         """Initialize the pipeline executor.
 
@@ -97,6 +110,9 @@ class PipelineExecutor:
             connector: Optional connector for loading content from non-file:// URIs
             mode: Execution mode (FULL for production, DRY_RUN for validation)
             consecutive_failure_threshold: Number of consecutive failures before halt
+            vector_store_name: Qdrant collection name (required for FULL mode)
+            embedding_model: Embedding model name (falls back to DAG config if not provided)
+            quantization: Model quantization setting
 
         Raises:
             ValueError: If the DAG is invalid
@@ -112,6 +128,9 @@ class PipelineExecutor:
         self.session = session
         self.mode = mode
         self._connector = connector
+        self._vector_store_name = vector_store_name
+        self._embedding_model = embedding_model
+        self._quantization = quantization
 
         # Initialize components
         self._router = PipelineRouter(dag)
@@ -360,8 +379,21 @@ class PipelineExecutor:
                     self._record_timing(f"extractor:{current_node.id}", stage_start)
 
                 elif current_node.type == NodeType.EMBEDDER:
-                    # In FULL mode, we would embed and store here
-                    # For now, just record timing
+                    # Embedder stage - create document, embed chunks, and store in Qdrant
+                    if self.mode == ExecutionMode.FULL and chunks:
+                        # Create document record first (we need doc_id for chunk points)
+                        doc_id = await self._create_document(
+                            file_ref, load_result.content_hash
+                        )
+
+                        # Embed and store vectors
+                        await self._execute_embedder(
+                            node=current_node,
+                            chunks=chunks,
+                            file_ref=file_ref,
+                            doc_id=doc_id,
+                        )
+
                     self._record_timing(f"embedder:{current_node.id}", stage_start)
                     break  # Embedder is terminal
 
@@ -386,12 +418,8 @@ class PipelineExecutor:
             next_nodes = self._router.get_next_nodes(current_node, file_ref)
             current_node = next_nodes[0] if next_nodes else None
 
-        # 5. In FULL mode, create document record
+        # Prepare result (document creation is handled in embedder stage)
         chunks_created = len(chunks)
-        if self.mode == ExecutionMode.FULL and chunks_created > 0:
-            await self._create_document(file_ref, load_result.content_hash, chunks_created)
-
-        # Prepare result
         result: dict[str, Any] = {
             "skipped": False,
             "chunks_created": chunks_created,
@@ -491,9 +519,9 @@ class PipelineExecutor:
 
         for chunk in chunks:
             chunk_dict = {
+                "chunk_id": chunk.metadata.chunk_id,  # Top-level for build_chunk_point compatibility
                 "content": chunk.content,
                 "metadata": {
-                    "chunk_id": chunk.metadata.chunk_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "start_offset": chunk.metadata.start_offset,
                     "end_offset": chunk.metadata.end_offset,
@@ -506,21 +534,147 @@ class PipelineExecutor:
 
         return chunk_dicts, token_counts
 
+    async def _execute_embedder(
+        self,
+        node: PipelineNode,
+        chunks: list[dict[str, Any]],
+        file_ref: FileReference,
+        doc_id: str,
+    ) -> None:
+        """Execute embedder node - embed chunks and store in Qdrant.
+
+        Args:
+            node: Embedder node configuration
+            chunks: List of chunk dicts from chunker
+            file_ref: Original file reference
+            doc_id: Document ID for the chunk payloads
+        """
+        if not self._vector_store_name:
+            raise ValueError("vector_store_name required for embedding in FULL mode")
+
+        # Get embedding model from node config or instance default
+        embedding_model = node.config.get("model") or self._embedding_model
+        if not embedding_model:
+            raise ValueError("Embedding model not configured")
+
+        # Extract texts from chunks
+        texts = [chunk.get("content") or chunk.get("text") or "" for chunk in chunks]
+        if not texts:
+            logger.warning("No texts to embed for %s", file_ref.uri)
+            return
+
+        # Build headers for internal API calls
+        headers = {
+            "X-Internal-Api-Key": _get_internal_api_key(),
+            "Content-Type": "application/json",
+        }
+
+        # Call VecPipe /embed endpoint
+        vecpipe_url = "http://vecpipe:8000/embed"
+        embed_request = {
+            "texts": texts,
+            "model_name": embedding_model,
+            "quantization": self._quantization,
+            "mode": "document",  # Document indexing uses document mode
+        }
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            logger.info("Calling vecpipe /embed for %d texts", len(texts))
+            response = await client.post(vecpipe_url, json=embed_request, headers=headers)
+
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
+                )
+
+            embed_response = response.json()
+            embeddings = embed_response.get("embeddings")
+
+        if not embeddings:
+            raise RuntimeError("Failed to generate embeddings - empty response")
+
+        if len(embeddings) != len(chunks):
+            raise RuntimeError(
+                f"Embedding count mismatch: got {len(embeddings)}, expected {len(chunks)}"
+            )
+
+        # Build points for Qdrant
+        path = file_ref.source_metadata.get("local_path", file_ref.uri)
+        total_chunks = len(chunks)
+        points = []
+
+        for i, chunk in enumerate(chunks):
+            # chunk_id is at top level from _execute_chunker
+            chunk_id = chunk.get("chunk_id") or str(uuid.uuid4())
+            point = {
+                "id": str(uuid.uuid4()),
+                "vector": embeddings[i],
+                "payload": {
+                    "collection_id": self.collection_id,
+                    "doc_id": doc_id,
+                    "chunk_id": chunk_id,
+                    "path": path,
+                    "content": chunk.get("content") or chunk.get("text") or "",
+                    "metadata": chunk.get("metadata", {}),
+                    "chunk_index": i,
+                    "total_chunks": total_chunks,
+                },
+            }
+            points.append(point)
+
+        # Upsert to Qdrant via VecPipe in batches
+        batch_size = 100
+        vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for batch_start in range(0, len(points), batch_size):
+                batch_end = min(batch_start + batch_size, len(points))
+                batch_points = points[batch_start:batch_end]
+
+                upsert_request = {
+                    "collection_name": self._vector_store_name,
+                    "points": batch_points,
+                    "wait": True,
+                }
+
+                response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
+
+                if response.status_code != 200:
+                    raise RuntimeError(
+                        f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
+                    )
+
+        # Update document status to COMPLETED with chunk count
+        await self._doc_repo.update_status(
+            doc_id,
+            DocumentStatus.COMPLETED,
+            chunk_count=len(chunks),
+        )
+        await self.session.commit()
+
+        logger.info(
+            "Embedded and stored %d chunks for %s in %s",
+            len(chunks),
+            file_ref.uri,
+            self._vector_store_name,
+        )
+
     async def _create_document(
         self,
         file_ref: FileReference,
         content_hash: str,
-        chunk_count: int,  # noqa: ARG002
-    ) -> None:
+    ) -> str:
         """Create a document record in the database.
 
         Args:
             file_ref: File reference
             content_hash: Content SHA-256 hash
-            chunk_count: Number of chunks created
+
+        Returns:
+            The document ID (UUID string)
         """
         try:
-            await self._doc_repo.create(
+            doc = await self._doc_repo.create(
                 collection_id=self.collection_id,
                 file_path=file_ref.source_metadata.get("local_path", file_ref.uri),
                 file_name=file_ref.filename or file_ref.uri.split("/")[-1],
@@ -530,6 +684,8 @@ class PipelineExecutor:
                 uri=file_ref.uri,
                 source_metadata=file_ref.source_metadata,
             )
+            await self.session.commit()
+            return str(doc.id)
         except Exception as e:
             logger.error("Failed to create document record: %s", e)
             raise

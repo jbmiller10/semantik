@@ -164,12 +164,20 @@ async def _process_with_pipeline_executor(
     dag = PipelineDAG.from_dict(pipeline_config)
     progress_callback = _create_progress_adapter(updater, display_path)
 
+    # Get embedding configuration from collection
+    vector_store_name = collection.get("vector_store_name")
+    embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+    quantization = collection.get("quantization", "float16")
+
     executor = PipelineExecutor(
         dag=dag,
         collection_id=collection["id"],
         session=session,
         connector=connector,
         mode=ExecutionMode.FULL,
+        vector_store_name=vector_store_name,
+        embedding_model=embedding_model,
+        quantization=quantization,
     )
 
     # Execute pipeline over enumerated files
@@ -1298,6 +1306,59 @@ async def _process_append_operation_impl(
     except Exception as e:
         raise ValueError(f"Failed to authenticate with {source_type} source: {e}") from e
 
+    # Use new Pipeline DAG executor if collection has pipeline_config
+    pipeline_config = collection.get("pipeline_config")
+    if pipeline_config:
+        logger.info("Using PipelineExecutor for APPEND operation (collection has pipeline_config)")
+        result = await _process_with_pipeline_executor(
+            collection=collection,
+            connector=connector,
+            session=session,
+            updater=updater,
+            display_path=display_path,
+        )
+
+        # Update collection stats from Qdrant after pipeline execution
+        try:
+            qdrant_collection_name = collection.get("vector_store_name") or collection["id"]
+            qdrant_manager = resolve_qdrant_manager()
+            qdrant_info = qdrant_manager.client.get_collection(qdrant_collection_name)
+            current_vector_count = qdrant_info.points_count if qdrant_info else 0
+
+            # Get document count from database
+            doc_stats = await document_repo.get_document_statistics(collection["id"])
+            current_doc_count = int(doc_stats.get("total_documents") or 0)
+
+            await collection_repo.update_stats(
+                collection["id"],
+                document_count=current_doc_count,
+                vector_count=current_vector_count,
+            )
+            await session.commit()
+            logger.info(
+                "Updated collection stats: documents=%d, vectors=%d",
+                current_doc_count,
+                current_vector_count,
+            )
+        except Exception as stats_exc:
+            logger.warning(f"Failed to update collection stats: {stats_exc}")
+
+        # Update source sync status
+        try:
+            from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+            source_repo = CollectionSourceRepository(session)
+            await source_repo.update_sync_status(
+                source_id=source_id,
+                status="completed" if result.get("success") else "failed",
+                completed_at=datetime.now(UTC),
+            )
+            await session.commit()
+        except Exception as sync_exc:
+            logger.warning(f"Failed to update sync status for source {source_id}: {sync_exc}")
+        return result
+
+    # Legacy flow for collections without pipeline_config
+    logger.warning("Collection missing pipeline_config, using legacy load_documents() flow")
     await updater.send_update("scanning_documents", {"status": "scanning", "source": display_path})
 
     try:
