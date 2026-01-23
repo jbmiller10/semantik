@@ -35,21 +35,21 @@ class TestPipelineFailureRepositoryIntegration:
         """Creating a pipeline failure should persist all fields."""
         collection = await collection_factory(owner_id=test_user_db.id)
 
-        failure = await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/document.pdf",
-            "stage_id": "parser_node_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Failed to parse PDF: corrupted file",
-            "error_traceback": "Traceback (most recent call last):\n  ...",
-            "file_metadata": {"size": 1024, "mime_type": "application/pdf"},
-        })
+        failure = await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/document.pdf",
+                "stage_id": "parser_node_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Failed to parse PDF: corrupted file",
+                "error_traceback": "Traceback (most recent call last):\n  ...",
+                "file_metadata": {"size": 1024, "mime_type": "application/pdf"},
+            }
+        )
         await db_session.commit()
 
-        result = await db_session.execute(
-            select(PipelineFailure).where(PipelineFailure.id == failure.id)
-        )
+        result = await db_session.execute(select(PipelineFailure).where(PipelineFailure.id == failure.id))
         persisted = result.scalar_one()
 
         assert persisted.collection_id == collection.id
@@ -74,24 +74,22 @@ class TestPipelineFailureRepositoryIntegration:
     ) -> None:
         """Creating a failure with operation_id should link to the operation."""
         collection = await collection_factory(owner_id=test_user_db.id)
-        operation = await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id
-        )
+        operation = await operation_factory(collection_id=collection.id, user_id=test_user_db.id)
 
-        failure = await repository.create({
-            "collection_id": collection.id,
-            "operation_id": operation.uuid,
-            "file_uri": "/path/to/file.txt",
-            "stage_id": "chunker_1",
-            "stage_type": "chunker",
-            "error_type": "timeout",
-            "error_message": "Operation timed out",
-        })
+        failure = await repository.create(
+            {
+                "collection_id": collection.id,
+                "operation_id": operation.uuid,
+                "file_uri": "/path/to/file.txt",
+                "stage_id": "chunker_1",
+                "stage_type": "chunker",
+                "error_type": "timeout",
+                "error_message": "Operation timed out",
+            }
+        )
         await db_session.commit()
 
-        result = await db_session.execute(
-            select(PipelineFailure).where(PipelineFailure.id == failure.id)
-        )
+        result = await db_session.execute(select(PipelineFailure).where(PipelineFailure.id == failure.id))
         persisted = result.scalar_one()
 
         assert persisted.operation_id == operation.uuid
@@ -108,30 +106,36 @@ class TestPipelineFailureRepositoryIntegration:
         other_collection = await collection_factory(owner_id=test_user_db.id)
 
         # Create failures for both collections
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file1.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 1",
-        })
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file2.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 2",
-        })
-        await repository.create({
-            "collection_id": other_collection.id,
-            "file_uri": "/path/to/other.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Other error",
-        })
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file1.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 1",
+            }
+        )
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file2.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 2",
+            }
+        )
+        await repository.create(
+            {
+                "collection_id": other_collection.id,
+                "file_uri": "/path/to/other.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Other error",
+            }
+        )
         await db_session.commit()
 
         failures = await repository.get_by_collection(collection.id)
@@ -151,14 +155,16 @@ class TestPipelineFailureRepositoryIntegration:
 
         # Create 5 failures
         for i in range(5):
-            await repository.create({
-                "collection_id": collection.id,
-                "file_uri": f"/path/to/file{i}.pdf",
-                "stage_id": "parser_1",
-                "stage_type": "parser",
-                "error_type": "parse_error",
-                "error_message": f"Error {i}",
-            })
+            await repository.create(
+                {
+                    "collection_id": collection.id,
+                    "file_uri": f"/path/to/file{i}.pdf",
+                    "stage_id": "parser_1",
+                    "stage_type": "parser",
+                    "error_type": "parse_error",
+                    "error_message": f"Error {i}",
+                }
+            )
         await db_session.commit()
 
         # Test limit
@@ -184,32 +190,32 @@ class TestPipelineFailureRepositoryIntegration:
     ) -> None:
         """get_by_operation should return failures linked to the operation."""
         collection = await collection_factory(owner_id=test_user_db.id)
-        operation1 = await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id
-        )
-        operation2 = await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id
-        )
+        operation1 = await operation_factory(collection_id=collection.id, user_id=test_user_db.id)
+        operation2 = await operation_factory(collection_id=collection.id, user_id=test_user_db.id)
 
         # Create failures for different operations
-        await repository.create({
-            "collection_id": collection.id,
-            "operation_id": operation1.uuid,
-            "file_uri": "/path/to/file1.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 1",
-        })
-        await repository.create({
-            "collection_id": collection.id,
-            "operation_id": operation2.uuid,
-            "file_uri": "/path/to/file2.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 2",
-        })
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "operation_id": operation1.uuid,
+                "file_uri": "/path/to/file1.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 1",
+            }
+        )
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "operation_id": operation2.uuid,
+                "file_uri": "/path/to/file2.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 2",
+            }
+        )
         await db_session.commit()
 
         failures = await repository.get_by_operation(operation1.uuid)
@@ -227,14 +233,16 @@ class TestPipelineFailureRepositoryIntegration:
         """increment_retry should bump retry_count and set last_retry_at."""
         collection = await collection_factory(owner_id=test_user_db.id)
 
-        failure = await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error",
-        })
+        failure = await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error",
+            }
+        )
         await db_session.commit()
 
         assert failure.retry_count == 0
@@ -276,22 +284,26 @@ class TestPipelineFailureRepositoryIntegration:
 
         # Create failures for both collections
         for i in range(3):
-            await repository.create({
-                "collection_id": collection.id,
-                "file_uri": f"/path/to/file{i}.pdf",
+            await repository.create(
+                {
+                    "collection_id": collection.id,
+                    "file_uri": f"/path/to/file{i}.pdf",
+                    "stage_id": "parser_1",
+                    "stage_type": "parser",
+                    "error_type": "parse_error",
+                    "error_message": f"Error {i}",
+                }
+            )
+        await repository.create(
+            {
+                "collection_id": other_collection.id,
+                "file_uri": "/path/to/other.pdf",
                 "stage_id": "parser_1",
                 "stage_type": "parser",
                 "error_type": "parse_error",
-                "error_message": f"Error {i}",
-            })
-        await repository.create({
-            "collection_id": other_collection.id,
-            "file_uri": "/path/to/other.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Other error",
-        })
+                "error_message": "Other error",
+            }
+        )
         await db_session.commit()
 
         deleted_count = await repository.delete_by_collection(collection.id)
@@ -318,35 +330,39 @@ class TestPipelineFailureRepositoryIntegration:
         collection = await collection_factory(owner_id=test_user_db.id)
 
         # Create failures for different files
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file1.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 1",
-        })
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file1.pdf",
-            "stage_id": "chunker_1",
-            "stage_type": "chunker",
-            "error_type": "oom",
-            "error_message": "Error 2",
-        })
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file2.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error 3",
-        })
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file1.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 1",
+            }
+        )
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file1.pdf",
+                "stage_id": "chunker_1",
+                "stage_type": "chunker",
+                "error_type": "oom",
+                "error_message": "Error 2",
+            }
+        )
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file2.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error 3",
+            }
+        )
         await db_session.commit()
 
-        deleted_count = await repository.delete_by_file_uri(
-            collection.id, "/path/to/file1.pdf"
-        )
+        deleted_count = await repository.delete_by_file_uri(collection.id, "/path/to/file1.pdf")
         await db_session.commit()
 
         assert deleted_count == 2
@@ -365,14 +381,16 @@ class TestPipelineFailureRepositoryIntegration:
         """Deleting a collection should cascade delete pipeline failures."""
         collection = await collection_factory(owner_id=test_user_db.id)
 
-        await repository.create({
-            "collection_id": collection.id,
-            "file_uri": "/path/to/file.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error",
-        })
+        await repository.create(
+            {
+                "collection_id": collection.id,
+                "file_uri": "/path/to/file.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error",
+            }
+        )
         await db_session.commit()
 
         # Verify failure exists
@@ -385,9 +403,7 @@ class TestPipelineFailureRepositoryIntegration:
         await db_session.commit()
 
         # Verify failure was cascade deleted
-        result = await db_session.execute(
-            select(PipelineFailure).where(PipelineFailure.id == failure_id)
-        )
+        result = await db_session.execute(select(PipelineFailure).where(PipelineFailure.id == failure_id))
         assert result.scalar_one_or_none() is None
 
     async def test_set_null_on_operation_removal(
@@ -400,19 +416,19 @@ class TestPipelineFailureRepositoryIntegration:
     ) -> None:
         """Deleting an operation should SET NULL on pipeline failure operation_id."""
         collection = await collection_factory(owner_id=test_user_db.id)
-        operation = await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id
-        )
+        operation = await operation_factory(collection_id=collection.id, user_id=test_user_db.id)
 
-        failure = await repository.create({
-            "collection_id": collection.id,
-            "operation_id": operation.uuid,
-            "file_uri": "/path/to/file.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Error",
-        })
+        failure = await repository.create(
+            {
+                "collection_id": collection.id,
+                "operation_id": operation.uuid,
+                "file_uri": "/path/to/file.pdf",
+                "stage_id": "parser_1",
+                "stage_type": "parser",
+                "error_type": "parse_error",
+                "error_message": "Error",
+            }
+        )
         await db_session.commit()
 
         # Verify operation_id is set
@@ -440,24 +456,28 @@ class TestPipelineFailureRepositoryIntegration:
 
         # Create 3 failures for collection
         for i in range(3):
-            await repository.create({
-                "collection_id": collection.id,
-                "file_uri": f"/path/to/file{i}.pdf",
+            await repository.create(
+                {
+                    "collection_id": collection.id,
+                    "file_uri": f"/path/to/file{i}.pdf",
+                    "stage_id": "parser_1",
+                    "stage_type": "parser",
+                    "error_type": "parse_error",
+                    "error_message": f"Error {i}",
+                }
+            )
+
+        # Create 1 failure for other collection
+        await repository.create(
+            {
+                "collection_id": other_collection.id,
+                "file_uri": "/path/to/other.pdf",
                 "stage_id": "parser_1",
                 "stage_type": "parser",
                 "error_type": "parse_error",
-                "error_message": f"Error {i}",
-            })
-
-        # Create 1 failure for other collection
-        await repository.create({
-            "collection_id": other_collection.id,
-            "file_uri": "/path/to/other.pdf",
-            "stage_id": "parser_1",
-            "stage_type": "parser",
-            "error_type": "parse_error",
-            "error_message": "Other error",
-        })
+                "error_message": "Other error",
+            }
+        )
         await db_session.commit()
 
         count = await repository.count_by_collection(collection.id)

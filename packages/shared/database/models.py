@@ -328,9 +328,7 @@ class Collection(Base):
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
     mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
-    pipeline_failures = relationship(
-        "PipelineFailure", back_populates="collection", cascade="all, delete-orphan"
-    )
+    pipeline_failures = relationship("PipelineFailure", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):

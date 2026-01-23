@@ -119,9 +119,7 @@ class PipelineFailureRepository:
             PipelineFailure instance or None if not found
         """
         try:
-            result = await self.session.execute(
-                select(PipelineFailure).where(PipelineFailure.id == failure_id)
-            )
+            result = await self.session.execute(select(PipelineFailure).where(PipelineFailure.id == failure_id))
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error("Failed to get pipeline failure %s: %s", failure_id, e, exc_info=True)
@@ -303,9 +301,7 @@ class PipelineFailureRepository:
         """
         try:
             result = await self.session.execute(
-                select(func.count(PipelineFailure.id)).where(
-                    PipelineFailure.collection_id == collection_id
-                )
+                select(func.count(PipelineFailure.id)).where(PipelineFailure.collection_id == collection_id)
             )
             return result.scalar() or 0
         except Exception as e:
