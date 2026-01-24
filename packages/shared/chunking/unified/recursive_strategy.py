@@ -31,7 +31,10 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
     """
 
     AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
-        purpose="Recursively splits on separators (paragraphs, sentences, words). " "Respects natural text boundaries.",
+        purpose=(
+            "Recursively splits on separators (paragraphs, sentences, words). "
+            "Respects natural text boundaries."
+        ),
         best_for=[
             "general text documents",
             "articles and blog posts",
