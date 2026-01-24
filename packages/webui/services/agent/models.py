@@ -92,7 +92,7 @@ class AgentConversation(Base):
 
     # Current state
     status: Mapped[ConversationStatus] = mapped_column(
-        Enum(ConversationStatus, name="conversation_status"),
+        Enum(ConversationStatus, name="conversation_status", create_type=False),
         nullable=False,
         default=ConversationStatus.ACTIVE,
     )
@@ -159,7 +159,7 @@ class ConversationUncertainty(Base):
     )
 
     severity: Mapped[UncertaintySeverity] = mapped_column(
-        Enum(UncertaintySeverity, name="uncertainty_severity"),
+        Enum(UncertaintySeverity, name="uncertainty_severity", create_type=False),
         nullable=False,
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
