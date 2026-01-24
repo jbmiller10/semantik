@@ -2140,8 +2140,8 @@ class TestProcessIndexOperationAdditional:
         assert result["vector_dim"] == 768
 
     @pytest.mark.asyncio()
-    async def test_index_falls_back_to_default_dimension(self):
-        """Test INDEX uses default dimension when model is unknown."""
+    async def test_index_raises_error_for_unknown_model(self):
+        """Test INDEX raises error when model is unknown (no silent fallback)."""
         operation = {
             "id": 1,
             "uuid": "op-123",
@@ -2179,13 +2179,11 @@ class TestProcessIndexOperationAdditional:
             patch("shared.embedding.factory.resolve_model_config", return_value=None),  # Unknown model
             patch("shared.embedding.validation.get_model_dimension", return_value=None),
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            pytest.raises(ValueError, match="Unknown embedding model.*cannot determine vector dimensions"),
         ):
-            result = await ingestion_module._process_index_operation(
+            await ingestion_module._process_index_operation(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
             )
-
-        assert result["success"] is True
-        assert result["vector_dim"] == 1024  # Default
 
     @pytest.mark.asyncio()
     async def test_index_logs_dimension_mismatch_warning(self):

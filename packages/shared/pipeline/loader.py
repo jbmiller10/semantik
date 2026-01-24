@@ -111,6 +111,9 @@ class PipelineLoader:
         scheme = parsed.scheme.lower()
 
         # Handle file:// URIs
+        # Note: This method trusts that file_ref comes from a validated connector.
+        # FileReference objects should not be constructed from untrusted input.
+        # Connectors are responsible for path traversal protection (see LocalFileConnector).
         if scheme == "file":
             # Extract path from file:// URI
             path = parsed.path

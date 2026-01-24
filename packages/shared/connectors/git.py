@@ -496,7 +496,10 @@ class GitConnector(BaseConnector):
                     timeout=300,
                 )
                 if code != 0:
-                    logger.warning("Fetch failed, will re-clone: %s", self._redact_sensitive(stderr))
+                    logger.warning(
+                        "Git fetch failed (will re-clone): %s. If this persists, check credentials.",
+                        self._redact_sensitive(stderr),
+                    )
                     shutil.rmtree(cache_dir)
 
             if not cache_dir.exists():

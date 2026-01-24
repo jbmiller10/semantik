@@ -32,6 +32,11 @@ class LocalFileConnector(BaseConnector):
         if await connector.authenticate():
             async for file_ref in connector.enumerate():
                 print(file_ref.uri, file_ref.change_hint)
+
+        # Check for files that couldn't be enumerated
+        skipped = connector.get_skipped_files()
+        for path, reason in skipped:
+            print(f"Skipped {path}: {reason}")
         ```
 
     Security:
@@ -47,6 +52,19 @@ class LocalFileConnector(BaseConnector):
         "icon": "folder",
         "supports_sync": True,
     }
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Initialize the connector with tracking for skipped files."""
+        super().__init__(config)
+        self._skipped_files: list[tuple[str, str]] = []
+
+    def get_skipped_files(self) -> list[tuple[str, str]]:
+        """Get list of files that were skipped during enumeration.
+
+        Returns:
+            List of (path, reason) tuples for files that couldn't be stat'd.
+        """
+        return list(self._skipped_files)
 
     @classmethod
     def get_config_fields(cls) -> list[dict[str, Any]]:
@@ -240,6 +258,9 @@ class LocalFileConnector(BaseConnector):
         Yields:
             FileReference for each matching file.
         """
+        # Clear skipped files from any previous enumeration
+        self._skipped_files = []
+
         source_path = Path(self._config["path"])
         recursive = self._config.get("recursive", True)
 
@@ -275,6 +296,7 @@ class LocalFileConnector(BaseConnector):
                 )
             except OSError as e:
                 logger.warning(f"Cannot stat {file_path}: {e}")
+                self._skipped_files.append((str(file_path), str(e)))
                 continue
 
     async def load_content(self, file_ref: FileReference) -> bytes:

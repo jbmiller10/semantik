@@ -462,7 +462,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         # Mark existing projections as stale so the UI can prompt recomputation.
                         try:
                             runs, _ = await projection_repo.list_for_collection(collection["id"], limit=1)
-                        except Exception:  # pragma: no cover - defensive path
+                        except Exception as e:  # pragma: no cover - defensive path
+                            logger.debug(
+                                "Failed to list projections for collection %s: %s",
+                                collection["id"],
+                                e,
+                            )
                             runs = []
                         if runs:
                             try:
@@ -470,10 +475,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                                     runs[0].uuid,
                                     meta={"degraded": True},
                                 )
-                            except Exception:  # pragma: no cover - defensive logging
+                            except Exception as e:  # pragma: no cover - defensive logging
                                 logger.warning(
-                                    "Failed to mark projection %s as degraded after collection update",
+                                    "Failed to mark projection %s as degraded: %s",
                                     runs[0].uuid,
+                                    e,
+                                    exc_info=True,
                                 )
 
                         await _update_collection_metrics(
@@ -840,8 +847,10 @@ async def _process_index_operation(
             if model_config:
                 vector_dim = model_config.dimension
             else:
-                logger.warning("Unknown model %s, using default dimension 1024", model_name)
-                vector_dim = 1024
+                raise ValueError(
+                    f"Unknown embedding model '{model_name}' - cannot determine vector dimensions. "
+                    "Please use a supported model or configure dimensions explicitly."
+                )
 
         actual_model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
         actual_model_dim = get_model_dimension(actual_model_name)

@@ -333,6 +333,9 @@ class ImapConnector(BaseConnector):
             logger.error(f"IMAP error: {e}")
             raise ValueError(f"IMAP error: {e}") from e
         finally:
+            if self._connection:
+                with contextlib.suppress(Exception):
+                    await loop.run_in_executor(None, self._connection.logout)
             self._connection = None
 
     async def _enumerate_mailbox(

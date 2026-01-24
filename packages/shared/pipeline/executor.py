@@ -79,6 +79,8 @@ class PipelineExecutor:
             session=db_session,
             connector=my_connector,
             mode=ExecutionMode.FULL,
+            vector_store_name="my_collection",  # Required for FULL mode
+            embedding_model="BAAI/bge-small-en-v1.5",
         )
 
         async for file_ref in connector.enumerate():
@@ -391,13 +393,23 @@ class PipelineExecutor:
                             file_ref, load_result.content_hash
                         )
 
-                        # Embed and store vectors
-                        await self._execute_embedder(
-                            node=current_node,
-                            chunks=chunks,
-                            file_ref=file_ref,
-                            doc_id=doc_id,
-                        )
+                        # Embed and store vectors - mark document FAILED on error
+                        try:
+                            await self._execute_embedder(
+                                node=current_node,
+                                chunks=chunks,
+                                file_ref=file_ref,
+                                doc_id=doc_id,
+                            )
+                        except Exception:
+                            # Mark document as FAILED so it's not stuck in PENDING
+                            await self._doc_repo.update_status(
+                                doc_id,
+                                DocumentStatus.FAILED,
+                                error_message="Embedding failed",
+                            )
+                            await self.session.commit()
+                            raise
 
                     self._record_timing(f"embedder:{current_node.id}", stage_start)
                     break  # Embedder is terminal
@@ -458,9 +470,16 @@ class PipelineExecutor:
             # In DRY_RUN mode, don't skip anything
             return None
 
-        # get_by_uri returns None if document doesn't exist, so no need to catch
-        # exceptions here. DB connectivity/transaction errors should propagate.
-        existing = await self._doc_repo.get_by_uri(self.collection_id, file_ref.uri)
+        # get_by_uri returns None if document doesn't exist
+        # DB connectivity/transaction errors are annotated with stage info
+        try:
+            existing = await self._doc_repo.get_by_uri(self.collection_id, file_ref.uri)
+        except Exception as e:
+            # Add stage context for error tracking
+            e.stage_id = "skip_check"  # type: ignore[attr-defined]
+            e.stage_type = "database"  # type: ignore[attr-defined]
+            raise
+
         if existing and existing.content_hash == content_hash:
             return "unchanged"
 
@@ -596,8 +615,10 @@ class PipelineExecutor:
             embed_response = response.json()
             embeddings = embed_response.get("embeddings")
 
-        if not embeddings:
-            raise RuntimeError("Failed to generate embeddings - empty response")
+        if embeddings is None:
+            raise RuntimeError("VecPipe returned no embeddings field in response")
+        if len(embeddings) == 0:
+            raise RuntimeError(f"VecPipe returned empty embeddings for {len(texts)} texts")
 
         if len(embeddings) != len(chunks):
             raise RuntimeError(
@@ -693,7 +714,7 @@ class PipelineExecutor:
             await self.session.commit()
             return str(doc.id)
         except Exception as e:
-            logger.error("Failed to create document record: %s", e)
+            logger.error("Failed to create document record for %s: %s", file_ref.uri, e)
             raise
 
     def _record_timing(self, stage_key: str, start_time: float) -> None:
@@ -724,7 +745,9 @@ class PipelineExecutor:
             try:
                 await callback(event)
             except Exception as e:
-                logger.warning("Progress callback failed: %s", e)
+                logger.warning(
+                    "Progress callback failed for %s: %s", event.event_type, e, exc_info=True
+                )
 
 
 __all__ = [
