@@ -150,9 +150,7 @@ class TestSourceAnalyzer:
         assert SourceAnalyzer.TIMEOUT_SECONDS == 300
         assert len(SourceAnalyzer.TOOLS) == 5
 
-    def test_initialization(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_initialization(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test agent initialization."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
 
@@ -162,9 +160,7 @@ class TestSourceAnalyzer:
         assert "enumerate_files" in agent.tools
         assert "sample_files" in agent.tools
 
-    def test_build_initial_message(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_build_initial_message(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test initial message building."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         message = agent._build_initial_message()
@@ -173,9 +169,7 @@ class TestSourceAnalyzer:
         assert "1" in message.content  # source_id
         assert "Search my research papers" in message.content
 
-    def test_build_initial_message_without_intent(
-        self, mock_llm_provider: AsyncMock, mock_connector: AsyncMock
-    ):
+    def test_build_initial_message_without_intent(self, mock_llm_provider: AsyncMock, mock_connector: AsyncMock):
         """Test initial message without user intent."""
         context = {"source_id": 1, "connector": mock_connector}
         agent = SourceAnalyzer(mock_llm_provider, context)
@@ -183,9 +177,7 @@ class TestSourceAnalyzer:
 
         assert "Not specified" in message.content
 
-    def test_parse_analysis_json_from_code_block(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_parse_analysis_json_from_code_block(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test parsing JSON from markdown code block."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         content = """Here's my analysis:
@@ -205,9 +197,7 @@ That's my analysis."""
         assert result["total_files"] == 50
         assert result["summary"] == "Found 50 files"
 
-    def test_parse_analysis_json_raw(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_parse_analysis_json_raw(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test parsing raw JSON."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         content = '{"total_files": 25, "summary": "25 files"}'
@@ -217,9 +207,7 @@ That's my analysis."""
         assert result is not None
         assert result["total_files"] == 25
 
-    def test_parse_analysis_json_embedded(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_parse_analysis_json_embedded(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test parsing embedded JSON object."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         content = 'Here is the analysis: {"total_files": 100} Done.'
@@ -229,9 +217,7 @@ That's my analysis."""
         assert result is not None
         assert result["total_files"] == 100
 
-    def test_parse_analysis_json_invalid(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_parse_analysis_json_invalid(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test parsing invalid content."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         content = "This is not JSON at all"
@@ -240,9 +226,7 @@ That's my analysis."""
 
         assert result is None
 
-    def test_extract_result_success(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_extract_result_success(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test successful result extraction."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         response = Message(
@@ -258,9 +242,7 @@ That's my analysis."""
                         "quality_issues": [],
                     },
                     "parser_recommendations": [],
-                    "uncertainties": [
-                        {"severity": "notable", "message": "Some uncertainty"}
-                    ],
+                    "uncertainties": [{"severity": "notable", "message": "Some uncertainty"}],
                     "summary": "Analysis complete",
                 }
             ),
@@ -274,9 +256,7 @@ That's my analysis."""
         assert len(result.uncertainties) == 1
         assert result.uncertainties[0].severity == "notable"
 
-    def test_extract_result_invalid_json(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_extract_result_invalid_json(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test result extraction with invalid JSON."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         response = Message(
@@ -305,9 +285,7 @@ That's my analysis."""
         assert ".pdf" in partial["by_extension"]
         assert ".md" in partial["by_extension"]
 
-    def test_get_partial_result_empty(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_get_partial_result_empty(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test partial result without enumerated files."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
 
@@ -316,9 +294,7 @@ That's my analysis."""
         assert partial["partial"] is True
         assert partial["total_files"] == 0
 
-    def test_get_tool_schemas(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    def test_get_tool_schemas(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test tool schema generation."""
         agent = SourceAnalyzer(mock_llm_provider, analyzer_context)
         schemas = agent.get_tool_schemas()
@@ -337,10 +313,9 @@ class TestSourceAnalyzerFlow:
     """Tests for the SourceAnalyzer execution flow."""
 
     @pytest.mark.asyncio()
-    async def test_run_handles_timeout(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    async def test_run_handles_timeout(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test that run handles timeout gracefully."""
+
         # Make generate hang forever
         async def hang_forever(*_args, **_kwargs):
             import asyncio
@@ -359,9 +334,7 @@ class TestSourceAnalyzerFlow:
         assert "Timed out" in result.summary
 
     @pytest.mark.asyncio()
-    async def test_run_handles_exceptions(
-        self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
-    ):
+    async def test_run_handles_exceptions(self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]):
         """Test that run handles exceptions gracefully."""
         mock_llm_provider.generate = AsyncMock(side_effect=RuntimeError("LLM error"))
 

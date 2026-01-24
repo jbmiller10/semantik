@@ -146,7 +146,9 @@ class SourceAnalyzer(SubAgent):
     MAX_TURNS: ClassVar[int] = 30  # May need many tool calls for large sources
     TIMEOUT_SECONDS: ClassVar[int] = 300  # 5 minutes
 
-    SYSTEM_PROMPT: ClassVar[str] = """You are a source analysis agent for Semantik, a semantic search engine.
+    SYSTEM_PROMPT: ClassVar[
+        str
+    ] = """You are a source analysis agent for Semantik, a semantic search engine.
 
 Your job: Investigate a data source and produce a comprehensive analysis that helps
 the pipeline builder choose the right parsing, chunking, and embedding strategy.

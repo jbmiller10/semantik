@@ -136,9 +136,7 @@ class BuildPipelineTool(BaseTool):
         "properties": {
             "template_id": {
                 "type": "string",
-                "description": (
-                    "ID of a template to use as base. Use list_templates to see available templates."
-                ),
+                "description": ("ID of a template to use as base. Use list_templates to see available templates."),
             },
             "tunable_values": {
                 "type": "object",
@@ -150,8 +148,7 @@ class BuildPipelineTool(BaseTool):
             "nodes": {
                 "type": "array",
                 "description": (
-                    "Custom nodes for a pipeline (when not using template). "
-                    "Each node: {id, type, plugin_id, config}"
+                    "Custom nodes for a pipeline (when not using template). " "Each node: {id, type, plugin_id, config}"
                 ),
                 "items": {
                     "type": "object",
@@ -170,8 +167,7 @@ class BuildPipelineTool(BaseTool):
             "edges": {
                 "type": "array",
                 "description": (
-                    "Custom edges for a pipeline (when not using template). "
-                    "Each edge: {from_node, to_node, when}"
+                    "Custom edges for a pipeline (when not using template). " "Each edge: {from_node, to_node, when}"
                 ),
                 "items": {
                     "type": "object",
@@ -460,9 +456,7 @@ class ApplyPipelineTool(BaseTool):
                     return {
                         "success": False,
                         "error": "Pipeline has validation errors",
-                        "validation_errors": [
-                            {"rule": e.rule, "message": e.message} for e in errors
-                        ],
+                        "validation_errors": [{"rule": e.rule, "message": e.message} for e in errors],
                     }
             except Exception as e:
                 return {
@@ -482,8 +476,7 @@ class ApplyPipelineTool(BaseTool):
                         "success": False,
                         "error": "Cannot apply: blocking uncertainties exist",
                         "blocking_uncertainties": [
-                            {"message": u.message, "severity": u.severity.value}
-                            for u in blocking
+                            {"message": u.message, "severity": u.severity.value} for u in blocking
                         ],
                         "hint": "Resolve the uncertainties or use force=true to override",
                     }
@@ -499,9 +492,7 @@ class ApplyPipelineTool(BaseTool):
                 None,
             )
             embedding_model = (
-                embedder_node.config.get("model", "BAAI/bge-base-en-v1.5")
-                if embedder_node
-                else "BAAI/bge-base-en-v1.5"
+                embedder_node.config.get("model", "BAAI/bge-base-en-v1.5") if embedder_node else "BAAI/bge-base-en-v1.5"
             )
 
             # Extract chunking config from pipeline

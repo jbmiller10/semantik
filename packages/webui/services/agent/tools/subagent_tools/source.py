@@ -100,9 +100,7 @@ class EnumerateFilesTool(BaseTool):
             # Collect statistics
             total_files = 0
             total_size = 0
-            by_extension: dict[str, dict[str, Any]] = defaultdict(
-                lambda: {"count": 0, "total_size": 0, "samples": []}
-            )
+            by_extension: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "total_size": 0, "samples": []})
             size_buckets = {
                 "tiny": 0,  # < 1KB
                 "small": 0,  # 1KB - 100KB
@@ -146,8 +144,7 @@ class EnumerateFilesTool(BaseTool):
                 # Safety limit
                 if total_files >= MAX_ENUMERATE_FILES:
                     logger.warning(
-                        f"Enumeration limit reached ({MAX_ENUMERATE_FILES} files). "
-                        "Results may be incomplete."
+                        f"Enumeration limit reached ({MAX_ENUMERATE_FILES} files). " "Results may be incomplete."
                     )
                     break
 
@@ -445,11 +442,7 @@ class TryParserTool(BaseTool):
                     "has_code_blocks": has_code_blocks,
                     "has_tables": has_tables,
                 },
-                "parse_metadata": (
-                    parse_result.parse_metadata
-                    if hasattr(parse_result, "parse_metadata")
-                    else {}
-                ),
+                "parse_metadata": (parse_result.parse_metadata if hasattr(parse_result, "parse_metadata") else {}),
                 "preview": text[:500] if text else "",
             }
 
@@ -610,10 +603,7 @@ class DetectLanguageTool(BaseTool):
                 from langdetect import detect_langs
 
                 detected = detect_langs(sampled)
-                languages = [
-                    {"code": lang.lang, "confidence": round(lang.prob, 3)}
-                    for lang in detected[:3]  # Top 3
-                ]
+                languages = [{"code": lang.lang, "confidence": round(lang.prob, 3)} for lang in detected[:3]]  # Top 3
                 primary = detected[0].lang if detected else "unknown"
 
             except ImportError:
@@ -662,9 +652,7 @@ class DetectLanguageTool(BaseTool):
         sorted_langs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         total = sum(s for _, s in sorted_langs)
 
-        languages = [
-            {"code": lang, "confidence": round(score / total, 3)} for lang, score in sorted_langs[:3]
-        ]
+        languages = [{"code": lang, "confidence": round(score / total, 3)} for lang, score in sorted_langs[:3]]
 
         return languages, sorted_langs[0][0]
 

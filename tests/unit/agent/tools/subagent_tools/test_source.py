@@ -93,9 +93,7 @@ class TestEnumerateFilesTool:
     """Tests for the EnumerateFilesTool."""
 
     @pytest.mark.asyncio()
-    async def test_enumerate_returns_statistics(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_enumerate_returns_statistics(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test that enumeration returns correct statistics."""
         context = {"connector": mock_connector, "source_id": 1}
         tool = EnumerateFilesTool(context)
@@ -233,9 +231,7 @@ class TestTryParserTool:
     """Tests for the TryParserTool."""
 
     @pytest.mark.asyncio()
-    async def test_try_parser_basic(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_try_parser_basic(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test basic parser trial with fallback parsing."""
         mock_connector.load_content = AsyncMock(
             return_value=b"# Heading\n\nThis is some markdown content.\n\nMore text here."
@@ -287,22 +283,16 @@ class TestDetectLanguageTool:
         context: dict[str, Any] = {}
         tool = DetectLanguageTool(context)
 
-        result = await tool.execute(
-            text="The quick brown fox jumps over the lazy dog. This is a test sentence."
-        )
+        result = await tool.execute(text="The quick brown fox jumps over the lazy dog. This is a test sentence.")
 
         assert result["success"] is True
         assert result["primary_language"] == "en"
         assert result["source"] == "provided_text"
 
     @pytest.mark.asyncio()
-    async def test_detect_language_from_file(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_detect_language_from_file(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test language detection from file content."""
-        mock_connector.load_content = AsyncMock(
-            return_value=b"This is English text. The quick brown fox."
-        )
+        mock_connector.load_content = AsyncMock(return_value=b"This is English text. The quick brown fox.")
         context: dict[str, Any] = {
             "_enumerated_files": sample_file_refs,
             "connector": mock_connector,
@@ -331,9 +321,7 @@ class TestGetFileContentPreviewTool:
     """Tests for the GetFileContentPreviewTool."""
 
     @pytest.mark.asyncio()
-    async def test_preview_text_file(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_preview_text_file(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test previewing a text file."""
         test_content = b"This is the content of the file for preview."
         mock_connector.load_content = AsyncMock(return_value=test_content)
@@ -351,9 +339,7 @@ class TestGetFileContentPreviewTool:
         assert result["encoding"] == "utf-8"
 
     @pytest.mark.asyncio()
-    async def test_preview_respects_max_bytes(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_preview_respects_max_bytes(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test that preview respects max_bytes limit."""
         long_content = b"x" * 5000
         mock_connector.load_content = AsyncMock(return_value=long_content)
@@ -383,9 +369,7 @@ class TestGetFileContentPreviewTool:
         assert "not found" in result["error"]
 
     @pytest.mark.asyncio()
-    async def test_preview_binary_file(
-        self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
-    ):
+    async def test_preview_binary_file(self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]):
         """Test previewing a binary file."""
         # Binary content that won't decode as UTF-8
         binary_content = bytes([0x00, 0xFF, 0x89, 0x50, 0x4E, 0x47] * 100)

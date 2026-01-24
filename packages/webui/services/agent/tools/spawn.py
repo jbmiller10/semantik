@@ -180,10 +180,7 @@ class SpawnSourceAnalyzerTool(BaseTool):
                 "success": result.success,
                 "analysis": result.data,
                 "summary": result.summary,
-                "uncertainties": [
-                    {"severity": u.severity, "message": u.message}
-                    for u in result.uncertainties
-                ],
+                "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
             }
 
         except Exception as e:

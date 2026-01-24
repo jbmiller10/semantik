@@ -22,7 +22,12 @@ def sample_pipeline_config():
         "nodes": [
             {"id": "parser", "type": "parser", "plugin_id": "text-parser", "config": {}},
             {"id": "chunker", "type": "chunker", "plugin_id": "semantic-chunker", "config": {"max_tokens": 512}},
-            {"id": "embedder", "type": "embedder", "plugin_id": "dense-embedding", "config": {"model": "BAAI/bge-base-en-v1.5"}},
+            {
+                "id": "embedder",
+                "type": "embedder",
+                "plugin_id": "dense-embedding",
+                "config": {"model": "BAAI/bge-base-en-v1.5"},
+            },
         ],
         "edges": [
             {"from_node": "_source", "to_node": "parser", "when": None},
@@ -45,7 +50,9 @@ def sample_template():
             version="1.0",
             nodes=[
                 PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text-parser"),
-                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="semantic-chunker", config={"max_tokens": 512}),
+                PipelineNode(
+                    id="chunker", type=NodeType.CHUNKER, plugin_id="semantic-chunker", config={"max_tokens": 512}
+                ),
                 PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-embedding"),
             ],
             edges=[
@@ -376,9 +383,7 @@ class TestApplyPipelineTool:
             mock_repo.get_blocking_uncertainties.return_value = [mock_uncertainty]
             mock_repo_class.return_value = mock_repo
 
-            tool = ApplyPipelineTool(
-                context={"conversation": mock_conversation, "session": mock_session, "user_id": 1}
-            )
+            tool = ApplyPipelineTool(context={"conversation": mock_conversation, "session": mock_session, "user_id": 1})
             result = await tool.execute(collection_name="test")
 
             assert result["success"] is False
@@ -413,9 +418,7 @@ class TestApplyPipelineTool:
             mock_repo.set_collection.return_value = mock_conversation
             mock_repo_class.return_value = mock_repo
 
-            tool = ApplyPipelineTool(
-                context={"conversation": mock_conversation, "session": mock_session, "user_id": 1}
-            )
+            tool = ApplyPipelineTool(context={"conversation": mock_conversation, "session": mock_session, "user_id": 1})
             result = await tool.execute(collection_name="test", force=True)
 
             assert result["success"] is True
@@ -447,9 +450,7 @@ class TestApplyPipelineTool:
             mock_repo.set_collection.return_value = mock_conversation
             mock_repo_class.return_value = mock_repo
 
-            tool = ApplyPipelineTool(
-                context={"conversation": mock_conversation, "session": mock_session, "user_id": 1}
-            )
+            tool = ApplyPipelineTool(context={"conversation": mock_conversation, "session": mock_session, "user_id": 1})
             result = await tool.execute(collection_name="My Collection", collection_description="Test desc")
 
             assert result["success"] is True
@@ -484,9 +485,7 @@ class TestApplyPipelineTool:
         with patch("webui.services.agent.tools.pipeline.plugin_registry") as mock_registry:
             mock_registry.list_ids.return_value = ["text-parser"]
 
-            tool = ApplyPipelineTool(
-                context={"conversation": mock_conversation, "session": mock_session, "user_id": 1}
-            )
+            tool = ApplyPipelineTool(context={"conversation": mock_conversation, "session": mock_session, "user_id": 1})
             result = await tool.execute(collection_name="test")
 
             assert result["success"] is False
