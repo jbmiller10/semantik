@@ -6,10 +6,12 @@ Uses shared fixtures from conftest.py (api_client, api_client_unauthenticated).
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import pytest
-from httpx import AsyncClient
 
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 # Skip auth tests when auth is disabled
 _SKIP_AUTH_TESTS = pytest.mark.skipif(
