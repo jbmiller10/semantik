@@ -17,11 +17,9 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
-    Index,
     String,
     Text,
     func,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -176,13 +174,5 @@ class ConversationUncertainty(Base):
     # Relationships
     conversation: Mapped[AgentConversation] = relationship("AgentConversation", back_populates="uncertainties")
 
-    __table_args__ = (
-        # Partial index for finding unresolved blocking issues efficiently
-        Index(
-            "ix_uncertainties_blocking_unresolved",
-            "conversation_id",
-            "severity",
-            "resolved",
-            postgresql_where=text("severity = 'blocking' AND resolved = false"),
-        ),
-    )
+    # Note: Partial index ix_uncertainties_blocking_unresolved is created in migration
+    # to avoid issues with create_all() validating enum values before migration runs
