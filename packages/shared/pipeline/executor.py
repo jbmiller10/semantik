@@ -340,8 +340,8 @@ class PipelineExecutor:
             load_result = await self._loader.load(file_ref)
         except LoadError as e:
             # Add stage info for error tracking
-            e.stage_id = "loader"  # noqa: B010
-            e.stage_type = "loader"  # noqa: B010
+            e.stage_id = "loader"
+            e.stage_type = "loader"
             raise
 
         self._record_timing("loader", stage_start)
@@ -479,7 +479,7 @@ class PipelineExecutor:
             e.stage_type = "database"  # type: ignore[attr-defined]
             raise
 
-        if existing and existing.content_hash == content_hash:
+        if existing is not None and existing.content_hash == content_hash:
             return "unchanged"
 
         return None
@@ -612,7 +612,9 @@ class PipelineExecutor:
         }
 
         # Call VecPipe /embed endpoint
-        vecpipe_url = "http://vecpipe:8000/embed"
+        from shared.config import settings
+
+        vecpipe_url = f"{settings.SEARCH_API_URL}/embed"
         embed_request = {
             "texts": texts,
             "model_name": embedding_model,
@@ -666,7 +668,7 @@ class PipelineExecutor:
 
         # Upsert to Qdrant via VecPipe in batches
         batch_size = 100
-        vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+        vecpipe_upsert_url = f"{settings.SEARCH_API_URL}/upsert"
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             for batch_start in range(0, len(points), batch_size):

@@ -147,7 +147,7 @@ class TestAgentConversationRepository:
         mock_result.scalar_one_or_none.return_value = mock_conv
         mock_session.execute.return_value = mock_result
 
-        result = await repository.update_status(conv_id, ConversationStatus.ABANDONED)
+        result = await repository.update_status(conv_id, user_id=1, status=ConversationStatus.ABANDONED)
 
         assert result.status == ConversationStatus.ABANDONED
         mock_session.flush.assert_called()
@@ -160,7 +160,7 @@ class TestAgentConversationRepository:
         mock_session.execute.return_value = mock_result
 
         with pytest.raises(EntityNotFoundError):
-            await repository.update_status(str(uuid4()), ConversationStatus.ABANDONED)
+            await repository.update_status(str(uuid4()), user_id=1, status=ConversationStatus.ABANDONED)
 
     @pytest.mark.asyncio()
     async def test_update_pipeline(self, repository, mock_session):
@@ -177,7 +177,7 @@ class TestAgentConversationRepository:
         mock_session.execute.return_value = mock_result
 
         pipeline = {"stages": [{"id": "chunk", "type": "recursive"}]}
-        result = await repository.update_pipeline(conv_id, pipeline)
+        result = await repository.update_pipeline(conv_id, user_id=1, pipeline_config=pipeline)
 
         assert result.current_pipeline == pipeline
 
@@ -197,6 +197,7 @@ class TestAgentConversationRepository:
 
         await repository.add_uncertainty(
             conversation_id=conv_id,
+            user_id=1,
             severity=UncertaintySeverity.BLOCKING,
             message="Test uncertainty",
             context={"key": "value"},
@@ -271,7 +272,7 @@ class TestAgentConversationRepository:
         mock_result.scalar_one_or_none.return_value = mock_conv
         mock_session.execute.return_value = mock_result
 
-        result = await repository.set_collection(conv_id, collection_id)
+        result = await repository.set_collection(conv_id, user_id=1, collection_id=collection_id)
 
         assert result.collection_id == collection_id
         assert result.status == ConversationStatus.APPLIED

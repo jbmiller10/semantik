@@ -16,8 +16,11 @@ from webui.services.agent.message_store import (
 def mock_redis():
     """Create a mock Redis client."""
     redis = AsyncMock()
-    redis.get = AsyncMock(return_value=None)
-    redis.setex = AsyncMock()
+    # LIST operations (new implementation)
+    redis.lrange = AsyncMock(return_value=[])
+    redis.rpush = AsyncMock()
+    redis.llen = AsyncMock(return_value=0)
+    # Common operations
     redis.exists = AsyncMock(return_value=0)
     redis.expire = AsyncMock(return_value=True)
     redis.delete = AsyncMock()
@@ -109,7 +112,7 @@ class TestMessageStore:
     @pytest.mark.asyncio()
     async def test_get_messages_empty(self, message_store, mock_redis):
         """Test getting messages when none exist."""
-        mock_redis.get.return_value = None
+        mock_redis.lrange.return_value = []
 
         messages = await message_store.get_messages(str(uuid4()))
 
@@ -121,11 +124,14 @@ class TestMessageStore:
         import json
 
         conv_id = str(uuid4())
+        # Each message is a separate JSON string in the LIST
         stored_messages = [
-            {"role": "user", "content": "Hello", "timestamp": "2026-01-24T10:00:00", "metadata": None},
-            {"role": "assistant", "content": "Hi there", "timestamp": "2026-01-24T10:00:01", "metadata": None},
+            json.dumps({"role": "user", "content": "Hello", "timestamp": "2026-01-24T10:00:00", "metadata": None}),
+            json.dumps(
+                {"role": "assistant", "content": "Hi there", "timestamp": "2026-01-24T10:00:01", "metadata": None}
+            ),
         ]
-        mock_redis.get.return_value = json.dumps(stored_messages)
+        mock_redis.lrange.return_value = stored_messages
 
         messages = await message_store.get_messages(conv_id)
 
@@ -137,7 +143,7 @@ class TestMessageStore:
     @pytest.mark.asyncio()
     async def test_get_messages_invalid_json(self, message_store, mock_redis):
         """Test getting messages with invalid JSON."""
-        mock_redis.get.return_value = "not valid json"
+        mock_redis.lrange.return_value = ["not valid json"]
 
         with pytest.raises(MessageStoreError, match="Invalid message data"):
             await message_store.get_messages(str(uuid4()))
@@ -148,44 +154,38 @@ class TestMessageStore:
         import json
 
         conv_id = str(uuid4())
-        mock_redis.get.return_value = None  # No existing messages
 
         msg = ConversationMessage.create("user", "New message")
         await message_store.append_message(conv_id, msg)
 
-        # Check that setex was called with the message
-        mock_redis.setex.assert_called_once()
-        call_args = mock_redis.setex.call_args
+        # Check that rpush was called with the message
+        mock_redis.rpush.assert_called_once()
+        call_args = mock_redis.rpush.call_args
         assert call_args[0][0] == f"agent:conversation:{conv_id}:messages"
-        assert call_args[0][1] == 3600  # TTL
 
-        stored_data = json.loads(call_args[0][2])
-        assert len(stored_data) == 1
-        assert stored_data[0]["content"] == "New message"
+        stored_data = json.loads(call_args[0][1])
+        assert stored_data["content"] == "New message"
+
+        # Check expire was called to refresh TTL
+        mock_redis.expire.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_append_to_existing_messages(self, message_store, mock_redis):
-        """Test appending to existing messages."""
-        import json
-
+    async def test_append_multiple_messages(self, message_store, mock_redis):
+        """Test appending multiple messages atomically."""
         conv_id = str(uuid4())
-        existing = [{"role": "user", "content": "First", "timestamp": "2026-01-24T10:00:00", "metadata": None}]
-        mock_redis.get.return_value = json.dumps(existing)
 
-        msg = ConversationMessage.create("assistant", "Second")
-        await message_store.append_message(conv_id, msg)
+        msg1 = ConversationMessage.create("user", "First")
+        msg2 = ConversationMessage.create("assistant", "Second")
 
-        call_args = mock_redis.setex.call_args
-        stored_data = json.loads(call_args[0][2])
-        assert len(stored_data) == 2
-        assert stored_data[0]["content"] == "First"
-        assert stored_data[1]["content"] == "Second"
+        await message_store.append_message(conv_id, msg1)
+        await message_store.append_message(conv_id, msg2)
+
+        # Each append should call rpush once
+        assert mock_redis.rpush.call_count == 2
 
     @pytest.mark.asyncio()
     async def test_set_messages(self, message_store, mock_redis):
         """Test setting all messages."""
-        import json
-
         conv_id = str(uuid4())
         messages = [
             ConversationMessage.create("user", "Hello"),
@@ -194,10 +194,26 @@ class TestMessageStore:
 
         await message_store.set_messages(conv_id, messages)
 
-        mock_redis.setex.assert_called_once()
-        call_args = mock_redis.setex.call_args
-        stored_data = json.loads(call_args[0][2])
-        assert len(stored_data) == 2
+        # Should delete old list first, then rpush all messages
+        mock_redis.delete.assert_called_once()
+        mock_redis.rpush.assert_called_once()
+
+        # Check rpush was called with all messages
+        call_args = mock_redis.rpush.call_args
+        assert call_args[0][0] == f"agent:conversation:{conv_id}:messages"
+        # rpush is called with key, *data
+        assert len(call_args[0]) == 3  # key + 2 messages
+
+    @pytest.mark.asyncio()
+    async def test_set_messages_empty_list(self, message_store, mock_redis):
+        """Test setting empty message list."""
+        conv_id = str(uuid4())
+
+        await message_store.set_messages(conv_id, [])
+
+        # Should delete the key but not rpush anything
+        mock_redis.delete.assert_called_once()
+        mock_redis.rpush.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_has_messages_true(self, message_store, mock_redis):
@@ -239,19 +255,23 @@ class TestMessageStore:
     @pytest.mark.asyncio()
     async def test_get_message_count(self, message_store, mock_redis):
         """Test getting message count."""
-        import json
-
         conv_id = str(uuid4())
-        messages = [
-            {"role": "user", "content": "1", "timestamp": "t1", "metadata": None},
-            {"role": "assistant", "content": "2", "timestamp": "t2", "metadata": None},
-            {"role": "user", "content": "3", "timestamp": "t3", "metadata": None},
-        ]
-        mock_redis.get.return_value = json.dumps(messages)
+        mock_redis.llen.return_value = 3
 
         count = await message_store.get_message_count(conv_id)
 
         assert count == 3
+        mock_redis.llen.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_get_message_count_empty(self, message_store, mock_redis):
+        """Test getting count for empty message list."""
+        conv_id = str(uuid4())
+        mock_redis.llen.return_value = 0
+
+        count = await message_store.get_message_count(conv_id)
+
+        assert count == 0
 
     @pytest.mark.asyncio()
     async def test_acquire_lock(self, message_store, mock_redis):
@@ -302,3 +322,44 @@ class TestMessageStore:
         result = await message_store.is_locked(str(uuid4()))
 
         assert result is False
+
+    @pytest.mark.asyncio()
+    async def test_conversation_lock_acquired(self, message_store, mock_redis):
+        """Test conversation_lock context manager when lock is acquired."""
+        conv_id = str(uuid4())
+        mock_redis.set.return_value = True  # Lock acquired
+
+        async with message_store.conversation_lock(conv_id) as acquired:
+            assert acquired is True
+
+        # Lock should be released on exit
+        mock_redis.delete.assert_called()
+
+    @pytest.mark.asyncio()
+    async def test_conversation_lock_not_acquired(self, message_store, mock_redis):
+        """Test conversation_lock context manager when lock is not acquired."""
+        conv_id = str(uuid4())
+        mock_redis.set.return_value = None  # Lock not acquired
+
+        async with message_store.conversation_lock(conv_id) as acquired:
+            assert acquired is False
+
+        # Lock should not be released since it was never acquired
+        mock_redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_conversation_lock_releases_on_exception(self, message_store, mock_redis):
+        """Test that lock is released even if exception occurs."""
+        conv_id = str(uuid4())
+        mock_redis.set.return_value = True  # Lock acquired
+
+        async def raise_in_lock():
+            async with message_store.conversation_lock(conv_id) as acquired:
+                assert acquired is True
+                raise RuntimeError("Test exception")
+
+        with pytest.raises(RuntimeError):
+            await raise_in_lock()
+
+        # Lock should still be released despite exception
+        mock_redis.delete.assert_called()

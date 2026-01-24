@@ -181,22 +181,24 @@ class AgentConversationRepository:
     async def update_status(
         self,
         conversation_id: str,
+        user_id: int,
         status: ConversationStatus,
     ) -> AgentConversation:
         """Update conversation status.
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             status: New status
 
         Returns:
             Updated AgentConversation instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            conversation = await self.get_by_id(conversation_id)
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 
@@ -219,22 +221,24 @@ class AgentConversationRepository:
     async def update_pipeline(
         self,
         conversation_id: str,
+        user_id: int,
         pipeline_config: dict[str, Any],
     ) -> AgentConversation:
         """Update the current pipeline configuration.
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             pipeline_config: Serialized PipelineDAG configuration
 
         Returns:
             Updated AgentConversation instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            conversation = await self.get_by_id(conversation_id)
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 
@@ -257,22 +261,24 @@ class AgentConversationRepository:
     async def update_source_analysis(
         self,
         conversation_id: str,
+        user_id: int,
         source_analysis: dict[str, Any],
     ) -> AgentConversation:
         """Update the source analysis results.
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             source_analysis: Results from SourceAnalyzer sub-agent
 
         Returns:
             Updated AgentConversation instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            conversation = await self.get_by_id(conversation_id)
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 
@@ -295,22 +301,24 @@ class AgentConversationRepository:
     async def update_summary(
         self,
         conversation_id: str,
+        user_id: int,
         summary: str,
     ) -> AgentConversation:
         """Update the conversation summary for recovery.
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             summary: Conversation summary text
 
         Returns:
             Updated AgentConversation instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            conversation = await self.get_by_id(conversation_id)
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 
@@ -332,22 +340,24 @@ class AgentConversationRepository:
     async def set_collection(
         self,
         conversation_id: str,
+        user_id: int,
         collection_id: str,
     ) -> AgentConversation:
         """Set the collection created from this conversation.
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             collection_id: UUID of the created collection
 
         Returns:
             Updated AgentConversation instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            conversation = await self.get_by_id(conversation_id)
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 
@@ -373,6 +383,7 @@ class AgentConversationRepository:
     async def add_uncertainty(
         self,
         conversation_id: str,
+        user_id: int,
         severity: UncertaintySeverity,
         message: str,
         context: dict[str, Any] | None = None,
@@ -381,6 +392,7 @@ class AgentConversationRepository:
 
         Args:
             conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
             severity: Uncertainty severity level
             message: Human-readable description
             context: Additional context data
@@ -389,11 +401,11 @@ class AgentConversationRepository:
             Created ConversationUncertainty instance
 
         Raises:
-            EntityNotFoundError: If conversation not found
+            EntityNotFoundError: If conversation not found or not owned by user
         """
         try:
-            # Verify conversation exists
-            conversation = await self.get_by_id(conversation_id)
+            # Verify conversation exists and is owned by user
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
             if not conversation:
                 raise EntityNotFoundError("agent_conversation", conversation_id)
 

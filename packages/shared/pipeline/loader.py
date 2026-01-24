@@ -26,11 +26,15 @@ class LoadError(Exception):
     Attributes:
         file_uri: URI of the file that failed to load
         reason: Human-readable error description
+        stage_id: Optional pipeline stage ID where error occurred
+        stage_type: Optional pipeline stage type where error occurred
     """
 
     def __init__(self, file_uri: str, reason: str) -> None:
         self.file_uri = file_uri
         self.reason = reason
+        self.stage_id: str | None = None
+        self.stage_type: str | None = None
         super().__init__(f"Failed to load {file_uri}: {reason}")
 
 

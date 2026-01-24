@@ -426,12 +426,12 @@ def _load_external_plugins(
                 disabled_plugin_ids=disabled_plugin_ids,
             )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load plugin entry point %s: %s", ep_name, exc)
+            logger.error("Failed to load plugin entry point %s: %s", ep_name, exc, exc_info=True)
             audit_log(
                 ep_name,
                 "plugin.load.failed",
                 {"entry_point": ep_name, "error": str(exc)},
-                level=logging.WARNING,
+                level=logging.ERROR,
             )
             continue
 

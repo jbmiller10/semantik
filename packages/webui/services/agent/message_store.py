@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 from webui.services.agent.exceptions import MessageStoreError
 
@@ -129,13 +133,13 @@ class MessageStore:
         """
         try:
             key = _messages_key(conversation_id)
-            data = await self.redis.get(key)
+            # Use LRANGE to get all elements from Redis LIST
+            raw_messages = await self.redis.lrange(key, 0, -1)
 
-            if not data:
+            if not raw_messages:
                 return []
 
-            messages_data = json.loads(data)
-            return [ConversationMessage.from_dict(m) for m in messages_data]
+            return [ConversationMessage.from_dict(json.loads(m)) for m in raw_messages]
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode messages for {conversation_id}: {e}")
@@ -154,7 +158,8 @@ class MessageStore:
     ) -> None:
         """Append a message to a conversation.
 
-        This also extends the TTL on the conversation messages.
+        Uses atomic Redis RPUSH for thread-safe concurrent access.
+        Also extends the TTL on the conversation messages.
 
         Args:
             conversation_id: UUID of the conversation
@@ -162,17 +167,12 @@ class MessageStore:
         """
         try:
             key = _messages_key(conversation_id)
+            data = json.dumps(message.to_dict())
 
-            # Get existing messages
-            existing = await self.get_messages(conversation_id)
-            existing.append(message)
+            # Atomic append using Redis LIST
+            await self.redis.rpush(key, data)
+            await self.redis.expire(key, self.ttl)
 
-            # Store updated list with TTL
-            data = json.dumps([m.to_dict() for m in existing])
-            await self.redis.setex(key, self.ttl, data)
-
-        except MessageStoreError:
-            raise
         except Exception as e:
             logger.error(
                 f"Failed to append message to {conversation_id}: {e}",
@@ -193,8 +193,15 @@ class MessageStore:
         """
         try:
             key = _messages_key(conversation_id)
-            data = json.dumps([m.to_dict() for m in messages])
-            await self.redis.setex(key, self.ttl, data)
+
+            # Delete existing list first
+            await self.redis.delete(key)
+
+            # Push all messages as LIST elements
+            if messages:
+                data = [json.dumps(m.to_dict()) for m in messages]
+                await self.redis.rpush(key, *data)
+                await self.redis.expire(key, self.ttl)
 
         except Exception as e:
             logger.error(
@@ -269,8 +276,16 @@ class MessageStore:
         Returns:
             Number of messages, 0 if none or expired
         """
-        messages = await self.get_messages(conversation_id)
-        return len(messages)
+        try:
+            key = _messages_key(conversation_id)
+            # Use LLEN for efficient count without fetching all data
+            return await self.redis.llen(key)
+        except Exception as e:
+            logger.error(
+                f"Failed to get message count for {conversation_id}: {e}",
+                exc_info=True,
+            )
+            raise MessageStoreError(f"Failed to get message count: {e}") from e
 
     # Lock methods for concurrent access control
 
@@ -337,3 +352,34 @@ class MessageStore:
                 exc_info=True,
             )
             raise MessageStoreError(f"Failed to check lock: {e}") from e
+
+    @asynccontextmanager
+    async def conversation_lock(
+        self,
+        conversation_id: str,
+        timeout_seconds: int = 30,
+    ) -> AsyncGenerator[bool, None]:
+        """Context manager for safe conversation locking.
+
+        Acquires a lock on entry and automatically releases it on exit.
+        The yielded boolean indicates whether the lock was successfully acquired.
+
+        Usage:
+            async with store.conversation_lock(conv_id) as acquired:
+                if acquired:
+                    # Do work with lock held
+                    ...
+
+        Args:
+            conversation_id: UUID of the conversation
+            timeout_seconds: Lock timeout in seconds
+
+        Yields:
+            True if lock was acquired, False if already locked
+        """
+        acquired = await self.acquire_lock(conversation_id, timeout_seconds)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                await self.release_lock(conversation_id)

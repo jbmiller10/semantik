@@ -248,12 +248,12 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
             async with httpx.AsyncClient(timeout=60.0) as client:
                 headers = _build_internal_api_headers()
                 await client.post(
-                    "http://vecpipe:8000/embed",
+                    f"{settings.SEARCH_API_URL}/embed",
                     json={"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"},
                     headers=headers,
                 )
                 await client.post(
-                    "http://vecpipe:8000/upsert",
+                    f"{settings.SEARCH_API_URL}/upsert",
                     json={"collection_name": collection.get("vector_store_name"), "points": []},
                     headers=headers,
                 )
@@ -516,7 +516,7 @@ async def _process_reindex_operation_impl(
 
                     texts = [chunk["text"] for chunk in all_chunks]
 
-                    vecpipe_url = "http://vecpipe:8000/embed"
+                    vecpipe_url = f"{settings.SEARCH_API_URL}/embed"
                     embed_request = {
                         "texts": texts,
                         "model_name": model_name,
@@ -612,7 +612,7 @@ async def _process_reindex_operation_impl(
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
                             headers = _build_internal_api_headers()
-                            vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+                            vecpipe_upsert_url = f"{settings.SEARCH_API_URL}/upsert"
                             response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
 
                             if response.status_code != 200:

@@ -119,6 +119,7 @@ class ImapConnector(BaseConnector):
         self._password: str | None = None
         self._cursor: dict[str, dict[str, int]] = {}
         self._connection: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
+        self._skipped_mailboxes: list[tuple[str, str]] = []
         super().__init__(config)
 
     def validate_config(self) -> None:
@@ -290,6 +291,15 @@ class ImapConnector(BaseConnector):
         except imaplib.IMAP4.error as e:
             raise ValueError(f"IMAP authentication failed: {e}") from e
 
+    def get_skipped_mailboxes(self) -> list[tuple[str, str]]:
+        """Get list of mailboxes skipped during enumeration.
+
+        Returns:
+            List of (mailbox_name, reason) tuples describing mailboxes
+            that were skipped due to selection or search failures.
+        """
+        return list(self._skipped_mailboxes)
+
     async def enumerate(
         self,
         source_id: int | None = None,  # noqa: ARG002
@@ -308,6 +318,9 @@ class ImapConnector(BaseConnector):
         """
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")
+
+        # Clear skipped mailboxes from any previous enumeration
+        self._skipped_mailboxes.clear()
 
         loop = asyncio.get_running_loop()
         conn = await loop.run_in_executor(None, self._connect)
@@ -363,9 +376,11 @@ class ImapConnector(BaseConnector):
             status, data = await loop.run_in_executor(None, conn.select, f'"{mailbox}"')
             if status != "OK":
                 logger.warning(f"Cannot select mailbox {mailbox}: {data}")
+                self._skipped_mailboxes.append((mailbox, f"Cannot select: {data}"))
                 return
         except Exception as e:
             logger.warning(f"Failed to select mailbox {mailbox}: {e}")
+            self._skipped_mailboxes.append((mailbox, f"Select failed: {e}"))
             return
 
         # Get UIDVALIDITY
@@ -411,6 +426,7 @@ class ImapConnector(BaseConnector):
                 return
         except Exception as e:
             logger.error(f"Failed to search mailbox {mailbox}: {e}")
+            self._skipped_mailboxes.append((mailbox, f"Search failed: {e}"))
             return
 
         msg_uids = search_data[0].split() if isinstance(search_data[0], bytes) else []

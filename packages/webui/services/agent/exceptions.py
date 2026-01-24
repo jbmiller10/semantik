@@ -16,17 +16,6 @@ class AgentError(Exception):
     """Base exception for all agent-related errors."""
 
 
-class LLMNotConfiguredError(AgentError):
-    """User hasn't configured an LLM provider for the required tier.
-
-    Raised when attempting to start a conversation without having
-    configured an LLM provider in settings.
-    """
-
-    def __init__(self, message: str = "LLM provider not configured"):
-        super().__init__(message)
-
-
 class SubAgentFailedError(AgentError):
     """Sub-agent failed to complete its task.
 

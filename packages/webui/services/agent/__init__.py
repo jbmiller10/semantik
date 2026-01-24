@@ -11,7 +11,6 @@ from webui.services.agent.exceptions import (
     AgentError,
     BlockingUncertaintyError,
     ConversationNotActiveError,
-    LLMNotConfiguredError,
     SubAgentFailedError,
 )
 from webui.services.agent.models import (
@@ -29,7 +28,6 @@ __all__ = [
     "UncertaintySeverity",
     # Exceptions
     "AgentError",
-    "LLMNotConfiguredError",
     "SubAgentFailedError",
     "ConversationNotActiveError",
     "BlockingUncertaintyError",
