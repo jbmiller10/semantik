@@ -113,10 +113,7 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         ],
         input_types=["text/plain"],
         output_type="vectors",
-        tradeoffs=(
-            "Full control and privacy but requires GPU. "
-            "Model choice affects quality and speed."
-        ),
+        tradeoffs="Full control and privacy but requires GPU. Model choice affects quality and speed.",
     )
 
     METADATA: ClassVar[dict[str, Any]] = {
