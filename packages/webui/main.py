@@ -70,6 +70,7 @@ from .api.v2 import (
     sources as v2_sources,
     system as v2_system,
     system_settings as v2_system_settings,
+    templates as v2_templates,
     user_preferences as v2_user_preferences,
 )
 from .api.v2.directory_scan import directory_scan_websocket
@@ -362,6 +363,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
     app.include_router(v2_system_settings.router)
+    app.include_router(v2_templates.router)
     app.include_router(v2_llm_settings.router)
     app.include_router(v2_user_preferences.router)
     app.include_router(v2_benchmark_datasets.router)
