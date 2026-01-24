@@ -10,6 +10,7 @@ Use for: text, markdown, code files, JSON, YAML, config files, etc.
 from __future__ import annotations
 
 import codecs
+import logging
 import mimetypes
 from pathlib import Path
 from typing import Any, ClassVar
@@ -22,6 +23,9 @@ from shared.plugins.types.parser import (
     ParserPlugin,
     UnsupportedFormatError,
 )
+from shared.plugins.types.parser_utils import build_parser_metadata, normalize_extension
+
+logger = logging.getLogger(__name__)
 
 # BOM signatures in detection order (longer first to avoid UTF-16 matching UTF-32).
 # UTF-32-LE BOM (FF FE 00 00) starts with UTF-16-LE BOM (FF FE), so check 4-byte first.
@@ -70,59 +74,6 @@ def _is_binary_content(content: bytes) -> bool:
     # Count bytes that are non-printable (exclude tab=9, LF=10, CR=13)
     non_printable = sum(1 for b in sample if b < 9 or (13 < b < 32))
     return (non_printable / len(sample)) > 0.30
-
-
-def _normalize_extension(ext: str | None) -> str:
-    """Normalize a file extension to lowercase with leading dot."""
-    if not ext:
-        return ""
-    ext = ext.strip().lower()
-    if ext and not ext.startswith("."):
-        ext = f".{ext}"
-    return ext
-
-
-def _normalize_file_type(ext: str) -> str:
-    """Convert extension to file type (extension without leading dot)."""
-    return ext.lstrip(".").lower()
-
-
-def _build_parser_metadata(
-    *,
-    parser_name: str,
-    filename: str | None = None,
-    file_extension: str | None = None,
-    mime_type: str | None = None,
-    caller_metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build metadata dict with protected keys."""
-    ext_norm = _normalize_extension(file_extension)
-
-    # Start with caller metadata (or empty dict)
-    result = dict(caller_metadata or {})
-
-    # Determine filename: explicit > default
-    resolved_filename = filename or "document"
-
-    # Overwrite with protected/required keys
-    result["filename"] = resolved_filename
-    result["file_extension"] = ext_norm
-    result["file_type"] = _normalize_file_type(ext_norm)
-    result["parser"] = parser_name
-
-    # Determine MIME type: explicit > guess > default
-    mime_norm = mime_type.strip().lower() if mime_type else None
-    if mime_norm is None:
-        guessed_mime: str | None = None
-        if resolved_filename and resolved_filename != "document":
-            guessed_mime, _ = mimetypes.guess_type(resolved_filename)
-        if guessed_mime is None and ext_norm:
-            guessed_mime, _ = mimetypes.guess_type(f"document{ext_norm}")
-        result["mime_type"] = guessed_mime.lower() if guessed_mime else "application/octet-stream"
-    else:
-        result["mime_type"] = mime_norm
-
-    return result
 
 
 class TextParserPlugin(ParserPlugin):
@@ -277,6 +228,7 @@ class TextParserPlugin(ParserPlugin):
         try:
             content = path.read_bytes()
         except Exception as e:
+            logger.error("Failed to read file %s: %s", path.name, e)
             raise ExtractionFailedError(f"Failed to read {path.name}: {e}", cause=e) from e
 
         mime_type, _ = mimetypes.guess_type(str(path))
@@ -338,10 +290,11 @@ class TextParserPlugin(ParserPlugin):
         try:
             text = bytes_to_decode.decode(encoding, errors=errors)
         except Exception as e:
+            logger.error("Failed to decode content (encoding=%s): %s", encoding, e)
             raise ExtractionFailedError(f"Failed to decode content: {e}", cause=e) from e
 
-        ext_norm = _normalize_extension(file_extension)
-        base_metadata = _build_parser_metadata(
+        ext_norm = normalize_extension(file_extension)
+        base_metadata = build_parser_metadata(
             parser_name="text",
             filename=filename,
             file_extension=ext_norm,

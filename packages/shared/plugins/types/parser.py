@@ -11,7 +11,7 @@ Key design decisions:
 
 from __future__ import annotations
 
-import contextlib
+import logging
 import mimetypes
 from abc import abstractmethod
 from dataclasses import dataclass, field
@@ -20,6 +20,8 @@ from typing import Any, ClassVar
 
 from shared.plugins.base import SemanticPlugin
 from shared.plugins.manifest import AgentHints, PluginManifest
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Exceptions
@@ -482,13 +484,17 @@ class ParserPlugin(SemanticPlugin):
 
         # Collect supported extensions
         extensions: frozenset[str] = frozenset()
-        with contextlib.suppress(TypeError, NotImplementedError):
+        try:
             extensions = cls.supported_extensions()
+        except (TypeError, NotImplementedError) as e:
+            logger.debug("Could not get supported_extensions for %s: %s", cls.PLUGIN_ID, e)
 
         # Collect supported MIME types
         mime_types: frozenset[str] = frozenset()
-        with contextlib.suppress(TypeError, NotImplementedError):
+        try:
             mime_types = cls.supported_mime_types()
+        except (TypeError, NotImplementedError) as e:
+            logger.debug("Could not get supported_mime_types for %s: %s", cls.PLUGIN_ID, e)
 
         # Build capabilities
         capabilities: dict[str, Any] = {}

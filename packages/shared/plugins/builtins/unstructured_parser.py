@@ -24,61 +24,9 @@ from shared.plugins.types.parser import (
     ParserPlugin,
     UnsupportedFormatError,
 )
+from shared.plugins.types.parser_utils import build_parser_metadata, normalize_extension
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_extension(ext: str | None) -> str:
-    """Normalize a file extension to lowercase with leading dot."""
-    if not ext:
-        return ""
-    ext = ext.strip().lower()
-    if ext and not ext.startswith("."):
-        ext = f".{ext}"
-    return ext
-
-
-def _normalize_file_type(ext: str) -> str:
-    """Convert extension to file type (extension without leading dot)."""
-    return ext.lstrip(".").lower()
-
-
-def _build_parser_metadata(
-    *,
-    parser_name: str,
-    filename: str | None = None,
-    file_extension: str | None = None,
-    mime_type: str | None = None,
-    caller_metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build metadata dict with protected keys."""
-    ext_norm = _normalize_extension(file_extension)
-
-    # Start with caller metadata (or empty dict)
-    result = dict(caller_metadata or {})
-
-    # Determine filename: explicit > default
-    resolved_filename = filename or "document"
-
-    # Overwrite with protected/required keys
-    result["filename"] = resolved_filename
-    result["file_extension"] = ext_norm
-    result["file_type"] = _normalize_file_type(ext_norm)
-    result["parser"] = parser_name
-
-    # Determine MIME type: explicit > guess > default
-    mime_norm = mime_type.strip().lower() if mime_type else None
-    if mime_norm is None:
-        guessed_mime: str | None = None
-        if resolved_filename and resolved_filename != "document":
-            guessed_mime, _ = mimetypes.guess_type(resolved_filename)
-        if guessed_mime is None and ext_norm:
-            guessed_mime, _ = mimetypes.guess_type(f"document{ext_norm}")
-        result["mime_type"] = guessed_mime.lower() if guessed_mime else "application/octet-stream"
-    else:
-        result["mime_type"] = mime_norm
-
-    return result
 
 
 class UnstructuredParserPlugin(ParserPlugin):
@@ -273,7 +221,7 @@ class UnstructuredParserPlugin(ParserPlugin):
             UnsupportedFormatError: If file extension/MIME type is not supported.
             ExtractionFailedError: If unstructured parsing fails.
         """
-        ext_norm = _normalize_extension(file_extension)
+        ext_norm = normalize_extension(file_extension)
         if (
             ext_norm
             and ext_norm not in self.supported_extensions()
@@ -310,7 +258,7 @@ class UnstructuredParserPlugin(ParserPlugin):
         parsed_elements: list[ParsedElement] = []
         text_parts: list[str] = []
         current_page = 1
-        base_metadata = _build_parser_metadata(
+        base_metadata = build_parser_metadata(
             parser_name="unstructured",
             filename=resolved_filename,
             file_extension=ext_norm,
