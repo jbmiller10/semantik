@@ -1355,6 +1355,7 @@ async def _process_append_operation_impl(
         # Update source sync status
         try:
             from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+
             source_repo = CollectionSourceRepository(session)
             await source_repo.update_sync_status(
                 source_id=source_id,

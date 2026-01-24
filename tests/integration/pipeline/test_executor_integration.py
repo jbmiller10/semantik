@@ -20,13 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.connectors.local import LocalFileConnector
 from shared.pipeline.executor import PipelineExecutor
 from shared.pipeline.executor_types import ExecutionMode
-from shared.pipeline.types import (
-    FileReference,
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
 
 @pytest.fixture()

@@ -1,1 +1,1 @@
-"""Unit tests for the pipeline DAG module."""
+"""Pipeline unit tests."""

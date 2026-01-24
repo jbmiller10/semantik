@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from typing import Any, ClassVar
 
-from shared.plugins.manifest import PluginManifest
+from shared.plugins.manifest import AgentHints, PluginManifest
 from shared.plugins.types.extractor import ExtractionResult, ExtractionType, ExtractorPlugin
 
 logger = logging.getLogger(__name__)
@@ -317,6 +317,26 @@ class KeywordExtractorPlugin(ExtractorPlugin):
     PLUGIN_TYPE: ClassVar[str] = "extractor"
     PLUGIN_ID: ClassVar[str] = "keyword-extractor"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Extracts keywords and keyphrases from text for metadata enrichment. "
+        "Enables keyword-based filtering and faceted search.",
+        best_for=[
+            "improving keyword search alongside semantic",
+            "faceted filtering by topic",
+            "document categorization",
+            "extracting key concepts for metadata",
+        ],
+        not_recommended_for=[
+            "when only semantic search is needed",
+            "very short text snippets",
+            "highly technical jargon (may miss domain terms)",
+        ],
+        input_types=["text/plain"],
+        output_type="keywords",
+        tradeoffs="Adds metadata overhead. Most useful when users will filter by keywords. "
+        "RAKE algorithm is fast but may miss domain-specific terms.",
+    )
 
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Keyword Extractor",

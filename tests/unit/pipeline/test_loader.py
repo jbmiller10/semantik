@@ -208,7 +208,6 @@ class TestPipelineLoader:
         assert result.content == binary_content
         assert result.content_hash == hashlib.sha256(binary_content).hexdigest()
 
-
     @pytest.mark.asyncio()
     async def test_load_permission_denied(self, tmp_path: Path) -> None:
         """Test loading file with no read permissions raises LoadError."""

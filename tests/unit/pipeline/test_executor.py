@@ -10,13 +10,7 @@ import pytest
 from shared.database.models import DocumentStatus
 from shared.pipeline.executor import PipelineExecutor
 from shared.pipeline.executor_types import ExecutionMode
-from shared.pipeline.types import (
-    FileReference,
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
 
 class TestPipelineExecutorInit:
@@ -591,7 +585,9 @@ class TestPipelineExecutorExecute:
 
         # Create a mock existing document with matching content hash
         mock_existing_doc = MagicMock()
-        mock_existing_doc.content_hash = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"  # SHA256 of "Hello World"
+        mock_existing_doc.content_hash = (
+            "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"  # SHA256 of "Hello World"
+        )
         mock_existing_doc.status = DocumentStatus.COMPLETED
 
         # Create a mock doc repo that returns the existing document

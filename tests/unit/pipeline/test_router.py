@@ -3,13 +3,7 @@
 import pytest
 
 from shared.pipeline.router import PipelineRouter
-from shared.pipeline.types import (
-    FileReference,
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
 
 class TestPipelineRouter:

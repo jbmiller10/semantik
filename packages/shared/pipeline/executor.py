@@ -50,6 +50,7 @@ def _get_internal_api_key() -> str:
 
     return settings.INTERNAL_API_KEY or ""
 
+
 logger = logging.getLogger(__name__)
 
 # Type alias for progress callbacks
@@ -389,9 +390,7 @@ class PipelineExecutor:
                     # Embedder stage - create document, embed chunks, and store in Qdrant
                     if self.mode == ExecutionMode.FULL and chunks:
                         # Create document record first (we need doc_id for chunk points)
-                        doc_id = await self._create_document(
-                            file_ref, load_result.content_hash
-                        )
+                        doc_id = await self._create_document(file_ref, load_result.content_hash)
 
                         # Embed and store vectors - mark document FAILED on error
                         try:
@@ -493,6 +492,9 @@ class PipelineExecutor:
     ) -> tuple[str, dict[str, Any]]:
         """Execute a parser node.
 
+        Uses the plugin registry first for parser lookup, falling back to
+        the legacy registry for backward compatibility during migration.
+
         Args:
             node: Parser node configuration
             content: Raw file content
@@ -501,8 +503,23 @@ class PipelineExecutor:
         Returns:
             Tuple of (parsed text, parse metadata)
         """
-        parser = get_parser(node.plugin_id, node.config)
+        # Try plugin registry first (new plugin system)
+        from shared.plugins import plugin_registry
 
+        record = plugin_registry.get("parser", node.plugin_id)
+        if record is not None:
+            parser_cls = record.plugin_class
+            parser = parser_cls(node.config)
+            result = parser.parse_bytes(
+                content,
+                filename=file_ref.filename,
+                file_extension=file_ref.extension,
+                mime_type=file_ref.mime_type,
+            )
+            return result.text, dict(result.metadata)
+
+        # Fallback to legacy registry (deprecation path)
+        parser = get_parser(node.plugin_id, node.config)
         result = parser.parse_bytes(
             content,
             filename=file_ref.filename,
@@ -621,9 +638,7 @@ class PipelineExecutor:
             raise RuntimeError(f"VecPipe returned empty embeddings for {len(texts)} texts")
 
         if len(embeddings) != len(chunks):
-            raise RuntimeError(
-                f"Embedding count mismatch: got {len(embeddings)}, expected {len(chunks)}"
-            )
+            raise RuntimeError(f"Embedding count mismatch: got {len(embeddings)}, expected {len(chunks)}")
 
         # Build points for Qdrant
         path = file_ref.source_metadata.get("local_path", file_ref.uri)
@@ -745,9 +760,7 @@ class PipelineExecutor:
             try:
                 await callback(event)
             except Exception as e:
-                logger.warning(
-                    "Progress callback failed for %s: %s", event.event_type, e, exc_info=True
-                )
+                logger.warning("Progress callback failed for %s: %s", event.event_type, e, exc_info=True)
 
 
 __all__ = [

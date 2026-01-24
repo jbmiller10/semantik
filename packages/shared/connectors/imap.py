@@ -399,9 +399,7 @@ class ImapConnector(BaseConnector):
 
         # Search for messages
         try:
-            status, search_data = await loop.run_in_executor(
-                None, conn.uid, "SEARCH", "", search_criteria
-            )
+            status, search_data = await loop.run_in_executor(None, conn.uid, "SEARCH", "", search_criteria)
             if status != "OK" or not search_data or not search_data[0]:
                 logger.debug(f"No new messages in {mailbox}")
                 # Still update cursor with uidvalidity
@@ -549,9 +547,7 @@ class ImapConnector(BaseConnector):
                 raise ValueError(f"Cannot select mailbox {mailbox}: {data}")
 
             # Fetch full message content
-            status, fetch_data = await loop.run_in_executor(
-                None, conn.uid, "FETCH", str(uid), "(RFC822)"
-            )
+            status, fetch_data = await loop.run_in_executor(None, conn.uid, "FETCH", str(uid), "(RFC822)")
             if status != "OK" or not fetch_data or not fetch_data[0]:
                 raise ValueError(f"Cannot fetch message UID {uid} from {mailbox}")
 
