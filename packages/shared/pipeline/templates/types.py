@@ -111,9 +111,7 @@ class PipelineTemplate:
         )
 
 
-def resolve_tunable_path(
-    template: PipelineTemplate, path: str
-) -> tuple[PipelineNode | None, str | None]:
+def resolve_tunable_path(template: PipelineTemplate, path: str) -> tuple[PipelineNode | None, str | None]:
     """Resolve a tunable parameter path to its target node and config key.
 
     Paths follow the format: "nodes.<node_id>.config.<param_name>"

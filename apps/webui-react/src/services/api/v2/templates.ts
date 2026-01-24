@@ -1,9 +1,5 @@
 import apiClient from './client';
-import type {
-  TemplateSummary,
-  TemplateDetail,
-  TemplateListResponse,
-} from '../../../types/template';
+import type { TemplateDetail, TemplateListResponse } from '../../../types/template';
 
 /**
  * V2 Templates API client

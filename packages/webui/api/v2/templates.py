@@ -22,12 +22,8 @@ class TunableParameterSchema(BaseModel):
     path: str = Field(..., description="Dot-notation path to the parameter")
     description: str = Field(..., description="Human-readable description")
     default: Any = Field(..., description="Default value for this parameter")
-    range: list[int] | None = Field(
-        None, description="[min, max] range for numeric parameters"
-    )
-    options: list[str] | None = Field(
-        None, description="Valid options for enum-like parameters"
-    )
+    range: list[int] | None = Field(None, description="[min, max] range for numeric parameters")
+    options: list[str] | None = Field(None, description="Valid options for enum-like parameters")
 
 
 class PipelineNodeSchema(BaseModel):
@@ -80,9 +76,7 @@ class TemplateDetailResponse(BaseModel):
     description: str = Field(..., description="Detailed description")
     suggested_for: list[str] = Field(..., description="Use case hints")
     pipeline: PipelineDAGSchema = Field(..., description="Pre-configured pipeline DAG")
-    tunable: list[TunableParameterSchema] = Field(
-        default_factory=list, description="Adjustable parameters"
-    )
+    tunable: list[TunableParameterSchema] = Field(default_factory=list, description="Adjustable parameters")
 
 
 # --- Endpoints ---

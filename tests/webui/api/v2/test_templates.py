@@ -48,9 +48,7 @@ class TestListTemplates:
         assert len(data["templates"]) == 5
 
     @pytest.mark.asyncio()
-    async def test_list_templates_contains_expected_templates(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_list_templates_contains_expected_templates(self, api_client: AsyncClient) -> None:
         """Should contain all expected template IDs."""
         response = await api_client.get("/api/v2/templates")
 
@@ -67,9 +65,7 @@ class TestListTemplates:
         assert template_ids == expected_ids
 
     @pytest.mark.asyncio()
-    async def test_list_templates_summary_fields(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_list_templates_summary_fields(self, api_client: AsyncClient) -> None:
         """Each template summary should have required fields."""
         response = await api_client.get("/api/v2/templates")
 
@@ -85,9 +81,7 @@ class TestListTemplates:
 
     @_SKIP_AUTH_TESTS
     @pytest.mark.asyncio()
-    async def test_list_templates_requires_auth(
-        self, api_client_unauthenticated: AsyncClient
-    ) -> None:
+    async def test_list_templates_requires_auth(self, api_client_unauthenticated: AsyncClient) -> None:
         """Should require authentication."""
         response = await api_client_unauthenticated.get("/api/v2/templates")
         assert response.status_code == 401
@@ -97,9 +91,7 @@ class TestGetTemplate:
     """Tests for GET /api/v2/templates/{template_id} endpoint."""
 
     @pytest.mark.asyncio()
-    async def test_get_template_returns_full_details(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_get_template_returns_full_details(self, api_client: AsyncClient) -> None:
         """Should return full template with pipeline DAG."""
         response = await api_client.get("/api/v2/templates/academic-papers")
 
@@ -127,9 +119,7 @@ class TestGetTemplate:
         assert isinstance(data["tunable"], list)
 
     @pytest.mark.asyncio()
-    async def test_get_template_pipeline_nodes_have_required_fields(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_get_template_pipeline_nodes_have_required_fields(self, api_client: AsyncClient) -> None:
         """Pipeline nodes should have all required fields."""
         response = await api_client.get("/api/v2/templates/codebase")
 
@@ -143,9 +133,7 @@ class TestGetTemplate:
             assert "config" in node
 
     @pytest.mark.asyncio()
-    async def test_get_template_pipeline_edges_have_required_fields(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_get_template_pipeline_edges_have_required_fields(self, api_client: AsyncClient) -> None:
         """Pipeline edges should have required fields."""
         response = await api_client.get("/api/v2/templates/documentation")
 
@@ -158,9 +146,7 @@ class TestGetTemplate:
             # 'when' is optional, may be null
 
     @pytest.mark.asyncio()
-    async def test_get_template_tunable_params_have_required_fields(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_get_template_tunable_params_have_required_fields(self, api_client: AsyncClient) -> None:
         """Tunable parameters should have required fields."""
         response = await api_client.get("/api/v2/templates/academic-papers")
 
@@ -188,19 +174,13 @@ class TestGetTemplate:
 
     @_SKIP_AUTH_TESTS
     @pytest.mark.asyncio()
-    async def test_get_template_requires_auth(
-        self, api_client_unauthenticated: AsyncClient
-    ) -> None:
+    async def test_get_template_requires_auth(self, api_client_unauthenticated: AsyncClient) -> None:
         """Should require authentication."""
-        response = await api_client_unauthenticated.get(
-            "/api/v2/templates/academic-papers"
-        )
+        response = await api_client_unauthenticated.get("/api/v2/templates/academic-papers")
         assert response.status_code == 401
 
     @pytest.mark.asyncio()
-    async def test_get_all_templates_individually(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_get_all_templates_individually(self, api_client: AsyncClient) -> None:
         """Should be able to fetch each template by ID."""
         template_ids = [
             "academic-papers",
@@ -221,41 +201,29 @@ class TestTemplateValidation:
     """Tests for template validation behavior."""
 
     @pytest.mark.asyncio()
-    async def test_all_templates_have_embedder_node(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_all_templates_have_embedder_node(self, api_client: AsyncClient) -> None:
         """All templates should have at least one embedder node."""
         response = await api_client.get("/api/v2/templates")
         assert response.status_code == 200
 
         for summary in response.json()["templates"]:
-            detail_response = await api_client.get(
-                f"/api/v2/templates/{summary['id']}"
-            )
+            detail_response = await api_client.get(f"/api/v2/templates/{summary['id']}")
             assert detail_response.status_code == 200
             data = detail_response.json()
 
             node_types = [n["type"] for n in data["pipeline"]["nodes"]]
-            assert (
-                "embedder" in node_types
-            ), f"Template {summary['id']} missing embedder node"
+            assert "embedder" in node_types, f"Template {summary['id']} missing embedder node"
 
     @pytest.mark.asyncio()
-    async def test_all_templates_have_source_edge(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_all_templates_have_source_edge(self, api_client: AsyncClient) -> None:
         """All templates should have at least one edge from _source."""
         response = await api_client.get("/api/v2/templates")
         assert response.status_code == 200
 
         for summary in response.json()["templates"]:
-            detail_response = await api_client.get(
-                f"/api/v2/templates/{summary['id']}"
-            )
+            detail_response = await api_client.get(f"/api/v2/templates/{summary['id']}")
             assert detail_response.status_code == 200
             data = detail_response.json()
 
             from_nodes = {e["from_node"] for e in data["pipeline"]["edges"]}
-            assert (
-                "_source" in from_nodes
-            ), f"Template {summary['id']} missing _source edge"
+            assert "_source" in from_nodes, f"Template {summary['id']} missing _source edge"

@@ -274,27 +274,19 @@ class TestResolveTunablePath:
 
     def test_valid_path(self, template_with_nodes: PipelineTemplate) -> None:
         """Should resolve valid path to node and config key."""
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "nodes.chunker.config.chunk_size"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "nodes.chunker.config.chunk_size")
         assert node is not None
         assert node.id == "chunker"
         assert config_key == "chunk_size"
 
-    def test_valid_path_different_node(
-        self, template_with_nodes: PipelineTemplate
-    ) -> None:
+    def test_valid_path_different_node(self, template_with_nodes: PipelineTemplate) -> None:
         """Should resolve path for different node."""
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "nodes.parser.config.encoding"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "nodes.parser.config.encoding")
         assert node is not None
         assert node.id == "parser"
         assert config_key == "encoding"
 
-    def test_invalid_path_wrong_format(
-        self, template_with_nodes: PipelineTemplate
-    ) -> None:
+    def test_invalid_path_wrong_format(self, template_with_nodes: PipelineTemplate) -> None:
         """Should return None for paths with wrong format."""
         # Too few parts
         node, config_key = resolve_tunable_path(template_with_nodes, "nodes.chunker")
@@ -302,39 +294,25 @@ class TestResolveTunablePath:
         assert config_key is None
 
         # Too many parts
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "nodes.chunker.config.chunk_size.extra"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "nodes.chunker.config.chunk_size.extra")
         assert node is None
         assert config_key is None
 
-    def test_invalid_path_wrong_prefix(
-        self, template_with_nodes: PipelineTemplate
-    ) -> None:
+    def test_invalid_path_wrong_prefix(self, template_with_nodes: PipelineTemplate) -> None:
         """Should return None for paths not starting with 'nodes'."""
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "edges.chunker.config.chunk_size"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "edges.chunker.config.chunk_size")
         assert node is None
         assert config_key is None
 
-    def test_invalid_path_missing_config(
-        self, template_with_nodes: PipelineTemplate
-    ) -> None:
+    def test_invalid_path_missing_config(self, template_with_nodes: PipelineTemplate) -> None:
         """Should return None for paths without 'config' in position 2."""
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "nodes.chunker.settings.chunk_size"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "nodes.chunker.settings.chunk_size")
         assert node is None
         assert config_key is None
 
-    def test_invalid_path_unknown_node(
-        self, template_with_nodes: PipelineTemplate
-    ) -> None:
+    def test_invalid_path_unknown_node(self, template_with_nodes: PipelineTemplate) -> None:
         """Should return None for paths referencing unknown nodes."""
-        node, config_key = resolve_tunable_path(
-            template_with_nodes, "nodes.unknown_node.config.chunk_size"
-        )
+        node, config_key = resolve_tunable_path(template_with_nodes, "nodes.unknown_node.config.chunk_size")
         assert node is None
         assert config_key is None
 
@@ -426,9 +404,7 @@ class TestTemplateModule:
             # Pipeline should have at least one edge
             assert len(template.pipeline.edges) > 0
             # Should have an embedder node
-            embedder_nodes = [
-                n for n in template.pipeline.nodes if n.type == NodeType.EMBEDDER
-            ]
+            embedder_nodes = [n for n in template.pipeline.nodes if n.type == NodeType.EMBEDDER]
             assert len(embedder_nodes) >= 1
 
 

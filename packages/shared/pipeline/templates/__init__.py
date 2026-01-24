@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 _templates_cache: dict[str, PipelineTemplate] | None = None
 
 
-def _resolve_tunable_path(
-    template: PipelineTemplate, path: str
-) -> tuple[str | None, str | None]:
+def _resolve_tunable_path(template: PipelineTemplate, path: str) -> tuple[str | None, str | None]:
     """Resolve a tunable parameter path to node_id and config_key.
 
     Args:
@@ -75,9 +73,7 @@ def _validate_tunable_paths(template: PipelineTemplate) -> list[str]:
     for tunable in template.tunable:
         node_id, config_key = _resolve_tunable_path(template, tunable.path)
         if node_id is None:
-            errors.append(
-                f"Invalid tunable path '{tunable.path}' in template '{template.id}'"
-            )
+            errors.append(f"Invalid tunable path '{tunable.path}' in template '{template.id}'")
             continue
 
         # Optionally validate that the config key exists in the node's config
@@ -115,19 +111,14 @@ def _validate_template(template: PipelineTemplate) -> None:
     dag_errors = template.pipeline.validate(known_plugins)
 
     for dag_error in dag_errors:
-        errors.append(
-            f"DAG validation error in template '{template.id}': "
-            f"[{dag_error.rule}] {dag_error.message}"
-        )
+        errors.append(f"DAG validation error in template '{template.id}': [{dag_error.rule}] {dag_error.message}")
 
     # Validate tunable parameter paths
     tunable_errors = _validate_tunable_paths(template)
     errors.extend(tunable_errors)
 
     if errors:
-        error_msg = f"Template '{template.id}' validation failed:\n" + "\n".join(
-            f"  - {e}" for e in errors
-        )
+        error_msg = f"Template '{template.id}' validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
         raise ValueError(error_msg)
 
 
@@ -179,9 +170,7 @@ def _load_all() -> dict[str, PipelineTemplate]:
             all_errors.append(str(e))
 
     if all_errors:
-        raise ValueError(
-            "Template validation errors:\n" + "\n".join(all_errors)
-        )
+        raise ValueError("Template validation errors:\n" + "\n".join(all_errors))
 
     _templates_cache = result
     logger.info("Loaded %d pipeline templates", len(result))
