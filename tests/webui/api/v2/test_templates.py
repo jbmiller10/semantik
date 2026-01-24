@@ -1,39 +1,12 @@
-"""Tests for v2 template endpoints."""
+"""Tests for v2 template endpoints.
+
+Uses shared fixtures from conftest.py (api_client, api_client_unauthenticated).
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-
-from webui.auth import get_current_user
-from webui.main import app
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
-
-@pytest_asyncio.fixture()
-async def api_client() -> AsyncGenerator[AsyncClient, None]:
-    """Create test client with auth override."""
-    async def override_get_current_user() -> dict[str, Any]:
-        return {"id": 1, "username": "tester"}
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
-    app.dependency_overrides.clear()
-
-
-@pytest_asyncio.fixture()
-async def api_client_unauthenticated() -> AsyncGenerator[AsyncClient, None]:
-    """Create test client without auth (unauthenticated)."""
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+from httpx import AsyncClient
 
 
 @pytest.fixture(autouse=True)
