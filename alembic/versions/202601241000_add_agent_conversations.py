@@ -43,30 +43,19 @@ uncertainty_severity_enum = postgresql.ENUM(
 
 def upgrade() -> None:
     """Add agent conversation tables."""
-    # Create conversation_status enum if it doesn't exist
+    # Drop existing enum types if they exist (from failed previous runs or create_all)
+    # This is safe because we're creating new tables that don't exist yet
+    op.execute("DROP TYPE IF EXISTS conversation_status CASCADE")
+    op.execute("DROP TYPE IF EXISTS uncertainty_severity CASCADE")
+
+    # Create conversation_status enum
     op.execute(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'conversation_status') THEN
-                CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned');
-            END IF;
-        END
-        $$;
-    """
+        "CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned')"
     )
 
-    # Create uncertainty_severity enum if it doesn't exist
+    # Create uncertainty_severity enum
     op.execute(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'uncertainty_severity') THEN
-                CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info');
-            END IF;
-        END
-        $$;
-    """
+        "CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info')"
     )
 
     # Create agent_conversations table
