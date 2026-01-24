@@ -9,12 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.pipeline.types import (
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
 
 def get_default_pipeline(
