@@ -49,14 +49,10 @@ def upgrade() -> None:
     op.execute("DROP TYPE IF EXISTS uncertainty_severity CASCADE")
 
     # Create conversation_status enum
-    op.execute(
-        "CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned')"
-    )
+    op.execute("CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned')")
 
     # Create uncertainty_severity enum
-    op.execute(
-        "CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info')"
-    )
+    op.execute("CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info')")
 
     # Create agent_conversations table
     op.create_table(
