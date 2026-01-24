@@ -26,15 +26,31 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Add agent conversation tables."""
-    # Create conversation_status enum
-    op.execute("""
-        CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned')
-    """)
+    # Create conversation_status enum if it doesn't exist
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'conversation_status') THEN
+                CREATE TYPE conversation_status AS ENUM ('active', 'applied', 'abandoned');
+            END IF;
+        END
+        $$;
+    """
+    )
 
-    # Create uncertainty_severity enum
-    op.execute("""
-        CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info')
-    """)
+    # Create uncertainty_severity enum if it doesn't exist
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'uncertainty_severity') THEN
+                CREATE TYPE uncertainty_severity AS ENUM ('blocking', 'notable', 'info');
+            END IF;
+        END
+        $$;
+    """
+    )
 
     # Create agent_conversations table
     op.create_table(
@@ -164,6 +180,6 @@ def downgrade() -> None:
     op.drop_table("conversation_uncertainties")
     op.drop_table("agent_conversations")
 
-    # Drop enums
-    op.execute("DROP TYPE uncertainty_severity")
-    op.execute("DROP TYPE conversation_status")
+    # Drop enums if they exist
+    op.execute("DROP TYPE IF EXISTS uncertainty_severity")
+    op.execute("DROP TYPE IF EXISTS conversation_status")

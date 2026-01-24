@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.exceptions import (
     DatabaseOperationError,
@@ -67,9 +69,7 @@ class AgentConversationRepository:
             self.session.add(conversation)
             await self.session.flush()
 
-            logger.info(
-                f"Created conversation {conversation.id} for user {user_id}"
-            )
+            logger.info(f"Created conversation {conversation.id} for user {user_id}")
             return conversation
 
         except Exception as e:
@@ -91,14 +91,10 @@ class AgentConversationRepository:
             AgentConversation instance or None if not found
         """
         try:
-            query = select(AgentConversation).where(
-                AgentConversation.id == conversation_id
-            )
+            query = select(AgentConversation).where(AgentConversation.id == conversation_id)
 
             if include_uncertainties:
-                query = query.options(
-                    selectinload(AgentConversation.uncertainties)
-                )
+                query = query.options(selectinload(AgentConversation.uncertainties))
 
             result = await self.session.execute(query)
             return result.scalar_one_or_none()
@@ -133,9 +129,7 @@ class AgentConversationRepository:
             )
 
             if include_uncertainties:
-                query = query.options(
-                    selectinload(AgentConversation.uncertainties)
-                )
+                query = query.options(selectinload(AgentConversation.uncertainties))
 
             result = await self.session.execute(query)
             return result.scalar_one_or_none()
@@ -166,9 +160,7 @@ class AgentConversationRepository:
             List of AgentConversation instances
         """
         try:
-            query = select(AgentConversation).where(
-                AgentConversation.user_id == user_id
-            )
+            query = select(AgentConversation).where(AgentConversation.user_id == user_id)
 
             if status is not None:
                 query = query.where(AgentConversation.status == status)
@@ -212,9 +204,7 @@ class AgentConversationRepository:
             conversation.updated_at = datetime.now(UTC)
             await self.session.flush()
 
-            logger.info(
-                f"Updated conversation {conversation_id} status to {status.value}"
-            )
+            logger.info(f"Updated conversation {conversation_id} status to {status.value}")
             return conversation
 
         except EntityNotFoundError:
@@ -290,9 +280,7 @@ class AgentConversationRepository:
             conversation.updated_at = datetime.now(UTC)
             await self.session.flush()
 
-            logger.debug(
-                f"Updated source analysis for conversation {conversation_id}"
-            )
+            logger.debug(f"Updated source analysis for conversation {conversation_id}")
             return conversation
 
         except EntityNotFoundError:
@@ -368,9 +356,7 @@ class AgentConversationRepository:
             conversation.updated_at = datetime.now(UTC)
             await self.session.flush()
 
-            logger.info(
-                f"Linked conversation {conversation_id} to collection {collection_id}"
-            )
+            logger.info(f"Linked conversation {conversation_id} to collection {collection_id}")
             return conversation
 
         except EntityNotFoundError:
@@ -421,9 +407,7 @@ class AgentConversationRepository:
             self.session.add(uncertainty)
             await self.session.flush()
 
-            logger.info(
-                f"Added {severity.value} uncertainty to conversation {conversation_id}"
-            )
+            logger.info(f"Added {severity.value} uncertainty to conversation {conversation_id}")
             return uncertainty
 
         except EntityNotFoundError:
@@ -433,9 +417,7 @@ class AgentConversationRepository:
                 f"Failed to add uncertainty: {e}",
                 exc_info=True,
             )
-            raise DatabaseOperationError(
-                "create", "conversation_uncertainty", str(e)
-            ) from e
+            raise DatabaseOperationError("create", "conversation_uncertainty", str(e)) from e
 
     async def resolve_uncertainty(
         self,
@@ -456,9 +438,7 @@ class AgentConversationRepository:
         """
         try:
             result = await self.session.execute(
-                select(ConversationUncertainty).where(
-                    ConversationUncertainty.id == uncertainty_id
-                )
+                select(ConversationUncertainty).where(ConversationUncertainty.id == uncertainty_id)
             )
             uncertainty = result.scalar_one_or_none()
 
@@ -479,9 +459,7 @@ class AgentConversationRepository:
                 f"Failed to resolve uncertainty: {e}",
                 exc_info=True,
             )
-            raise DatabaseOperationError(
-                "update", "conversation_uncertainty", str(e)
-            ) from e
+            raise DatabaseOperationError("update", "conversation_uncertainty", str(e)) from e
 
     async def get_blocking_uncertainties(
         self,
@@ -510,9 +488,7 @@ class AgentConversationRepository:
                 f"Failed to get blocking uncertainties: {e}",
                 exc_info=True,
             )
-            raise DatabaseOperationError(
-                "list", "conversation_uncertainties", str(e)
-            ) from e
+            raise DatabaseOperationError("list", "conversation_uncertainties", str(e)) from e
 
     async def get_uncertainties(
         self,
@@ -529,14 +505,10 @@ class AgentConversationRepository:
             List of uncertainties
         """
         try:
-            query = select(ConversationUncertainty).where(
-                ConversationUncertainty.conversation_id == conversation_id
-            )
+            query = select(ConversationUncertainty).where(ConversationUncertainty.conversation_id == conversation_id)
 
             if not include_resolved:
-                query = query.where(
-                    ConversationUncertainty.resolved == False  # noqa: E712
-                )
+                query = query.where(ConversationUncertainty.resolved == False)  # noqa: E712
 
             query = query.order_by(ConversationUncertainty.created_at)
 
@@ -548,6 +520,4 @@ class AgentConversationRepository:
                 f"Failed to get uncertainties: {e}",
                 exc_info=True,
             )
-            raise DatabaseOperationError(
-                "list", "conversation_uncertainties", str(e)
-            ) from e
+            raise DatabaseOperationError("list", "conversation_uncertainties", str(e)) from e

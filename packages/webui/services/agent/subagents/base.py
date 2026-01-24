@@ -183,9 +183,7 @@ class SubAgent(ABC):
                 timeout=self.TIMEOUT_SECONDS,
             )
         except TimeoutError:
-            logger.warning(
-                f"Sub-agent {self.AGENT_ID} timed out after {self.TIMEOUT_SECONDS}s"
-            )
+            logger.warning(f"Sub-agent {self.AGENT_ID} timed out after {self.TIMEOUT_SECONDS}s")
             return SubAgentResult(
                 success=False,
                 data=self._get_partial_result(),
@@ -219,14 +217,10 @@ class SubAgent(ABC):
 
             # Execute tools and collect results
             tool_results = await self._execute_tools(response.tool_calls)
-            self.messages.append(
-                Message(role="tool", content="", tool_results=tool_results)
-            )
+            self.messages.append(Message(role="tool", content="", tool_results=tool_results))
 
         # Reached max turns without completing
-        logger.warning(
-            f"Sub-agent {self.AGENT_ID} reached max turns ({self.MAX_TURNS})"
-        )
+        logger.warning(f"Sub-agent {self.AGENT_ID} reached max turns ({self.MAX_TURNS})")
         return SubAgentResult(
             success=False,
             data=self._get_partial_result(),

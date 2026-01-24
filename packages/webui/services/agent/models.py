@@ -8,7 +8,7 @@ This module defines the database models for the agent service:
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import datetime  # noqa: TCH003 - SQLAlchemy needs this at runtime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -117,12 +117,8 @@ class AgentConversation(Base):
 
     # Relationships
     user: Mapped[User] = relationship("User", foreign_keys=[user_id])
-    source: Mapped[CollectionSource | None] = relationship(
-        "CollectionSource", foreign_keys=[source_id]
-    )
-    collection: Mapped[Collection | None] = relationship(
-        "Collection", foreign_keys=[collection_id]
-    )
+    source: Mapped[CollectionSource | None] = relationship("CollectionSource", foreign_keys=[source_id])
+    collection: Mapped[Collection | None] = relationship("Collection", foreign_keys=[collection_id])
     uncertainties: Mapped[list[ConversationUncertainty]] = relationship(
         "ConversationUncertainty",
         back_populates="conversation",
@@ -178,9 +174,7 @@ class ConversationUncertainty(Base):
     )
 
     # Relationships
-    conversation: Mapped[AgentConversation] = relationship(
-        "AgentConversation", back_populates="uncertainties"
-    )
+    conversation: Mapped[AgentConversation] = relationship("AgentConversation", back_populates="uncertainties")
 
     __table_args__ = (
         # Partial index for finding unresolved blocking issues efficiently

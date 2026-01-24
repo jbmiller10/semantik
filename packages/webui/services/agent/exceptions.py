@@ -16,7 +16,6 @@ class AgentError(Exception):
     """Base exception for all agent-related errors."""
 
 
-
 class LLMNotConfiguredError(AgentError):
     """User hasn't configured an LLM provider for the required tier.
 
@@ -62,9 +61,7 @@ class ConversationNotActiveError(AgentError):
     def __init__(self, conversation_id: str, status: str):
         self.conversation_id = conversation_id
         self.status = status
-        super().__init__(
-            f"Conversation {conversation_id} is not active (status: {status})"
-        )
+        super().__init__(f"Conversation {conversation_id} is not active (status: {status})")
 
 
 class BlockingUncertaintyError(AgentError):
@@ -80,9 +77,7 @@ class BlockingUncertaintyError(AgentError):
     def __init__(self, uncertainties: list[Uncertainty]):
         self.uncertainties = uncertainties
         messages = [u.message for u in uncertainties]
-        super().__init__(
-            f"Cannot proceed with {len(uncertainties)} blocking issues: {messages}"
-        )
+        super().__init__(f"Cannot proceed with {len(uncertainties)} blocking issues: {messages}")
 
 
 class ToolExecutionError(AgentError):
@@ -103,4 +98,3 @@ class MessageStoreError(AgentError):
     Raised when there's a problem storing or retrieving messages
     from the Redis message store.
     """
-

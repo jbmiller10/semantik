@@ -138,9 +138,7 @@ class MessageStore:
             return [ConversationMessage.from_dict(m) for m in messages_data]
 
         except json.JSONDecodeError as e:
-            logger.error(
-                f"Failed to decode messages for {conversation_id}: {e}"
-            )
+            logger.error(f"Failed to decode messages for {conversation_id}: {e}")
             raise MessageStoreError(f"Invalid message data: {e}") from e
         except Exception as e:
             logger.error(
@@ -293,9 +291,7 @@ class MessageStore:
         try:
             key = _lock_key(conversation_id)
             # SET NX with expiry for atomic lock acquisition
-            result = await self.redis.set(
-                key, "locked", nx=True, ex=timeout_seconds
-            )
+            result = await self.redis.set(key, "locked", nx=True, ex=timeout_seconds)
             return result is not None
 
         except Exception as e:
