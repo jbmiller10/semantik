@@ -9,9 +9,11 @@ from webui.services.agent.subagents.base import (
     SubAgentResult,
     Uncertainty,
 )
+from webui.services.agent.subagents.source_analyzer import SourceAnalyzer
 
 __all__ = [
     "SubAgent",
     "SubAgentResult",
     "Uncertainty",
+    "SourceAnalyzer",
 ]
