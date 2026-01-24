@@ -187,6 +187,84 @@ def manifest_from_extractor_plugin(plugin_cls: type, plugin_id: str) -> PluginMa
     )
 
 
+def manifest_from_parser_plugin(plugin_cls: type, plugin_id: str) -> PluginManifest:
+    """Build a plugin manifest for a parser.
+
+    Args:
+        plugin_cls: The parser plugin class.
+        plugin_id: The plugin ID.
+
+    Returns:
+        PluginManifest for the parser plugin.
+    """
+    metadata = getattr(plugin_cls, "METADATA", {}) or {}
+    display_name = _metadata_value(metadata, "display_name", plugin_id.replace("-", " ").title())
+    description = _metadata_value(metadata, "description", "")
+
+    # Get supported extensions from class method if available
+    extensions: list[str] = []
+    if hasattr(plugin_cls, "supported_extensions") and callable(plugin_cls.supported_extensions):
+        try:
+            ext_set = plugin_cls.supported_extensions()
+            extensions = sorted(ext_set) if ext_set else []
+        except Exception as exc:
+            logger.warning("Failed to get supported extensions for parser plugin '%s': %s", plugin_id, exc)
+
+    # Get supported MIME types from class method if available
+    mime_types: list[str] = []
+    if hasattr(plugin_cls, "supported_mime_types") and callable(plugin_cls.supported_mime_types):
+        try:
+            mime_set = plugin_cls.supported_mime_types()
+            mime_types = sorted(mime_set) if mime_set else []
+        except Exception as exc:
+            logger.warning("Failed to get supported MIME types for parser plugin '%s': %s", plugin_id, exc)
+
+    # Get config options from class method if available
+    config_options: list[dict[str, Any]] = []
+    if hasattr(plugin_cls, "get_config_options") and callable(plugin_cls.get_config_options):
+        try:
+            config_options = plugin_cls.get_config_options()
+        except Exception as exc:
+            logger.warning("Failed to get config options for parser plugin '%s': %s", plugin_id, exc)
+
+    # Build capabilities
+    capabilities: dict[str, Any] = {}
+    if extensions:
+        capabilities["supported_extensions"] = extensions
+    if mime_types:
+        capabilities["supported_mime_types"] = mime_types
+    if config_options:
+        capabilities["config_options"] = config_options
+
+    # Get AgentHints if available
+    agent_hints = None
+    if hasattr(plugin_cls, "AGENT_HINTS"):
+        agent_hints = plugin_cls.AGENT_HINTS
+    elif hasattr(plugin_cls, "get_manifest") and callable(plugin_cls.get_manifest):
+        # Try to get agent_hints from the class's own get_manifest implementation
+        try:
+            manifest = plugin_cls.get_manifest()
+            if hasattr(manifest, "agent_hints"):
+                agent_hints = manifest.agent_hints
+        except Exception:
+            pass
+
+    return PluginManifest(
+        id=plugin_id,
+        type="parser",
+        version=getattr(plugin_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=str(display_name),
+        description=str(description),
+        author=_metadata_value(metadata, "author"),
+        license=_metadata_value(metadata, "license"),
+        homepage=_metadata_value(metadata, "homepage"),
+        requires=list(_metadata_value(metadata, "requires", [])),
+        semantik_version=_metadata_value(metadata, "semantik_version"),
+        capabilities=capabilities,
+        agent_hints=agent_hints,
+    )
+
+
 def get_config_schema(plugin_cls: type) -> dict[str, Any] | None:
     """Return config schema for a plugin class if declared."""
     schema = None

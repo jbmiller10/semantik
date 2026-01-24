@@ -492,6 +492,9 @@ class PipelineExecutor:
     ) -> tuple[str, dict[str, Any]]:
         """Execute a parser node.
 
+        Uses the plugin registry first for parser lookup, falling back to
+        the legacy registry for backward compatibility during migration.
+
         Args:
             node: Parser node configuration
             content: Raw file content
@@ -500,8 +503,23 @@ class PipelineExecutor:
         Returns:
             Tuple of (parsed text, parse metadata)
         """
-        parser = get_parser(node.plugin_id, node.config)
+        # Try plugin registry first (new plugin system)
+        from shared.plugins import plugin_registry
 
+        record = plugin_registry.get("parser", node.plugin_id)
+        if record is not None:
+            parser_cls = record.plugin_class
+            parser = parser_cls(node.config)
+            result = parser.parse_bytes(
+                content,
+                filename=file_ref.filename,
+                file_extension=file_ref.extension,
+                mime_type=file_ref.mime_type,
+            )
+            return result.text, dict(result.metadata)
+
+        # Fallback to legacy registry (deprecation path)
+        parser = get_parser(node.plugin_id, node.config)
         result = parser.parse_bytes(
             content,
             filename=file_ref.filename,
