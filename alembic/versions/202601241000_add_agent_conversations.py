@@ -11,8 +11,8 @@ This migration adds database support for the agent service:
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSON, UUID
 
 from alembic import op
@@ -22,6 +22,23 @@ revision: str = "202601241000"
 down_revision: str | None = "202601231000"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Define enum types at module level to prevent SQLAlchemy from trying to create them
+conversation_status_enum = postgresql.ENUM(
+    "active",
+    "applied",
+    "abandoned",
+    name="conversation_status",
+    create_type=False,
+)
+
+uncertainty_severity_enum = postgresql.ENUM(
+    "blocking",
+    "notable",
+    "info",
+    name="uncertainty_severity",
+    create_type=False,
+)
 
 
 def upgrade() -> None:
@@ -62,7 +79,7 @@ def upgrade() -> None:
         # State
         Column(
             "status",
-            sa.Enum("active", "applied", "abandoned", name="conversation_status", create_type=False),
+            conversation_status_enum,
             nullable=False,
             server_default="active",
         ),
@@ -117,7 +134,7 @@ def upgrade() -> None:
         Column("conversation_id", UUID, nullable=False, index=True),
         Column(
             "severity",
-            sa.Enum("blocking", "notable", "info", name="uncertainty_severity", create_type=False),
+            uncertainty_severity_enum,
             nullable=False,
         ),
         Column("message", Text, nullable=False),
