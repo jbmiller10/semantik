@@ -1543,4 +1543,174 @@ export const handlers = [
     delete benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId]
     return new HttpResponse(null, { status: 204 })
   }),
+
+  // =============================================================================
+  // Templates (v2)
+  // =============================================================================
+
+  http.get('*/api/v2/templates', () => {
+    return HttpResponse.json({
+      templates: [
+        {
+          id: 'academic-papers',
+          name: 'Academic Papers',
+          description: 'Optimized for academic papers and research documents',
+          suggested_for: ['PDF papers', 'research documents', 'academic publications'],
+        },
+        {
+          id: 'codebase',
+          name: 'Codebase',
+          description: 'Optimized for source code repositories',
+          suggested_for: ['source code', 'git repositories', 'documentation'],
+        },
+        {
+          id: 'documentation',
+          name: 'Documentation',
+          description: 'Optimized for technical documentation',
+          suggested_for: ['markdown files', 'technical docs', 'wikis'],
+        },
+        {
+          id: 'email-archive',
+          name: 'Email Archive',
+          description: 'Optimized for email archives with attachments',
+          suggested_for: ['emails', 'IMAP archives', 'mbox files'],
+        },
+        {
+          id: 'mixed-documents',
+          name: 'Mixed Documents',
+          description: 'Balanced configuration for varied file types',
+          suggested_for: ['general documents', 'mixed file types'],
+        },
+      ],
+      total: 5,
+    })
+  }),
+
+  http.get('*/api/v2/templates/:templateId', ({ params }) => {
+    const templateId = params.templateId as string
+
+    const templates: Record<string, object> = {
+      'academic-papers': {
+        id: 'academic-papers',
+        name: 'Academic Papers',
+        description: 'Optimized for academic papers and research documents',
+        suggested_for: ['PDF papers', 'research documents', 'academic publications'],
+        pipeline: {
+          id: 'academic-papers-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'unstructured', config: { strategy: 'hi_res' } },
+            { id: 'chunker', type: 'chunker', plugin_id: 'semantic', config: { max_tokens: 512 } },
+            { id: 'extractor', type: 'extractor', plugin_id: 'keyword_extractor', config: {} },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'extractor', when: null },
+            { from_node: 'extractor', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [
+          { path: 'nodes.chunker.config.max_tokens', description: 'Maximum tokens per chunk', default: 512, range: [256, 1024], options: null },
+        ],
+      },
+      'codebase': {
+        id: 'codebase',
+        name: 'Codebase',
+        description: 'Optimized for source code repositories',
+        suggested_for: ['source code', 'git repositories', 'documentation'],
+        pipeline: {
+          id: 'codebase-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 1000, chunk_overlap: 200 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [
+          { path: 'nodes.chunker.config.chunk_size', description: 'Chunk size in characters', default: 1000, range: [500, 2000], options: null },
+          { path: 'nodes.chunker.config.chunk_overlap', description: 'Overlap between chunks', default: 200, range: [50, 500], options: null },
+        ],
+      },
+      'documentation': {
+        id: 'documentation',
+        name: 'Documentation',
+        description: 'Optimized for technical documentation',
+        suggested_for: ['markdown files', 'technical docs', 'wikis'],
+        pipeline: {
+          id: 'documentation-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'markdown', config: {} },
+            { id: 'extractor', type: 'extractor', plugin_id: 'keyword_extractor', config: {} },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'extractor', when: null },
+            { from_node: 'extractor', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+      'email-archive': {
+        id: 'email-archive',
+        name: 'Email Archive',
+        description: 'Optimized for email archives with attachments',
+        suggested_for: ['emails', 'IMAP archives', 'mbox files'],
+        pipeline: {
+          id: 'email-archive-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 800, chunk_overlap: 100 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+      'mixed-documents': {
+        id: 'mixed-documents',
+        name: 'Mixed Documents',
+        description: 'Balanced configuration for varied file types',
+        suggested_for: ['general documents', 'mixed file types'],
+        pipeline: {
+          id: 'mixed-documents-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 1000, chunk_overlap: 200 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+    }
+
+    const template = templates[templateId]
+    if (!template) {
+      return HttpResponse.json({ detail: `Template '${templateId}' not found` }, { status: 404 })
+    }
+
+    return HttpResponse.json(template)
+  }),
 ]
