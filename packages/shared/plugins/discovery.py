@@ -62,11 +62,7 @@ def list_plugins_for_agent(plugin_type: str | None = None) -> list[PluginManifes
     records = plugin_registry.list_records(plugin_type=plugin_type)
 
     # Filter to only plugins with agent_hints
-    manifests = [
-        record.manifest
-        for record in records
-        if record.manifest.agent_hints is not None
-    ]
+    manifests = [record.manifest for record in records if record.manifest.agent_hints is not None]
 
     # Sort by type, then by ID for consistent ordering
     manifests.sort(key=lambda m: (m.type, m.id))

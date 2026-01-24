@@ -31,8 +31,7 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
     """
 
     AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
-        purpose="Creates fixed-size chunks based on character/token count. "
-        "Simple and predictable splitting.",
+        purpose="Creates fixed-size chunks based on character/token count. " "Simple and predictable splitting.",
         best_for=[
             "log files with uniform structure",
             "raw text requiring consistent chunk sizes",
