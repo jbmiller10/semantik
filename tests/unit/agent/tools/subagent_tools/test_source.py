@@ -7,7 +7,7 @@ for investigating data sources.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,7 +22,7 @@ from webui.services.agent.tools.subagent_tools.source import (
 
 
 # Fixtures
-@pytest.fixture
+@pytest.fixture()
 def sample_file_refs() -> list[FileReference]:
     """Create sample file references for testing."""
     return [
@@ -73,13 +73,13 @@ def sample_file_refs() -> list[FileReference]:
     ]
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_connector(sample_file_refs: list[FileReference]) -> AsyncMock:
     """Create a mock connector that yields sample file refs."""
     connector = AsyncMock()
     connector.authenticate = AsyncMock(return_value=True)
 
-    async def mock_enumerate(source_id: int | None = None):
+    async def mock_enumerate(source_id: int | None = None):  # noqa: ARG001
         for ref in sample_file_refs:
             yield ref
 
@@ -92,7 +92,7 @@ def mock_connector(sample_file_refs: list[FileReference]) -> AsyncMock:
 class TestEnumerateFilesTool:
     """Tests for the EnumerateFilesTool."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_returns_statistics(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -108,7 +108,7 @@ class TestEnumerateFilesTool:
         assert ".pdf" in result["by_extension"]
         assert result["by_extension"][".pdf"]["count"] == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_includes_samples(self, mock_connector: AsyncMock):
         """Test that samples are included when requested."""
         context = {"connector": mock_connector, "source_id": 1}
@@ -120,7 +120,7 @@ class TestEnumerateFilesTool:
         assert "sample_uris" in result["by_extension"][".pdf"]
         assert len(result["by_extension"][".pdf"]["sample_uris"]) == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_excludes_samples_when_disabled(self, mock_connector: AsyncMock):
         """Test that samples are excluded when disabled."""
         context = {"connector": mock_connector, "source_id": 1}
@@ -131,7 +131,7 @@ class TestEnumerateFilesTool:
         assert result["success"] is True
         assert "sample_uris" not in result["by_extension"][".pdf"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_calculates_size_distribution(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -150,7 +150,7 @@ class TestEnumerateFilesTool:
         assert result["size_distribution"]["small"] == 3  # 5KB, 2KB, and 100KB (all < 100KB)
         assert result["size_distribution"]["medium"] == 1  # Only 200KB
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_stores_refs_in_context(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -163,7 +163,7 @@ class TestEnumerateFilesTool:
         assert "_enumerated_files" in context
         assert len(context["_enumerated_files"]) == 4
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enumerate_fails_without_connector(self):
         """Test that enumeration fails without a connector."""
         context: dict[str, Any] = {}
@@ -179,7 +179,7 @@ class TestEnumerateFilesTool:
 class TestSampleFilesTool:
     """Tests for the SampleFilesTool."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sample_returns_files(self, sample_file_refs: list[FileReference]):
         """Test that sampling returns files."""
         context: dict[str, Any] = {"_enumerated_files": sample_file_refs}
@@ -191,7 +191,7 @@ class TestSampleFilesTool:
         assert result["count"] == 3
         assert len(result["files"]) == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sample_filters_by_extension(self, sample_file_refs: list[FileReference]):
         """Test that sampling filters by extension."""
         context: dict[str, Any] = {"_enumerated_files": sample_file_refs}
@@ -204,7 +204,7 @@ class TestSampleFilesTool:
         for f in result["files"]:
             assert f["extension"] == ".pdf"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sample_filters_by_size_range(self, sample_file_refs: list[FileReference]):
         """Test that sampling filters by size range."""
         context: dict[str, Any] = {"_enumerated_files": sample_file_refs}
@@ -216,7 +216,7 @@ class TestSampleFilesTool:
         assert result["total_matching"] == 1  # Only paper1.pdf (100000)
         assert result["files"][0]["filename"] == "paper1.pdf"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sample_fails_without_enumeration(self):
         """Test that sampling fails without prior enumeration."""
         context: dict[str, Any] = {}
@@ -232,7 +232,7 @@ class TestSampleFilesTool:
 class TestTryParserTool:
     """Tests for the TryParserTool."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_try_parser_basic(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -259,7 +259,7 @@ class TestTryParserTool:
         # Fallback sets a flag in parse_metadata
         assert result["parse_metadata"].get("fallback") is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_try_parser_file_not_found(self, mock_connector: AsyncMock):
         """Test parser trial with missing file."""
         context: dict[str, Any] = {
@@ -281,7 +281,7 @@ class TestTryParserTool:
 class TestDetectLanguageTool:
     """Tests for the DetectLanguageTool."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_detect_language_from_text(self):
         """Test language detection from provided text."""
         context: dict[str, Any] = {}
@@ -295,7 +295,7 @@ class TestDetectLanguageTool:
         assert result["primary_language"] == "en"
         assert result["source"] == "provided_text"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_detect_language_from_file(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -314,7 +314,7 @@ class TestDetectLanguageTool:
         assert result["success"] is True
         assert result["primary_language"] == "en"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_detect_language_fails_without_input(self):
         """Test that detection fails without text or file."""
         context: dict[str, Any] = {}
@@ -330,7 +330,7 @@ class TestDetectLanguageTool:
 class TestGetFileContentPreviewTool:
     """Tests for the GetFileContentPreviewTool."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_text_file(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -350,7 +350,7 @@ class TestGetFileContentPreviewTool:
         assert result["preview"] == test_content.decode("utf-8")
         assert result["encoding"] == "utf-8"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_respects_max_bytes(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):
@@ -368,7 +368,7 @@ class TestGetFileContentPreviewTool:
         assert result["success"] is True
         assert len(result["preview"]) == 100
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_file_not_found(self, mock_connector: AsyncMock):
         """Test preview with missing file."""
         context: dict[str, Any] = {
@@ -382,7 +382,7 @@ class TestGetFileContentPreviewTool:
         assert result["success"] is False
         assert "not found" in result["error"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_binary_file(
         self, mock_connector: AsyncMock, sample_file_refs: list[FileReference]
     ):

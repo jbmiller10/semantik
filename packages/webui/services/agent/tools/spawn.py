@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from shared.llm.factory import LLMServiceFactory
     from webui.services.agent.models import AgentConversation
     from webui.services.agent.subagents.base import SubAgentResult
-    from webui.services.agent.subagents.source_analyzer import SourceAnalyzer
 
 logger = logging.getLogger(__name__)
 

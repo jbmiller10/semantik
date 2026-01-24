@@ -9,7 +9,7 @@ from shared.plugins.registry import PluginRecord, PluginSource
 from webui.services.agent.tools.plugins import GetPluginDetailsTool, ListPluginsTool
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_manifest():
     """Create a sample plugin manifest."""
     return PluginManifest(
@@ -34,7 +34,7 @@ def sample_manifest():
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_manifest_no_hints():
     """Create a manifest without agent hints."""
     return PluginManifest(
@@ -46,7 +46,7 @@ def sample_manifest_no_hints():
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_record(sample_manifest):
     """Create a sample plugin record."""
     return PluginRecord(
@@ -59,7 +59,7 @@ def sample_record(sample_manifest):
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_record_external(sample_manifest_no_hints):
     """Create a sample external plugin record."""
     return PluginRecord(
@@ -85,7 +85,7 @@ class TestListPluginsTool:
         assert "plugin_type" in schema["function"]["parameters"]["properties"]
         assert "include_disabled" in schema["function"]["parameters"]["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_all_plugins(self, sample_record, sample_record_external):
         """Test listing all plugins without filter."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -102,7 +102,7 @@ class TestListPluginsTool:
             assert "parser" in result["available_types"]
             assert "chunker" in result["available_types"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_by_type(self, sample_record):
         """Test listing plugins filtered by type."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -118,7 +118,7 @@ class TestListPluginsTool:
             assert result["filter"] == "parser"
             assert result["plugins"][0]["type"] == "parser"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_excludes_disabled_by_default(self, sample_record):
         """Test that disabled plugins are excluded by default."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -132,7 +132,7 @@ class TestListPluginsTool:
             assert result["count"] == 0
             assert len(result["plugins"]) == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_includes_disabled_when_requested(self, sample_record):
         """Test that disabled plugins are included when include_disabled=True."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -146,7 +146,7 @@ class TestListPluginsTool:
             assert result["count"] == 1
             assert result["plugins"][0]["is_disabled"] is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_includes_agent_hints(self, sample_record):
         """Test that agent hints are included in output."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -162,7 +162,7 @@ class TestListPluginsTool:
             assert plugin["agent_hints"]["purpose"] == "Parse documents into text"
             assert "PDF files" in plugin["agent_hints"]["best_for"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_plugin_without_hints(self, sample_record_external):
         """Test that plugins without hints don't include agent_hints field."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -176,7 +176,7 @@ class TestListPluginsTool:
             plugin = result["plugins"][0]
             assert "agent_hints" not in plugin
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_exception(self):
         """Test that exceptions are handled gracefully."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -202,7 +202,7 @@ class TestGetPluginDetailsTool:
         assert "plugin_id" in schema["function"]["parameters"]["properties"]
         assert "plugin_id" in schema["function"]["parameters"]["required"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_existing_plugin(self, sample_record):
         """Test getting details for an existing plugin."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -220,7 +220,7 @@ class TestGetPluginDetailsTool:
             assert result["source"] == "builtin"
             assert result["capabilities"]["supports_pdf"] is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_plugin_with_hints(self, sample_record):
         """Test that agent hints are included in details."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -236,7 +236,7 @@ class TestGetPluginDetailsTool:
             assert hints["output_type"] == "text"
             assert "PDF files" in hints["best_for"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_nonexistent_plugin(self):
         """Test getting details for a non-existent plugin."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:
@@ -250,7 +250,7 @@ class TestGetPluginDetailsTool:
             assert "not found" in result["error"]
             assert "plugin-a" in result["available_plugins"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_exception(self):
         """Test that exceptions are handled gracefully."""
         with patch("webui.services.agent.tools.plugins.plugin_registry") as mock_registry:

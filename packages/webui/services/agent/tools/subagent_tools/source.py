@@ -13,10 +13,12 @@ from __future__ import annotations
 import logging
 import random
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from shared.pipeline.types import FileReference
 from webui.services.agent.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from shared.pipeline.types import FileReference
 
 logger = logging.getLogger(__name__)
 

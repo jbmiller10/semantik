@@ -9,7 +9,7 @@ from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineN
 from webui.services.agent.tools.templates import GetTemplateDetailsTool, ListTemplatesTool
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_pipeline_dag():
     """Create a sample pipeline DAG."""
     return PipelineDAG(
@@ -38,7 +38,7 @@ def sample_pipeline_dag():
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_template(sample_pipeline_dag):
     """Create a sample pipeline template."""
     return PipelineTemplate(
@@ -64,7 +64,7 @@ def sample_template(sample_pipeline_dag):
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_template_codebase():
     """Create a second sample template."""
     return PipelineTemplate(
@@ -102,7 +102,7 @@ class TestListTemplatesTool:
         assert schema["function"]["name"] == "list_templates"
         assert "suggested_for" in schema["function"]["parameters"]["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_all_templates(self, sample_template, sample_template_codebase):
         """Test listing all templates without filter."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -115,7 +115,7 @@ class TestListTemplatesTool:
             assert len(result["templates"]) == 2
             assert result["filter"] is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_templates_with_filter(self, sample_template, sample_template_codebase):
         """Test listing templates filtered by suggested_for."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -128,7 +128,7 @@ class TestListTemplatesTool:
             assert result["filter"] == "PDF"
             assert result["templates"][0]["id"] == "academic-papers"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_filter_case_insensitive(self, sample_template, sample_template_codebase):
         """Test that filter is case-insensitive."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -140,7 +140,7 @@ class TestListTemplatesTool:
             assert result["count"] == 1
             assert result["templates"][0]["id"] == "codebase"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_template_info_includes_tunables(self, sample_template):
         """Test that tunable parameters are included."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -155,7 +155,7 @@ class TestListTemplatesTool:
             assert template["tunable_parameters"][0]["default"] == 512
             assert template["tunable_parameters"][0]["range"] == [128, 2048]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_template_info_includes_structure_counts(self, sample_template):
         """Test that node and edge counts are included."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -168,7 +168,7 @@ class TestListTemplatesTool:
             assert template["node_count"] == 3
             assert template["edge_count"] == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_validation_error(self):
         """Test that validation errors are handled."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -181,7 +181,7 @@ class TestListTemplatesTool:
             assert "validation" in result["error"].lower()
             assert result["count"] == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_general_exception(self):
         """Test that general exceptions are handled."""
         with patch("shared.pipeline.templates.list_templates") as mock_list:
@@ -207,7 +207,7 @@ class TestGetTemplateDetailsTool:
         assert "template_id" in schema["function"]["parameters"]["properties"]
         assert "template_id" in schema["function"]["parameters"]["required"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_existing_template(self, sample_template):
         """Test getting details for an existing template."""
         with patch("shared.pipeline.templates.load_template") as mock_load:
@@ -221,7 +221,7 @@ class TestGetTemplateDetailsTool:
             assert result["name"] == "Academic Papers"
             assert "PDF" in result["suggested_for"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_includes_full_pipeline(self, sample_template):
         """Test that full pipeline structure is included."""
         with patch("shared.pipeline.templates.load_template") as mock_load:
@@ -247,7 +247,7 @@ class TestGetTemplateDetailsTool:
             assert chunker["plugin_id"] == "semantic-chunker"
             assert chunker["config"]["max_tokens"] == 512
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_includes_edges(self, sample_template):
         """Test that edges are included with routing info."""
         with patch("shared.pipeline.templates.load_template") as mock_load:
@@ -262,7 +262,7 @@ class TestGetTemplateDetailsTool:
             assert ("parser", "chunker") in edge_pairs
             assert ("chunker", "embedder") in edge_pairs
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_includes_tunable_parameters(self, sample_template):
         """Test that tunable parameters are included with full details."""
         with patch("shared.pipeline.templates.load_template") as mock_load:
@@ -278,7 +278,7 @@ class TestGetTemplateDetailsTool:
             assert tunable["default"] == 512
             assert tunable["range"] == [128, 2048]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_nonexistent_template(self, sample_template):
         """Test getting details for a non-existent template."""
         with (
@@ -295,7 +295,7 @@ class TestGetTemplateDetailsTool:
             assert "not found" in result["error"]
             assert "academic-papers" in result["available_templates"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_validation_error(self):
         """Test that validation errors are handled."""
         with patch("shared.pipeline.templates.load_template") as mock_load:
@@ -307,7 +307,7 @@ class TestGetTemplateDetailsTool:
             assert result["found"] is False
             assert "validation" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_handles_general_exception(self):
         """Test that general exceptions are handled."""
         with patch("shared.pipeline.templates.load_template") as mock_load:

@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from shared.pipeline.types import FileReference
 from webui.services.agent.subagents.base import (
     Message,
-    SubAgentResult,
     Uncertainty,
 )
 from webui.services.agent.subagents.source_analyzer import (
@@ -28,7 +27,7 @@ from webui.services.agent.subagents.source_analyzer import (
 
 
 # Fixtures
-@pytest.fixture
+@pytest.fixture()
 def sample_file_refs() -> list[FileReference]:
     """Create sample file references for testing."""
     return [
@@ -57,13 +56,13 @@ def sample_file_refs() -> list[FileReference]:
     ]
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_connector(sample_file_refs: list[FileReference]) -> AsyncMock:
     """Create a mock connector."""
     connector = AsyncMock()
     connector.authenticate = AsyncMock(return_value=True)
 
-    async def mock_enumerate(source_id: int | None = None):
+    async def mock_enumerate(source_id: int | None = None):  # noqa: ARG001
         for ref in sample_file_refs:
             yield ref
 
@@ -72,7 +71,7 @@ def mock_connector(sample_file_refs: list[FileReference]) -> AsyncMock:
     return connector
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_llm_provider() -> AsyncMock:
     """Create a mock LLM provider."""
     provider = AsyncMock()
@@ -82,7 +81,7 @@ def mock_llm_provider() -> AsyncMock:
     return provider
 
 
-@pytest.fixture
+@pytest.fixture()
 def analyzer_context(mock_connector: AsyncMock) -> dict[str, Any]:
     """Create context for SourceAnalyzer."""
     return {
@@ -337,13 +336,13 @@ That's my analysis."""
 class TestSourceAnalyzerFlow:
     """Tests for the SourceAnalyzer execution flow."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_handles_timeout(
         self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
     ):
         """Test that run handles timeout gracefully."""
         # Make generate hang forever
-        async def hang_forever(*args, **kwargs):
+        async def hang_forever(*_args, **_kwargs):
             import asyncio
 
             await asyncio.sleep(1000)
@@ -359,7 +358,7 @@ class TestSourceAnalyzerFlow:
         assert result.success is False
         assert "Timed out" in result.summary
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_handles_exceptions(
         self, mock_llm_provider: AsyncMock, analyzer_context: dict[str, Any]
     ):

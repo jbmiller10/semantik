@@ -13,7 +13,7 @@ from webui.services.agent.tools.pipeline import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_pipeline_config():
     """Create a sample pipeline configuration dict."""
     return {
@@ -32,7 +32,7 @@ def sample_pipeline_config():
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_template():
     """Create a sample pipeline template."""
     return PipelineTemplate(
@@ -65,7 +65,7 @@ def sample_template():
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_conversation(sample_pipeline_config):
     """Create a mock conversation with pipeline."""
     conversation = MagicMock()
@@ -75,7 +75,7 @@ def mock_conversation(sample_pipeline_config):
     return conversation
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_conversation_no_pipeline():
     """Create a mock conversation without pipeline."""
     conversation = MagicMock()
@@ -97,7 +97,7 @@ class TestGetPipelineStateTool:
         assert schema["function"]["name"] == "get_pipeline_state"
         assert "validate" in schema["function"]["parameters"]["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_state_no_conversation(self):
         """Test getting state when no conversation in context."""
         tool = GetPipelineStateTool(context={})
@@ -106,7 +106,7 @@ class TestGetPipelineStateTool:
         assert result["has_pipeline"] is False
         assert "error" in result
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_state_no_pipeline(self, mock_conversation_no_pipeline):
         """Test getting state when conversation has no pipeline."""
         tool = GetPipelineStateTool(context={"conversation": mock_conversation_no_pipeline})
@@ -116,7 +116,7 @@ class TestGetPipelineStateTool:
         assert result["pipeline"] is None
         assert "build_pipeline" in result["message"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_state_with_pipeline(self, mock_conversation, sample_pipeline_config):
         """Test getting state when pipeline exists."""
         tool = GetPipelineStateTool(context={"conversation": mock_conversation})
@@ -125,7 +125,7 @@ class TestGetPipelineStateTool:
         assert result["has_pipeline"] is True
         assert result["pipeline"] == sample_pipeline_config
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_state_with_validation(self, mock_conversation):
         """Test getting state with validation enabled."""
         with patch("webui.services.agent.tools.pipeline.plugin_registry") as mock_registry:
@@ -138,7 +138,7 @@ class TestGetPipelineStateTool:
             assert result["validation"]["is_valid"] is True
             assert result["validation"]["errors"] == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_state_validation_fails(self, mock_conversation):
         """Test getting state when validation finds errors."""
         # Create pipeline with unknown plugin
@@ -168,7 +168,7 @@ class TestBuildPipelineTool:
         assert "nodes" in schema["function"]["parameters"]["properties"]
         assert "edges" in schema["function"]["parameters"]["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_no_conversation(self):
         """Test building when no conversation in context."""
         tool = BuildPipelineTool(context={})
@@ -177,7 +177,7 @@ class TestBuildPipelineTool:
         assert result["success"] is False
         assert "conversation" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_from_template(self, mock_conversation_no_pipeline, sample_template):
         """Test building pipeline from template."""
         with (
@@ -194,7 +194,7 @@ class TestBuildPipelineTool:
             assert result["pipeline"]["id"] == "academic-papers"
             assert result["validation"]["is_valid"] is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_from_template_with_tunables(self, mock_conversation_no_pipeline, sample_template):
         """Test building pipeline with tunable overrides."""
         with (
@@ -220,7 +220,7 @@ class TestBuildPipelineTool:
             chunker = next(n for n in result["pipeline"]["nodes"] if n["id"] == "chunker")
             assert chunker["config"]["max_tokens"] == 1024
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_from_template_invalid_tunable(self, mock_conversation_no_pipeline, sample_template):
         """Test building with invalid tunable path."""
         with (
@@ -241,7 +241,7 @@ class TestBuildPipelineTool:
             assert result["success"] is False
             assert "invalid" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_template_not_found(self, mock_conversation_no_pipeline, sample_template):
         """Test building with non-existent template."""
         with (
@@ -258,7 +258,7 @@ class TestBuildPipelineTool:
             assert "not found" in result["error"]
             assert "academic-papers" in result["available_templates"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_from_custom_nodes(self, mock_conversation_no_pipeline):
         """Test building pipeline from custom nodes and edges."""
         with patch("webui.services.agent.tools.pipeline.plugin_registry") as mock_registry:
@@ -282,7 +282,7 @@ class TestBuildPipelineTool:
             assert result["pipeline"]["id"] == "my-custom"
             assert len(result["pipeline"]["nodes"]) == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_custom_missing_edges(self, mock_conversation_no_pipeline):
         """Test building custom pipeline without edges."""
         nodes = [
@@ -295,7 +295,7 @@ class TestBuildPipelineTool:
         assert result["success"] is False
         assert "edges" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_neither_template_nor_nodes(self, mock_conversation_no_pipeline):
         """Test building without template or nodes."""
         tool = BuildPipelineTool(context={"conversation": mock_conversation_no_pipeline})
@@ -319,7 +319,7 @@ class TestApplyPipelineTool:
         assert "collection_name" in schema["function"]["parameters"]["required"]
         assert "force" in schema["function"]["parameters"]["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_no_conversation(self):
         """Test applying when no conversation in context."""
         tool = ApplyPipelineTool(context={})
@@ -328,7 +328,7 @@ class TestApplyPipelineTool:
         assert result["success"] is False
         assert "conversation" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_no_session(self, mock_conversation):
         """Test applying when no session in context."""
         tool = ApplyPipelineTool(context={"conversation": mock_conversation})
@@ -337,7 +337,7 @@ class TestApplyPipelineTool:
         assert result["success"] is False
         assert "session" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_no_user_id(self, mock_conversation):
         """Test applying when no user_id in context."""
         mock_session = AsyncMock()
@@ -347,7 +347,7 @@ class TestApplyPipelineTool:
         assert result["success"] is False
         assert "user" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_no_pipeline(self, mock_conversation_no_pipeline):
         """Test applying when no pipeline configured."""
         mock_session = AsyncMock()
@@ -359,7 +359,7 @@ class TestApplyPipelineTool:
         assert result["success"] is False
         assert "pipeline" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_with_blocking_uncertainties(self, mock_conversation):
         """Test applying when blocking uncertainties exist."""
         mock_session = AsyncMock()
@@ -385,7 +385,7 @@ class TestApplyPipelineTool:
             assert "blocking" in result["error"].lower()
             assert len(result["blocking_uncertainties"]) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_with_force(self, mock_conversation):
         """Test applying with force=True bypasses blocking uncertainties."""
         mock_session = AsyncMock()
@@ -421,7 +421,7 @@ class TestApplyPipelineTool:
             assert result["success"] is True
             assert result["collection_id"] == "coll-123"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_success(self, mock_conversation):
         """Test successful pipeline application."""
         mock_session = AsyncMock()
@@ -464,7 +464,7 @@ class TestApplyPipelineTool:
             assert call_args.kwargs["name"] == "My Collection"
             assert call_args.kwargs["description"] == "Test desc"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_apply_validation_error(self, mock_conversation):
         """Test applying with invalid pipeline."""
         # Create invalid pipeline (missing embedder)
