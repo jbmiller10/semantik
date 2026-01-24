@@ -5,6 +5,9 @@ Tests verify that parsers return only primitives across process boundaries
 
 These tests lock down the current safe behavior where workers return
 dict[str, str | dict | int] primitives rather than ParseResult objects.
+
+Note: Tests for _process_file_worker and _WorkerResult types were removed
+in Phase 1c when connectors were refactored to use enumerate() pattern.
 """
 
 from __future__ import annotations
@@ -20,28 +23,9 @@ from shared.text_processing.parsers import ParseResult, parse_content
 class TestParserTaskBoundaries:
     """Tests for task boundary safety - primitives only across boundaries."""
 
-    def test_parse_result_is_not_serialized_in_worker(self) -> None:
-        """Verify that worker returns primitives, not ParseResult.
-
-        The _process_file_worker in LocalFileConnector returns a dict
-        with only str/dict/int values, never ParseResult or ParsedElement.
-        """
-        # Import the worker function
-        from shared.connectors.local import _process_file_worker
-
-        # The worker function signature shows it returns _WorkerResult
-        # which is a TypedDict with only primitive fields
-        # The function exists and is callable
-        assert callable(_process_file_worker)
-
-        # Verify the return type annotation (if available)
-        # The function should return _WorkerResult which is:
-        # _WorkerSuccess | _WorkerSkipped | _WorkerError
-        # All of these are TypedDict with only primitives
-
     def test_worker_success_data_is_json_serializable(self) -> None:
-        """Verify that _WorkerSuccessData can be JSON serialized."""
-        # Create a sample success data structure matching _WorkerSuccessData schema
+        """Verify that worker success data can be JSON serialized."""
+        # Create a sample success data structure matching pipeline executor output
         sample_data = {
             "content": "Sample text content",
             "unique_id": "file:///path/to/file.txt",
@@ -61,25 +45,6 @@ class TestParserTaskBoundaries:
         serialized = json.dumps(sample_data)
         deserialized = json.loads(serialized)
         assert deserialized == sample_data
-
-    def test_worker_result_types_have_no_parse_result(self) -> None:
-        """Verify _WorkerResult types don't include ParseResult."""
-        from shared.connectors.local import _WorkerError, _WorkerSkipped, _WorkerSuccess, _WorkerSuccessData
-
-        # Check annotations don't reference ParseResult
-        success_data_annotations = _WorkerSuccessData.__annotations__
-        assert all(
-            "ParseResult" not in str(v) and "ParsedElement" not in str(v) for v in success_data_annotations.values()
-        )
-
-        success_annotations = _WorkerSuccess.__annotations__
-        assert "ParseResult" not in str(success_annotations)
-
-        skipped_annotations = _WorkerSkipped.__annotations__
-        assert all(isinstance(v, type) or "ParseResult" not in str(v) for v in skipped_annotations.values())
-
-        error_annotations = _WorkerError.__annotations__
-        assert all(isinstance(v, type) or "ParseResult" not in str(v) for v in error_annotations.values())
 
     def test_parse_content_result_can_extract_primitives(self) -> None:
         """Verify parse_content returns data that can be extracted as primitives."""
@@ -116,22 +81,6 @@ class TestIncludeElementsDefault:
         parser = TextParser()
         result = parser.parse_bytes(b"Hello", file_extension=".txt")
         assert result.elements == []
-
-    def test_local_connector_worker_uses_no_elements(self) -> None:
-        """LocalFileConnector worker calls parse_content without include_elements.
-
-        Verifying by checking the source code contains no include_elements=True.
-        """
-        import inspect
-
-        from shared.connectors.local import _process_file_worker
-
-        source = inspect.getsource(_process_file_worker)
-
-        # The worker should NOT specify include_elements=True
-        # (it's not needed for ingestion, and would bloat serialization)
-        assert "include_elements=True" not in source
-        assert "include_elements = True" not in source
 
 
 class TestSerializationBoundary:

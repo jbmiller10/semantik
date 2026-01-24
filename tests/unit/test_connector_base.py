@@ -6,8 +6,7 @@ from typing import Any
 import pytest
 
 from shared.connectors.base import BaseConnector
-from shared.dtos.ingestion import IngestedDocument
-from shared.utils.hashing import compute_content_hash
+from shared.pipeline.types import FileReference
 
 
 class MockConnector(BaseConnector):
@@ -15,15 +14,21 @@ class MockConnector(BaseConnector):
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.auth_result = config.get("auth_result", True)
-        self.documents: list[IngestedDocument] = config.get("documents", [])
+        self.file_refs: list[FileReference] = config.get("file_refs", [])
         super().__init__(config)
 
     async def authenticate(self) -> bool:
         return self.auth_result
 
-    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
-        for doc in self.documents:
-            yield doc
+    async def enumerate(
+        self,
+        source_id: int | None = None,
+    ) -> AsyncIterator[FileReference]:
+        for ref in self.file_refs:
+            yield ref
+
+    async def load_content(self, file_ref: FileReference) -> bytes:
+        return b"mock content"
 
 
 class ValidatingConnector(BaseConnector):
@@ -36,9 +41,15 @@ class ValidatingConnector(BaseConnector):
     async def authenticate(self) -> bool:
         return True
 
-    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
+    async def enumerate(
+        self,
+        source_id: int | None = None,
+    ) -> AsyncIterator[FileReference]:
         return
         yield  # Make this a generator
+
+    async def load_content(self, file_ref: FileReference) -> bytes:
+        return b"mock content"
 
 
 class TestBaseConnector:
@@ -63,53 +74,62 @@ class TestBaseConnector:
         assert await connector.authenticate() is False
 
     @pytest.mark.asyncio()
-    async def test_load_documents_yields_ingested_documents(self) -> None:
-        """Test load_documents yields IngestedDocument objects."""
-        content = "Test content"
-        doc = IngestedDocument(
-            content=content,
-            unique_id="test://doc1",
+    async def test_enumerate_yields_file_references(self) -> None:
+        """Test enumerate yields FileReference objects."""
+        ref = FileReference(
+            uri="test://doc1",
             source_type="mock",
-            metadata={"key": "value"},
-            content_hash=compute_content_hash(content),
+            content_type="document",
+            filename="doc1.txt",
+            extension=".txt",
+            mime_type="text/plain",
+            size_bytes=100,
+            change_hint="mtime:1234567890,size:100",
+            source_metadata={"key": "value"},
         )
-        connector = MockConnector({"documents": [doc]})
+        connector = MockConnector({"file_refs": [ref]})
 
-        documents = [d async for d in connector.load_documents()]
-        assert len(documents) == 1
-        assert documents[0].unique_id == "test://doc1"
-        assert documents[0].content == content
-
-    @pytest.mark.asyncio()
-    async def test_load_documents_empty(self) -> None:
-        """Test load_documents yields nothing when no documents."""
-        connector = MockConnector({"documents": []})
-
-        documents = [d async for d in connector.load_documents()]
-        assert len(documents) == 0
+        refs = [r async for r in connector.enumerate()]
+        assert len(refs) == 1
+        assert refs[0].uri == "test://doc1"
+        assert refs[0].source_type == "mock"
+        assert refs[0].content_type == "document"
+        assert refs[0].filename == "doc1.txt"
+        assert refs[0].change_hint == "mtime:1234567890,size:100"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_multiple(self) -> None:
-        """Test load_documents yields multiple documents."""
-        docs = []
+    async def test_enumerate_empty(self) -> None:
+        """Test enumerate yields nothing when no files."""
+        connector = MockConnector({"file_refs": []})
+
+        refs = [r async for r in connector.enumerate()]
+        assert len(refs) == 0
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_multiple(self) -> None:
+        """Test enumerate yields multiple file references."""
+        refs_input = []
         for i in range(3):
-            content = f"Test content {i}"
-            docs.append(
-                IngestedDocument(
-                    content=content,
-                    unique_id=f"test://doc{i}",
+            refs_input.append(
+                FileReference(
+                    uri=f"test://doc{i}",
                     source_type="mock",
-                    metadata={"index": i},
-                    content_hash=compute_content_hash(content),
+                    content_type="document",
+                    filename=f"doc{i}.txt",
+                    extension=".txt",
+                    mime_type="text/plain",
+                    size_bytes=100 + i,
+                    change_hint=f"mtime:123456789{i},size:{100 + i}",
+                    source_metadata={"index": i},
                 )
             )
-        connector = MockConnector({"documents": docs})
+        connector = MockConnector({"file_refs": refs_input})
 
-        documents = [d async for d in connector.load_documents()]
-        assert len(documents) == 3
-        assert documents[0].unique_id == "test://doc0"
-        assert documents[1].unique_id == "test://doc1"
-        assert documents[2].unique_id == "test://doc2"
+        refs = [r async for r in connector.enumerate()]
+        assert len(refs) == 3
+        assert refs[0].uri == "test://doc0"
+        assert refs[1].uri == "test://doc1"
+        assert refs[2].uri == "test://doc2"
 
     def test_validate_config_default_passes(self) -> None:
         """Test default validate_config accepts any config."""
@@ -131,3 +151,10 @@ class TestBaseConnector:
         config: dict[str, Any] = {"a": 1, "b": "two"}
         connector = MockConnector(config)
         assert connector.config is connector._config
+
+    @pytest.mark.asyncio()
+    async def test_load_documents_raises_not_implemented(self) -> None:
+        """Test load_documents raises NotImplementedError with deprecation message."""
+        connector = MockConnector({})
+        with pytest.raises(NotImplementedError, match="deprecated"):
+            [doc async for doc in connector.load_documents()]

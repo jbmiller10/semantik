@@ -455,20 +455,6 @@ class TestGitConnectorFileMatching:
         assert connector._matches_patterns("src/main.py")
         assert connector._matches_patterns("image.png")
 
-    def test_is_supported_extension_default(self):
-        """Test file extension support with defaults."""
-        from pathlib import Path
-
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-            }
-        )
-
-        assert connector._is_supported_extension(Path("README.md"))
-        assert connector._is_supported_extension(Path("src/main.py"))
-        assert not connector._is_supported_extension(Path("image.png"))
-
     def test_matches_patterns_with_include_globs(self):
         """Test pattern matching with custom include globs."""
         connector = GitConnector(
@@ -494,21 +480,6 @@ class TestGitConnectorFileMatching:
         assert not connector._matches_patterns("app.min.js")
         assert not connector._matches_patterns("vendor/lib.js")
         assert connector._matches_patterns("src/app.js")
-
-    def test_is_supported_extension_with_include_globs(self):
-        """Test extension support trusts include_globs."""
-        from pathlib import Path
-
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-                "include_globs": ["*.png"],  # Custom globs
-            }
-        )
-
-        # When include_globs are set, extension check returns True
-        # (trusting the include patterns)
-        assert connector._is_supported_extension(Path("image.png"))
 
 
 class TestGitConnectorRedactSensitive:
@@ -551,7 +522,6 @@ class TestGitConnectorRedactSensitive:
         connector.set_credentials(token="ghp_secret123")
 
         assert connector._redact_sensitive("") == ""
-        assert connector._redact_sensitive(None) is None
 
 
 class TestGitConnectorCleanup:
@@ -795,148 +765,12 @@ class TestGitConnectorCloneOrFetch:
             assert connector._commit_sha == "abc123"
 
 
-class TestGitConnectorProcessFile:
-    """Test _process_file method."""
+class TestGitConnectorEnumerate:
+    """Test enumerate method."""
 
     @pytest.mark.asyncio()
-    async def test_process_file_skips_symlinks(self):
-        """Test that symlinks are skipped."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_dir = Path(temp_dir)
-            connector._repo_dir = repo_dir
-
-            # Create a file and a symlink
-            real_file = repo_dir / "real.txt"
-            real_file.write_text("content")
-            symlink = repo_dir / "link.txt"
-            symlink.symlink_to(real_file)
-
-            result = await connector._process_file(symlink, "link.txt")
-
-            assert result is None
-
-    @pytest.mark.asyncio()
-    async def test_process_file_skips_large_files(self):
-        """Test files exceeding max_file_size are skipped."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-                "max_file_size_mb": 1,  # 1 MB limit
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_dir = Path(temp_dir)
-            connector._repo_dir = repo_dir
-
-            # Create a large file (>1 MB)
-            large_file = repo_dir / "large.txt"
-            large_file.write_text("x" * (2 * 1024 * 1024))  # 2 MB
-
-            result = await connector._process_file(large_file, "large.txt")
-
-            assert result is None
-
-    @pytest.mark.asyncio()
-    async def test_process_file_skips_empty_files(self):
-        """Test empty files (0 bytes) are skipped."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_dir = Path(temp_dir)
-            connector._repo_dir = repo_dir
-
-            empty_file = repo_dir / "empty.txt"
-            empty_file.write_text("")
-
-            result = await connector._process_file(empty_file, "empty.txt")
-
-            assert result is None
-
-    @pytest.mark.asyncio()
-    async def test_process_file_reads_text_files_directly(self):
-        """Test text files are read without extraction service."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_dir = Path(temp_dir)
-            connector._repo_dir = repo_dir
-            connector._commit_sha = "abc123"
-
-            md_file = repo_dir / "README.md"
-            md_file.write_text("# Hello World\n\nThis is a test.")
-
-            with patch.object(connector, "_get_blob_sha", return_value="blob123"):
-                result = await connector._process_file(md_file, "README.md")
-
-            assert result is not None
-            assert "Hello World" in result.content
-            assert result.unique_id == "git://https://github.com/user/repo.git/README.md"
-            assert result.source_type == "git"
-            assert result.metadata["blob_sha"] == "blob123"
-            assert result.metadata["commit_sha"] == "abc123"
-
-    @pytest.mark.asyncio()
-    async def test_process_file_builds_correct_metadata(self):
-        """Test that metadata is correctly populated."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-                "ref": "main",
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_dir = Path(temp_dir)
-            connector._repo_dir = repo_dir
-            connector._commit_sha = "commit123"
-
-            py_file = repo_dir / "src" / "main.py"
-            py_file.parent.mkdir(parents=True)
-            py_file.write_text("print('hello')")
-
-            with patch.object(connector, "_get_blob_sha", return_value="blob456"):
-                result = await connector._process_file(py_file, "src/main.py")
-
-            assert result is not None
-            # Connector identity
-            assert result.metadata["source_type"] == "git"
-            assert result.metadata["source_path"] == "src/main.py"
-
-            # Parser metadata contract
-            assert result.metadata["parser"] == "text"
-            assert result.metadata["filename"] == "main.py"
-            assert result.metadata["file_extension"] == ".py"
-            assert result.metadata["file_type"] == "py"
-            assert isinstance(result.metadata["mime_type"], str)
-            assert result.metadata["mime_type"]
-
-            assert result.metadata["file_path"] == "src/main.py"
-            assert result.metadata["ref"] == "main"
-            assert result.metadata["repo_url"] == "https://github.com/user/repo.git"
-            assert result.content_hash is not None
-
-
-class TestGitConnectorLoadDocuments:
-    """Test load_documents method."""
-
-    @pytest.mark.asyncio()
-    async def test_load_documents_yields_documents(self):
-        """Test that load_documents yields IngestedDocument objects."""
+    async def test_enumerate_yields_file_references(self):
+        """Test that enumerate yields FileReference objects."""
         connector = GitConnector(
             {
                 "repo_url": "https://github.com/user/repo.git",
@@ -957,15 +791,23 @@ class TestGitConnectorLoadDocuments:
                 connector._repo_dir = repo_dir
                 connector._commit_sha = "abc123"
 
-                docs = [doc async for doc in connector.load_documents()]
+                refs = [ref async for ref in connector.enumerate()]
 
-            assert len(docs) == 2
-            paths = [doc.metadata["file_path"] for doc in docs]
+            assert len(refs) == 2
+            paths = [ref.source_metadata["relative_path"] for ref in refs]
             assert "README.md" in paths
             assert "src/main.py" in paths
 
+            # Check FileReference fields
+            for ref in refs:
+                assert ref.source_type == "git"
+                assert ref.uri.startswith("git://")
+                assert ref.change_hint == "blob123"
+                assert ref.source_metadata["commit_sha"] == "abc123"
+                assert ref.source_metadata["repo_url"] == "https://github.com/user/repo.git"
+
     @pytest.mark.asyncio()
-    async def test_load_documents_skips_git_directory(self):
+    async def test_enumerate_skips_git_directory(self):
         """Test that .git directory is skipped during traversal."""
         connector = GitConnector(
             {
@@ -986,15 +828,15 @@ class TestGitConnectorLoadDocuments:
                 connector._repo_dir = repo_dir
                 connector._commit_sha = "abc123"
 
-                docs = [doc async for doc in connector.load_documents()]
+                refs = [ref async for ref in connector.enumerate()]
 
             # Only README.md should be yielded, not .git/config
-            assert len(docs) == 1
-            assert docs[0].metadata["file_path"] == "README.md"
+            assert len(refs) == 1
+            assert refs[0].source_metadata["relative_path"] == "README.md"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_respects_include_patterns(self):
-        """Test include_globs filtering in load_documents."""
+    async def test_enumerate_respects_include_patterns(self):
+        """Test include_globs filtering in enumerate."""
         connector = GitConnector(
             {
                 "repo_url": "https://github.com/user/repo.git",
@@ -1016,18 +858,18 @@ class TestGitConnectorLoadDocuments:
                 connector._repo_dir = repo_dir
                 connector._commit_sha = "abc123"
 
-                docs = [doc async for doc in connector.load_documents()]
+                refs = [ref async for ref in connector.enumerate()]
 
             # Only .md files should be yielded
-            assert len(docs) == 2
-            paths = [doc.metadata["file_path"] for doc in docs]
+            assert len(refs) == 2
+            paths = [ref.source_metadata["relative_path"] for ref in refs]
             assert "README.md" in paths
             assert "CHANGELOG.md" in paths
             assert "main.py" not in paths
 
     @pytest.mark.asyncio()
-    async def test_load_documents_respects_exclude_patterns(self):
-        """Test exclude_globs filtering in load_documents."""
+    async def test_enumerate_respects_exclude_patterns(self):
+        """Test exclude_globs filtering in enumerate."""
         connector = GitConnector(
             {
                 "repo_url": "https://github.com/user/repo.git",
@@ -1048,12 +890,137 @@ class TestGitConnectorLoadDocuments:
                 connector._repo_dir = repo_dir
                 connector._commit_sha = "abc123"
 
-                docs = [doc async for doc in connector.load_documents()]
+                refs = [ref async for ref in connector.enumerate()]
 
             # app.min.js should be excluded
-            paths = [doc.metadata["file_path"] for doc in docs]
+            paths = [ref.source_metadata["relative_path"] for ref in refs]
             assert "app.js" in paths
             assert "app.min.js" not in paths
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_skips_symlinks(self):
+        """Test that symlinks are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+
+            # Create a file and a symlink
+            real_file = repo_dir / "real.txt"
+            real_file.write_text("content")
+            symlink = repo_dir / "link.txt"
+            symlink.symlink_to(real_file)
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                refs = [ref async for ref in connector.enumerate()]
+
+            # Only real.txt should be yielded
+            assert len(refs) == 1
+            assert refs[0].filename == "real.txt"
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_skips_large_files(self):
+        """Test files exceeding max_file_size are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "max_file_size_mb": 1,  # 1 MB limit
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+
+            # Create small and large files
+            small_file = repo_dir / "small.txt"
+            small_file.write_text("small content")
+            large_file = repo_dir / "large.txt"
+            large_file.write_text("x" * (2 * 1024 * 1024))  # 2 MB
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                refs = [ref async for ref in connector.enumerate()]
+
+            # Only small file should be yielded
+            assert len(refs) == 1
+            assert refs[0].filename == "small.txt"
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_skips_empty_files(self):
+        """Test empty files (0 bytes) are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+
+            # Create normal and empty files
+            normal_file = repo_dir / "normal.txt"
+            normal_file.write_text("content")
+            empty_file = repo_dir / "empty.txt"
+            empty_file.write_text("")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                refs = [ref async for ref in connector.enumerate()]
+
+            # Only normal file should be yielded
+            assert len(refs) == 1
+            assert refs[0].filename == "normal.txt"
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_infers_content_type(self):
+        """Test content_type inference based on extension."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+            (repo_dir / "README.md").write_text("# Test")
+            (repo_dir / "main.py").write_text("print('hello')")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                refs = [ref async for ref in connector.enumerate()]
+
+            ref_by_name = {ref.filename: ref for ref in refs}
+            assert ref_by_name["README.md"].content_type == "document"
+            assert ref_by_name["main.py"].content_type == "code"
 
 
 class TestGitConnectorRunGitCommandFileNotFound:

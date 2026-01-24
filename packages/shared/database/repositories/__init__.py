@@ -10,6 +10,7 @@ from .document_repository import DocumentRepository
 from .llm_provider_config_repository import LLMProviderConfigRepository
 from .llm_usage_repository import LLMUsageRepository, UsageSummary
 from .operation_repository import OperationRepository
+from .pipeline_failure_repository import PipelineFailureRepository
 from .plugin_config_repository import PluginConfigRepository
 from .projection_run_repository import ProjectionRunRepository
 from .system_settings_repository import SystemSettingsRepository
@@ -26,6 +27,7 @@ __all__ = [
     "LLMProviderConfigRepository",
     "LLMUsageRepository",
     "OperationRepository",
+    "PipelineFailureRepository",
     "PluginConfigRepository",
     "ProjectionRunRepository",
     "SystemSettingsRepository",
