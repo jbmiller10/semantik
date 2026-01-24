@@ -33,6 +33,12 @@ def manifest_from_embedding_plugin(
     metadata = getattr(plugin_cls, "METADATA", {}) or {}
     display_name = _metadata_value(metadata, "display_name", definition.display_name or definition.api_id)
     description = _metadata_value(metadata, "description", definition.description or "")
+
+    # Get AgentHints if available
+    agent_hints = None
+    if hasattr(plugin_cls, "AGENT_HINTS"):
+        agent_hints = plugin_cls.AGENT_HINTS
+
     return PluginManifest(
         id=definition.api_id,
         type="embedding",
@@ -55,6 +61,7 @@ def manifest_from_embedding_plugin(
             "default_config": dict(definition.default_config),
             "performance": dict(definition.performance_characteristics),
         },
+        agent_hints=agent_hints,
     )
 
 
@@ -68,6 +75,12 @@ def manifest_from_chunking_plugin(
     metadata = getattr(plugin_cls, "METADATA", {}) or {}
     display_name = _metadata_value(metadata, "display_name", api_id.replace("_", " ").title())
     description = _metadata_value(metadata, "description", "")
+
+    # Get AgentHints if available
+    agent_hints = None
+    if hasattr(plugin_cls, "AGENT_HINTS"):
+        agent_hints = plugin_cls.AGENT_HINTS
+
     return PluginManifest(
         id=api_id,
         type="chunking",
@@ -92,6 +105,7 @@ def manifest_from_chunking_plugin(
             "aliases": list(_metadata_value(metadata, "aliases", [])),
             "visual_example": _metadata_value(metadata, "visual_example"),
         },
+        agent_hints=agent_hints,
     )
 
 
@@ -170,6 +184,11 @@ def manifest_from_extractor_plugin(plugin_cls: type, plugin_id: str) -> PluginMa
         except Exception as exc:
             logger.warning("Failed to get supported extractions for extractor plugin '%s': %s", plugin_id, exc)
 
+    # Get AgentHints if available
+    agent_hints = None
+    if hasattr(plugin_cls, "AGENT_HINTS"):
+        agent_hints = plugin_cls.AGENT_HINTS
+
     return PluginManifest(
         id=plugin_id,
         type="extractor",
@@ -184,6 +203,7 @@ def manifest_from_extractor_plugin(plugin_cls: type, plugin_id: str) -> PluginMa
         capabilities={
             "supported_extractions": supported_types,
         },
+        agent_hints=agent_hints,
     )
 
 

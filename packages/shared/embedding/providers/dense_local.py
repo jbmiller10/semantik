@@ -27,6 +27,7 @@ from shared.embedding.models import MODEL_CONFIGS, ModelConfig, get_model_config
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
 from shared.embedding.types import EmbeddingMode
 from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
+from shared.plugins.manifest import AgentHints
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -96,6 +97,25 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
     INTERNAL_NAME: ClassVar[str] = "dense_local"
     API_ID: ClassVar[str] = "dense_local"
     PROVIDER_TYPE: ClassVar[str] = "local"
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Local GPU embedding using configurable transformer models. "
+        "Supports asymmetric query/document prefixes.",
+        best_for=[
+            "privacy-sensitive data",
+            "offline/air-gapped environments",
+            "when you need full control over the model",
+            "high-volume embedding with GPU",
+        ],
+        not_recommended_for=[
+            "no GPU available (very slow on CPU)",
+            "when cloud API is acceptable and simpler",
+        ],
+        input_types=["text/plain"],
+        output_type="vectors",
+        tradeoffs="Full control and privacy but requires GPU. "
+        "Model choice affects quality and speed.",
+    )
 
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Local Dense Embeddings",

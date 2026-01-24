@@ -10,13 +10,14 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from shared.chunking.unified.base import UnifiedChunkingStrategy
 from shared.chunking.utils.safe_regex import SafeRegex
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,25 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
     code blocks, and paragraphs when creating chunks. Can optionally use
     LlamaIndex for enhanced markdown parsing.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Header-aware splitting that respects markdown structure. "
+        "Keeps sections together with their headers.",
+        best_for=[
+            "markdown documents",
+            "README files",
+            "technical documentation",
+            "content with clear heading hierarchy",
+            "documents with code blocks",
+        ],
+        not_recommended_for=[
+            "plain text without markdown syntax",
+            "very long sections that need further splitting",
+        ],
+        output_type="chunks",
+        tradeoffs="Excellent for structured docs but may create uneven chunk sizes. "
+        "Large sections may exceed target size to preserve structure.",
+    )
 
     def __init__(self, use_llama_index: bool = False) -> None:
         """
