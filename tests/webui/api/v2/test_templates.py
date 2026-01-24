@@ -5,8 +5,17 @@ Uses shared fixtures from conftest.py (api_client, api_client_unauthenticated).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from httpx import AsyncClient
+
+
+# Skip auth tests when auth is disabled
+_SKIP_AUTH_TESTS = pytest.mark.skipif(
+    os.environ.get("DISABLE_AUTH", "").lower() in ("true", "1", "yes"),
+    reason="Auth is disabled in test environment",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +81,7 @@ class TestListTemplates:
             # Should NOT include pipeline DAG in list response
             assert "pipeline" not in template
 
+    @_SKIP_AUTH_TESTS
     @pytest.mark.asyncio()
     async def test_list_templates_requires_auth(
         self, api_client_unauthenticated: AsyncClient
@@ -174,6 +184,7 @@ class TestGetTemplate:
         assert "detail" in data
         assert "nonexistent-template" in data["detail"]
 
+    @_SKIP_AUTH_TESTS
     @pytest.mark.asyncio()
     async def test_get_template_requires_auth(
         self, api_client_unauthenticated: AsyncClient
