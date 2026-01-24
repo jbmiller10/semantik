@@ -147,9 +147,7 @@ class BuildPipelineTool(BaseTool):
             },
             "nodes": {
                 "type": "array",
-                "description": (
-                    "Custom nodes for a pipeline (when not using template). " "Each node: {id, type, plugin_id, config}"
-                ),
+                "description": "Custom nodes for a pipeline (when not using template). Each node: {id, type, plugin_id, config}",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -166,9 +164,7 @@ class BuildPipelineTool(BaseTool):
             },
             "edges": {
                 "type": "array",
-                "description": (
-                    "Custom edges for a pipeline (when not using template). " "Each edge: {from_node, to_node, when}"
-                ),
+                "description": "Custom edges for a pipeline (when not using template). Each edge: {from_node, to_node, when}",
                 "items": {
                     "type": "object",
                     "properties": {

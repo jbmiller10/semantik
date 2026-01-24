@@ -144,7 +144,7 @@ class EnumerateFilesTool(BaseTool):
                 # Safety limit
                 if total_files >= MAX_ENUMERATE_FILES:
                     logger.warning(
-                        f"Enumeration limit reached ({MAX_ENUMERATE_FILES} files). " "Results may be incomplete."
+                        f"Enumeration limit reached ({MAX_ENUMERATE_FILES} files). Results may be incomplete."
                     )
                     break
 

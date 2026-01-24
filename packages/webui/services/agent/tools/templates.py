@@ -33,9 +33,7 @@ class ListTemplatesTool(BaseTool):
         "properties": {
             "suggested_for": {
                 "type": "string",
-                "description": (
-                    "Optional keyword to filter templates by suggested use case " "(e.g., 'PDF', 'code', 'email')"
-                ),
+                "description": "Optional keyword to filter templates by suggested use case (e.g., 'PDF', 'code', 'email')",
             },
         },
         "required": [],
