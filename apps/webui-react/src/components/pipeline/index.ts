@@ -6,4 +6,7 @@ export { ConfigurationPanel } from './ConfigurationPanel';
 export { NodeConfigEditor } from './NodeConfigEditor';
 export { EdgePredicateEditor } from './EdgePredicateEditor';
 export { SourceAnalysisSummary } from './SourceAnalysisSummary';
+export { AgentStatusBar } from './AgentStatusBar';
+export { ActivityLog } from './ActivityLog';
+export { AgentInput } from './AgentInput';
 export type { PipelineVisualizationProps } from '@/types/pipeline';
