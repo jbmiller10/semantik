@@ -411,6 +411,10 @@ When you're done responding (no more tools to call), just write your response no
 
         try:
             async with provider:
+                # Emit initial status
+                yield self._emit_status("analyzing", "Processing your request...")
+                yield self._emit_activity("Starting conversation turn")
+
                 for turn in range(self.MAX_TURNS):
                     logger.debug(f"Conversation turn {turn + 1}/{self.MAX_TURNS}")
 
@@ -452,7 +456,9 @@ When you're done responding (no more tools to call), just write your response no
                                 data={"pipeline": self.conversation.current_pipeline},
                             )
 
-                        # Yield done event
+                        # Emit ready status and done event
+                        yield self._emit_status("ready", "Pipeline configuration complete")
+                        yield self._emit_activity("Agent finished processing")
                         yield AgentStreamEvent(
                             event=AgentStreamEventType.DONE,
                             data={
@@ -542,6 +548,13 @@ When you're done responding (no more tools to call), just write your response no
         for call in tool_calls:
             tool = self.tools.get(call.name)
 
+            # Emit status for tool execution
+            yield self._emit_status(
+                "building" if call.name == "build_pipeline" else "analyzing",
+                f"Executing {call.name}...",
+            )
+            yield self._emit_activity(f"Running tool: {call.name}")
+
             # Yield start event
             yield AgentStreamEvent(
                 event=AgentStreamEventType.TOOL_CALL_START,
@@ -571,6 +584,9 @@ When you're done responding (no more tools to call), just write your response no
                 # Check if this is a spawn tool (subagent)
                 is_spawn_tool = call.name.startswith("spawn_")
                 if is_spawn_tool:
+                    yield self._emit_status(
+                        "analyzing", f"Spawning {call.name.replace('spawn_', '')} agent..."
+                    )
                     yield AgentStreamEvent(
                         event=AgentStreamEventType.SUBAGENT_START,
                         data={
