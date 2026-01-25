@@ -211,8 +211,10 @@ class TestGetConversation:
     @pytest.mark.asyncio()
     async def test_returns_404_for_missing_conversation(self, api_client, api_auth_headers):
         """Returns 404 when conversation doesn't exist."""
+        # Use a valid UUID format that doesn't exist in the database
+        non_existent_uuid = "00000000-0000-0000-0000-000000000000"
         response = await api_client.get(
-            "/api/v2/agent/conversations/nonexistent-uuid",
+            f"/api/v2/agent/conversations/{non_existent_uuid}",
             headers=api_auth_headers,
         )
 
