@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -17,7 +18,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from shared.database import get_db
-from shared.database.models import CollectionSource, LLMProviderConfig
+from shared.database.models import Collection, CollectionSource, CollectionStatus, LLMProviderConfig
 from shared.database.repositories.llm_provider_config_repository import LLMProviderConfigRepository
 from shared.utils.encryption import SecretEncryption, generate_fernet_key
 from webui.auth import create_access_token, get_current_user
@@ -40,12 +41,27 @@ def _initialize_encryption():
 
 
 @pytest_asyncio.fixture
-async def test_source(db_session: AsyncSession) -> CollectionSource:
-    """Create a test collection source."""
+async def test_source(db_session: AsyncSession, test_user_db: User) -> CollectionSource:
+    """Create a test collection source with required parent collection."""
+    # First create a Collection (CollectionSource requires collection_id)
+    collection = Collection(
+        id=str(uuid4()),
+        name="Test Collection",
+        description="Test collection for agent tests",
+        vector_store_name=f"col_{uuid4().hex[:16]}",
+        embedding_model="test-model",
+        owner_id=test_user_db.id,
+        status=CollectionStatus.READY,
+    )
+    db_session.add(collection)
+    await db_session.flush()
+
+    # Create the source with correct field names
     source = CollectionSource(
-        name="Test Source",
+        collection_id=collection.id,
+        source_path="/test/path",
         source_type="local",
-        config={"path": "/test/path"},
+        source_config={"path": "/test/path"},
     )
     db_session.add(source)
     await db_session.flush()
