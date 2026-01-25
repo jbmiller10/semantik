@@ -67,7 +67,7 @@ export const agentApi = {
    * The actual streaming is handled by useAgentStream hook using fetch.
    */
   getStreamUrl: (conversationId: string) =>
-    `${getApiBaseUrl()}/api/v2/agent/conversations/${conversationId}/message`,
+    `${getApiBaseUrl()}/api/v2/agent/conversations/${conversationId}/messages/stream`,
 };
 
 export default agentApi;

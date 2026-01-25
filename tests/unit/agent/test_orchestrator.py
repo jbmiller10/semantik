@@ -505,6 +505,34 @@ class TestMaxTurnsLimit:
         finally:
             AgentOrchestrator.MAX_TURNS = original_max
 
+    @pytest.mark.asyncio()
+    async def test_streaming_max_turns_yields_done_event_with_flag(
+        self, orchestrator, mock_message_store, mock_llm_factory, mock_llm_provider
+    ):  # noqa: ARG002
+        """Streaming yields done event with max_turns_reached flag when limit hit."""
+        # Force max turns by always returning tool calls
+        mock_response = MagicMock()
+        mock_response.content = '```tool\n{"name": "list_plugins", "arguments": {}}\n```'
+        mock_llm_provider.generate = AsyncMock(return_value=mock_response)
+        mock_llm_factory.create_provider_for_tier = AsyncMock(return_value=mock_llm_provider)
+
+        mock_tool = MagicMock()
+        mock_tool.execute = AsyncMock(return_value={"plugins": []})
+        orchestrator.tools["list_plugins"] = mock_tool
+
+        original_max = AgentOrchestrator.MAX_TURNS
+        AgentOrchestrator.MAX_TURNS = 2
+        try:
+            events = []
+            async for event in orchestrator.handle_message_streaming("Test"):
+                events.append(event)
+
+            done_events = [e for e in events if e.event.value == "done"]
+            assert len(done_events) == 1
+            assert done_events[0].data.get("max_turns_reached") is True
+        finally:
+            AgentOrchestrator.MAX_TURNS = original_max
+
 
 class TestStreamingEvents:
     """Tests for SSE streaming message handling."""

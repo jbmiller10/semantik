@@ -92,6 +92,12 @@ class MessageStore:
     The TTL is extended on each write operation to keep active conversations
     alive.
 
+    Note:
+        No message size validation at this layer. User input is validated by
+        the API (10,000 char limit in SendMessageRequest). Internal messages
+        (tool results) have no size limit. If large tool outputs cause issues,
+        consider adding limits here.
+
     Usage:
         store = MessageStore(redis_client)
 
