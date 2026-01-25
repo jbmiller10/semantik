@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@/tests/utils/test-utils';
 import { ConfigurationPanel } from '../ConfigurationPanel';
-import type { PipelineDAG, DAGSelection } from '@/types/pipeline';
+import type { PipelineDAG } from '@/types/pipeline';
 import type { SourceAnalysis } from '@/types/agent';
 import * as usePluginsModule from '@/hooks/usePlugins';
 
