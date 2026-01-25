@@ -21,6 +21,9 @@ import type {
   PipelineUpdateEvent,
   DoneEvent,
   ErrorEvent,
+  StatusEvent,
+  ActivityEvent,
+  AgentPhase,
 } from '../types/agent';
 
 export interface UseAgentStreamCallbacks {
@@ -33,6 +36,8 @@ export interface UseAgentStreamCallbacks {
   onPipelineUpdate?: (data: PipelineUpdateEvent) => void;
   onDone?: (data: DoneEvent) => void;
   onError?: (error: string) => void;
+  onStatus?: (data: StatusEvent) => void;
+  onActivity?: (data: ActivityEvent) => void;
 }
 
 export interface UseAgentStreamReturn {
@@ -43,6 +48,12 @@ export interface UseAgentStreamReturn {
   subagents: SubagentState[];
   uncertainties: Uncertainty[];
   pipeline: PipelineConfig | null;
+  status: {
+    phase: AgentPhase;
+    message: string;
+    progress?: { current: number; total: number };
+  } | null;
+  activities: Array<{ message: string; timestamp: string }>;
   sendMessage: (message: string) => Promise<void>;
   cancel: () => void;
   reset: () => void;
@@ -89,6 +100,12 @@ export function useAgentStream(
   const [subagents, setSubagents] = useState<SubagentState[]>([]);
   const [uncertainties, setUncertainties] = useState<Uncertainty[]>([]);
   const [pipeline, setPipeline] = useState<PipelineConfig | null>(null);
+  const [status, setStatus] = useState<{
+    phase: AgentPhase;
+    message: string;
+    progress?: { current: number; total: number };
+  } | null>(null);
+  const [activities, setActivities] = useState<Array<{ message: string; timestamp: string }>>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const token = useAuthStore((state) => state.token);
@@ -99,6 +116,8 @@ export function useAgentStream(
     setCurrentContent('');
     setToolCalls([]);
     setSubagents([]);
+    setStatus(null);
+    setActivities([]);
   }, []);
 
   const cancel = useCallback(() => {
@@ -282,6 +301,30 @@ export function useAgentStream(
                 callbacks.onError?.(errorData.message);
                 break;
               }
+
+              case 'status': {
+                const statusData = data as unknown as StatusEvent;
+                setStatus({
+                  phase: statusData.phase,
+                  message: statusData.message,
+                  progress: statusData.progress,
+                });
+                callbacks.onStatus?.(statusData);
+                break;
+              }
+
+              case 'activity': {
+                const activityData = data as unknown as ActivityEvent;
+                setActivities((prev) => [
+                  ...prev,
+                  {
+                    message: activityData.message,
+                    timestamp: activityData.timestamp,
+                  },
+                ]);
+                callbacks.onActivity?.(activityData);
+                break;
+              }
             }
           }
         }
@@ -340,6 +383,8 @@ export function useAgentStream(
     subagents,
     uncertainties,
     pipeline,
+    status,
+    activities,
     sendMessage,
     cancel,
     reset,
