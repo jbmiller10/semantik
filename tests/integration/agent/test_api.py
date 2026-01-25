@@ -266,10 +266,10 @@ class TestSendMessage:
         mock_provider.__aexit__ = AsyncMock(return_value=None)
         mock_provider.generate = AsyncMock(return_value=mock_llm_response)
 
-        with patch(
-            "webui.services.agent.orchestrator.LLMServiceFactory.create_provider_for_tier",
-            new_callable=lambda: AsyncMock(return_value=mock_provider),
-        ):
+        # Patch LLMServiceFactory where it's imported (in the API module)
+        mock_factory = MagicMock()
+        mock_factory.create_provider_for_tier = AsyncMock(return_value=mock_provider)
+        with patch("webui.api.v2.agent.LLMServiceFactory", return_value=mock_factory):
             response = await api_client.post(
                 f"/api/v2/agent/conversations/{test_conversation.id}/messages",
                 json={"message": "Use semantic chunking please"},
@@ -345,7 +345,7 @@ class TestApplyPipeline:
         }
 
         with patch(
-            "webui.api.v2.agent.ApplyPipelineTool.execute",
+            "webui.services.agent.tools.ApplyPipelineTool.execute",
             new_callable=lambda: AsyncMock(return_value=mock_result),
         ):
             response = await api_client.post(
