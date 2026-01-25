@@ -204,6 +204,43 @@ When you're done responding (no more tools to call), just write your response no
             "llm_factory": self.llm_factory,
         }
 
+    def _emit_status(
+        self, phase: str, message: str, progress: dict[str, int] | None = None
+    ) -> AgentStreamEvent:
+        """Create a status event for streaming.
+
+        Args:
+            phase: Current agent phase (analyzing, building, etc.)
+            message: Human-readable status message
+            progress: Optional progress dict with 'current' and 'total'
+
+        Returns:
+            AgentStreamEvent with status data
+        """
+        data: dict[str, Any] = {"phase": phase, "message": message}
+        if progress:
+            data["progress"] = progress
+        return AgentStreamEvent(event=AgentStreamEventType.STATUS, data=data)
+
+    def _emit_activity(self, message: str) -> AgentStreamEvent:
+        """Create an activity log event for streaming.
+
+        Args:
+            message: Activity description
+
+        Returns:
+            AgentStreamEvent with activity data
+        """
+        from datetime import datetime, timezone
+
+        return AgentStreamEvent(
+            event=AgentStreamEventType.ACTIVITY,
+            data={
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
     def _get_tool_descriptions(self) -> str:
         """Generate formatted tool descriptions for the system prompt."""
         descriptions = []
