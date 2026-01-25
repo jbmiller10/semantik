@@ -77,7 +77,9 @@ async def llm_config_with_key(db_session: AsyncSession, llm_config: LLMProviderC
 
 
 @pytest_asyncio.fixture
-async def test_conversation(db_session: AsyncSession, test_user_db: User, test_source: CollectionSource) -> AgentConversation:
+async def test_conversation(
+    db_session: AsyncSession, test_user_db: User, test_source: CollectionSource
+) -> AgentConversation:
     """Create a test conversation."""
     from webui.services.agent.repository import AgentConversationRepository
 
@@ -297,9 +299,7 @@ class TestApplyPipeline:
         assert "No pipeline configured" in response.json()["detail"]
 
     @pytest.mark.asyncio()
-    async def test_applies_pipeline_with_force(
-        self, api_client, api_auth_headers, db_session, test_conversation
-    ):
+    async def test_applies_pipeline_with_force(self, api_client, api_auth_headers, db_session, test_conversation):
         """Applies pipeline when force=true despite uncertainties."""
         # Set up a pipeline config
         test_conversation.current_pipeline = {
@@ -391,9 +391,7 @@ class TestConversationOwnership:
         return {"Authorization": f"Bearer {token}"}
 
     @pytest_asyncio.fixture
-    async def other_user_client(
-        self, db_session, other_user_db, use_fakeredis
-    ) -> AsyncGenerator[AsyncClient, None]:
+    async def other_user_client(self, db_session, other_user_db, use_fakeredis) -> AsyncGenerator[AsyncClient, None]:
         """Client authenticated as another user."""
         _ = use_fakeredis
 
@@ -418,9 +416,7 @@ class TestConversationOwnership:
         app.dependency_overrides.clear()
 
     @pytest.mark.asyncio()
-    async def test_cannot_access_others_conversation(
-        self, other_user_client, other_user_headers, test_conversation
-    ):
+    async def test_cannot_access_others_conversation(self, other_user_client, other_user_headers, test_conversation):
         """User cannot access another user's conversation."""
         response = await other_user_client.get(
             f"/api/v2/agent/conversations/{test_conversation.id}",

@@ -84,9 +84,7 @@ class TestConversationLifecycle:
     """Tests for conversation lifecycle management."""
 
     @pytest.mark.asyncio()
-    async def test_conversation_creation_and_status(
-        self, db_session, test_user_db, test_source
-    ):
+    async def test_conversation_creation_and_status(self, db_session, test_user_db, test_source):
         """Conversation is created with active status."""
         repo = AgentConversationRepository(db_session)
 
