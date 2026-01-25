@@ -323,6 +323,7 @@ async def send_message_stream(
             logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
             # Send error event with proper JSON encoding
             import json
+
             error_data = json.dumps({"message": str(e)})
             error_event = f"event: error\ndata: {error_data}\n\n"
             yield error_event

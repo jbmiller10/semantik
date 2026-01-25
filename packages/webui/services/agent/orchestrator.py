@@ -478,8 +478,7 @@ When you're done responding (no more tools to call), just write your response no
                         "pipeline_updated": self._pipeline_updated,
                         "uncertainties_added": self._uncertainties_added,
                         "tool_calls": [
-                            {"tool": tc["name"], "success": tc.get("success", True)}
-                            for tc in self._tool_calls_made
+                            {"tool": tc["name"], "success": tc.get("success", True)} for tc in self._tool_calls_made
                         ],
                         "max_turns_reached": True,
                     },
