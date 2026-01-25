@@ -43,9 +43,11 @@ def _initialize_encryption():
 async def test_source(db_session: AsyncSession, test_user_db: User) -> CollectionSource:
     """Create a test collection source with required parent collection."""
     # First create a Collection (CollectionSource requires collection_id)
+    # Use UUID in name to avoid unique constraint violations in parallel tests
+    collection_uuid = str(uuid4())
     collection = Collection(
-        id=str(uuid4()),
-        name="Test Collection",
+        id=collection_uuid,
+        name=f"Test Collection {collection_uuid[:8]}",
         description="Test collection for agent tests",
         vector_store_name=f"col_{uuid4().hex[:16]}",
         embedding_model="test-model",
