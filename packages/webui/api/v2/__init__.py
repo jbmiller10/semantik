@@ -5,6 +5,7 @@ This package contains the new collection-centric API endpoints that replace
 the legacy operation-centric endpoints.
 """
 
+from webui.api.v2.agent import router as agent_router
 from webui.api.v2.collections import router as collections_router
 from webui.api.v2.documents import router as documents_router
 from webui.api.v2.embedding import router as embedding_router
@@ -18,6 +19,7 @@ from webui.api.v2.system import router as system_router
 from webui.api.v2.system_settings import router as system_settings_router
 
 __all__ = [
+    "agent_router",
     "collections_router",
     "documents_router",
     "embedding_router",

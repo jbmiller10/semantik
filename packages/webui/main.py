@@ -48,6 +48,7 @@ from shared.embedding import configure_global_embedding_service
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
+    agent as v2_agent,
     api_keys as v2_api_keys,
     benchmark_datasets as v2_benchmark_datasets,
     benchmarks as v2_benchmarks,
@@ -344,6 +345,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
+    app.include_router(v2_agent.router)
     app.include_router(v2_api_keys.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
