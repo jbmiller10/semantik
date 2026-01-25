@@ -23,7 +23,7 @@ export interface PluginManifest {
 /**
  * Available plugin types
  */
-export type PluginType = 'embedding' | 'chunking' | 'connector' | 'reranker' | 'extractor';
+export type PluginType = 'embedding' | 'chunking' | 'connector' | 'reranker' | 'extractor' | 'parser';
 
 /**
  * Health status of a plugin
@@ -136,12 +136,14 @@ export const PLUGIN_TYPE_LABELS: Record<PluginType, string> = {
   connector: 'Connectors',
   reranker: 'Rerankers',
   extractor: 'Extractors',
+  parser: 'Parsers',
 };
 
 /**
  * Plugin type sort order for consistent display
  */
 export const PLUGIN_TYPE_ORDER: PluginType[] = [
+  'parser',
   'embedding',
   'reranker',
   'extractor',
@@ -161,6 +163,7 @@ export function groupPluginsByType(
     connector: [],
     reranker: [],
     extractor: [],
+    parser: [],
   };
 
   for (const plugin of plugins) {
@@ -251,6 +254,7 @@ export function groupAvailablePluginsByType(
     connector: [],
     reranker: [],
     extractor: [],
+    parser: [],
   };
 
   for (const plugin of plugins) {
