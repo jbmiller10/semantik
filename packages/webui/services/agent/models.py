@@ -89,8 +89,14 @@ class AgentConversation(Base):
     )
 
     # Current state
+    # Use values_callable to serialize enum values (lowercase) instead of names (uppercase)
     status: Mapped[ConversationStatus] = mapped_column(
-        Enum(ConversationStatus, name="conversation_status", create_type=False),
+        Enum(
+            ConversationStatus,
+            name="conversation_status",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         default=ConversationStatus.ACTIVE,
     )
@@ -156,8 +162,14 @@ class ConversationUncertainty(Base):
         index=True,
     )
 
+    # Use values_callable to serialize enum values (lowercase) instead of names (uppercase)
     severity: Mapped[UncertaintySeverity] = mapped_column(
-        Enum(UncertaintySeverity, name="uncertainty_severity", create_type=False),
+        Enum(
+            UncertaintySeverity,
+            name="uncertainty_severity",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
