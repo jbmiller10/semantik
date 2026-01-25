@@ -204,9 +204,7 @@ When you're done responding (no more tools to call), just write your response no
             "llm_factory": self.llm_factory,
         }
 
-    def _emit_status(
-        self, phase: str, message: str, progress: dict[str, int] | None = None
-    ) -> AgentStreamEvent:
+    def _emit_status(self, phase: str, message: str, progress: dict[str, int] | None = None) -> AgentStreamEvent:
         """Create a status event for streaming.
 
         Args:
@@ -584,9 +582,7 @@ When you're done responding (no more tools to call), just write your response no
                 # Check if this is a spawn tool (subagent)
                 is_spawn_tool = call.name.startswith("spawn_")
                 if is_spawn_tool:
-                    yield self._emit_status(
-                        "analyzing", f"Spawning {call.name.replace('spawn_', '')} agent..."
-                    )
+                    yield self._emit_status("analyzing", f"Spawning {call.name.replace('spawn_', '')} agent...")
                     yield AgentStreamEvent(
                         event=AgentStreamEventType.SUBAGENT_START,
                         data={
