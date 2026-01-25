@@ -43,14 +43,6 @@ export function AgentChat({
   const { updatePipeline, addUncertainty } = useUpdateConversationCache();
 
   // Stream callbacks
-  const handleContent = useCallback(
-    (_text: string) => {
-      // Accumulate content in the streaming assistant message
-      // The hook already accumulates, but we need to trigger UI update
-    },
-    []
-  );
-
   const handlePipelineUpdate = useCallback(
     (data: { pipeline: PipelineConfig }) => {
       setLocalPipeline(data.pipeline);
@@ -93,7 +85,6 @@ export function AgentChat({
     sendMessage,
     cancel,
   } = useAgentStream(conversationId, {
-    onContent: handleContent,
     onPipelineUpdate: handlePipelineUpdate,
     onUncertainty: handleUncertainty,
     onDone: handleDone,
