@@ -17,6 +17,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # =============================================================================
 
 
+class AgentPhase(str, Enum):
+    """Phase of agent processing for status bar display."""
+
+    IDLE = "idle"
+    ANALYZING = "analyzing"
+    SAMPLING = "sampling"
+    BUILDING = "building"
+    VALIDATING = "validating"
+    READY = "ready"
+
+
 class AgentStreamEventType(str, Enum):
     """Event types for SSE streaming responses.
 
@@ -30,6 +41,8 @@ class AgentStreamEventType(str, Enum):
     - CONTENT: Final response content from the agent
     - DONE: Stream complete with full response metadata
     - ERROR: An error occurred during processing
+    - STATUS: Status update for status bar (phase, message, progress)
+    - ACTIVITY: Activity log entry with timestamp
     """
 
     TOOL_CALL_START = "tool_call_start"
@@ -41,6 +54,8 @@ class AgentStreamEventType(str, Enum):
     CONTENT = "content"
     DONE = "done"
     ERROR = "error"
+    STATUS = "status"
+    ACTIVITY = "activity"
 
 
 class AgentStreamEvent(BaseModel):
