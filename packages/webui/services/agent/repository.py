@@ -46,12 +46,16 @@ class AgentConversationRepository:
         self,
         user_id: int,
         source_id: int | None = None,
+        inline_source_config: dict[str, Any] | None = None,
     ) -> AgentConversation:
         """Create a new agent conversation.
 
         Args:
             user_id: ID of the user creating the conversation
-            source_id: Optional source to configure
+            source_id: Optional source to configure (existing source)
+            inline_source_config: Optional inline source configuration for new sources.
+                Stores: {"source_type": "...", "source_config": {...}, "_pending_secrets": {...}}
+                The actual CollectionSource is created when the pipeline is applied.
 
         Returns:
             Created AgentConversation instance
@@ -64,6 +68,7 @@ class AgentConversationRepository:
                 id=str(uuid4()),
                 user_id=user_id,
                 source_id=source_id,
+                inline_source_config=inline_source_config,
                 status=ConversationStatus.ACTIVE,
             )
             self.session.add(conversation)
@@ -374,6 +379,55 @@ class AgentConversationRepository:
         except Exception as e:
             logger.error(
                 f"Failed to set collection: {e}",
+                exc_info=True,
+            )
+            raise DatabaseOperationError("update", "agent_conversation", str(e)) from e
+
+    async def set_source_id(
+        self,
+        conversation_id: str,
+        user_id: int,
+        source_id: int,
+    ) -> AgentConversation:
+        """Set the source_id on a conversation after creating from inline config.
+
+        Also clears the _pending_secrets from inline_source_config.
+
+        Args:
+            conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
+            source_id: ID of the newly created CollectionSource
+
+        Returns:
+            Updated AgentConversation instance
+
+        Raises:
+            EntityNotFoundError: If conversation not found or not owned by user
+        """
+        try:
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
+            if not conversation:
+                raise EntityNotFoundError("agent_conversation", conversation_id)
+
+            conversation.source_id = source_id
+
+            # Clear pending secrets from inline config (they're now stored encrypted)
+            if conversation.inline_source_config and "_pending_secrets" in conversation.inline_source_config:
+                # Create a copy without secrets
+                cleaned_config = {k: v for k, v in conversation.inline_source_config.items() if k != "_pending_secrets"}
+                conversation.inline_source_config = cleaned_config
+
+            conversation.updated_at = datetime.now(UTC)
+            await self.session.flush()
+
+            logger.info(f"Set source_id {source_id} on conversation {conversation_id}")
+            return conversation
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to set source_id: {e}",
                 exc_info=True,
             )
             raise DatabaseOperationError("update", "agent_conversation", str(e)) from e

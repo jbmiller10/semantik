@@ -25,6 +25,70 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _get_source_path(source_type: str, source_config: dict[str, Any]) -> str:
+    """Derive source_path from config based on connector type.
+
+    Args:
+        source_type: Type of connector (directory, git, imap)
+        source_config: Connector-specific configuration
+
+    Returns:
+        Human-readable source path/identifier
+    """
+    if source_type == "directory":
+        return source_config.get("path", "")
+    if source_type == "git":
+        return source_config.get("repo_url", source_config.get("repository_url", ""))
+    if source_type == "imap":
+        username = source_config.get("username", "")
+        host = source_config.get("host", "")
+        return f"{username}@{host}" if username and host else (username or host)
+    # Fallback: try common path-like fields
+    return source_config.get("path", source_config.get("url", str(source_config)))
+
+
+def _map_secret_key_to_type(secret_key: str) -> str | None:
+    """Map secret keys from connector forms to valid ConnectorSecret types.
+
+    Args:
+        secret_key: Key from the secrets dict (e.g., 'password', 'access_token')
+
+    Returns:
+        Valid secret type or None if not mappable
+    """
+    # Valid secret types from ConnectorSecretRepository
+    valid_types = {"password", "token", "ssh_key", "ssh_passphrase"}
+
+    # Direct match
+    if secret_key in valid_types:
+        return secret_key
+
+    # Common mappings
+    key_lower = secret_key.lower()
+    if "password" in key_lower or "pass" in key_lower:
+        return "password"
+    if "token" in key_lower or "api_key" in key_lower or "access" in key_lower:
+        return "token"
+    if "ssh_key" in key_lower or "private_key" in key_lower:
+        return "ssh_key"
+    if "passphrase" in key_lower:
+        return "ssh_passphrase"
+
+    # No mapping found - log warning and skip
+    logger.warning(f"Unknown secret key '{secret_key}' - skipping storage")
+    return None
+
+
+# =============================================================================
+# Tool Classes
+# =============================================================================
+
+
 class GetPipelineStateTool(BaseTool):
     """Get the current pipeline configuration from conversation state.
 
@@ -507,13 +571,15 @@ class ApplyPipelineTool(BaseTool):
                 "pipeline_config": conversation.current_pipeline,
             }
 
-            # Create collection
+            # Create collection (without source initially)
             collection_result, operation_result = await collection_service.create_collection(
                 user_id=user_id,
                 name=collection_name,
                 description=collection_description,
                 config=config,
             )
+
+            collection_id = collection_result["id"]
 
             # Update conversation with collection link
             from webui.services.agent.repository import AgentConversationRepository
@@ -522,15 +588,68 @@ class ApplyPipelineTool(BaseTool):
             await repo.set_collection(
                 conversation_id=conversation.id,
                 user_id=user_id,
-                collection_id=collection_result["id"],
+                collection_id=collection_id,
             )
+
+            # If conversation has inline source config, create the source now
+            source_id: int | None = conversation.source_id
+            if conversation.inline_source_config and not conversation.source_id:
+                from shared.database.repositories.collection_source_repository import (
+                    CollectionSourceRepository,
+                )
+                from shared.database.repositories.connector_secret_repository import (
+                    ConnectorSecretRepository,
+                )
+
+                inline_config = conversation.inline_source_config
+                source_type = inline_config.get("source_type", "")
+                source_config = inline_config.get("source_config", {})
+                pending_secrets = inline_config.get("_pending_secrets", {})
+
+                # Derive source_path from config based on connector type
+                source_path = _get_source_path(source_type, source_config)
+
+                # Create the source
+                source_repo = CollectionSourceRepository(session)
+                new_source = await source_repo.create(
+                    collection_id=collection_id,
+                    source_type=source_type,
+                    source_path=source_path,
+                    source_config=source_config,
+                )
+                # Cast to int for type safety (new_source.id is typed as Column[int])
+                new_source_id: int = int(new_source.id)  # type: ignore[arg-type]
+                source_id = new_source_id
+
+                # Store secrets encrypted if any
+                if pending_secrets:
+                    secret_repo = ConnectorSecretRepository(session)
+                    for secret_key, value in pending_secrets.items():
+                        # Map common secret keys to valid secret types
+                        secret_type = _map_secret_key_to_type(secret_key)
+                        if secret_type:
+                            await secret_repo.set_secret(
+                                source_id=new_source_id,
+                                secret_type=secret_type,
+                                plaintext=value,
+                            )
+
+                # Update conversation with the new source ID and clear pending secrets
+                await repo.set_source_id(
+                    conversation_id=conversation.id,
+                    user_id=user_id,
+                    source_id=new_source_id,
+                )
+
+                logger.info(f"Created source {source_id} from inline config for collection {collection_id}")
 
             # Note: The orchestrator's _persist_state_changes() handles the commit
 
             return {
                 "success": True,
-                "collection_id": collection_result["id"],
+                "collection_id": collection_id,
                 "collection_name": collection_result["name"],
+                "source_id": source_id,
                 "operation_id": operation_result.get("id") if start_indexing else None,
                 "status": "indexing" if start_indexing else "created",
                 "message": f"Collection '{collection_name}' created successfully",

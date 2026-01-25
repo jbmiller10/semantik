@@ -123,7 +123,7 @@ async def _get_conversation_for_user(
     response_model=ConversationResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
-        400: {"description": "LLM not configured or invalid source"},
+        400: {"description": "LLM not configured, invalid source, or invalid connector type"},
         404: {"description": "Source not found"},
     },
 )
@@ -134,7 +134,14 @@ async def create_conversation(
 ) -> ConversationResponse:
     """Start a new agent conversation for pipeline building.
 
-    Creates a new conversation associated with a collection source.
+    Creates a new conversation associated with either:
+    - An existing collection source (via source_id)
+    - An inline source configuration (via inline_source)
+
+    When using inline_source, the actual CollectionSource record is created
+    when the pipeline is applied. Secrets are stored temporarily in the
+    conversation's inline_source_config field.
+
     Requires the user to have LLM configured (HIGH tier).
     """
     user_id = int(current_user["id"])
@@ -142,31 +149,61 @@ async def create_conversation(
     # Verify LLM is configured
     await _verify_llm_configured(db, user_id)
 
-    # Verify source exists and user owns it
-    source_repo = CollectionSourceRepository(db)
-    source = await source_repo.get_by_id(request.source_id)
-    if not source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Source {request.source_id} not found",
-        )
+    source_id: int | None = None
+    inline_source_config: dict[str, Any] | None = None
 
-    # Verify user owns the source's parent collection (IDOR protection)
-    from shared.database.repositories.collection_repository import CollectionRepository
+    if request.source_id is not None:
+        # Using existing source - verify ownership
+        source_repo = CollectionSourceRepository(db)
+        source = await source_repo.get_by_id(request.source_id)
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Source {request.source_id} not found",
+            )
 
-    collection_repo = CollectionRepository(db)
-    collection = await collection_repo.get_by_uuid(str(source.collection_id))
-    if not collection or collection.owner_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Source {request.source_id} not found",
-        )
+        # Verify user owns the source's parent collection (IDOR protection)
+        from shared.database.repositories.collection_repository import CollectionRepository
+
+        collection_repo = CollectionRepository(db)
+        collection = await collection_repo.get_by_uuid(str(source.collection_id))
+        if not collection or collection.owner_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Source {request.source_id} not found",
+            )
+
+        source_id = request.source_id
+
+    elif request.inline_source is not None:
+        # Using inline source config - validate connector type exists
+        from webui.services.connector_registry import get_connector_definition
+
+        try:
+            # Verify the connector type is valid by attempting to get its definition
+            get_connector_definition(request.inline_source.source_type)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+
+        # Store inline source config with pending secrets
+        inline_source_config = {
+            "source_type": request.inline_source.source_type,
+            "source_config": request.inline_source.source_config,
+        }
+
+        # Store secrets temporarily (will be moved to ConnectorSecret on apply)
+        if request.secrets:
+            inline_source_config["_pending_secrets"] = request.secrets
 
     # Create conversation
     repo = AgentConversationRepository(db)
     conversation = await repo.create(
         user_id=user_id,
-        source_id=request.source_id,
+        source_id=source_id,
+        inline_source_config=inline_source_config,
     )
     await db.commit()
 
@@ -385,10 +422,22 @@ async def get_conversation(
         logger.warning(f"Failed to load messages for conversation {conversation_id}: {e}")
         message_load_error = f"Failed to load messages: {e}"
 
+    # Build inline_source_config response, filtering out secrets
+    from webui.api.v2.agent_schemas import InlineSourceConfigResponse
+
+    inline_source_config_response: InlineSourceConfigResponse | None = None
+    if conversation.inline_source_config:
+        inline_source_config_response = InlineSourceConfigResponse(
+            source_type=conversation.inline_source_config.get("source_type", ""),
+            source_config=conversation.inline_source_config.get("source_config", {}),
+            # Note: _pending_secrets is intentionally NOT included
+        )
+
     return ConversationDetailResponse(
         id=conversation.id,
         status=conversation.status.value,
         source_id=conversation.source_id,
+        inline_source_config=inline_source_config_response,
         collection_id=conversation.collection_id,
         current_pipeline=conversation.current_pipeline,
         source_analysis=conversation.source_analysis,

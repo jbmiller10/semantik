@@ -10,7 +10,7 @@ from datetime import datetime  # noqa: TCH003 - Required at runtime for Pydantic
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
 # SSE Streaming Types
@@ -99,23 +99,93 @@ class AgentStreamEvent(BaseModel):
 # =============================================================================
 
 
-class CreateConversationRequest(BaseModel):
-    """Request schema for creating a new agent conversation."""
+class InlineSourceConfig(BaseModel):
+    """Configuration for a new source to be created with the conversation.
 
-    source_id: int = Field(
+    Used when the user wants to configure a source directly in the guided setup
+    rather than using a pre-existing source.
+    """
+
+    source_type: str = Field(
         ...,
-        description="ID of the collection source to configure",
-        json_schema_extra={"example": 42},
+        description="Type of connector (e.g., 'directory', 'git', 'imap')",
+        json_schema_extra={"example": "directory"},
+    )
+    source_config: dict[str, Any] = Field(
+        ...,
+        description="Connector-specific configuration",
+        json_schema_extra={"example": {"path": "/home/user/documents"}},
     )
 
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "example": {
-                "source_id": 42,
+                "source_type": "directory",
+                "source_config": {"path": "/home/user/documents"},
             }
         },
     )
+
+
+class CreateConversationRequest(BaseModel):
+    """Request schema for creating a new agent conversation.
+
+    Either source_id OR inline_source must be provided, but not both.
+    When using inline_source, secrets can be provided separately for security.
+    """
+
+    source_id: int | None = Field(
+        default=None,
+        description="ID of an existing collection source to configure",
+        json_schema_extra={"example": 42},
+    )
+    inline_source: InlineSourceConfig | None = Field(
+        default=None,
+        description="Configuration for a new source (created when pipeline is applied)",
+    )
+    secrets: dict[str, str] | None = Field(
+        default=None,
+        description="Secrets for inline_source (e.g., passwords, tokens). Only used with inline_source.",
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "source_id": 42,
+                },
+                {
+                    "inline_source": {
+                        "source_type": "directory",
+                        "source_config": {"path": "/home/user/documents"},
+                    },
+                },
+                {
+                    "inline_source": {
+                        "source_type": "git",
+                        "source_config": {
+                            "repository_url": "https://github.com/user/repo.git",
+                            "branch": "main",
+                        },
+                    },
+                    "secrets": {"password": "github_token"},
+                },
+            ]
+        },
+    )
+
+    @model_validator(mode="after")
+    def validate_source_specification(self) -> CreateConversationRequest:
+        """Validate that exactly one of source_id or inline_source is provided."""
+        if self.source_id is None and self.inline_source is None:
+            raise ValueError("Either source_id or inline_source must be provided")
+        if self.source_id is not None and self.inline_source is not None:
+            raise ValueError("Cannot specify both source_id and inline_source")
+        if self.secrets is not None and self.inline_source is None:
+            raise ValueError("secrets can only be provided with inline_source")
+        return self
 
 
 class SendMessageRequest(BaseModel):
@@ -240,6 +310,19 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InlineSourceConfigResponse(BaseModel):
+    """Response schema for inline source configuration.
+
+    Note: _pending_secrets is intentionally NOT included in the response
+    to prevent exposing secrets.
+    """
+
+    source_type: str = Field(..., description="Type of connector")
+    source_config: dict[str, Any] = Field(..., description="Connector configuration")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ConversationDetailResponse(BaseModel):
     """Response schema for full conversation details."""
 
@@ -250,7 +333,11 @@ class ConversationDetailResponse(BaseModel):
     )
     source_id: int | None = Field(
         default=None,
-        description="ID of the source being configured",
+        description="ID of the source being configured (existing source)",
+    )
+    inline_source_config: InlineSourceConfigResponse | None = Field(
+        default=None,
+        description="Inline source configuration (new source to be created)",
     )
     collection_id: str | None = Field(
         default=None,

@@ -132,11 +132,23 @@ export interface Conversation {
   created_at: string; // ISO 8601
 }
 
+/**
+ * Inline source configuration as returned from the API.
+ * Note: _pending_secrets is intentionally NOT included in the response.
+ */
+export interface InlineSourceConfigResponse {
+  source_type: string;
+  source_config: Record<string, unknown>;
+}
+
 // Full conversation details
 export interface ConversationDetail {
   id: string;
   status: ConversationStatus;
+  /** ID of an existing source (legacy mode) */
   source_id: number | null;
+  /** Inline source configuration (new source to be created on apply) */
+  inline_source_config: InlineSourceConfigResponse | null;
   collection_id: string | null;
   current_pipeline: PipelineConfig | null;
   source_analysis: SourceAnalysis | null;
@@ -151,8 +163,27 @@ export interface ConversationDetail {
 // Request Types
 // =============================================================================
 
+/**
+ * Configuration for a new source to be created with the conversation.
+ * Used when the user wants to configure a source directly in the guided setup
+ * rather than using a pre-existing source.
+ */
+export interface InlineSourceConfig {
+  source_type: string;
+  source_config: Record<string, unknown>;
+}
+
+/**
+ * Request to create a new agent conversation.
+ * Either source_id OR inline_source must be provided, but not both.
+ */
 export interface CreateConversationRequest {
-  source_id: number;
+  /** ID of an existing collection source to configure */
+  source_id?: number;
+  /** Configuration for a new source (created when pipeline is applied) */
+  inline_source?: InlineSourceConfig;
+  /** Secrets for inline_source (e.g., passwords, tokens). Only used with inline_source. */
+  secrets?: Record<string, string>;
 }
 
 export interface SendMessageRequest {

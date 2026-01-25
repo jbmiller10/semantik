@@ -52,6 +52,7 @@ const mockConversation = {
   id: 'conv-test-123',
   status: 'active' as const,
   source_id: 42,
+  inline_source_config: null,
   collection_id: null,
   current_pipeline: {
     embedding_model: 'Qwen/Qwen3-Embedding-0.6B',

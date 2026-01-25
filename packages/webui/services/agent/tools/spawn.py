@@ -30,6 +30,13 @@ class SpawnSourceAnalyzerTool(BaseTool):
     - Quality issues (scanned PDFs, corrupted files)
     - Parser recommendations for each file type
 
+    The tool can work with either:
+    - An existing source (via source_id parameter)
+    - An inline source configuration stored in the conversation
+
+    If source_id is not provided, the tool will use the conversation's
+    inline_source_config if available.
+
     Context Requirements:
         - session: Database session
         - user_id: Current user ID
@@ -44,32 +51,33 @@ class SpawnSourceAnalyzerTool(BaseTool):
     DESCRIPTION: ClassVar[str] = (
         "Analyze a data source to understand its contents. Spawns a specialized "
         "sub-agent that enumerates files, samples by type, tries parsers, and "
-        "returns a structured analysis with parser recommendations."
+        "returns a structured analysis with parser recommendations. "
+        "If no source_id is provided, uses the conversation's inline source config."
     )
     PARAMETERS: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {
             "source_id": {
                 "type": "integer",
-                "description": "ID of the source to analyze",
+                "description": "ID of the source to analyze. Optional if conversation has inline_source_config.",
             },
             "user_intent": {
                 "type": "string",
                 "description": "Optional description of what the user wants to do",
             },
         },
-        "required": ["source_id"],
+        "required": [],
     }
 
     async def execute(
         self,
-        source_id: int,
+        source_id: int | None = None,
         user_intent: str = "",
     ) -> dict[str, Any]:
         """Spawn the SourceAnalyzer sub-agent.
 
         Args:
-            source_id: ID of the source to analyze
+            source_id: ID of the source to analyze. Optional if conversation has inline_source_config.
             user_intent: Optional user goal description
 
         Returns:
@@ -99,27 +107,56 @@ class SpawnSourceAnalyzerTool(BaseTool):
                     "error": "No LLM factory available for sub-agent",
                 }
 
-            # Get the source and create connector
             # Lazy imports to avoid circular imports
-            from shared.database.repositories.collection_source_repository import (
-                CollectionSourceRepository,
-            )
             from shared.llm.types import LLMQualityTier
             from webui.services.agent.subagents.source_analyzer import SourceAnalyzer
             from webui.services.connector_factory import ConnectorFactory
 
-            source_repo = CollectionSourceRepository(session)
-            source = await source_repo.get_by_id(source_id)
+            source_type: str
+            source_config: dict[str, Any]
+            effective_source_id: int | None = source_id
 
-            if not source:
+            if source_id is not None:
+                # Using existing source - fetch from database
+                from shared.database.repositories.collection_source_repository import (
+                    CollectionSourceRepository,
+                )
+
+                source_repo = CollectionSourceRepository(session)
+                source = await source_repo.get_by_id(source_id)
+
+                if not source:
+                    return {
+                        "success": False,
+                        "error": f"Source not found: {source_id}",
+                    }
+
+                source_type = source.source_type
+                source_config = source.source_config or {}
+
+            elif conversation and conversation.inline_source_config:
+                # Using inline source config from conversation
+                inline_config = conversation.inline_source_config
+                source_type = inline_config.get("source_type", "")
+                source_config = inline_config.get("source_config", {})
+
+                # Merge pending secrets into config for connector creation
+                if "_pending_secrets" in inline_config:
+                    source_config = {**source_config, **inline_config["_pending_secrets"]}
+
+                if not source_type:
+                    return {
+                        "success": False,
+                        "error": "Invalid inline source config: missing source_type",
+                    }
+
+            else:
                 return {
                     "success": False,
-                    "error": f"Source not found: {source_id}",
+                    "error": "No source_id provided and no inline_source_config in conversation",
                 }
 
             # Create connector
-            source_type: str = source.source_type
-            source_config: dict[str, Any] = source.source_config or {}
             try:
                 connector = ConnectorFactory.get_connector(
                     source_type,
@@ -145,7 +182,8 @@ class SpawnSourceAnalyzerTool(BaseTool):
 
             # Build sub-agent context
             subagent_context = {
-                "source_id": source_id,
+                "source_id": effective_source_id,  # May be None for inline sources
+                "source_type": source_type,
                 "connector": connector,
                 "user_intent": user_intent,
                 "session": session,
