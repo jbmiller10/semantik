@@ -11,7 +11,7 @@ from webui.services.agent.tools.pipeline import (
     GetPipelineStateTool,
 )
 from webui.services.agent.tools.plugins import GetPluginDetailsTool, ListPluginsTool
-from webui.services.agent.tools.spawn import SpawnSourceAnalyzerTool
+from webui.services.agent.tools.spawn import SpawnPipelineValidatorTool, SpawnSourceAnalyzerTool
 from webui.services.agent.tools.templates import GetTemplateDetailsTool, ListTemplatesTool
 
 __all__ = [
@@ -29,4 +29,5 @@ __all__ = [
     "ApplyPipelineTool",
     # Spawn tools
     "SpawnSourceAnalyzerTool",
+    "SpawnPipelineValidatorTool",
 ]

@@ -118,9 +118,8 @@ class SpawnSourceAnalyzerTool(BaseTool):
                 }
 
             # Create connector
-            # Note: SQLAlchemy Column types resolve to actual values at runtime
-            source_type: str = source.source_type  # type: ignore[assignment]
-            source_config: dict[str, Any] = source.source_config or {}  # type: ignore[assignment]
+            source_type: str = source.source_type
+            source_config: dict[str, Any] = source.source_config or {}
             try:
                 connector = ConnectorFactory.get_connector(
                     source_type,
@@ -189,3 +188,227 @@ class SpawnSourceAnalyzerTool(BaseTool):
                 "success": False,
                 "error": str(e),
             }
+
+
+class SpawnPipelineValidatorTool(BaseTool):
+    """Spawn a PipelineValidator sub-agent to validate a pipeline configuration.
+
+    The PipelineValidator tests a pipeline against sample files to:
+    - Validate that files can be processed through all stages
+    - Identify and categorize failures
+    - Try alternative configurations for fixable issues
+    - Assess chunk quality
+    - Produce a structured validation report
+
+    Context Requirements:
+        - session: Database session
+        - user_id: Current user ID
+        - conversation: Current AgentConversation (with source_analysis)
+        - llm_factory: LLMServiceFactory for sub-agent
+
+    Returns:
+        Structured ValidationReport with assessment and recommendations
+    """
+
+    NAME: ClassVar[str] = "spawn_pipeline_validator"
+    DESCRIPTION: ClassVar[str] = (
+        "Validate a pipeline configuration against sample files. Spawns a specialized "
+        "sub-agent that runs dry-run validation, investigates failures, and returns "
+        "a structured validation report with assessment and suggested fixes."
+    )
+    PARAMETERS: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {
+            "pipeline": {
+                "type": "object",
+                "description": "Pipeline DAG configuration to validate",
+            },
+            "sample_count": {
+                "type": "integer",
+                "description": "Number of sample files to test (default 50)",
+                "default": 50,
+            },
+        },
+        "required": ["pipeline"],
+    }
+
+    async def execute(
+        self,
+        pipeline: dict[str, Any],
+        sample_count: int = 50,
+    ) -> dict[str, Any]:
+        """Spawn the PipelineValidator sub-agent.
+
+        Args:
+            pipeline: Pipeline DAG configuration to validate
+            sample_count: Number of samples to test
+
+        Returns:
+            Dictionary with validation results
+        """
+        try:
+            session: AsyncSession | None = self.context.get("session")
+            user_id = self.context.get("user_id")
+            conversation: AgentConversation | None = self.context.get("conversation")
+            llm_factory: LLMServiceFactory | None = self.context.get("llm_factory")
+
+            if not session:
+                return {
+                    "success": False,
+                    "error": "No database session available",
+                }
+
+            if not user_id:
+                return {
+                    "success": False,
+                    "error": "No user ID available",
+                }
+
+            if not llm_factory:
+                return {
+                    "success": False,
+                    "error": "No LLM factory available for sub-agent",
+                }
+
+            # Get source analysis from conversation to select samples
+            source_analysis = None
+            if conversation:
+                source_analysis = getattr(conversation, "source_analysis", None)
+
+            if not source_analysis:
+                return {
+                    "success": False,
+                    "error": "No source analysis available. Run spawn_source_analyzer first.",
+                }
+
+            # Select representative sample files
+            sample_files = self._select_samples(source_analysis, sample_count)
+
+            if not sample_files:
+                return {
+                    "success": False,
+                    "error": "No sample files available from source analysis",
+                }
+
+            # Get connector from context or create from source
+            connector = self.context.get("connector")
+            if not connector:
+                # Try to get from source analysis context
+                source_id = source_analysis.get("source_id")
+                if source_id:
+                    from shared.database.repositories.collection_source_repository import (
+                        CollectionSourceRepository,
+                    )
+                    from webui.services.connector_factory import ConnectorFactory
+
+                    source_repo = CollectionSourceRepository(session)
+                    source = await source_repo.get_by_id(source_id)
+                    if source:
+                        source_type = source.source_type
+                        source_config = source.source_config or {}
+                        connector = ConnectorFactory.get_connector(source_type, source_config)
+
+            if not connector:
+                return {
+                    "success": False,
+                    "error": "No connector available for validation",
+                }
+
+            # Create LLM provider for sub-agent (separate context window)
+            from shared.llm.types import LLMQualityTier
+
+            try:
+                llm_provider = await llm_factory.create_provider_for_tier(
+                    user_id,
+                    LLMQualityTier.HIGH,
+                )
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to create LLM provider: {e}",
+                }
+
+            # Build sub-agent context
+            subagent_context = {
+                "pipeline": pipeline,
+                "sample_files": sample_files,
+                "connector": connector,
+                "session": session,
+                "user_id": user_id,
+            }
+
+            # Run the sub-agent
+            from webui.services.agent.subagents.pipeline_validator import PipelineValidator
+
+            async with llm_provider:
+                agent = PipelineValidator(llm_provider, subagent_context)
+                result: SubAgentResult = await agent.run()
+
+            # Store validation report in conversation state
+            if conversation and result.success:
+                conversation.current_pipeline_validation = result.data
+
+            # Store uncertainties in conversation
+            if conversation and result.uncertainties:
+                from webui.services.agent.repository import AgentConversationRepository
+
+                repo = AgentConversationRepository(session)
+                for uncertainty in result.uncertainties:
+                    await repo.add_uncertainty(
+                        conversation_id=conversation.id,
+                        user_id=user_id,
+                        severity=uncertainty.severity,
+                        message=uncertainty.message,
+                        context=uncertainty.context,
+                    )
+
+            return {
+                "success": result.success,
+                "report": result.data,
+                "summary": result.summary,
+                "uncertainties": [
+                    {"severity": u.severity, "message": u.message} for u in result.uncertainties
+                ],
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to spawn PipelineValidator: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _select_samples(
+        self,
+        source_analysis: dict[str, Any],
+        sample_count: int,
+    ) -> list[Any]:
+        """Select representative sample files from source analysis.
+
+        Tries to get a balanced sample across file types.
+
+        Args:
+            source_analysis: Source analysis data from SourceAnalyzer
+            sample_count: Target number of samples
+
+        Returns:
+            List of FileReference objects (or equivalent dicts)
+        """
+        # Check for enumerated files in the analysis
+        by_extension = source_analysis.get("by_extension", {})
+        if not by_extension:
+            return []
+
+        samples: list[dict[str, str]] = []
+
+        # If we have sample URIs stored, use those
+        for ext_data in by_extension.values():
+            sample_uris = ext_data.get("sample_uris", [])
+            for uri in sample_uris:
+                if len(samples) >= sample_count:
+                    break
+                # Create a minimal file reference dict
+                samples.append({"uri": uri})
+
+        # If no samples found, return empty
+        return samples[:sample_count]

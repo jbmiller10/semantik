@@ -9,11 +9,24 @@ from webui.services.agent.subagents.base import (
     SubAgentResult,
     Uncertainty,
 )
+from webui.services.agent.subagents.pipeline_validator import (
+    FailureCategory,
+    PipelineFix,
+    PipelineValidator,
+    ValidationReport,
+)
 from webui.services.agent.subagents.source_analyzer import SourceAnalyzer
 
 __all__ = [
+    # Base classes
     "SubAgent",
     "SubAgentResult",
     "Uncertainty",
+    # Sub-agents
     "SourceAnalyzer",
+    "PipelineValidator",
+    # Validation types
+    "ValidationReport",
+    "FailureCategory",
+    "PipelineFix",
 ]
