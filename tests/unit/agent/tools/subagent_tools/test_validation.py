@@ -18,6 +18,7 @@ from shared.pipeline.executor_types import (
     SampleOutput,
     StageFailure,
 )
+
 # StageFailure is used in tests directly for creating test data
 from shared.pipeline.types import FileReference
 from webui.services.agent.tools.subagent_tools.validation import (
@@ -204,9 +205,7 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch(
-            "shared.pipeline.executor.PipelineExecutor"
-        ) as mock_executor_class:
+        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=successful_execution_result)
             mock_executor_class.return_value = mock_executor
@@ -237,9 +236,7 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch(
-            "shared.pipeline.executor.PipelineExecutor"
-        ) as mock_executor_class:
+        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=failed_execution_result)
             mock_executor_class.return_value = mock_executor
@@ -267,9 +264,7 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch(
-            "shared.pipeline.executor.PipelineExecutor"
-        ) as mock_executor_class:
+        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=failed_execution_result)
             mock_executor_class.return_value = mock_executor
@@ -292,9 +287,7 @@ class TestRunDryRunTool:
         assert "session" in result["error"]
 
     @pytest.mark.asyncio()
-    async def test_dry_run_fails_without_connector(
-        self, mock_session: AsyncMock, sample_pipeline: dict[str, Any]
-    ):
+    async def test_dry_run_fails_without_connector(self, mock_session: AsyncMock, sample_pipeline: dict[str, Any]):
         """Test that dry run fails without connector."""
         context: dict[str, Any] = {"session": mock_session}
         tool = RunDryRunTool(context)
@@ -425,13 +418,9 @@ class TestTryAlternativeConfigTool:
         )
 
         with (
-            patch(
-                "shared.pipeline.executor.PipelineExecutor"
-            ) as mock_executor_class,
+            patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class,
             patch("shared.plugins.loader.load_plugins"),
-            patch(
-                "shared.plugins.plugin_registry"
-            ) as mock_registry,
+            patch("shared.plugins.plugin_registry") as mock_registry,
         ):
             mock_registry.get.return_value = MagicMock()  # Parser exists
             mock_executor = AsyncMock()
@@ -481,9 +470,7 @@ class TestTryAlternativeConfigTool:
 
         with (
             patch("shared.plugins.loader.load_plugins"),
-            patch(
-                "shared.plugins.plugin_registry"
-            ) as mock_registry,
+            patch("shared.plugins.plugin_registry") as mock_registry,
         ):
             mock_registry.get.return_value = None  # Parser doesn't exist
             mock_registry.get_by_type.return_value = {"text": MagicMock()}
@@ -528,9 +515,7 @@ class TestCompareParserOutputTool:
 
         with (
             patch("shared.plugins.loader.load_plugins"),
-            patch(
-                "shared.plugins.plugin_registry"
-            ) as mock_registry,
+            patch("shared.plugins.plugin_registry") as mock_registry,
         ):
             # Return different mocks for each parser
             def get_parser(_plugin_type: str, plugin_id: str) -> MagicMock | None:
@@ -578,9 +563,7 @@ class TestCompareParserOutputTool:
 
         with (
             patch("shared.plugins.loader.load_plugins"),
-            patch(
-                "shared.plugins.plugin_registry"
-            ) as mock_registry,
+            patch("shared.plugins.plugin_registry") as mock_registry,
         ):
 
             def get_parser(_plugin_type: str, plugin_id: str) -> MagicMock | None:

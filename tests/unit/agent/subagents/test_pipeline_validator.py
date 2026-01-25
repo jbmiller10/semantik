@@ -15,7 +15,6 @@ import pytest
 from shared.pipeline.types import FileReference
 from webui.services.agent.subagents.base import (
     Message,
-    Uncertainty,
 )
 from webui.services.agent.subagents.pipeline_validator import (
     FailureCategory,
@@ -268,9 +267,7 @@ class TestPipelineValidator:
         # Should include extension summary
         assert ".pdf" in message.content or "pdf" in message.content.lower()
 
-    def test_parse_report_json_from_code_block(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_parse_report_json_from_code_block(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test parsing JSON from markdown code block."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         content = """Here's my validation report:
@@ -294,9 +291,7 @@ That's the report."""
         assert result["success_rate"] == 0.95
         assert result["assessment"] == "ready"
 
-    def test_parse_report_json_raw(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_parse_report_json_raw(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test parsing raw JSON."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         content = '{"success_rate": 0.9, "assessment": "needs_review"}'
@@ -306,9 +301,7 @@ That's the report."""
         assert result is not None
         assert result["success_rate"] == 0.9
 
-    def test_parse_report_json_embedded(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_parse_report_json_embedded(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test parsing embedded JSON object."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         content = 'The report is: {"success_rate": 1.0, "assessment": "ready"} End.'
@@ -318,9 +311,7 @@ That's the report."""
         assert result is not None
         assert result["success_rate"] == 1.0
 
-    def test_parse_report_json_invalid(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_parse_report_json_invalid(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test parsing invalid content."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         content = "This is not JSON at all"
@@ -329,9 +320,7 @@ That's the report."""
 
         assert result is None
 
-    def test_extract_result_success_ready(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_extract_result_success_ready(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test successful result extraction with ready assessment."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         response = Message(
@@ -360,9 +349,7 @@ That's the report."""
         # No uncertainties for >95% success
         assert len(result.uncertainties) == 0
 
-    def test_extract_result_needs_review(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_extract_result_needs_review(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test result extraction with needs_review assessment."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         response = Message(
@@ -374,9 +361,7 @@ That's the report."""
                     "files_passed": 92,
                     "files_failed": 8,
                     "assessment": "needs_review",
-                    "failure_categories": [
-                        {"category": "encoding_error", "count": 8, "is_fixable": False}
-                    ],
+                    "failure_categories": [{"category": "encoding_error", "count": 8, "is_fixable": False}],
                     "suggested_fixes": [],
                     "summary": "Some issues to review",
                 }
@@ -390,9 +375,7 @@ That's the report."""
         notable_uncertainties = [u for u in result.uncertainties if u.severity == "notable"]
         assert len(notable_uncertainties) >= 1
 
-    def test_extract_result_blocking_issues(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_extract_result_blocking_issues(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test result extraction with blocking_issues assessment."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         response = Message(
@@ -404,9 +387,7 @@ That's the report."""
                     "files_passed": 75,
                     "files_failed": 25,
                     "assessment": "blocking_issues",
-                    "failure_categories": [
-                        {"category": "parser_error", "count": 25, "is_fixable": True}
-                    ],
+                    "failure_categories": [{"category": "parser_error", "count": 25, "is_fixable": True}],
                     "suggested_fixes": [],
                     "summary": "Major issues",
                 }
@@ -455,9 +436,7 @@ That's the report."""
         assert len(info_uncertainties) >= 1
         assert "corrupted_file" in info_uncertainties[0].message
 
-    def test_extract_result_invalid_json(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_extract_result_invalid_json(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test result extraction with invalid JSON."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         response = Message(
@@ -470,9 +449,7 @@ That's the report."""
         assert result.success is False
         assert "Could not extract" in result.summary
 
-    def test_get_partial_result_with_dry_run(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_get_partial_result_with_dry_run(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test partial result with dry-run data."""
         # Mock a dry-run result
         from unittest.mock import MagicMock
@@ -491,9 +468,7 @@ That's the report."""
         assert partial["files_tested"] == 50
         assert partial["assessment"] == "needs_review"  # 90% exactly
 
-    def test_get_partial_result_empty(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_get_partial_result_empty(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test partial result without dry-run data."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
 
@@ -503,9 +478,7 @@ That's the report."""
         assert partial["success_rate"] == 0
         assert partial["files_tested"] == 0
 
-    def test_get_tool_schemas(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    def test_get_tool_schemas(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test tool schema generation."""
         agent = PipelineValidator(mock_llm_provider, validator_context)
         schemas = agent.get_tool_schemas()
@@ -524,9 +497,7 @@ class TestPipelineValidatorFlow:
     """Tests for the PipelineValidator execution flow."""
 
     @pytest.mark.asyncio()
-    async def test_run_handles_timeout(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    async def test_run_handles_timeout(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test that run handles timeout gracefully."""
 
         # Make generate hang forever
@@ -547,9 +518,7 @@ class TestPipelineValidatorFlow:
         assert "Timed out" in result.summary
 
     @pytest.mark.asyncio()
-    async def test_run_handles_exceptions(
-        self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]
-    ):
+    async def test_run_handles_exceptions(self, mock_llm_provider: AsyncMock, validator_context: dict[str, Any]):
         """Test that run handles exceptions gracefully."""
         mock_llm_provider.generate = AsyncMock(side_effect=RuntimeError("LLM error"))
 
