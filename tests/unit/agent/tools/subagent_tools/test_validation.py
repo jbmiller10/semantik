@@ -205,7 +205,12 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
+        with (
+            patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class,
+            patch("shared.plugins.registry.plugin_registry") as mock_registry,
+        ):
+            # Mock the plugin IDs that match the sample pipeline (text, character, mock)
+            mock_registry.list_ids.return_value = ["text", "character", "mock"]
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=successful_execution_result)
             mock_executor_class.return_value = mock_executor
@@ -236,7 +241,12 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
+        with (
+            patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class,
+            patch("shared.plugins.registry.plugin_registry") as mock_registry,
+        ):
+            # Mock the plugin IDs that match the sample pipeline (text, character, mock)
+            mock_registry.list_ids.return_value = ["text", "character", "mock"]
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=failed_execution_result)
             mock_executor_class.return_value = mock_executor
@@ -264,7 +274,12 @@ class TestRunDryRunTool:
         }
         tool = RunDryRunTool(context)
 
-        with patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class:
+        with (
+            patch("shared.pipeline.executor.PipelineExecutor") as mock_executor_class,
+            patch("shared.plugins.registry.plugin_registry") as mock_registry,
+        ):
+            # Mock the plugin IDs that match the sample pipeline (text, character, mock)
+            mock_registry.list_ids.return_value = ["text", "character", "mock"]
             mock_executor = AsyncMock()
             mock_executor.execute = AsyncMock(return_value=failed_execution_result)
             mock_executor_class.return_value = mock_executor

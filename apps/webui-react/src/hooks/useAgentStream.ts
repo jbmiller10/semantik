@@ -287,11 +287,42 @@ export function useAgentStream(
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-          // Cancelled by user
+          // Cancelled by user - still clean up partial state
+          setToolCalls((prev) =>
+            prev.map((tc) =>
+              tc.status === 'running'
+                ? { ...tc, status: 'error' as const, error: 'Cancelled' }
+                : tc
+            )
+          );
+          setSubagents((prev) =>
+            prev.map((sa) =>
+              sa.status === 'running'
+                ? { ...sa, status: 'error' as const, error: 'Cancelled' }
+                : sa
+            )
+          );
           return;
         }
         const errorMessage = err instanceof Error ? err.message : 'Stream failed';
         setError(errorMessage);
+
+        // Clean up any in-progress tool calls and subagents
+        setToolCalls((prev) =>
+          prev.map((tc) =>
+            tc.status === 'running'
+              ? { ...tc, status: 'error' as const, error: 'Stream interrupted' }
+              : tc
+          )
+        );
+        setSubagents((prev) =>
+          prev.map((sa) =>
+            sa.status === 'running'
+              ? { ...sa, status: 'error' as const, error: 'Stream interrupted' }
+              : sa
+          )
+        );
+
         callbacks.onError?.(errorMessage);
       } finally {
         setIsStreaming(false);

@@ -123,8 +123,11 @@ class RunDryRunTool(BaseTool):
                     "error": f"Invalid pipeline configuration: {e}",
                 }
 
-            # Validate DAG
-            errors = dag.validate()
+            # Validate DAG with known plugins for complete validation
+            from shared.plugins.registry import plugin_registry
+
+            known_plugins = set(plugin_registry.list_ids())
+            errors = dag.validate(known_plugins)
             if errors:
                 return {
                     "success": False,

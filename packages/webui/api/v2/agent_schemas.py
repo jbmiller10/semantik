@@ -272,6 +272,10 @@ class ConversationDetailResponse(BaseModel):
         default_factory=list,
         description="Conversation message history",
     )
+    message_load_error: str | None = Field(
+        default=None,
+        description="Error message if messages failed to load from Redis",
+    )
     summary: str | None = Field(
         default=None,
         description="Conversation summary for recovery",

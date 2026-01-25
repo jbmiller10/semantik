@@ -201,6 +201,7 @@ When you're done responding (no more tools to call), just write your response no
             "user_id": self.conversation.user_id,
             "conversation": self.conversation,
             "orchestrator": self,
+            "llm_factory": self.llm_factory,
         }
 
     def _get_tool_descriptions(self) -> str:
@@ -421,7 +422,8 @@ When you're done responding (no more tools to call), just write your response no
                                 "pipeline_updated": self._pipeline_updated,
                                 "uncertainties_added": self._uncertainties_added,
                                 "tool_calls": [
-                                    {"name": tc["name"], "arguments": tc["arguments"]} for tc in self._tool_calls_made
+                                    {"tool": tc["name"], "success": tc.get("success", True)}
+                                    for tc in self._tool_calls_made
                                 ],
                             },
                         )
@@ -476,7 +478,8 @@ When you're done responding (no more tools to call), just write your response no
                         "pipeline_updated": self._pipeline_updated,
                         "uncertainties_added": self._uncertainties_added,
                         "tool_calls": [
-                            {"name": tc["name"], "arguments": tc["arguments"]} for tc in self._tool_calls_made
+                            {"tool": tc["name"], "success": tc.get("success", True)}
+                            for tc in self._tool_calls_made
                         ],
                         "max_turns_reached": True,
                     },
@@ -535,7 +538,8 @@ When you're done responding (no more tools to call), just write your response no
                     yield AgentStreamEvent(
                         event=AgentStreamEventType.SUBAGENT_START,
                         data={
-                            "subagent_type": call.name.replace("spawn_", ""),
+                            "name": call.name.replace("spawn_", ""),
+                            "task": call.arguments.get("user_intent", "Analyzing..."),
                             "call_id": call.id,
                         },
                     )
@@ -543,12 +547,13 @@ When you're done responding (no more tools to call), just write your response no
                 # Execute the tool
                 data = await tool.execute(**call.arguments)
 
-                # Track the tool call
+                # Track the tool call with success status
                 self._tool_calls_made.append(
                     {
                         "name": call.name,
                         "arguments": call.arguments,
                         "result": data,
+                        "success": True,
                     }
                 )
 
@@ -558,12 +563,14 @@ When you're done responding (no more tools to call), just write your response no
 
                 # Check for spawn tool results (subagents)
                 if is_spawn_tool and isinstance(data, dict):
+                    subagent_success = data.get("success", True)
                     yield AgentStreamEvent(
                         event=AgentStreamEventType.SUBAGENT_END,
                         data={
-                            "subagent_type": call.name.replace("spawn_", ""),
-                            "success": data.get("success", True),
-                            "summary": data.get("summary", ""),
+                            "name": call.name.replace("spawn_", ""),
+                            "success": subagent_success,
+                            "result": data.get("summary", ""),
+                            "error": data.get("error") if not subagent_success else None,
                         },
                     )
 
@@ -874,12 +881,13 @@ When you're done responding (no more tools to call), just write your response no
                 # Execute the tool
                 data = await tool.execute(**call.arguments)
 
-                # Track the tool call
+                # Track the tool call with success status
                 self._tool_calls_made.append(
                     {
                         "name": call.name,
                         "arguments": call.arguments,
                         "result": data,
+                        "success": True,
                     }
                 )
 

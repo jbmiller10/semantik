@@ -151,7 +151,16 @@ async def create_conversation(
             detail=f"Source {request.source_id} not found",
         )
 
-    # TODO: Add ownership check when sources have owner_id
+    # Verify user owns the source's parent collection (IDOR protection)
+    from shared.database.repositories.collection_repository import CollectionRepository
+
+    collection_repo = CollectionRepository(db)
+    collection = await collection_repo.get_by_uuid(str(source.collection_id))
+    if not collection or collection.owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source {request.source_id} not found",
+        )
 
     # Create conversation
     repo = AgentConversationRepository(db)
@@ -312,8 +321,10 @@ async def send_message_stream(
                 yield event_line + data_line
         except Exception as e:
             logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
-            # Send error event
-            error_event = f'event: error\ndata: {{"error": "{e!s}"}}\n\n'
+            # Send error event with proper JSON encoding
+            import json
+            error_data = json.dumps({"message": str(e)})
+            error_event = f"event: error\ndata: {error_data}\n\n"
             yield error_event
 
     return StreamingResponse(
@@ -356,6 +367,7 @@ async def get_conversation(
 
     # Get messages from Redis
     messages: list[MessageResponse] = []
+    message_load_error: str | None = None
     try:
         message_store = await _get_message_store()
         raw_messages = await message_store.get_messages(conversation_id)
@@ -370,7 +382,7 @@ async def get_conversation(
         ]
     except Exception as e:
         logger.warning(f"Failed to load messages for conversation {conversation_id}: {e}")
-        # Continue without messages - they may have expired
+        message_load_error = f"Failed to load messages: {e}"
 
     return ConversationDetailResponse(
         id=conversation.id,
@@ -390,6 +402,7 @@ async def get_conversation(
             for u in conversation.uncertainties
         ],
         messages=messages,
+        message_load_error=message_load_error,
         summary=conversation.summary,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,

@@ -525,7 +525,7 @@ class ApplyPipelineTool(BaseTool):
                 collection_id=collection_result["id"],
             )
 
-            await session.commit()
+            # Note: The orchestrator's _persist_state_changes() handles the commit
 
             return {
                 "success": True,
