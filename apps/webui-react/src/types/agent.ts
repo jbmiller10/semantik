@@ -26,7 +26,9 @@ export type AgentStreamEventType =
   | 'pipeline_update'
   | 'content'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'status'
+  | 'activity';
 
 export interface ToolCallStartEvent {
   tool: string;
@@ -76,6 +78,22 @@ export interface DoneEvent {
 export interface ErrorEvent {
   message: string;
   code?: string;
+}
+
+/** Agent phase during pipeline building */
+export type AgentPhase = 'idle' | 'analyzing' | 'sampling' | 'building' | 'validating' | 'ready';
+
+/** Status update event from agent */
+export interface StatusEvent {
+  phase: AgentPhase;
+  message: string;
+  progress?: { current: number; total: number };
+}
+
+/** Activity log entry from agent */
+export interface ActivityEvent {
+  message: string;
+  timestamp: string; // ISO 8601
 }
 
 export interface AgentStreamEvent {
