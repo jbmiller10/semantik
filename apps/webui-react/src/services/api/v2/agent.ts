@@ -88,6 +88,57 @@ export const agentApi = {
    */
   getStreamUrl: (conversationId: string) =>
     `${getApiBaseUrl()}/api/v2/agent/conversations/${conversationId}/messages/stream`,
+
+  /**
+   * Pause agent processing (switch to manual mode).
+   */
+  pauseAgent: async (
+    conversationId: string
+  ): Promise<{ success: boolean; is_paused: boolean; message?: string }> => {
+    const response = await apiClient.post(
+      `/api/v2/agent/conversations/${conversationId}/pause`
+    );
+    return response.data;
+  },
+
+  /**
+   * Resume agent processing (switch to assisted mode).
+   */
+  resumeAgent: async (
+    conversationId: string
+  ): Promise<{ success: boolean; is_paused: boolean; message?: string }> => {
+    const response = await apiClient.post(
+      `/api/v2/agent/conversations/${conversationId}/resume`
+    );
+    return response.data;
+  },
+
+  /**
+   * Send a message to the agent (non-streaming).
+   */
+  sendMessage: async (
+    conversationId: string,
+    message: string
+  ): Promise<{
+    response: string;
+    pipeline_updated: boolean;
+    uncertainties_added: Array<{
+      id: string;
+      severity: string;
+      message: string;
+      resolved: boolean;
+      context?: Record<string, unknown>;
+    }>;
+    tool_calls: Array<{ name: string; arguments: Record<string, unknown> }>;
+  }> => {
+    const response = await apiClient.post(
+      `/api/v2/agent/conversations/${conversationId}/messages`,
+      { message }
+    );
+    return response.data;
+  },
 };
 
+// Alias for consistency with other v2 API modules
+export { agentApi as agentApiV2 };
 export default agentApi;
