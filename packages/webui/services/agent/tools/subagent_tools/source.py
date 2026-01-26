@@ -11,7 +11,6 @@ These tools enable the SourceAnalyzer to investigate data sources:
 from __future__ import annotations
 
 import logging
-import random
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -287,6 +286,7 @@ class SampleFilesTool(BaseTool):
             # Randomize if requested
             if should_randomize:
                 import random as random_module
+
                 filtered = list(filtered)
                 random_module.shuffle(filtered)
 

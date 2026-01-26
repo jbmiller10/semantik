@@ -208,10 +208,7 @@ class ExecutionResult:
         """Validate invariants after initialization."""
         outcome_sum = self.files_succeeded + self.files_failed + self.files_skipped
         if outcome_sum > self.files_processed:
-            raise ValueError(
-                f"Sum of outcomes ({outcome_sum}) cannot exceed "
-                f"files_processed ({self.files_processed})"
-            )
+            raise ValueError(f"Sum of outcomes ({outcome_sum}) cannot exceed files_processed ({self.files_processed})")
         if self.halt_reason and not self.halted:
             raise ValueError("halt_reason requires halted=True")
 

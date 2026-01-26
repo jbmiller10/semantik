@@ -32,6 +32,7 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 from typing import TYPE_CHECKING, ClassVar
@@ -216,8 +217,6 @@ def generate_fernet_key() -> str:
 
 # Convenience functions for encrypting/decrypting secrets as base64 strings.
 # These are useful when secrets need to be stored in JSON fields (like inline_source_config).
-
-import base64
 
 
 def encrypt_secret(plaintext: str) -> str:

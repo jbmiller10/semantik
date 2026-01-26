@@ -204,9 +204,7 @@ async def create_conversation(
             from shared.utils.encryption import EncryptionNotConfiguredError, encrypt_secret
 
             try:
-                encrypted_secrets = {
-                    key: encrypt_secret(value) for key, value in request.secrets.items()
-                }
+                encrypted_secrets = {key: encrypt_secret(value) for key, value in request.secrets.items()}
                 inline_source_config["_pending_secrets"] = encrypted_secrets
             except EncryptionNotConfiguredError as e:
                 # In production, fail rather than store plaintext secrets
@@ -216,9 +214,7 @@ async def create_conversation(
                         detail="Server encryption not configured. Contact administrator.",
                     ) from e
                 # Development only: store plaintext with warning
-                logger.warning(
-                    "CONNECTOR_SECRETS_KEY not configured - secrets stored unencrypted (dev only)"
-                )
+                logger.warning("CONNECTOR_SECRETS_KEY not configured - secrets stored unencrypted (dev only)")
                 inline_source_config["_pending_secrets"] = request.secrets
 
     # Create conversation

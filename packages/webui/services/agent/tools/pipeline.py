@@ -641,19 +641,12 @@ class ApplyPipelineTool(BaseTool):
                                 plaintext_value = decrypt_secret(value)
                             except EncryptionNotConfiguredError:
                                 logger.warning(
-                                    f"Encryption not configured - using raw secret "
-                                    f"for source {new_source_id}"
+                                    f"Encryption not configured - using raw secret for source {new_source_id}"
                                 )
                             except DecryptionError as e:
-                                logger.error(
-                                    f"Failed to decrypt secret '{secret_key}' "
-                                    f"for source {new_source_id}: {e}"
-                                )
+                                logger.error(f"Failed to decrypt secret '{secret_key}' for source {new_source_id}: {e}")
                             except ValueError as e:
-                                logger.error(
-                                    f"Invalid secret format for '{secret_key}' "
-                                    f"on source {new_source_id}: {e}"
-                                )
+                                logger.error(f"Invalid secret format for '{secret_key}' on source {new_source_id}: {e}")
 
                             await secret_repo.set_secret(
                                 source_id=new_source_id,

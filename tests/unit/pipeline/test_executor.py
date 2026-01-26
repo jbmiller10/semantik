@@ -216,6 +216,7 @@ class TestPipelineExecutorExecute:
                 yield f
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -259,6 +260,7 @@ class TestPipelineExecutorExecute:
             yield file_ref
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -302,6 +304,7 @@ class TestPipelineExecutorExecute:
             yield file_ref
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -351,6 +354,7 @@ class TestPipelineExecutorExecute:
             events.append(event)
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -395,7 +399,12 @@ class TestPipelineExecutorExecute:
         async def file_iterator() -> AsyncIterator[FileReference]:
             yield file_ref
 
-        with patch("shared.pipeline.executor.get_parser", return_value=mock_parser):
+        # Patch both the plugin registry (new path) and legacy get_parser (fallback)
+        # to ensure the mock parser is used
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+        ):
             executor = PipelineExecutor(
                 dag=valid_dag,
                 collection_id="test-collection",
@@ -435,7 +444,11 @@ class TestPipelineExecutorExecute:
             for f in files:
                 yield f
 
-        with patch("shared.pipeline.executor.get_parser", return_value=mock_parser):
+        # Patch both the plugin registry (new path) and legacy get_parser (fallback)
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+        ):
             executor = PipelineExecutor(
                 dag=valid_dag,
                 collection_id="test-collection",
@@ -494,6 +507,7 @@ class TestPipelineExecutorExecute:
                 yield f
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -552,6 +566,7 @@ class TestPipelineExecutorExecute:
             yield file_ref
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
@@ -659,6 +674,7 @@ class TestPipelineExecutorExecute:
             raise RuntimeError("Callback failed!")
 
         with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
             patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
             patch(
                 "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",

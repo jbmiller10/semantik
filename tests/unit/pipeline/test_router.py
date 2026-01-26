@@ -288,9 +288,7 @@ class TestPipelineRouter:
         assert entry is not None
         assert entry.id == "parser"
 
-    def test_get_next_nodes_at_reconvergence_pdf(
-        self, branching_dag: PipelineDAG, pdf_file: FileReference
-    ) -> None:
+    def test_get_next_nodes_at_reconvergence_pdf(self, branching_dag: PipelineDAG, pdf_file: FileReference) -> None:
         """Test routing from pdf-parser to shared chunker at reconvergence point.
 
         In a diamond pattern DAG:
@@ -307,9 +305,7 @@ class TestPipelineRouter:
         assert len(next_nodes) == 1
         assert next_nodes[0].id == "chunker"
 
-    def test_get_next_nodes_at_reconvergence_text(
-        self, branching_dag: PipelineDAG, text_file: FileReference
-    ) -> None:
+    def test_get_next_nodes_at_reconvergence_text(self, branching_dag: PipelineDAG, text_file: FileReference) -> None:
         """Test routing from text-parser to shared chunker at reconvergence point.
 
         Both branches (pdf-parser and text-parser) should converge at chunker.
@@ -322,9 +318,7 @@ class TestPipelineRouter:
         assert len(next_nodes) == 1
         assert next_nodes[0].id == "chunker"
 
-    def test_get_all_paths_diamond_pattern_pdf(
-        self, branching_dag: PipelineDAG, pdf_file: FileReference
-    ) -> None:
+    def test_get_all_paths_diamond_pattern_pdf(self, branching_dag: PipelineDAG, pdf_file: FileReference) -> None:
         """Test path finding through diamond pattern for PDF files.
 
         For a .pdf file, the path should be:
@@ -341,9 +335,7 @@ class TestPipelineRouter:
         assert path[1].id == "chunker"
         assert path[2].id == "embedder"
 
-    def test_get_all_paths_diamond_pattern_text(
-        self, branching_dag: PipelineDAG, text_file: FileReference
-    ) -> None:
+    def test_get_all_paths_diamond_pattern_text(self, branching_dag: PipelineDAG, text_file: FileReference) -> None:
         """Test path finding through diamond pattern for text files.
 
         For a .txt file (non-PDF), the path should be:
@@ -382,9 +374,7 @@ class TestPipelineRouter:
         assert pdf_chunker is text_chunker
         assert pdf_chunker.id == "chunker"
 
-    def test_diamond_pattern_chunker_to_embedder(
-        self, branching_dag: PipelineDAG, pdf_file: FileReference
-    ) -> None:
+    def test_diamond_pattern_chunker_to_embedder(self, branching_dag: PipelineDAG, pdf_file: FileReference) -> None:
         """Test that chunker correctly routes to embedder after reconvergence.
 
         After both branches converge at chunker, the path should continue

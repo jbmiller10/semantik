@@ -312,7 +312,7 @@ class DAGValidationError:
     edge_index: int | None = None
 
 
-class DAGValidationException(Exception):
+class DAGValidationFailedError(Exception):
     """Exception raised when DAG validation fails.
 
     Attributes:
@@ -415,12 +415,12 @@ class PipelineDAG:
             A validated PipelineDAG instance
 
         Raises:
-            DAGValidationException: If the DAG fails validation
+            DAGValidationFailedError: If the DAG fails validation
         """
         dag = cls(id=id, version=version, nodes=nodes, edges=edges)
         errors = dag.validate(known_plugins)
         if errors:
-            raise DAGValidationException(errors)
+            raise DAGValidationFailedError(errors)
         return dag
 
 
@@ -432,6 +432,6 @@ __all__ = [
     "PipelineNode",
     "PipelineEdge",
     "DAGValidationError",
-    "DAGValidationException",
+    "DAGValidationFailedError",
     "PipelineDAG",
 ]

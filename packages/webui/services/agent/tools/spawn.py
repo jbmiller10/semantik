@@ -228,7 +228,10 @@ class SpawnSourceAnalyzerTool(BaseTool):
                             severity = UncertaintySeverity(uncertainty.severity)
                         except ValueError:
                             # Map common invalid values or default to INFO
-                            severity_map = {"critical": UncertaintySeverity.BLOCKING, "warning": UncertaintySeverity.NOTABLE}
+                            severity_map = {
+                                "critical": UncertaintySeverity.BLOCKING,
+                                "warning": UncertaintySeverity.NOTABLE,
+                            }
                             severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
 
                         await repo.add_uncertainty(
@@ -439,7 +442,10 @@ class SpawnPipelineValidatorTool(BaseTool):
                             severity = UncertaintySeverity(uncertainty.severity)
                         except ValueError:
                             # Map common invalid values or default to INFO
-                            severity_map = {"critical": UncertaintySeverity.BLOCKING, "warning": UncertaintySeverity.NOTABLE}
+                            severity_map = {
+                                "critical": UncertaintySeverity.BLOCKING,
+                                "warning": UncertaintySeverity.NOTABLE,
+                            }
                             severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
 
                         await repo.add_uncertainty(

@@ -29,6 +29,7 @@ def mock_conversation():
     conv.source_analysis = None
     conv.summary = None
     conv.uncertainties = []
+    conv.inline_source_config = None
     return conv
 
 
