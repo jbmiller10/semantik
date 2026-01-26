@@ -11,4 +11,8 @@ export { ActivityLog } from './ActivityLog';
 export { AgentInput } from './AgentInput';
 export { QuestionPrompt } from './QuestionPrompt';
 export { QuestionQueue } from './QuestionQueue';
+export { PipelineBuilderHeader } from './PipelineBuilderHeader';
+export type { BuilderMode, PipelineBuilderHeaderProps } from './PipelineBuilderHeader';
+export { PipelineBuilderFooter } from './PipelineBuilderFooter';
+export type { PipelineBuilderFooterProps } from './PipelineBuilderFooter';
 export type { PipelineVisualizationProps } from '@/types/pipeline';
