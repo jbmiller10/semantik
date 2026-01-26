@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,12 @@ from webui.services.agent.tools.spawn import (
     SpawnPipelineValidatorTool,
     SpawnSourceAnalyzerTool,
 )
+
+
+@asynccontextmanager
+async def mock_get_session(mock_session):
+    """Helper to create a mock async context manager for pg_connection_manager.get_session()."""
+    yield mock_session
 
 
 @dataclass
@@ -163,6 +170,15 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        # Mock the AgentConversationRepository to avoid real DB operations
+        mock_agent_repo = MagicMock()
+        mock_agent_repo.update_source_analysis = AsyncMock(return_value=mock_conversation)
+        mock_agent_repo.add_uncertainty = AsyncMock()
+
         with (
             patch(
                 "shared.database.repositories.collection_source_repository.CollectionSourceRepository",
@@ -175,6 +191,14 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
+            patch(
+                "webui.services.agent.repository.AgentConversationRepository",
+                return_value=mock_agent_repo,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -214,6 +238,15 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        # Mock the AgentConversationRepository to avoid real DB operations
+        mock_agent_repo = MagicMock()
+        mock_agent_repo.update_source_analysis = AsyncMock(return_value=mock_conversation)
+        mock_agent_repo.add_uncertainty = AsyncMock()
+
         with (
             patch(
                 "webui.services.connector_factory.ConnectorFactory.get_connector",
@@ -222,6 +255,14 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
+            patch(
+                "webui.services.agent.repository.AgentConversationRepository",
+                return_value=mock_agent_repo,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -265,6 +306,10 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         with (
             patch(
                 "webui.services.connector_factory.ConnectorFactory.get_connector",
@@ -273,6 +318,10 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -412,6 +461,10 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(side_effect=Exception("Subagent crashed"))
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         with (
             patch(
                 "shared.database.repositories.collection_source_repository.CollectionSourceRepository",
@@ -424,6 +477,10 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -461,6 +518,13 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        mock_conv_repo = MagicMock()
+        mock_conv_repo.update_source_analysis = AsyncMock()
+
         with (
             patch(
                 "webui.services.connector_factory.ConnectorFactory.get_connector",
@@ -469,6 +533,14 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
+            patch(
+                "webui.services.agent.repository.AgentConversationRepository",
+                return_value=mock_conv_repo,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -483,6 +555,8 @@ class TestSpawnSourceAnalyzerTool:
 
         # Verify analysis was stored in conversation
         assert mock_conversation.source_analysis == analysis_data
+        # Verify repository update was called
+        mock_conv_repo.update_source_analysis.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_uncertainties_persisted_to_repository(self, mock_session, mock_llm_factory, mock_llm_provider):
@@ -515,8 +589,13 @@ class TestSpawnSourceAnalyzerTool:
         mock_analyzer = MagicMock()
         mock_analyzer.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         mock_conv_repo = MagicMock()
         mock_conv_repo.add_uncertainty = AsyncMock()
+        mock_conv_repo.update_source_analysis = AsyncMock()
 
         with (
             patch(
@@ -526,6 +605,10 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 return_value=mock_analyzer,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
             patch(
                 "webui.services.agent.repository.AgentConversationRepository",
@@ -565,6 +648,10 @@ class TestSpawnSourceAnalyzerTool:
             mock_agent.run = AsyncMock(return_value=MockSubAgentResult(success=True, data={}, uncertainties=[]))
             return mock_agent
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         with (
             patch(
                 "webui.services.connector_factory.ConnectorFactory.get_connector",
@@ -573,6 +660,10 @@ class TestSpawnSourceAnalyzerTool:
             patch(
                 "webui.services.agent.subagents.source_analyzer.SourceAnalyzer",
                 side_effect=capture_context,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
         ):
             tool = SpawnSourceAnalyzerTool(
@@ -719,9 +810,19 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(return_value=mock_result)
 
-        with patch(
-            "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
-            return_value=mock_validator,
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        with (
+            patch(
+                "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
         ):
             tool = SpawnPipelineValidatorTool(
                 context={
@@ -763,6 +864,10 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         with (
             patch(
                 "shared.database.repositories.collection_source_repository.CollectionSourceRepository",
@@ -775,6 +880,10 @@ class TestSpawnPipelineValidatorTool:
             patch(
                 "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
                 return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
         ):
             tool = SpawnPipelineValidatorTool(
@@ -838,9 +947,19 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(return_value=mock_result)
 
-        with patch(
-            "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
-            return_value=mock_validator,
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        with (
+            patch(
+                "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
         ):
             tool = SpawnPipelineValidatorTool(
                 context={
@@ -878,9 +997,19 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(return_value=mock_result)
 
-        with patch(
-            "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
-            return_value=mock_validator,
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        with (
+            patch(
+                "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
         ):
             tool = SpawnPipelineValidatorTool(
                 context={
@@ -908,9 +1037,19 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(side_effect=Exception("Validation crashed"))
 
-        with patch(
-            "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
-            return_value=mock_validator,
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
+        with (
+            patch(
+                "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
+            ),
         ):
             tool = SpawnPipelineValidatorTool(
                 context={
@@ -949,6 +1088,10 @@ class TestSpawnPipelineValidatorTool:
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(return_value=mock_result)
 
+        # Mock the pg_connection_manager to return the mock session
+        mock_pg_manager = MagicMock()
+        mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
+
         mock_conv_repo = MagicMock()
         mock_conv_repo.add_uncertainty = AsyncMock()
 
@@ -956,6 +1099,10 @@ class TestSpawnPipelineValidatorTool:
             patch(
                 "webui.services.agent.subagents.pipeline_validator.PipelineValidator",
                 return_value=mock_validator,
+            ),
+            patch(
+                "shared.database.postgres_database.pg_connection_manager",
+                mock_pg_manager,
             ),
             patch(
                 "webui.services.agent.repository.AgentConversationRepository",

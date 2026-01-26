@@ -6,6 +6,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { agentApi } from '../services/api/v2/agent';
+import {
+  validateEventData,
+  type AgentEventType,
+} from '../schemas/agentStream';
 import type {
   AgentStreamEventType,
   ToolCallState,
@@ -66,8 +70,16 @@ export interface UseAgentStreamReturn {
 /**
  * Parse a single SSE message.
  * SSE format: event: type\ndata: json\n\n
+ *
+ * @param raw - The raw SSE message string
+ * @param parseFailureCount - Current count of consecutive parse failures (for tracking)
+ * @returns Object with event, data, and updated failure count, or null if empty message
+ * @throws Error if JSON parse fails (to allow tracking consecutive failures)
  */
-function parseSSEMessage(raw: string): { event: AgentStreamEventType; data: Record<string, unknown> } | null {
+function parseSSEMessage(
+  raw: string,
+  parseFailureCount: number
+): { event: AgentStreamEventType; data: Record<string, unknown>; parseFailureCount: number } | null {
   const lines = raw.split('\n');
   let eventType: string | null = null;
   let dataStr = '';
@@ -86,10 +98,16 @@ function parseSSEMessage(raw: string): { event: AgentStreamEventType; data: Reco
 
   try {
     const data = JSON.parse(dataStr);
-    return { event: eventType as AgentStreamEventType, data };
-  } catch {
-    console.error('Failed to parse SSE data:', dataStr);
-    return null;
+    // Reset failure count on successful parse
+    return { event: eventType as AgentStreamEventType, data, parseFailureCount: 0 };
+  } catch (error) {
+    const newFailureCount = parseFailureCount + 1;
+    console.error(`SSE parse failure #${newFailureCount}:`, dataStr, error);
+    // Return null but with updated failure count via thrown error metadata
+    // Caller should handle this and check threshold
+    const parseError = new Error(`Failed to parse SSE data: ${dataStr.slice(0, 100)}`);
+    (parseError as Error & { parseFailureCount: number }).parseFailureCount = newFailureCount;
+    throw parseError;
   }
 }
 
@@ -177,6 +195,9 @@ export function useAgentStream(
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let parseFailureCount = 0;          // Consecutive failures for threshold check
+        let totalParseFailures = 0;          // Total failures for diagnostics
+        const PARSE_FAILURE_THRESHOLD = 3;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -195,10 +216,45 @@ export function useAgentStream(
           for (const msg of messages) {
             if (!msg.trim()) continue;
 
-            const parsed = parseSSEMessage(msg);
+            let parsed: { event: AgentStreamEventType; data: Record<string, unknown>; parseFailureCount: number } | null = null;
+            try {
+              parsed = parseSSEMessage(msg, parseFailureCount);
+              if (parsed) {
+                parseFailureCount = parsed.parseFailureCount; // Reset on success
+              }
+            } catch (parseError) {
+              // Track consecutive and total parse failures
+              if (parseError && typeof parseError === 'object' && 'parseFailureCount' in parseError) {
+                parseFailureCount = (parseError as { parseFailureCount: number }).parseFailureCount;
+              }
+              totalParseFailures++;
+              console.warn(`SSE parse failure (total: ${totalParseFailures}, consecutive: ${parseFailureCount})`);
+              // Surface error to user after threshold consecutive failures
+              if (parseFailureCount >= PARSE_FAILURE_THRESHOLD) {
+                const errorMsg = `Multiple SSE parse failures (${totalParseFailures} total) - stream may be corrupted`;
+                setError(errorMsg);
+                callbacks.onError?.(errorMsg);
+              }
+              continue;
+            }
+
             if (!parsed) continue;
 
             const { event, data } = parsed;
+
+            // Validate event data against Zod schema (if known event type)
+            const isKnownEvent = (e: string): e is AgentEventType =>
+              ['content', 'tool_call_start', 'tool_call_end', 'subagent_start', 'subagent_end',
+               'uncertainty', 'pipeline_update', 'done', 'error', 'status', 'activity', 'question'].includes(e);
+
+            if (isKnownEvent(event)) {
+              const validatedData = validateEventData(event, data);
+              if (validatedData === null) {
+                // Validation failed - skip this event but don't stop streaming
+                console.warn(`Skipping invalid ${event} event`);
+                continue;
+              }
+            }
 
             switch (event) {
               case 'content': {

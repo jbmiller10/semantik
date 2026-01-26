@@ -22,7 +22,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function SourceAnalysisSummary({ analysis }: SourceAnalysisSummaryProps) {
-  if (!analysis) {
+  // Handle null/undefined/non-object analysis
+  if (!analysis || typeof analysis !== 'object') {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-6">
         <FileText className="w-12 h-12 text-[var(--text-muted)] mb-3" />
@@ -34,10 +35,40 @@ export function SourceAnalysisSummary({ analysis }: SourceAnalysisSummaryProps) 
     );
   }
 
+  // Handle field name mismatch: backend returns 'by_extension', frontend type expects 'file_types'
+  // Also handle nested structure: backend returns {count, total_size_bytes, ...}, we need flat counts
+  const fileTypesRaw =
+    analysis.file_types ??
+    (analysis as unknown as { by_extension?: Record<string, unknown> })
+      .by_extension ??
+    {};
+
+  // Defensive check: ensure fileTypesRaw is a valid object before iterating
+  const safeFileTypesRaw =
+    fileTypesRaw && typeof fileTypesRaw === 'object' && !Array.isArray(fileTypesRaw)
+      ? fileTypesRaw
+      : {};
+
+  // Flatten if needed: {".pdf": {count: X}} → {".pdf": X}
+  const fileTypes: Record<string, number> = {};
+  for (const [ext, value] of Object.entries(safeFileTypesRaw)) {
+    if (typeof value === 'number') {
+      fileTypes[ext] = value;
+    } else if (value && typeof value === 'object' && 'count' in value) {
+      fileTypes[ext] = (value as { count: number }).count;
+    } else {
+      fileTypes[ext] = 0;
+    }
+  }
+
   // Sort file types by count descending
-  const sortedFileTypes = Object.entries(analysis.file_types).sort(
+  const sortedFileTypes = Object.entries(fileTypes).sort(
     ([, a], [, b]) => b - a
   );
+
+  // Calculate total files for percentage - use analysis.total_files if available, otherwise sum
+  const totalFiles =
+    analysis.total_files ?? Object.values(fileTypes).reduce((a, b) => a + b, 0);
 
   return (
     <div className="p-4 space-y-6">
@@ -59,7 +90,7 @@ export function SourceAnalysisSummary({ analysis }: SourceAnalysisSummaryProps) 
             <span className="text-xs uppercase tracking-wide">Files</span>
           </div>
           <p className="text-2xl font-bold text-[var(--text-primary)]">
-            {analysis.total_files.toLocaleString()}
+            {totalFiles.toLocaleString()}
           </p>
         </div>
 
@@ -69,7 +100,7 @@ export function SourceAnalysisSummary({ analysis }: SourceAnalysisSummaryProps) 
             <span className="text-xs uppercase tracking-wide">Size</span>
           </div>
           <p className="text-2xl font-bold text-[var(--text-primary)]">
-            {formatBytes(analysis.total_size_bytes)}
+            {formatBytes(analysis.total_size_bytes ?? 0)}
           </p>
         </div>
       </div>
@@ -81,7 +112,7 @@ export function SourceAnalysisSummary({ analysis }: SourceAnalysisSummaryProps) 
         </h4>
         <div className="space-y-2">
           {sortedFileTypes.map(([ext, count]) => {
-            const percentage = Math.round((count / analysis.total_files) * 100);
+            const percentage = totalFiles > 0 ? Math.round((count / totalFiles) * 100) : 0;
             return (
               <div
                 key={ext}

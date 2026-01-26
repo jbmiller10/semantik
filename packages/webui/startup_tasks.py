@@ -36,8 +36,10 @@ async def ensure_default_data() -> None:
         except SQLAlchemyError as exc:
             logger.info("Plugin configs not available yet; loading all plugins (%s)", exc)
 
+        # Load all plugin types needed for template validation
+        # Note: parser and extractor plugins are referenced by templates
         registry = load_plugins(
-            plugin_types={"embedding", "chunking", "connector"},
+            plugin_types={"embedding", "chunking", "connector", "extractor", "parser"},
             disabled_plugin_ids=disabled_plugin_ids,
         )
 

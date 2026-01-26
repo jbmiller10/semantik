@@ -13,6 +13,11 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from shared.llm.exceptions import (
+    LLMAuthenticationError,
+    LLMContextLengthError,
+    LLMRateLimitError,
+)
 from webui.api.v2.agent_schemas import AgentStreamEvent, AgentStreamEventType
 from webui.services.agent.exceptions import (
     AgentError,
@@ -155,7 +160,12 @@ When you're done responding (no more tools to call), just write your response no
 - Use spawn_pipeline_validator to check configurations
 """
 
+    # Maximum conversation turns before forcing completion.
+    # Prevents infinite loops while allowing complex multi-step workflows.
     MAX_TURNS: ClassVar[int] = 20
+
+    # Regex pattern for extracting tool calls from LLM responses.
+    # Format: ```tool\n{"name": "tool_name", "arguments": {...}}\n```
     TOOL_CALL_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
         r"```tool\s*\n?(.*?)\n?```",
         re.DOTALL,
@@ -283,8 +293,36 @@ When you're done responding (no more tools to call), just write your response no
         return "\n".join(descriptions)
 
     def _build_system_prompt(self) -> str:
-        """Build the full system prompt with tool descriptions."""
-        return self.SYSTEM_PROMPT.format(tool_descriptions=self._get_tool_descriptions())
+        """Build the full system prompt with tool descriptions and source context."""
+        base_prompt = self.SYSTEM_PROMPT.format(tool_descriptions=self._get_tool_descriptions())
+
+        # Add source context if available
+        if self.conversation.inline_source_config:
+            source_type = self.conversation.inline_source_config.get("source_type", "unknown")
+            source_config = self.conversation.inline_source_config.get("source_config", {})
+
+            # Extract relevant source details for the LLM
+            source_details = []
+            if "path" in source_config:
+                source_details.append(f"Path: {source_config['path']}")
+            if "repo_url" in source_config:
+                source_details.append(f"Repository: {source_config['repo_url']}")
+            if "recursive" in source_config:
+                source_details.append(f"Recursive: {source_config['recursive']}")
+
+            source_info = "\n".join(source_details) if source_details else json.dumps(source_config)
+
+            base_prompt += f"""
+
+## Current Source Configuration
+
+The user has already configured a data source for this pipeline:
+- **Type**: {source_type}
+- {source_info}
+
+You should use spawn_source_analyzer to analyze this source and recommend an appropriate pipeline configuration. Do NOT ask the user about their source - you already have the information above."""
+
+        return base_prompt
 
     async def handle_message(self, user_message: str) -> AgentResponse:
         """Process a user message and return the agent's response.
@@ -345,9 +383,18 @@ When you're done responding (no more tools to call), just write your response no
 
         except ConversationNotActiveError:
             raise
+        except LLMAuthenticationError as e:
+            logger.error(f"LLM authentication failed for conversation {self.conversation.id}: {e}")
+            raise AgentError("LLM authentication failed. Check your API key in settings.") from e
+        except LLMRateLimitError as e:
+            logger.warning(f"LLM rate limit hit for conversation {self.conversation.id}: {e}")
+            raise AgentError("Rate limit reached. Please wait and try again.") from e
+        except LLMContextLengthError as e:
+            logger.warning(f"LLM context too long for conversation {self.conversation.id}: {e}")
+            raise AgentError("Message too long. Please shorten and try again.") from e
         except Exception as e:
             logger.exception(f"Error handling message for conversation {self.conversation.id}: {e}")
-            raise AgentError(f"Failed to process message: {e}") from e
+            raise AgentError(f"An unexpected error occurred: {type(e).__name__}") from e
 
     async def handle_message_streaming(self, user_message: str) -> AsyncGenerator[AgentStreamEvent, None]:
         """Process user message with streaming events.
@@ -640,15 +687,26 @@ When you're done responding (no more tools to call), just write your response no
                 # Check for spawn tool results (subagents)
                 if is_spawn_tool and isinstance(data, dict):
                     subagent_success = data.get("success", True)
+                    subagent_name = call.name.replace("spawn_", "")
                     yield AgentStreamEvent(
                         event=AgentStreamEventType.SUBAGENT_END,
                         data={
-                            "name": call.name.replace("spawn_", ""),
+                            "name": subagent_name,
                             "success": subagent_success,
                             "result": data.get("summary", ""),
                             "error": data.get("error") if not subagent_success else None,
                         },
                     )
+
+                    # Update status when sub-agent fails so UI reflects the error
+                    if not subagent_success:
+                        error_msg = data.get("error") or data.get("summary", "Unknown error")
+                        # Truncate error message for status display
+                        error_preview = error_msg[:80] + "..." if len(str(error_msg)) > 80 else error_msg
+                        yield self._emit_status(
+                            "analyzing",
+                            f"Sub-agent {subagent_name} failed: {error_preview}",
+                        )
 
                 # Check if tool added uncertainties
                 await self._check_for_uncertainties_streaming(call.name, data)
@@ -1010,6 +1068,9 @@ When you're done responding (no more tools to call), just write your response no
     async def _check_for_uncertainties(self, tool_name: str, result: Any) -> None:
         """Check tool results for uncertainties and persist them.
 
+        Uses an independent database session to avoid cancellation when
+        the SSE connection is closed (e.g., after long-running spawn tools).
+
         Args:
             tool_name: Name of the tool that was called
             result: Result from the tool execution
@@ -1019,47 +1080,84 @@ When you're done responding (no more tools to call), just write your response no
 
         # Check for uncertainties from spawn tools
         uncertainties = result.get("uncertainties", [])
-        if uncertainties:
-            logger.debug(f"Tool {tool_name} returned {len(uncertainties)} uncertainties")
-        for u in uncertainties:
-            if isinstance(u, dict):
-                severity_str = u.get("severity", "info")
-                try:
-                    severity = UncertaintySeverity(severity_str)
-                except ValueError:
-                    severity = UncertaintySeverity.INFO
+        if not uncertainties:
+            return
 
-                uncertainty = await self.repo.add_uncertainty(
-                    conversation_id=self.conversation.id,
-                    user_id=self.conversation.user_id,
-                    severity=severity,
-                    message=u.get("message", "Unknown uncertainty"),
-                    context=u.get("context"),
-                )
-                self._uncertainties_added.append(
-                    {
-                        "id": uncertainty.id,
-                        "severity": severity.value,
-                        "message": uncertainty.message,
-                        "resolved": False,
-                    }
-                )
+        logger.debug(f"Tool {tool_name} returned {len(uncertainties)} uncertainties")
+
+        # Use independent session to avoid SSE connection lifecycle issues
+        from shared.database.postgres_database import pg_connection_manager
+
+        try:
+            async with pg_connection_manager.get_session() as independent_session:
+                repo = AgentConversationRepository(independent_session)
+                for u in uncertainties:
+                    if isinstance(u, dict):
+                        severity_str = u.get("severity", "info")
+                        try:
+                            severity = UncertaintySeverity(severity_str)
+                        except ValueError:
+                            severity = UncertaintySeverity.INFO
+
+                        uncertainty = await repo.add_uncertainty(
+                            conversation_id=self.conversation.id,
+                            user_id=self.conversation.user_id,
+                            severity=severity,
+                            message=u.get("message", "Unknown uncertainty"),
+                            context=u.get("context"),
+                        )
+                        self._uncertainties_added.append(
+                            {
+                                "id": uncertainty.id,
+                                "severity": severity.value,
+                                "message": uncertainty.message,
+                                "resolved": False,
+                            }
+                        )
+        except Exception as e:
+            logger.error(f"Failed to persist uncertainties from {tool_name}: {e}", exc_info=True)
+            # Notify user that results weren't saved
+            self._uncertainties_added.append(
+                {
+                    "id": "persistence_warning",
+                    "severity": "notable",
+                    "message": "Warning: Some analysis results could not be saved.",
+                    "resolved": False,
+                }
+            )
+            # Don't re-raise - we don't want to crash the conversation loop
 
     async def _persist_state_changes(self) -> None:
-        """Persist any state changes to the database."""
-        # Update pipeline if changed
-        if self._pipeline_updated and self.conversation.current_pipeline:
-            await self.repo.update_pipeline(
-                conversation_id=self.conversation.id,
-                user_id=self.conversation.user_id,
-                pipeline_config=self.conversation.current_pipeline,
-            )
+        """Persist any state changes to the database.
 
-        # Commit changes
-        await self.session.commit()
+        Uses an independent database session to avoid cancellation when
+        the SSE connection is closed.
+        """
+        # Only persist if there are changes
+        if not self._pipeline_updated or not self.conversation.current_pipeline:
+            return
+
+        # Use independent session to avoid SSE connection lifecycle issues
+        from shared.database.postgres_database import pg_connection_manager
+
+        try:
+            async with pg_connection_manager.get_session() as independent_session:
+                repo = AgentConversationRepository(independent_session)
+                await repo.update_pipeline(
+                    conversation_id=self.conversation.id,
+                    user_id=self.conversation.user_id,
+                    pipeline_config=self.conversation.current_pipeline,
+                )
+                # Commit happens automatically via the context manager
+        except Exception as e:
+            logger.error(f"Failed to persist state changes: {e}", exc_info=True)
+            # Don't re-raise - we don't want to crash the conversation loop
 
     async def _generate_summary_if_needed(self, messages: list[ConversationMessage]) -> None:
         """Generate a conversation summary if the message count is high.
+
+        Uses an independent database session to avoid cancellation when
+        the SSE connection is closed.
 
         Args:
             messages: Current message list
@@ -1067,37 +1165,58 @@ When you're done responding (no more tools to call), just write your response no
         # Generate summary every 20 messages
         if len(messages) >= 20 and len(messages) % 10 == 0:
             try:
+                from shared.database.postgres_database import pg_connection_manager
+                from shared.llm.factory import LLMServiceFactory
                 from shared.llm.types import LLMQualityTier
 
-                provider = await self.llm_factory.create_provider_for_tier(
-                    self.conversation.user_id,
-                    LLMQualityTier.LOW,  # Use low tier for summaries
-                )
-
-                async with provider:
-                    summary_prompt = (
-                        "Summarize this conversation in 2-3 sentences, focusing on:\n"
-                        "1. What the user wants to accomplish\n"
-                        "2. The current pipeline configuration\n"
-                        "3. Any outstanding issues or next steps\n\n"
-                        f"Conversation:\n{self._build_prompt(messages[-20:])}"
+                # Create LLM factory with independent session
+                async with pg_connection_manager.get_session() as independent_session:
+                    llm_factory = LLMServiceFactory(independent_session)
+                    provider = await llm_factory.create_provider_for_tier(
+                        self.conversation.user_id,
+                        LLMQualityTier.LOW,  # Use low tier for summaries
                     )
 
-                    response = await provider.generate(
-                        prompt=summary_prompt,
-                        max_tokens=256,
-                        temperature=0.3,
-                    )
+                    async with provider:
+                        summary_prompt = (
+                            "Summarize this conversation in 2-3 sentences, focusing on:\n"
+                            "1. What the user wants to accomplish\n"
+                            "2. The current pipeline configuration\n"
+                            "3. Any outstanding issues or next steps\n\n"
+                            f"Conversation:\n{self._build_prompt(messages[-20:])}"
+                        )
 
-                    await self.repo.update_summary(
-                        conversation_id=self.conversation.id,
-                        user_id=self.conversation.user_id,
-                        summary=response.content,
-                    )
-                    logger.info(f"Generated summary for conversation {self.conversation.id}")
+                        response = await provider.generate(
+                            prompt=summary_prompt,
+                            max_tokens=256,
+                            temperature=0.3,
+                        )
+
+                        repo = AgentConversationRepository(independent_session)
+                        await repo.update_summary(
+                            conversation_id=self.conversation.id,
+                            user_id=self.conversation.user_id,
+                            summary=response.content,
+                        )
+                        logger.info(f"Generated summary for conversation {self.conversation.id}")
 
             except Exception as e:
-                logger.warning(f"Failed to generate summary: {e}")
+                logger.error(f"Failed to generate summary for conversation {self.conversation.id}: {e}", exc_info=True)
+                # Best-effort: try to add uncertainty with independent session
+                try:
+                    from shared.database.postgres_database import pg_connection_manager
+
+                    async with pg_connection_manager.get_session() as err_session:
+                        repo = AgentConversationRepository(err_session)
+                        await repo.add_uncertainty(
+                            conversation_id=self.conversation.id,
+                            user_id=self.conversation.user_id,
+                            severity=UncertaintySeverity.INFO,
+                            message="Summary generation failed. Context recovery may be incomplete.",
+                            context={"error": str(e)},
+                        )
+                except Exception as inner_e:
+                    logger.warning(f"Failed to add uncertainty after summary failure: {inner_e}")
 
     async def add_subagent_result(
         self,
@@ -1108,6 +1227,8 @@ When you're done responding (no more tools to call), just write your response no
         """Add a sub-agent result to the conversation.
 
         Called by spawn tools after sub-agent execution completes.
+        Uses an independent database session to avoid cancellation when
+        the SSE connection is closed.
 
         Args:
             subagent_type: Type of sub-agent (source_analyzer, pipeline_validator)
@@ -1127,12 +1248,21 @@ When you're done responding (no more tools to call), just write your response no
 
         # Update source analysis if from source analyzer
         if subagent_type == "source_analyzer" and result:
-            await self.repo.update_source_analysis(
-                conversation_id=self.conversation.id,
-                user_id=self.conversation.user_id,
-                source_analysis=result,
-            )
-            self.conversation.source_analysis = result
+            from shared.database.postgres_database import pg_connection_manager
+
+            try:
+                async with pg_connection_manager.get_session() as independent_session:
+                    repo = AgentConversationRepository(independent_session)
+                    await repo.update_source_analysis(
+                        conversation_id=self.conversation.id,
+                        user_id=self.conversation.user_id,
+                        source_analysis=result,
+                    )
+                self.conversation.source_analysis = result
+            except Exception as e:
+                logger.error(f"Failed to update source analysis: {e}", exc_info=True)
+                # Still update local state even if DB persist fails
+                self.conversation.source_analysis = result
 
 
 __all__ = ["AgentOrchestrator", "AgentResponse", "ORCHESTRATOR_TOOL_CLASSES"]

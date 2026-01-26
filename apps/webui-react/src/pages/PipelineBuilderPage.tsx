@@ -1,9 +1,9 @@
-// apps/webui-react/src/pages/PipelineBuilderPage.tsx
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useConversationDetail, useApplyPipeline } from '../hooks/useAgentConversation';
 import { useAgentStream } from '../hooks/useAgentStream';
-import { agentApiV2 } from '../services/api/v2/agent';
+import { agentApiV2, agentKeys } from '../services/api/v2/agent';
 import { useUIStore } from '../stores/uiStore';
 import {
   PipelineVisualization,
@@ -50,6 +50,7 @@ export function PipelineBuilderPage() {
   const { conversationId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
   const { addToast } = useUIStore();
+  const queryClient = useQueryClient();
 
   // Fetch conversation details
   const { data: conversation, isLoading, error } = useConversationDetail(conversationId || '');
@@ -61,14 +62,46 @@ export function PipelineBuilderPage() {
   const [dag, setDag] = useState<PipelineDAG | null>(null);
   const [isValidating, setIsValidating] = useState(false);
 
-  // Agent stream hook
+  // Memoize callbacks to avoid re-creating on every render
+  const streamCallbacks = useMemo(() => ({
+    onDone: () => {
+      // Refetch conversation to get updated source_analysis and pipeline
+      queryClient.invalidateQueries({ queryKey: agentKeys.detail(conversationId || '') });
+    },
+    onError: (errorMsg: string) => {
+      addToast({ type: 'error', message: `Agent error: ${errorMsg}` });
+    },
+  }), [queryClient, conversationId, addToast]);
+
+  // Agent stream hook - now includes currentContent for agent response display
   const {
     status,
     activities,
     pendingQuestions,
     dismissQuestion,
     isStreaming,
-  } = useAgentStream(conversationId || '', {});
+    sendMessage,
+    currentContent,
+  } = useAgentStream(conversationId || '', streamCallbacks);
+
+  // Track if we've auto-started the agent
+  const [hasAutoStarted, setHasAutoStarted] = useState(false);
+
+  // Auto-start agent when page loads in assisted mode with source config
+  useEffect(() => {
+    if (
+      mode === 'assisted' &&
+      conversationId &&
+      !isLoading && // Wait for conversation to be fully loaded
+      !isStreaming &&
+      !hasAutoStarted &&
+      conversation?.inline_source_config &&
+      !conversation?.current_pipeline // Don't auto-start if pipeline already exists
+    ) {
+      setHasAutoStarted(true);
+      sendMessage('Analyze my source and recommend a pipeline configuration.');
+    }
+  }, [mode, conversationId, isLoading, isStreaming, hasAutoStarted, conversation?.inline_source_config, conversation?.current_pipeline, sendMessage]);
 
   // Initialize DAG from conversation
   useEffect(() => {
@@ -142,19 +175,19 @@ export function PipelineBuilderPage() {
     }
   }, [conversationId, dismissQuestion, addToast]);
 
-  // Handle status bar send
+  // Handle status bar send - uses the hook's sendMessage for proper SSE streaming
   const handleSend = useCallback(async (message: string) => {
     if (!conversationId) return;
 
     try {
-      await agentApiV2.sendMessage(conversationId, message);
+      await sendMessage(message);
     } catch (err) {
       addToast({
         type: 'error',
         message: `Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`,
       });
     }
-  }, [conversationId, addToast]);
+  }, [conversationId, sendMessage, addToast]);
 
   // Handle stop
   const handleStop = useCallback(async () => {
@@ -260,11 +293,13 @@ export function PipelineBuilderPage() {
     );
   }
 
-  // Get source info
+  // Get source info - show loading state while conversation is being fetched
   const sourceInfo = conversation?.inline_source_config;
-  const sourceName = (sourceInfo?.source_config?.path as string)
-    || (sourceInfo?.source_config?.repo_url as string)
-    || 'Unknown source';
+  const sourceName = isLoading
+    ? 'Loading...'
+    : (sourceInfo?.source_config?.path as string)
+      || (sourceInfo?.source_config?.repo_url as string)
+      || 'Unknown source';
   const sourceType = sourceInfo?.source_type || 'directory';
 
   return (
@@ -340,6 +375,7 @@ export function PipelineBuilderPage() {
           isStreaming={isStreaming}
           onSend={handleSend}
           onStop={handleStop}
+          agentResponse={currentContent}
         />
       )}
 

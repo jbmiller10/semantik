@@ -1,10 +1,11 @@
 """Agent service for conversational pipeline building.
 
-This module provides the core components for the agentic pipeline builder:
-- AgentConversation: Persistent conversation state
-- AgentOrchestrator: Main agent that handles conversation flow
-- SubAgent: Base class for specialized sub-agents
-- MessageStore: Redis-based message persistence
+This module provides the core data models and exceptions for the agentic pipeline builder:
+- AgentConversation: Persistent conversation state model
+- ConversationUncertainty: Model for tracking uncertainties in conversations
+- ConversationStatus: Enum for conversation lifecycle states
+- UncertaintySeverity: Enum for uncertainty severity levels
+- Agent exceptions: AgentError, SubAgentFailedError, ConversationNotActiveError, BlockingUncertaintyError
 """
 
 from webui.services.agent.exceptions import (

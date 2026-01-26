@@ -287,3 +287,116 @@ class TestPipelineRouter:
 
         assert entry is not None
         assert entry.id == "parser"
+
+    def test_get_next_nodes_at_reconvergence_pdf(
+        self, branching_dag: PipelineDAG, pdf_file: FileReference
+    ) -> None:
+        """Test routing from pdf-parser to shared chunker at reconvergence point.
+
+        In a diamond pattern DAG:
+        _source -> pdf-parser -> chunker -> embedder
+                -> text-parser -^
+
+        Both parsers should route to the same chunker node.
+        """
+        router = PipelineRouter(branching_dag)
+        pdf_parser = router._node_index["pdf-parser"]
+
+        next_nodes = router.get_next_nodes(pdf_parser, pdf_file)
+
+        assert len(next_nodes) == 1
+        assert next_nodes[0].id == "chunker"
+
+    def test_get_next_nodes_at_reconvergence_text(
+        self, branching_dag: PipelineDAG, text_file: FileReference
+    ) -> None:
+        """Test routing from text-parser to shared chunker at reconvergence point.
+
+        Both branches (pdf-parser and text-parser) should converge at chunker.
+        """
+        router = PipelineRouter(branching_dag)
+        text_parser = router._node_index["text-parser"]
+
+        next_nodes = router.get_next_nodes(text_parser, text_file)
+
+        assert len(next_nodes) == 1
+        assert next_nodes[0].id == "chunker"
+
+    def test_get_all_paths_diamond_pattern_pdf(
+        self, branching_dag: PipelineDAG, pdf_file: FileReference
+    ) -> None:
+        """Test path finding through diamond pattern for PDF files.
+
+        For a .pdf file, the path should be:
+        pdf-parser -> chunker -> embedder
+        """
+        router = PipelineRouter(branching_dag)
+
+        paths = router.get_all_paths(pdf_file)
+
+        assert len(paths) == 1
+        path = paths[0]
+        assert len(path) == 3
+        assert path[0].id == "pdf-parser"
+        assert path[1].id == "chunker"
+        assert path[2].id == "embedder"
+
+    def test_get_all_paths_diamond_pattern_text(
+        self, branching_dag: PipelineDAG, text_file: FileReference
+    ) -> None:
+        """Test path finding through diamond pattern for text files.
+
+        For a .txt file (non-PDF), the path should be:
+        text-parser -> chunker -> embedder
+        """
+        router = PipelineRouter(branching_dag)
+
+        paths = router.get_all_paths(text_file)
+
+        assert len(paths) == 1
+        path = paths[0]
+        assert len(path) == 3
+        assert path[0].id == "text-parser"
+        assert path[1].id == "chunker"
+        assert path[2].id == "embedder"
+
+    def test_diamond_reconvergence_same_chunker_node(
+        self, branching_dag: PipelineDAG, pdf_file: FileReference, text_file: FileReference
+    ) -> None:
+        """Test that both branches converge to the same chunker node instance.
+
+        In a diamond DAG, both paths should lead to the exact same node object
+        at the reconvergence point.
+        """
+        router = PipelineRouter(branching_dag)
+
+        # Get paths for both file types
+        pdf_paths = router.get_all_paths(pdf_file)
+        text_paths = router.get_all_paths(text_file)
+
+        # Both should have chunker as the second node
+        pdf_chunker = pdf_paths[0][1]
+        text_chunker = text_paths[0][1]
+
+        # Should be the same node object
+        assert pdf_chunker is text_chunker
+        assert pdf_chunker.id == "chunker"
+
+    def test_diamond_pattern_chunker_to_embedder(
+        self, branching_dag: PipelineDAG, pdf_file: FileReference
+    ) -> None:
+        """Test that chunker correctly routes to embedder after reconvergence.
+
+        After both branches converge at chunker, the path should continue
+        to the embedder node.
+        """
+        router = PipelineRouter(branching_dag)
+        chunker_node = router._node_index["chunker"]
+
+        # File reference doesn't affect routing from chunker to embedder
+        # since there are no predicates on that edge
+        next_nodes = router.get_next_nodes(chunker_node, pdf_file)
+
+        assert len(next_nodes) == 1
+        assert next_nodes[0].id == "embedder"
+        assert next_nodes[0].type == NodeType.EMBEDDER

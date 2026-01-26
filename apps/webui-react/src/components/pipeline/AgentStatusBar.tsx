@@ -1,5 +1,4 @@
-// apps/webui-react/src/components/pipeline/AgentStatusBar.tsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Square } from 'lucide-react';
 import { ActivityLog } from './ActivityLog';
 import { AgentInput } from './AgentInput';
@@ -15,6 +14,8 @@ export interface AgentStatusBarProps {
   isStreaming: boolean;
   onSend: (message: string) => void;
   onStop: () => void;
+  /** The agent's text response (markdown) */
+  agentResponse?: string;
 }
 
 export function AgentStatusBar({
@@ -23,8 +24,18 @@ export function AgentStatusBar({
   isStreaming,
   onSend,
   onStop,
+  agentResponse,
 }: AgentStatusBarProps) {
   const [expanded, setExpanded] = useState(false);
+  const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
+
+  // Auto-expand when agent response arrives (first time only)
+  useEffect(() => {
+    if (agentResponse && !hasAutoExpanded && !isStreaming) {
+      setExpanded(true);
+      setHasAutoExpanded(true);
+    }
+  }, [agentResponse, hasAutoExpanded, isStreaming]);
 
   const toggleExpanded = useCallback(() => {
     setExpanded((prev) => !prev);
@@ -101,6 +112,20 @@ export function AgentStatusBar({
       {/* Expanded section */}
       {expanded && (
         <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+          {/* Agent response */}
+          {agentResponse && (
+            <div>
+              <h4 className="text-xs font-medium text-[var(--text-muted)] mb-2 uppercase tracking-wide">
+                Agent Response:
+              </h4>
+              <div
+                className="text-sm text-[var(--text-primary)] bg-[var(--bg-tertiary)] rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono"
+              >
+                {agentResponse}
+              </div>
+            </div>
+          )}
+
           {/* Activity log */}
           <div>
             <h4 className="text-xs font-medium text-[var(--text-muted)] mb-2 uppercase tracking-wide">
@@ -113,7 +138,7 @@ export function AgentStatusBar({
           <div className="pt-2 border-t border-[var(--border-subtle)]">
             <AgentInput
               onSend={onSend}
-              disabled={!isStreaming && displayStatus.phase === 'idle'}
+              disabled={isStreaming}
             />
           </div>
         </div>

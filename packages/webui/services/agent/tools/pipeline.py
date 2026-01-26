@@ -622,16 +622,43 @@ class ApplyPipelineTool(BaseTool):
                 source_id = new_source_id
 
                 # Store secrets encrypted if any
+                # Note: secrets may already be encrypted (as base64 strings) from agent.py
                 if pending_secrets:
+                    from shared.utils.encryption import (
+                        DecryptionError,
+                        EncryptionNotConfiguredError,
+                        decrypt_secret,
+                    )
+
                     secret_repo = ConnectorSecretRepository(session)
                     for secret_key, value in pending_secrets.items():
                         # Map common secret keys to valid secret types
                         secret_type = _map_secret_key_to_type(secret_key)
                         if secret_type:
+                            # Try to decrypt the value (it may be encrypted from agent.py)
+                            plaintext_value = value
+                            try:
+                                plaintext_value = decrypt_secret(value)
+                            except EncryptionNotConfiguredError:
+                                logger.warning(
+                                    f"Encryption not configured - using raw secret "
+                                    f"for source {new_source_id}"
+                                )
+                            except DecryptionError as e:
+                                logger.error(
+                                    f"Failed to decrypt secret '{secret_key}' "
+                                    f"for source {new_source_id}: {e}"
+                                )
+                            except ValueError as e:
+                                logger.error(
+                                    f"Invalid secret format for '{secret_key}' "
+                                    f"on source {new_source_id}: {e}"
+                                )
+
                             await secret_repo.set_secret(
                                 source_id=new_source_id,
                                 secret_type=secret_type,
-                                plaintext=value,
+                                plaintext=plaintext_value,
                             )
 
                 # Update conversation with the new source ID and clear pending secrets

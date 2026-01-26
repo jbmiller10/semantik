@@ -227,6 +227,7 @@ class TestAgentConversationRepository:
 
         result = await repository.resolve_uncertainty(
             uncertainty_id=uncertainty_id,
+            user_id=1,
             resolved_by="user_confirmed",
         )
 

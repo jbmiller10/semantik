@@ -286,3 +286,4 @@ conductor/
 
 # Git worktrees
 .worktrees/
+docs/investigation*

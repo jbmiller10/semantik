@@ -363,3 +363,30 @@ class TestMessageStore:
 
         # Lock should still be released despite exception
         mock_redis.delete.assert_called()
+
+    @pytest.mark.asyncio()
+    async def test_concurrent_lock_acquisition_is_exclusive(self, message_store, mock_redis):
+        """Verify that only one caller can hold a lock at a time.
+
+        When two callers attempt to acquire a lock, only the first succeeds
+        until it releases the lock.
+        """
+        conv_id = str(uuid4())
+
+        # Track which calls succeeded
+        first_acquired = None
+        second_acquired = None
+
+        # First set call returns True (lock acquired), second returns None (failed)
+        mock_redis.set.side_effect = [True, None]
+
+        # First caller acquires lock
+        first_acquired = await message_store.acquire_lock(conv_id)
+        assert first_acquired is True
+
+        # Second caller should fail while first holds lock
+        second_acquired = await message_store.acquire_lock(conv_id)
+        assert second_acquired is False
+
+        # Both calls should have attempted SET with NX
+        assert mock_redis.set.call_count == 2

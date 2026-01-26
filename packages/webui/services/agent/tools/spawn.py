@@ -180,45 +180,73 @@ class SpawnSourceAnalyzerTool(BaseTool):
                     "error": f"Failed to create LLM provider: {e}",
                 }
 
-            # Build sub-agent context
+            # Import the connection manager for independent session
+            from shared.database.postgres_database import pg_connection_manager
+
+            # Build sub-agent context - NOTE: We'll create an independent session below
+            # to avoid the request lifecycle cancellation issue
             subagent_context = {
                 "source_id": effective_source_id,  # May be None for inline sources
                 "source_type": source_type,
                 "connector": connector,
                 "user_intent": user_intent,
-                "session": session,
                 "user_id": user_id,
+                # session will be set below with independent session
             }
 
-            # Run the sub-agent
-            async with llm_provider:
-                agent = SourceAnalyzer(llm_provider, subagent_context)
-                result: SubAgentResult = await agent.run()
+            # Run the sub-agent with an INDEPENDENT database session
+            # This prevents cancellation when SSE connection closes
+            async with pg_connection_manager.get_session() as subagent_session:
+                subagent_context["session"] = subagent_session
 
-            # Store analysis in conversation state
-            if conversation and result.success:
-                conversation.source_analysis = result.data
+                async with llm_provider:
+                    agent = SourceAnalyzer(llm_provider, subagent_context)
+                    result: SubAgentResult = await agent.run()
 
-            # Store uncertainties in conversation
-            if conversation and result.uncertainties:
-                from webui.services.agent.repository import AgentConversationRepository
+                # Store analysis in conversation state using the subagent's session
+                if conversation and result.success:
+                    conversation.source_analysis = result.data
+                    # Update the conversation in the database
+                    from webui.services.agent.repository import AgentConversationRepository
 
-                repo = AgentConversationRepository(session)
-                for uncertainty in result.uncertainties:
-                    await repo.add_uncertainty(
+                    repo = AgentConversationRepository(subagent_session)
+                    await repo.update_source_analysis(
                         conversation_id=conversation.id,
                         user_id=user_id,
-                        severity=uncertainty.severity,
-                        message=uncertainty.message,
-                        context=uncertainty.context,
+                        source_analysis=result.data,
                     )
 
-            return {
-                "success": result.success,
-                "analysis": result.data,
-                "summary": result.summary,
-                "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
-            }
+                # Store uncertainties in conversation
+                if conversation and result.uncertainties:
+                    from webui.services.agent.models import UncertaintySeverity
+                    from webui.services.agent.repository import AgentConversationRepository
+
+                    repo = AgentConversationRepository(subagent_session)
+                    for uncertainty in result.uncertainties:
+                        # Normalize severity to valid enum value (LLM may generate invalid values like "critical")
+                        try:
+                            severity = UncertaintySeverity(uncertainty.severity)
+                        except ValueError:
+                            # Map common invalid values or default to INFO
+                            severity_map = {"critical": UncertaintySeverity.BLOCKING, "warning": UncertaintySeverity.NOTABLE}
+                            severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
+
+                        await repo.add_uncertainty(
+                            conversation_id=conversation.id,
+                            user_id=user_id,
+                            severity=severity,
+                            message=uncertainty.message,
+                            context=uncertainty.context,
+                        )
+                # Commit happens automatically via the context manager
+
+                return {
+                    "success": result.success,
+                    "analysis": result.data,
+                    "summary": result.summary,
+                    "error": result.summary if not result.success else None,
+                    "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                }
 
         except Exception as e:
             logger.error(f"Failed to spawn SourceAnalyzer: {e}", exc_info=True)
@@ -252,14 +280,19 @@ class SpawnPipelineValidatorTool(BaseTool):
     DESCRIPTION: ClassVar[str] = (
         "Validate a pipeline configuration against sample files. Spawns a specialized "
         "sub-agent that runs dry-run validation, investigates failures, and returns "
-        "a structured validation report with assessment and suggested fixes."
+        "a structured validation report with assessment and suggested fixes. "
+        "IMPORTANT: You must first call build_pipeline or get_pipeline_state to obtain "
+        "the pipeline object, then pass it as the 'pipeline' argument to this tool."
     )
     PARAMETERS: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {
             "pipeline": {
                 "type": "object",
-                "description": "Pipeline DAG configuration to validate",
+                "description": (
+                    "Pipeline DAG configuration to validate. Obtain this from the "
+                    "'pipeline' field returned by build_pipeline or get_pipeline_state."
+                ),
             },
             "sample_count": {
                 "type": "integer",
@@ -366,46 +399,64 @@ class SpawnPipelineValidatorTool(BaseTool):
                     "error": f"Failed to create LLM provider: {e}",
                 }
 
-            # Build sub-agent context
+            # Import the connection manager for independent session
+            from shared.database.postgres_database import pg_connection_manager
+
+            # Build sub-agent context - NOTE: We'll create an independent session below
+            # to avoid the request lifecycle cancellation issue
             subagent_context = {
                 "pipeline": pipeline,
                 "sample_files": sample_files,
                 "connector": connector,
-                "session": session,
                 "user_id": user_id,
+                # session will be set below with independent session
             }
 
-            # Run the sub-agent
+            # Run the sub-agent with an INDEPENDENT database session
+            # This prevents cancellation when SSE connection closes
             from webui.services.agent.subagents.pipeline_validator import PipelineValidator
 
-            async with llm_provider:
-                agent = PipelineValidator(llm_provider, subagent_context)
-                result: SubAgentResult = await agent.run()
+            async with pg_connection_manager.get_session() as subagent_session:
+                subagent_context["session"] = subagent_session
 
-            # Store validation report in conversation state
-            if conversation and result.success:
-                conversation.current_pipeline_validation = result.data
+                async with llm_provider:
+                    agent = PipelineValidator(llm_provider, subagent_context)
+                    result: SubAgentResult = await agent.run()
 
-            # Store uncertainties in conversation
-            if conversation and result.uncertainties:
-                from webui.services.agent.repository import AgentConversationRepository
+                # Store validation report in conversation state
+                if conversation and result.success:
+                    conversation.current_pipeline_validation = result.data
 
-                repo = AgentConversationRepository(session)
-                for uncertainty in result.uncertainties:
-                    await repo.add_uncertainty(
-                        conversation_id=conversation.id,
-                        user_id=user_id,
-                        severity=uncertainty.severity,
-                        message=uncertainty.message,
-                        context=uncertainty.context,
-                    )
+                # Store uncertainties in conversation
+                if conversation and result.uncertainties:
+                    from webui.services.agent.models import UncertaintySeverity
+                    from webui.services.agent.repository import AgentConversationRepository
 
-            return {
-                "success": result.success,
-                "report": result.data,
-                "summary": result.summary,
-                "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
-            }
+                    repo = AgentConversationRepository(subagent_session)
+                    for uncertainty in result.uncertainties:
+                        # Normalize severity to valid enum value (LLM may generate invalid values like "critical")
+                        try:
+                            severity = UncertaintySeverity(uncertainty.severity)
+                        except ValueError:
+                            # Map common invalid values or default to INFO
+                            severity_map = {"critical": UncertaintySeverity.BLOCKING, "warning": UncertaintySeverity.NOTABLE}
+                            severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
+
+                        await repo.add_uncertainty(
+                            conversation_id=conversation.id,
+                            user_id=user_id,
+                            severity=severity,
+                            message=uncertainty.message,
+                            context=uncertainty.context,
+                        )
+                # Commit happens automatically via the context manager
+
+                return {
+                    "success": result.success,
+                    "report": result.data,
+                    "summary": result.summary,
+                    "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                }
 
         except Exception as e:
             logger.error(f"Failed to spawn PipelineValidator: {e}", exc_info=True)

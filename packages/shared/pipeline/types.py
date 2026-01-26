@@ -312,6 +312,19 @@ class DAGValidationError:
     edge_index: int | None = None
 
 
+class DAGValidationException(Exception):
+    """Exception raised when DAG validation fails.
+
+    Attributes:
+        errors: List of validation errors encountered
+    """
+
+    def __init__(self, errors: list[DAGValidationError]) -> None:
+        self.errors = errors
+        error_messages = "; ".join(e.message for e in errors)
+        super().__init__(f"DAG validation failed: {error_messages}")
+
+
 @dataclass
 class PipelineDAG:
     """A complete pipeline DAG definition.
@@ -376,6 +389,40 @@ class PipelineDAG:
             edges=[PipelineEdge.from_dict(e) for e in data.get("edges", [])],
         )
 
+    @classmethod
+    def create_validated(
+        cls,
+        id: str,
+        version: str,
+        nodes: list[PipelineNode],
+        edges: list[PipelineEdge],
+        known_plugins: set[str] | None = None,
+    ) -> PipelineDAG:
+        """Create a PipelineDAG with validation.
+
+        Factory method that creates a DAG and validates it immediately,
+        raising an exception if validation fails. Use this to ensure
+        DAG-level invariants are enforced at construction time.
+
+        Args:
+            id: Unique identifier for this DAG definition
+            version: Schema version for forward compatibility
+            nodes: List of processing nodes in the DAG
+            edges: List of edges defining the data flow
+            known_plugins: Optional set of registered plugin IDs for validation
+
+        Returns:
+            A validated PipelineDAG instance
+
+        Raises:
+            DAGValidationException: If the DAG fails validation
+        """
+        dag = cls(id=id, version=version, nodes=nodes, edges=edges)
+        errors = dag.validate(known_plugins)
+        if errors:
+            raise DAGValidationException(errors)
+        return dag
+
 
 __all__ = [
     "NodeType",
@@ -385,5 +432,6 @@ __all__ = [
     "PipelineNode",
     "PipelineEdge",
     "DAGValidationError",
+    "DAGValidationException",
     "PipelineDAG",
 ]

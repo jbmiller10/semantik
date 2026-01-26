@@ -11,7 +11,9 @@ handle complex, multi-step tasks. Each sub-agent has:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -115,6 +117,11 @@ class ToolResult:
     data: Any = None
     error: str | None = None
 
+    def __post_init__(self) -> None:
+        """Validate consistency of success and error fields."""
+        if self.success and self.error is not None:
+            raise ValueError("Successful tool result cannot have error")
+
 
 class SubAgent(ABC):
     """Base class for sub-agents.
@@ -143,6 +150,12 @@ class SubAgent(ABC):
     TOOLS: ClassVar[list[type[BaseTool]]]
     MAX_TURNS: ClassVar[int] = 20
     TIMEOUT_SECONDS: ClassVar[int] = 300  # 5 minutes
+
+    # Pattern for parsing tool calls from LLM responses
+    TOOL_CALL_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
+        r"```tool\s*\n?(.*?)\n?```",
+        re.DOTALL,
+    )
 
     def __init__(
         self,
@@ -230,25 +243,111 @@ class SubAgent(ABC):
     async def _generate_response(self) -> Message:
         """Generate a response from the LLM.
 
-        This method should be overridden if the LLM interface differs.
-        The default implementation assumes the LLM provider has a
-        generate method that accepts messages and tools.
+        Builds a prompt from the full message history, calls the LLM,
+        and parses tool calls from the response.
         """
-        # Build messages for LLM
-        llm_messages = self._build_llm_messages()
+        # Build full prompt from message history
+        prompt = self._build_prompt()
+
+        # Build system prompt with tool descriptions
+        system_prompt = self._build_full_system_prompt()
 
         # Generate response
-        # Note: The actual implementation will depend on the LLM provider interface
-        # This is a placeholder that will be refined during integration
-        response_text = await self.llm.generate(
-            prompt=llm_messages[-1]["content"] if llm_messages else "",
-            system_prompt=self.SYSTEM_PROMPT,
+        # Use longer timeout for sub-agents (default 60s is too short)
+        response = await self.llm.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
             max_tokens=4096,
+            temperature=0.7,
+            timeout=180,
         )
 
+        response_content = response.content
+
         # Parse response for tool calls
-        # In a real implementation, this would parse the LLM's structured output
-        return Message(role="assistant", content=response_text.content)
+        tool_calls = self._parse_tool_calls(response_content)
+
+        # Clean response content (remove tool call blocks)
+        clean_content = self.TOOL_CALL_PATTERN.sub("", response_content).strip()
+
+        return Message(role="assistant", content=clean_content, tool_calls=tool_calls or None)
+
+    def _build_prompt(self) -> str:
+        """Build a prompt string from message history."""
+        prompt_parts = []
+
+        for msg in self.messages:
+            if msg.role == "user":
+                prompt_parts.append(f"User: {msg.content}")
+            elif msg.role == "assistant":
+                prompt_parts.append(f"Assistant: {msg.content}")
+            elif msg.role == "tool" and msg.tool_results:
+                for result in msg.tool_results:
+                    status = "Success" if result.success else "Error"
+                    content = str(result.data) if result.success else result.error
+                    prompt_parts.append(f"Tool ({result.name}) [{status}]: {content}")
+
+        return "\n\n".join(prompt_parts)
+
+    def _build_full_system_prompt(self) -> str:
+        """Build system prompt with tool descriptions."""
+        tool_descriptions = self._get_tool_descriptions()
+        return f"""{self.SYSTEM_PROMPT}
+
+## Tool Usage
+
+When you need to take an action, output a tool call in this format:
+```tool
+{{"name": "tool_name", "arguments": {{"param1": "value1"}}}}
+```
+
+You can call multiple tools by including multiple tool blocks.
+
+When you're done responding (no more tools to call), just write your response normally.
+
+## Available Tools
+
+{tool_descriptions}"""
+
+    def _get_tool_descriptions(self) -> str:
+        """Generate formatted tool descriptions."""
+        descriptions = []
+        for tool in self.tools.values():
+            desc = f"### {tool.NAME}\n{tool.DESCRIPTION}\n"
+            params = tool.PARAMETERS.get("properties", {})
+            if params:
+                desc += "Parameters:\n"
+                for name, spec in params.items():
+                    required = name in tool.PARAMETERS.get("required", [])
+                    req_marker = " (required)" if required else ""
+                    desc += f"  - {name}{req_marker}: {spec.get('description', spec.get('type', 'any'))}\n"
+            descriptions.append(desc)
+        return "\n".join(descriptions)
+
+    def _parse_tool_calls(self, response: str) -> list[ToolCall]:
+        """Parse tool calls from LLM response."""
+        tool_calls = []
+
+        for i, match in enumerate(self.TOOL_CALL_PATTERN.finditer(response)):
+            try:
+                content = match.group(1).strip()
+                data = json.loads(content)
+
+                tool_call = ToolCall(
+                    id=f"call_{i}",
+                    name=data.get("name", ""),
+                    arguments=data.get("arguments", {}),
+                )
+
+                if tool_call.name:
+                    tool_calls.append(tool_call)
+                    logger.debug(f"Sub-agent parsed tool call: {tool_call.name}")
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse tool call: {e}")
+                continue
+
+        return tool_calls
 
     def _build_llm_messages(self) -> list[dict[str, Any]]:
         """Convert internal messages to LLM format."""
@@ -306,7 +405,7 @@ class SubAgent(ABC):
                     )
                 )
             except Exception as e:
-                logger.warning(f"Tool {call.name} failed: {e}")
+                logger.error(f"Tool {call.name} failed: {e}", exc_info=True)
                 results.append(
                     ToolResult(
                         tool_call_id=call.id,

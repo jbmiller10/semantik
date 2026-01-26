@@ -92,6 +92,10 @@ class EnumerateFilesTool(BaseTool):
             if hasattr(connector, "authenticate"):
                 auth_result = await connector.authenticate()
                 if not auth_result:
+                    logger.error(
+                        f"Authentication failed for source {source_id} "
+                        f"with connector type {type(connector).__name__}"
+                    )
                     return {
                         "success": False,
                         "error": "Failed to authenticate with source",
@@ -234,7 +238,7 @@ class SampleFilesTool(BaseTool):
         extension: str | None = None,
         min_size_bytes: int | None = None,
         max_size_bytes: int | None = None,
-        random_shuffle: bool = True,
+        random: bool = True,
         content_type: str | None = None,
     ) -> dict[str, Any]:
         """Execute file sampling.
@@ -244,15 +248,14 @@ class SampleFilesTool(BaseTool):
             extension: Filter by extension
             min_size_bytes: Minimum size filter
             max_size_bytes: Maximum size filter
-            random_shuffle: Whether to randomize results
+            random: Whether to randomize results
             content_type: Filter by content type
 
         Returns:
             Dictionary with sampled file references
         """
-        # Handle the 'random' parameter name collision with Python's random module
-        if "random" in self.context.get("_tool_kwargs", {}):
-            random_shuffle = self.context["_tool_kwargs"]["random"]
+        # Use local variable to avoid shadowing Python's random module
+        should_randomize = random
 
         try:
             # Check for enumerated files
@@ -282,9 +285,10 @@ class SampleFilesTool(BaseTool):
                 filtered = [f for f in filtered if f.content_type == content_type]
 
             # Randomize if requested
-            if random_shuffle:
+            if should_randomize:
+                import random as random_module
                 filtered = list(filtered)
-                random.shuffle(filtered)
+                random_module.shuffle(filtered)
 
             # Limit count
             count = min(count, MAX_SAMPLE_SIZE)

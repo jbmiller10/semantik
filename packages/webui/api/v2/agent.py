@@ -191,15 +191,35 @@ async def create_conversation(
                 detail=str(e),
             ) from e
 
-        # Store inline source config with pending secrets
+        # Store inline source config with encrypted pending secrets
         inline_source_config = {
             "source_type": request.inline_source.source_type,
             "source_config": request.inline_source.source_config,
         }
 
-        # Store secrets temporarily (will be moved to ConnectorSecret on apply)
+        # Encrypt secrets immediately for defense in depth
+        # They will be decrypted and moved to ConnectorSecret on apply
         if request.secrets:
-            inline_source_config["_pending_secrets"] = request.secrets
+            from shared.config import settings
+            from shared.utils.encryption import EncryptionNotConfiguredError, encrypt_secret
+
+            try:
+                encrypted_secrets = {
+                    key: encrypt_secret(value) for key, value in request.secrets.items()
+                }
+                inline_source_config["_pending_secrets"] = encrypted_secrets
+            except EncryptionNotConfiguredError as e:
+                # In production, fail rather than store plaintext secrets
+                if settings.ENVIRONMENT == "production":
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Server encryption not configured. Contact administrator.",
+                    ) from e
+                # Development only: store plaintext with warning
+                logger.warning(
+                    "CONNECTOR_SECRETS_KEY not configured - secrets stored unencrypted (dev only)"
+                )
+                inline_source_config["_pending_secrets"] = request.secrets
 
     # Create conversation
     repo = AgentConversationRepository(db)
@@ -331,34 +351,65 @@ async def send_message_stream(
     """
     user_id = int(current_user["id"])
 
-    # Get conversation with ownership check
-    conversation = await _get_conversation_for_user(
+    # Verify conversation exists and user has access (quick ownership check)
+    # We only use this for permission validation - conversation will be re-loaded
+    # inside the generator with an independent session
+    await _get_conversation_for_user(
         db,
         conversation_id,
         user_id,
         include_uncertainties=False,
     )
 
-    # Create orchestrator dependencies
-    message_store = await _get_message_store()
-    llm_factory = LLMServiceFactory(db)
-
-    # Create orchestrator
-    orchestrator = AgentOrchestrator(
-        conversation=conversation,
-        session=db,
-        llm_factory=llm_factory,
-        message_store=message_store,
-    )
+    # Get message from request before entering generator
+    message = request.message
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        """Generate SSE events from orchestrator streaming."""
+        """Generate SSE events from orchestrator streaming.
+
+        Uses an independent database session for all operations to avoid
+        session cancellation when the SSE connection is closed. The request-
+        bound session (from Depends(get_db)) gets cancelled when the HTTP
+        connection closes, but we need database operations to complete.
+
+        The conversation is re-loaded inside this generator with the independent
+        session to prevent detached object errors when the request session closes.
+        """
+        import json
+
+        from shared.database.postgres_database import pg_connection_manager
+
         try:
-            async for event in orchestrator.handle_message_streaming(request.message):
-                # Format as SSE: event: type\ndata: json\n\n
-                event_line = f"event: {event.event.value}\n"
-                data_line = f"data: {event.model_dump_json()}\n\n"
-                yield event_line + data_line
+            # Create independent session for all database operations
+            # This survives SSE connection closure
+            async with pg_connection_manager.get_session() as llm_session:
+                # Re-load conversation with the independent session to avoid
+                # detached object errors when the request-bound session closes
+                conversation = await _get_conversation_for_user(
+                    llm_session,
+                    conversation_id,
+                    user_id,
+                    include_uncertainties=False,
+                )
+
+                # Create orchestrator with independent session for all DB ops
+                message_store = await _get_message_store()
+                llm_factory = LLMServiceFactory(llm_session)
+
+                orchestrator = AgentOrchestrator(
+                    conversation=conversation,
+                    session=llm_session,  # Use independent session for all DB ops
+                    llm_factory=llm_factory,
+                    message_store=message_store,
+                )
+
+                async for event in orchestrator.handle_message_streaming(message):
+                    # Format as SSE: event: type\ndata: json\n\n
+                    # Note: Only serialize event.data, not the whole event object
+                    # The event type is already in the SSE 'event:' line
+                    event_line = f"event: {event.event.value}\n"
+                    data_line = f"data: {json.dumps(event.data)}\n\n"
+                    yield event_line + data_line
         except Exception as e:
             logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
             # Send error event with proper JSON encoding

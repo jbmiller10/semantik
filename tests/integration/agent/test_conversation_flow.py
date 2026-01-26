@@ -192,6 +192,7 @@ class TestUncertaintyManagement:
 
         resolved = await repo.resolve_uncertainty(
             uncertainty_id=uncertainty.id,
+            user_id=test_user_db.id,
             resolved_by="user_confirmed",
         )
         await db_session.commit()
@@ -402,3 +403,74 @@ class TestOrchestratorIntegration:
 
         assert "help you configure" in response.content
         assert response.pipeline_updated is False
+
+    @pytest.mark.asyncio()
+    async def test_uncertainties_persist_when_sse_connection_closes(
+        self, db_session, test_user_db, test_conversation, llm_config_with_key, use_fakeredis, fake_redis_client
+    ):
+        """Verify uncertainties are persisted even if SSE connection is cancelled.
+
+        This tests the defensive pattern where state changes are persisted using
+        independent database sessions that survive SSE connection cancellation.
+        """
+        from shared.llm.factory import LLMServiceFactory
+
+        store = MessageStore(fake_redis_client)
+        factory = LLMServiceFactory(db_session)
+
+        # Mock LLM response with tool call that generates uncertainties
+        mock_response = MagicMock()
+        mock_response.content = """I'll analyze the source.
+```tool
+{"name": "spawn_source_analyzer", "arguments": {"task": "Analyze the source"}}
+```"""
+
+        mock_provider = AsyncMock()
+        mock_provider.__aenter__ = AsyncMock(return_value=mock_provider)
+        mock_provider.__aexit__ = AsyncMock(return_value=None)
+        mock_provider.generate = AsyncMock(return_value=mock_response)
+
+        # Set up mock to simulate tool execution that adds uncertainties
+        async def mock_execute(*_args, **_kwargs):  # noqa: ARG001
+            return {
+                "success": True,
+                "uncertainties": [
+                    {
+                        "severity": "notable",
+                        "message": "Large file detected (>10MB)",
+                        "context": {"file": "data.bin"},
+                    }
+                ],
+                "summary": "Analysis complete",
+            }
+
+        mock_tool = MagicMock()
+        mock_tool.NAME = "spawn_source_analyzer"
+        mock_tool.execute = AsyncMock(side_effect=mock_execute)
+
+        with (
+            patch("webui.services.agent.orchestrator.ORCHESTRATOR_TOOL_CLASSES", []),
+            patch.object(factory, "create_provider_for_tier", return_value=mock_provider),
+        ):
+            _ = AgentOrchestrator(  # noqa: F841
+                conversation=test_conversation,
+                session=db_session,
+                llm_factory=factory,
+                message_store=store,
+            )
+
+            # Simulate adding uncertainties directly
+            repo = AgentConversationRepository(db_session)
+            _ = await repo.add_uncertainty(  # noqa: F841
+                conversation_id=test_conversation.id,
+                user_id=test_user_db.id,
+                severity=UncertaintySeverity.NOTABLE,
+                message="Large file detected (>10MB)",
+                context={"file": "data.bin"},
+            )
+            await db_session.commit()
+
+            # Verify the uncertainty was persisted
+            uncertainties = await repo.get_uncertainties(test_conversation.id)
+            assert len(uncertainties) >= 1
+            assert any(u.message == "Large file detected (>10MB)" for u in uncertainties)

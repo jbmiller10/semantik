@@ -531,23 +531,31 @@ class AgentConversationRepository:
     async def resolve_uncertainty(
         self,
         uncertainty_id: str,
+        user_id: int,
         resolved_by: str,
     ) -> ConversationUncertainty:
         """Mark an uncertainty as resolved.
 
         Args:
             uncertainty_id: UUID of the uncertainty
+            user_id: ID of the user (must own the parent conversation)
             resolved_by: How it was resolved (user_confirmed, pipeline_adjusted, etc.)
 
         Returns:
             Updated ConversationUncertainty instance
 
         Raises:
-            EntityNotFoundError: If uncertainty not found
+            EntityNotFoundError: If uncertainty not found or not owned by user
         """
         try:
+            # Join with conversation to verify ownership
             result = await self.session.execute(
-                select(ConversationUncertainty).where(ConversationUncertainty.id == uncertainty_id)
+                select(ConversationUncertainty)
+                .join(AgentConversation)
+                .where(
+                    ConversationUncertainty.id == uncertainty_id,
+                    AgentConversation.user_id == user_id,
+                )
             )
             uncertainty = result.scalar_one_or_none()
 
@@ -630,3 +638,59 @@ class AgentConversationRepository:
                 exc_info=True,
             )
             raise DatabaseOperationError("list", "conversation_uncertainties", str(e)) from e
+
+    async def cleanup_stale_pending_secrets(
+        self,
+        max_age_hours: int = 24,
+    ) -> int:
+        """Remove encrypted pending secrets from stale or abandoned conversations.
+
+        This is a cleanup task to remove secrets that were encrypted on receipt
+        but never applied (e.g., abandoned conversations).
+
+        Args:
+            max_age_hours: Age threshold for considering conversations stale
+
+        Returns:
+            Number of conversations cleaned up
+        """
+        try:
+            from datetime import timedelta
+
+            cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)
+
+            # Find conversations with _pending_secrets that are:
+            # 1. ABANDONED status, OR
+            # 2. ACTIVE but older than cutoff (stale)
+            result = await self.session.execute(
+                select(AgentConversation).where(
+                    AgentConversation.inline_source_config.isnot(None),
+                    (
+                        (AgentConversation.status == ConversationStatus.ABANDONED)
+                        | (
+                            (AgentConversation.status == ConversationStatus.ACTIVE)
+                            & (AgentConversation.updated_at < cutoff)
+                        )
+                    ),
+                )
+            )
+            conversations = list(result.scalars().all())
+
+            cleaned = 0
+            for conv in conversations:
+                if conv.inline_source_config and "_pending_secrets" in conv.inline_source_config:
+                    # Remove only the _pending_secrets key
+                    cleaned_config = {k: v for k, v in conv.inline_source_config.items() if k != "_pending_secrets"}
+                    conv.inline_source_config = cleaned_config
+                    conv.updated_at = datetime.now(UTC)
+                    cleaned += 1
+
+            if cleaned > 0:
+                await self.session.flush()
+                logger.info(f"Cleaned up pending secrets from {cleaned} stale conversations")
+
+            return cleaned
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup stale pending secrets: {e}", exc_info=True)
+            raise DatabaseOperationError("cleanup", "agent_conversations", str(e)) from e
