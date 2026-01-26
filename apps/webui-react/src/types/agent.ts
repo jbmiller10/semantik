@@ -28,7 +28,8 @@ export type AgentStreamEventType =
   | 'done'
   | 'error'
   | 'status'
-  | 'activity';
+  | 'activity'
+  | 'question'; // Agent question requiring user input
 
 export interface ToolCallStartEvent {
   tool: string;
@@ -94,6 +95,21 @@ export interface StatusEvent {
 export interface ActivityEvent {
   message: string;
   timestamp: string; // ISO 8601
+}
+
+/** Option for an agent question */
+export interface QuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+/** Question event from agent requiring user input */
+export interface QuestionEvent {
+  id: string;
+  message: string;
+  options: QuestionOption[];
+  allowCustom: boolean;
 }
 
 export interface AgentStreamEvent {
