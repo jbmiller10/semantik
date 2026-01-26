@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import { useCreateCollection } from '../hooks/useCollections';
 import { useAddSource } from '../hooks/useCollectionOperations';
+import { useCreateConversation } from '../hooks/useAgentConversation';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { useEmbeddingModels } from '../hooks/useModels';
 import { useConnectorCatalog, useGitPreview, useImapPreview } from '../hooks/useConnectors';
@@ -66,6 +67,10 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const [detectedFileType, setDetectedFileType] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Pipeline setup mode - 'assisted' uses agent builder, 'manual' creates collection directly
+  const [pipelineSetupMode, setPipelineSetupMode] = useState<'assisted' | 'manual'>('manual');
+  const createConversationMutation = useCreateConversation();
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Sparse indexing state
   const [sparseEnabled, setSparseEnabled] = useState(false);
@@ -349,6 +354,36 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
     setIsSubmitting(true);
 
+    // Handle assisted mode - create conversation and navigate to pipeline builder
+    if (pipelineSetupMode === 'assisted' && connectorType !== 'none' && hasSourceConfig()) {
+      try {
+        const conversation = await createConversationMutation.mutateAsync({
+          inline_source: {
+            source_type: connectorType,
+            source_config: configValues,
+          },
+          secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+        });
+
+        addToast({
+          message: 'Starting pipeline builder...',
+          type: 'info',
+        });
+
+        // Navigate to the pipeline builder page
+        navigate(`/pipeline/${conversation.id}`);
+        onClose();
+        return;
+      } catch (error) {
+        addToast({
+          message: error instanceof Error ? error.message : 'Failed to start pipeline builder',
+          type: 'error',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
       // Step 1: Create the collection with chunking and sparse configuration
       const createRequest: CreateCollectionRequest = {
@@ -619,6 +654,51 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               <p className="text-sm text-[var(--text-muted)] mb-4">
                 Optionally add an initial data source to start indexing immediately after collection creation.
               </p>
+
+              {/* Pipeline Setup Mode Selector - only show when a connector is selected */}
+              {connectorType !== 'none' && (
+                <div className="mb-6 p-4 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm font-bold text-[var(--text-primary)]">Pipeline Setup Mode</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPipelineSetupMode('assisted')}
+                      disabled={isSubmitting}
+                      className={`p-3 text-left rounded-xl border transition-all ${
+                        pipelineSetupMode === 'assisted'
+                          ? 'border-amber-500 bg-amber-500/10 text-[var(--text-primary)]'
+                          : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Sparkles className="h-4 w-4 text-amber-500" />
+                        <span className="font-bold text-sm">Assisted</span>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        AI agent helps configure your pipeline based on your data
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPipelineSetupMode('manual')}
+                      disabled={isSubmitting}
+                      className={`p-3 text-left rounded-xl border transition-all ${
+                        pipelineSetupMode === 'manual'
+                          ? 'border-gray-400 dark:border-white bg-gray-100 dark:bg-white/10 text-[var(--text-primary)]'
+                          : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="font-bold text-sm mb-1">Manual</div>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Configure all settings yourself using the form below
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {catalogLoading ? (
                 <div className="flex items-center justify-center py-8">
