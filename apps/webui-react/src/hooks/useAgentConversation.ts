@@ -232,6 +232,22 @@ export function useAbandonConversation() {
 }
 
 /**
+ * Simple hook to fetch conversation detail.
+ * Wrapper around React Query for cleaner imports.
+ */
+export function useConversationDetail(conversationId: string) {
+  return useQuery({
+    queryKey: agentKeys.detail(conversationId),
+    queryFn: async () => {
+      const response = await agentApi.getConversation(conversationId);
+      return response.data;
+    },
+    enabled: !!conversationId,
+    staleTime: 5000,
+  });
+}
+
+/**
  * Helper hook to update pipeline and uncertainties in cache.
  * Used by components that receive stream updates.
  */
