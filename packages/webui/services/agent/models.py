@@ -110,6 +110,9 @@ class AgentConversation(Base):
     # For conversation recovery when Redis messages expire
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Arbitrary extra data (e.g., is_paused for mode toggle)
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

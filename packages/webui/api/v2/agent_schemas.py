@@ -465,3 +465,13 @@ class AgentMessageResponse(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+
+class PauseResumeResponse(BaseModel):
+    """Response after pausing or resuming agent."""
+
+    success: bool
+    is_paused: bool
+    message: str | None = None
+
+    model_config = ConfigDict(extra="forbid")

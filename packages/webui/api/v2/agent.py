@@ -37,6 +37,7 @@ from webui.api.v2.agent_schemas import (
     ConversationResponse,
     CreateConversationRequest,
     MessageResponse,
+    PauseResumeResponse,
     SendMessageRequest,
     UncertaintyResponse,
 )
@@ -712,4 +713,100 @@ async def update_conversation_status(
         status=conversation.status.value,
         source_id=conversation.source_id,
         created_at=conversation.created_at,
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/pause",
+    response_model=PauseResumeResponse,
+    responses={
+        400: {"description": "Conversation not active"},
+        404: {"description": "Conversation not found"},
+    },
+)
+async def pause_agent(
+    conversation_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PauseResumeResponse:
+    """Pause agent processing (switch to manual mode).
+
+    Signals the agent to stop processing after the current operation.
+    User can continue editing the pipeline manually.
+    """
+    user_id = int(current_user["id"])
+
+    conversation = await _get_conversation_for_user(
+        db, conversation_id, user_id, include_uncertainties=False
+    )
+
+    if conversation.status != ConversationStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Conversation is not active (status: {conversation.status.value})",
+        )
+
+    # Store pause state in conversation metadata
+    repo = AgentConversationRepository(db)
+    await repo.update_metadata(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        metadata={"is_paused": True},
+    )
+    await db.commit()
+
+    logger.info(f"Agent paused for conversation {conversation_id}")
+
+    return PauseResumeResponse(
+        success=True,
+        is_paused=True,
+        message="Agent paused. You can now edit the pipeline manually.",
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/resume",
+    response_model=PauseResumeResponse,
+    responses={
+        400: {"description": "Conversation not active or not paused"},
+        404: {"description": "Conversation not found"},
+    },
+)
+async def resume_agent(
+    conversation_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PauseResumeResponse:
+    """Resume agent processing (switch to assisted mode).
+
+    Re-enables agent processing. The agent will continue from
+    where it left off, incorporating any manual changes.
+    """
+    user_id = int(current_user["id"])
+
+    conversation = await _get_conversation_for_user(
+        db, conversation_id, user_id, include_uncertainties=False
+    )
+
+    if conversation.status != ConversationStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Conversation is not active (status: {conversation.status.value})",
+        )
+
+    # Clear pause state
+    repo = AgentConversationRepository(db)
+    await repo.update_metadata(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        metadata={"is_paused": False},
+    )
+    await db.commit()
+
+    logger.info(f"Agent resumed for conversation {conversation_id}")
+
+    return PauseResumeResponse(
+        success=True,
+        is_paused=False,
+        message="Agent resumed. Assisted mode active.",
     )

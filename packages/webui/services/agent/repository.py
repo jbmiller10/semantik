@@ -303,6 +303,49 @@ class AgentConversationRepository:
             )
             raise DatabaseOperationError("update", "agent_conversation", str(e)) from e
 
+    async def update_metadata(
+        self,
+        conversation_id: str,
+        user_id: int,
+        metadata: dict[str, Any],
+    ) -> AgentConversation:
+        """Update conversation extra_data (metadata).
+
+        Args:
+            conversation_id: UUID of the conversation
+            user_id: ID of the user (must own the conversation)
+            metadata: Fields to merge into existing extra_data
+
+        Returns:
+            Updated AgentConversation instance
+
+        Raises:
+            EntityNotFoundError: If conversation not found or not owned by user
+        """
+        try:
+            conversation = await self.get_by_id_for_user(conversation_id, user_id)
+            if not conversation:
+                raise EntityNotFoundError("agent_conversation", conversation_id)
+
+            # Merge with existing extra_data
+            existing = conversation.extra_data or {}
+            existing.update(metadata)
+            conversation.extra_data = existing
+            conversation.updated_at = datetime.now(UTC)
+            await self.session.flush()
+
+            logger.debug(f"Updated extra_data for conversation {conversation_id}")
+            return conversation
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to update conversation extra_data: {e}",
+                exc_info=True,
+            )
+            raise DatabaseOperationError("update", "agent_conversation", str(e)) from e
+
     async def update_summary(
         self,
         conversation_id: str,
