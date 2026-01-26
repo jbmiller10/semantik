@@ -418,10 +418,11 @@ async def answer_question(
     message_store = await _get_message_store()
 
     # Build answer message
-    if request.option_id:
-        answer_content = f"[Selected option: {request.option_id}]"
-    else:
-        answer_content = request.custom_response or ""
+    answer_content = (
+        f"[Selected option: {request.option_id}]"
+        if request.option_id
+        else request.custom_response or ""
+    )
 
     # Store as user message with question metadata
     from webui.services.agent.message_store import ConversationMessage

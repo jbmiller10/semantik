@@ -277,7 +277,7 @@ class AnswerQuestionRequest(BaseModel):
     custom_response: str | None = Field(None, description="Custom text response (if not using options)")
 
     @model_validator(mode="after")
-    def validate_response(self) -> "AnswerQuestionRequest":
+    def validate_response(self) -> AnswerQuestionRequest:
         """Ensure either option_id or custom_response is provided."""
         if not self.option_id and not self.custom_response:
             raise ValueError("Either option_id or custom_response must be provided")
