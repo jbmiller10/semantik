@@ -1,20 +1,20 @@
 // apps/webui-react/src/pages/PipelineBuilderPage.tsx
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useConversationDetail, useApplyPipeline } from '@/hooks/useAgentConversation';
-import { useAgentStream } from '@/hooks/useAgentStream';
-import { agentApiV2 } from '@/services/api/v2/agent';
-import { useUIStore } from '@/stores/uiStore';
+import { useConversationDetail, useApplyPipeline } from '../hooks/useAgentConversation';
+import { useAgentStream } from '../hooks/useAgentStream';
+import { agentApiV2 } from '../services/api/v2/agent';
+import { useUIStore } from '../stores/uiStore';
 import {
   PipelineVisualization,
   ConfigurationPanel,
   AgentStatusBar,
   QuestionQueue,
-} from '@/components/pipeline';
-import { PipelineBuilderHeader } from '@/components/pipeline/PipelineBuilderHeader';
-import { PipelineBuilderFooter } from '@/components/pipeline/PipelineBuilderFooter';
-import type { PipelineDAG, DAGSelection, PipelineNode, PipelineEdge } from '@/types/pipeline';
-import type { BuilderMode } from '@/components/pipeline/PipelineBuilderHeader';
+} from '../components/pipeline';
+import { PipelineBuilderHeader } from '../components/pipeline/PipelineBuilderHeader';
+import { PipelineBuilderFooter } from '../components/pipeline/PipelineBuilderFooter';
+import type { PipelineDAG, DAGSelection, PipelineNode, PipelineEdge } from '../types/pipeline';
+import type { BuilderMode } from '../components/pipeline/PipelineBuilderHeader';
 
 // Convert API pipeline config to DAG format
 function pipelineConfigToDAG(config: Record<string, unknown> | null): PipelineDAG {
