@@ -43,6 +43,7 @@ from webui.api.v2.agent_schemas import (
 )
 from webui.auth import get_current_user
 from webui.services.agent.exceptions import (
+    AgentBusyError,
     AgentError,
     ConversationNotActiveError,
 )
@@ -279,6 +280,11 @@ async def send_message(
 
     try:
         response = await orchestrator.handle_message(request.message)
+    except AgentBusyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
     except ConversationNotActiveError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -407,11 +413,24 @@ async def send_message_stream(
                     data_line = f"data: {json.dumps(event.data)}\n\n"
                     yield event_line + data_line
         except Exception as e:
-            logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
-            # Send error event with proper JSON encoding
             import json
 
-            error_data = json.dumps({"message": str(e)})
+            from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
+            if isinstance(e, AsyncpgInterfaceError):
+                # DB connection closed during long-running operation
+                # This is expected when sub-agents take a long time
+                logger.warning(
+                    f"DB connection closed during SSE stream for conversation {conversation_id}: {e}"
+                )
+                error_data = json.dumps({
+                    "message": "Connection timeout during processing. Results may be incomplete.",
+                    "recoverable": True,
+                })
+            else:
+                logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
+                error_data = json.dumps({"message": str(e)})
+
             error_event = f"event: error\ndata: {error_data}\n\n"
             yield error_event
 

@@ -124,7 +124,13 @@ class RunDryRunTool(BaseTool):
                 }
 
             # Validate DAG with known plugins for complete validation
+            # Note: plugin_registry may be empty if plugins weren't loaded at startup.
+            # Load the pipeline-critical plugin types on-demand to avoid false failures.
+            from shared.plugins.loader import load_plugins
             from shared.plugins.registry import plugin_registry
+
+            if not plugin_registry.list_ids():
+                load_plugins(plugin_types={"parser", "chunking", "extractor", "embedding"})
 
             known_plugins = set(plugin_registry.list_ids())
             errors = dag.validate(known_plugins)

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.llm.exceptions import LLMRateLimitError, LLMTimeoutError
 from webui.services.agent.exceptions import ConversationNotActiveError
 from webui.services.agent.message_store import ConversationMessage
 from webui.services.agent.models import AgentConversation, ConversationStatus
@@ -150,6 +151,43 @@ class TestHandleMessage:
         assert first_call_args[0][0] == "test-conv-123"
         assert first_call_args[0][1].role == "user"
         assert first_call_args[0][1].content == "User question"
+
+    @pytest.mark.asyncio()
+    async def test_retries_llm_on_rate_limit(self, orchestrator, mock_llm_factory, mock_llm_provider):
+        """Rate limits are retried with backoff."""
+        mock_llm_factory.create_provider_for_tier = AsyncMock(return_value=mock_llm_provider)
+
+        mock_llm_provider.generate = AsyncMock(
+            side_effect=[
+                LLMRateLimitError("openai", retry_after=0.0),
+                MagicMock(content="OK"),
+            ]
+        )
+
+        with patch("webui.services.agent.orchestrator.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            response = await orchestrator.handle_message("hello")
+
+        assert response.content == "OK"
+        assert mock_llm_provider.generate.call_count == 2
+        assert sleep_mock.await_count >= 1
+
+    @pytest.mark.asyncio()
+    async def test_retries_llm_on_timeout_with_longer_timeout(self, orchestrator, mock_llm_factory, mock_llm_provider):
+        """Timeouts are retried once with longer timeout."""
+        mock_llm_factory.create_provider_for_tier = AsyncMock(return_value=mock_llm_provider)
+
+        mock_llm_provider.generate = AsyncMock(
+            side_effect=[
+                LLMTimeoutError("openai", timeout=60.0),
+                MagicMock(content="OK"),
+            ]
+        )
+
+        with patch("webui.services.agent.orchestrator.asyncio.sleep", new=AsyncMock()):
+            response = await orchestrator.handle_message("hello")
+
+        assert response.content == "OK"
+        assert mock_llm_provider.generate.call_count == 2
 
     @pytest.mark.asyncio()
     async def test_returns_agent_response(

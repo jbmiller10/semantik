@@ -1,10 +1,11 @@
 """Unit tests for SubAgent base class and related dataclasses."""
 
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.llm.exceptions import LLMRateLimitError, LLMTimeoutError
 from webui.services.agent.subagents.base import (
     Message,
     SubAgent,
@@ -447,3 +448,50 @@ class TestSubAgentRunLoop:
         # Each iteration adds 2 messages: assistant response and tool result
         # Plus 1 initial message
         assert len(agent.messages) == 1 + (2 * 3)  # initial + (response + tool) * MAX_TURNS
+
+
+class TestSubAgentGenerateResponseRetry:
+    """Retry/backoff tests for SubAgent._generate_response()."""
+
+    @pytest.mark.asyncio()
+    async def test_retries_on_rate_limit(self):
+        """Rate limits are retried with backoff."""
+        mock_llm = AsyncMock()
+        mock_llm.generate = AsyncMock(
+            side_effect=[
+                LLMRateLimitError("openai", retry_after=0.0),
+                MagicMock(content="Final response"),
+            ]
+        )
+
+        agent = TestSubAgent(mock_llm, {"data": "test"})
+
+        with patch("webui.services.agent.subagents.base.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            msg = await agent._generate_response()
+
+        assert msg.role == "assistant"
+        assert msg.content == "Final response"
+        assert mock_llm.generate.call_count == 2
+        assert sleep_mock.await_count >= 1
+
+    @pytest.mark.asyncio()
+    async def test_retries_once_on_timeout_with_longer_timeout(self):
+        """Timeouts are retried once with longer timeout."""
+        mock_llm = AsyncMock()
+        mock_llm.generate = AsyncMock(
+            side_effect=[
+                LLMTimeoutError("openai", timeout=60.0),
+                MagicMock(content="Final response"),
+            ]
+        )
+
+        agent = TestSubAgent(mock_llm, {"data": "test"})
+
+        with patch("webui.services.agent.subagents.base.asyncio.sleep", new=AsyncMock()):
+            msg = await agent._generate_response()
+
+        assert msg.role == "assistant"
+        assert msg.content == "Final response"
+        assert mock_llm.generate.call_count == 2
+        # Second call should use capped MAX_BACKGROUND_TIMEOUT (=120s)
+        assert mock_llm.generate.call_args_list[1].kwargs["timeout"] == 120.0

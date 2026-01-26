@@ -16,6 +16,18 @@ class AgentError(Exception):
     """Base exception for all agent-related errors."""
 
 
+class AgentBusyError(AgentError):
+    """Conversation is already being processed.
+
+    Raised when a second request attempts to process the same conversation
+    concurrently (e.g., user double-submits, multiple tabs).
+    """
+
+    def __init__(self, conversation_id: str):
+        self.conversation_id = conversation_id
+        super().__init__(f"Conversation {conversation_id} is busy processing another request")
+
+
 class SubAgentFailedError(AgentError):
     """Sub-agent failed to complete its task.
 

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.llm.factory import LLMServiceFactory
+    from shared.pipeline.types import FileReference
     from webui.services.agent.models import AgentConversation
     from webui.services.agent.subagents.base import SubAgentResult
 
@@ -133,6 +134,7 @@ class SpawnSourceAnalyzerTool(BaseTool):
 
                 source_type = source.source_type
                 source_config = source.source_config or {}
+                effective_source_id = int(source.id)
 
             elif conversation and conversation.inline_source_config:
                 # Using inline source config from conversation
@@ -203,20 +205,43 @@ class SpawnSourceAnalyzerTool(BaseTool):
                     agent = SourceAnalyzer(llm_provider, subagent_context)
                     result: SubAgentResult = await agent.run()
 
-                # Store analysis in conversation state using the subagent's session
-                if conversation and result.success:
-                    conversation.source_analysis = result.data
-                    # Update the conversation in the database
-                    from webui.services.agent.repository import AgentConversationRepository
+                analysis_data = dict(result.data or {})
+                analysis_data.setdefault("source_id", effective_source_id)
+                analysis_data.setdefault("source_type", source_type)
 
-                    repo = AgentConversationRepository(subagent_session)
-                    await repo.update_source_analysis(
-                        conversation_id=conversation.id,
-                        user_id=user_id,
-                        source_analysis=result.data,
-                    )
+                # Add a small, durable set of sample FileReferences to enable PipelineValidator
+                # without forcing re-enumeration of the source.
+                analysis_data = self._augment_analysis_with_samples(
+                    analysis=analysis_data,
+                    enumerated=subagent_context.get("_enumerated_files", []),
+                    samples_per_extension=3,
+                    max_total_samples=50,
+                )
+
+                # Store analysis in conversation state using orchestrator hook when available,
+                # otherwise fall back to repository persistence.
+                if conversation and result.success:
+                    conversation.source_analysis = analysis_data
+
+                    orchestrator = self.context.get("orchestrator")
+                    if orchestrator is not None and hasattr(orchestrator, "add_subagent_result"):
+                        await orchestrator.add_subagent_result(
+                            subagent_type="source_analyzer",
+                            result=analysis_data,
+                            summary=result.summary,
+                        )
+                    else:
+                        from webui.services.agent.repository import AgentConversationRepository
+
+                        repo = AgentConversationRepository(subagent_session)
+                        await repo.update_source_analysis(
+                            conversation_id=conversation.id,
+                            user_id=user_id,
+                            source_analysis=analysis_data,
+                        )
 
                 # Store uncertainties in conversation
+                persisted_uncertainties: list[dict[str, Any]] = []
                 if conversation and result.uncertainties:
                     from webui.services.agent.models import UncertaintySeverity
                     from webui.services.agent.repository import AgentConversationRepository
@@ -234,21 +259,32 @@ class SpawnSourceAnalyzerTool(BaseTool):
                             }
                             severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
 
-                        await repo.add_uncertainty(
+                        created = await repo.add_uncertainty(
                             conversation_id=conversation.id,
                             user_id=user_id,
                             severity=severity,
                             message=uncertainty.message,
                             context=uncertainty.context,
                         )
+                        persisted_uncertainties.append(
+                            {
+                                "id": created.id,
+                                "severity": severity.value,
+                                "message": created.message,
+                                "resolved": bool(created.resolved),
+                                "context": created.context,
+                            }
+                        )
                 # Commit happens automatically via the context manager
 
                 return {
                     "success": result.success,
-                    "analysis": result.data,
+                    "analysis": analysis_data,
                     "summary": result.summary,
                     "error": result.summary if not result.success else None,
-                    "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                    "uncertainties": persisted_uncertainties
+                    if persisted_uncertainties
+                    else [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
                 }
 
         except Exception as e:
@@ -257,6 +293,45 @@ class SpawnSourceAnalyzerTool(BaseTool):
                 "success": False,
                 "error": str(e),
             }
+
+    def _augment_analysis_with_samples(
+        self,
+        analysis: dict[str, Any],
+        enumerated: list[FileReference],
+        samples_per_extension: int,
+        max_total_samples: int,
+    ) -> dict[str, Any]:
+        """Add a small set of sample FileReference dicts to the analysis.
+
+        The pipeline validator requires full FileReference objects. Persisting a small
+        sample set (instead of the full enumeration) enables validation without
+        re-enumerating the source.
+        """
+        if not enumerated:
+            return analysis
+
+        by_extension: dict[str, list[dict[str, Any]]] = {}
+        total_samples: list[dict[str, Any]] = []
+
+        for ref in enumerated:
+            if len(total_samples) >= max_total_samples:
+                break
+            ext = (ref.extension or "(no ext)").lower()
+            samples = by_extension.setdefault(ext, [])
+            if len(samples) >= samples_per_extension:
+                continue
+            ref_dict = ref.to_dict()
+            samples.append(ref_dict)
+            total_samples.append(ref_dict)
+
+        analysis.setdefault("sample_files", total_samples)
+        analysis.setdefault("by_extension", {})
+        for ext, samples in by_extension.items():
+            ext_entry = analysis["by_extension"].setdefault(ext, {})
+            ext_entry.setdefault("sample_files", samples)
+            ext_entry.setdefault("sample_uris", [s.get("uri") for s in samples if s.get("uri")])
+
+        return analysis
 
 
 class SpawnPipelineValidatorTool(BaseTool):
@@ -308,18 +383,30 @@ class SpawnPipelineValidatorTool(BaseTool):
 
     async def execute(
         self,
-        pipeline: dict[str, Any],
+        pipeline: dict[str, Any] | None = None,
         sample_count: int = 50,
     ) -> dict[str, Any]:
         """Spawn the PipelineValidator sub-agent.
 
         Args:
-            pipeline: Pipeline DAG configuration to validate
+            pipeline: Pipeline DAG configuration to validate. Required.
             sample_count: Number of samples to test
 
         Returns:
             Dictionary with validation results
         """
+        # Validate required argument - this allows graceful error handling
+        # instead of Python raising TypeError when LLM omits the argument
+        if pipeline is None:
+            return {
+                "success": False,
+                "error": (
+                    "Missing required argument 'pipeline'. "
+                    "Call build_pipeline or get_pipeline_state first to obtain "
+                    "the pipeline configuration, then pass it to this tool."
+                ),
+            }
+
         try:
             session: AsyncSession | None = self.context.get("session")
             user_id = self.context.get("user_id")
@@ -355,10 +442,15 @@ class SpawnPipelineValidatorTool(BaseTool):
                     "error": "No source analysis available. Run spawn_source_analyzer first.",
                 }
 
-            # Select representative sample files
+            # Select representative samples from analysis (before connector creation).
+            # This allows us to return a clear error if the analysis doesn't contain any
+            # usable sample references.
             sample_files = self._select_samples(source_analysis, sample_count)
-
+            sample_uris: list[str] = []
             if not sample_files:
+                sample_uris = self._select_sample_uris(source_analysis, sample_count)
+
+            if not sample_files and not sample_uris:
                 return {
                     "success": False,
                     "error": "No sample files available from source analysis",
@@ -367,8 +459,18 @@ class SpawnPipelineValidatorTool(BaseTool):
             # Get connector from context or create from source
             connector = self.context.get("connector")
             if not connector:
-                # Try to get from source analysis context
-                source_id = source_analysis.get("source_id")
+                inline_config: dict[str, Any] | None = None
+
+                # Prefer the conversation's persisted source_id if available
+                source_id = getattr(conversation, "source_id", None) if conversation else None
+                if not isinstance(source_id, int):
+                    source_id = None
+
+                # Fallback: try to get from source analysis context
+                if not source_id:
+                    candidate = source_analysis.get("source_id")
+                    source_id = candidate if isinstance(candidate, int) else None
+
                 if source_id:
                     from shared.database.repositories.collection_source_repository import (
                         CollectionSourceRepository,
@@ -381,11 +483,50 @@ class SpawnPipelineValidatorTool(BaseTool):
                         source_type = source.source_type
                         source_config = source.source_config or {}
                         connector = ConnectorFactory.get_connector(source_type, source_config)
+                else:
+                    inline_config = getattr(conversation, "inline_source_config", None) if conversation else None
+                    if not isinstance(inline_config, dict):
+                        inline_config = None
+
+                if not connector and inline_config:
+                    # Inline source config (source not created yet)
+                    from webui.services.connector_factory import ConnectorFactory
+
+                    source_type = inline_config.get("source_type", "")
+                    source_config = inline_config.get("source_config", {})
+
+                    # Merge pending secrets into config for connector creation
+                    if "_pending_secrets" in inline_config:
+                        source_config = {**source_config, **inline_config["_pending_secrets"]}
+
+                    if source_type:
+                        connector = ConnectorFactory.get_connector(source_type, source_config)
 
             if not connector:
                 return {
                     "success": False,
                     "error": "No connector available for validation",
+                }
+
+            # Fallback: reconstruct samples from sample_uris by enumerating until matched
+            if not sample_files:
+                source_id_for_enum = getattr(conversation, "source_id", None) if conversation else None
+                if not isinstance(source_id_for_enum, int):
+                    source_id_for_enum = None
+                if not source_id_for_enum:
+                    candidate = source_analysis.get("source_id")
+                    source_id_for_enum = candidate if isinstance(candidate, int) else None
+                sample_files = await self._resolve_samples_from_uris(
+                    connector=connector,
+                    source_id=source_id_for_enum,
+                    sample_uris=sample_uris,
+                    sample_count=sample_count,
+                )
+
+            if not sample_files:
+                return {
+                    "success": False,
+                    "error": "No sample files available from source analysis",
                 }
 
             # Create LLM provider for sub-agent (separate context window)
@@ -426,11 +567,12 @@ class SpawnPipelineValidatorTool(BaseTool):
                     agent = PipelineValidator(llm_provider, subagent_context)
                     result: SubAgentResult = await agent.run()
 
-                # Store validation report in conversation state
+                # Store validation report in conversation state (best-effort, not persisted)
                 if conversation and result.success:
                     conversation.current_pipeline_validation = result.data
 
                 # Store uncertainties in conversation
+                persisted_uncertainties: list[dict[str, Any]] = []
                 if conversation and result.uncertainties:
                     from webui.services.agent.models import UncertaintySeverity
                     from webui.services.agent.repository import AgentConversationRepository
@@ -448,12 +590,21 @@ class SpawnPipelineValidatorTool(BaseTool):
                             }
                             severity = severity_map.get(uncertainty.severity, UncertaintySeverity.INFO)
 
-                        await repo.add_uncertainty(
+                        created = await repo.add_uncertainty(
                             conversation_id=conversation.id,
                             user_id=user_id,
                             severity=severity,
                             message=uncertainty.message,
                             context=uncertainty.context,
+                        )
+                        persisted_uncertainties.append(
+                            {
+                                "id": created.id,
+                                "severity": severity.value,
+                                "message": created.message,
+                                "resolved": bool(created.resolved),
+                                "context": created.context,
+                            }
                         )
                 # Commit happens automatically via the context manager
 
@@ -461,7 +612,9 @@ class SpawnPipelineValidatorTool(BaseTool):
                     "success": result.success,
                     "report": result.data,
                     "summary": result.summary,
-                    "uncertainties": [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                    "uncertainties": persisted_uncertainties
+                    if persisted_uncertainties
+                    else [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
                 }
 
         except Exception as e:
@@ -475,33 +628,109 @@ class SpawnPipelineValidatorTool(BaseTool):
         self,
         source_analysis: dict[str, Any],
         sample_count: int,
-    ) -> list[Any]:
+    ) -> list[FileReference]:
         """Select representative sample files from source analysis.
 
-        Tries to get a balanced sample across file types.
+        Prefers persisted sample FileReference dicts (from SourceAnalyzer), falling back
+        to minimal, lossy samples only if needed.
 
         Args:
             source_analysis: Source analysis data from SourceAnalyzer
             sample_count: Target number of samples
 
         Returns:
-            List of FileReference objects (or equivalent dicts)
+            List of FileReference objects
         """
-        # Check for enumerated files in the analysis
+        from shared.pipeline.types import FileReference
+
+        sample_refs: list[FileReference] = []
+
+        # Preferred: full FileReference dicts persisted by SourceAnalyzer spawn tool
+        sample_dicts = source_analysis.get("sample_files") or []
+        for d in sample_dicts:
+            if len(sample_refs) >= sample_count:
+                break
+            if not isinstance(d, dict):
+                continue
+            try:
+                sample_refs.append(FileReference.from_dict(d))
+            except Exception:
+                continue
+
+        if sample_refs:
+            return sample_refs[:sample_count]
+
+        # Fallback: attempt to reconstruct from by_extension sample_files
         by_extension = source_analysis.get("by_extension", {})
-        if not by_extension:
+        if isinstance(by_extension, dict):
+            for ext_data in by_extension.values():
+                if len(sample_refs) >= sample_count:
+                    break
+                for d in (ext_data.get("sample_files") or []):
+                    if len(sample_refs) >= sample_count:
+                        break
+                    if not isinstance(d, dict):
+                        continue
+                    try:
+                        sample_refs.append(FileReference.from_dict(d))
+                    except Exception:
+                        continue
+
+        return sample_refs[:sample_count]
+
+    def _select_sample_uris(self, source_analysis: dict[str, Any], sample_count: int) -> list[str]:
+        """Select sample URIs from analysis (lossy fallback)."""
+        uris: list[str] = []
+        by_extension = source_analysis.get("by_extension", {})
+        if isinstance(by_extension, dict):
+            for ext_data in by_extension.values():
+                for uri in (ext_data.get("sample_uris") or []):
+                    if isinstance(uri, str) and uri and uri not in uris:
+                        uris.append(uri)
+                    if len(uris) >= sample_count:
+                        return uris
+        return uris
+
+    async def _resolve_samples_from_uris(
+        self,
+        connector: Any,
+        source_id: int | None,
+        sample_uris: list[str],
+        sample_count: int,
+    ) -> list[FileReference]:
+        """Resolve FileReference objects by enumerating until URIs are found."""
+        if not sample_uris:
             return []
 
-        samples: list[dict[str, str]] = []
+        target = set(sample_uris)
+        found: list[FileReference] = []
+        fallback: list[FileReference] = []
 
-        # If we have sample URIs stored, use those
-        for ext_data in by_extension.values():
-            sample_uris = ext_data.get("sample_uris", [])
-            for uri in sample_uris:
-                if len(samples) >= sample_count:
+        # Limit scan effort to avoid walking huge sources in worst-case scenarios.
+        max_scan = max(500, sample_count * 50)
+        scanned = 0
+
+        async for ref in connector.enumerate(source_id=source_id):
+            scanned += 1
+            if ref.uri in target:
+                found.append(ref)
+                target.discard(ref.uri)
+                if not target and len(found) >= min(sample_count, len(sample_uris)):
                     break
-                # Create a minimal file reference dict
-                samples.append({"uri": uri})
+            elif len(fallback) < sample_count:
+                fallback.append(ref)
 
-        # If no samples found, return empty
-        return samples[:sample_count]
+            if scanned >= max_scan:
+                break
+
+        # Prefer exact matches, then fill with fallback enumerated refs
+        if len(found) < sample_count:
+            seen = {f.uri for f in found}
+            for ref in fallback:
+                if len(found) >= sample_count:
+                    break
+                if ref.uri not in seen:
+                    found.append(ref)
+                    seen.add(ref.uri)
+
+        return found[:sample_count]

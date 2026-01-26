@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -21,6 +22,9 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 if TYPE_CHECKING:
     from shared.llm.base import BaseLLMService
     from webui.services.agent.tools.base import BaseTool
+
+from shared.llm.base import BaseLLMService
+from shared.llm.exceptions import LLMRateLimitError, LLMTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +155,13 @@ class SubAgent(ABC):
     MAX_TURNS: ClassVar[int] = 20
     TIMEOUT_SECONDS: ClassVar[int] = 300  # 5 minutes
 
+    # Retry policy (best-effort, background-ish)
+    LLM_RATE_LIMIT_MAX_ATTEMPTS: ClassVar[int] = 3
+    LLM_RATE_LIMIT_BASE_DELAY_SECONDS: ClassVar[float] = 1.0
+    LLM_RATE_LIMIT_MAX_DELAY_SECONDS: ClassVar[float] = 10.0
+    LLM_TIMEOUT_MAX_ATTEMPTS: ClassVar[int] = 2  # initial + 1 retry
+    LLM_TIMEOUT_RETRY_DELAY_SECONDS: ClassVar[float] = 0.25
+
     # Pattern for parsing tool calls from LLM responses
     TOOL_CALL_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
         r"```tool\s*\n?(.*?)\n?```",
@@ -252,15 +263,56 @@ class SubAgent(ABC):
         # Build system prompt with tool descriptions
         system_prompt = self._build_full_system_prompt()
 
-        # Generate response
-        # Use longer timeout for sub-agents (default 60s is too short)
-        response = await self.llm.generate(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            max_tokens=4096,
-            temperature=0.7,
-            timeout=180,
-        )
+        # Generate response with retry/backoff:
+        # - Rate limits: exponential backoff, max 3 attempts
+        # - Timeouts: retry once with longer timeout
+        effective_timeout: float | None = 180
+        rate_limit_attempt = 0
+        timeout_attempt = 0
+
+        while True:
+            try:
+                response = await self.llm.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=4096,
+                    temperature=0.7,
+                    timeout=effective_timeout,
+                )
+                break
+            except LLMRateLimitError as e:
+                rate_limit_attempt += 1
+                if rate_limit_attempt >= self.LLM_RATE_LIMIT_MAX_ATTEMPTS:
+                    raise
+
+                base = e.retry_after if e.retry_after is not None else (
+                    self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1))
+                )
+                delay = min(base, self.LLM_RATE_LIMIT_MAX_DELAY_SECONDS)
+                delay += random.random() * 0.25
+                logger.info(
+                    "Sub-agent %s rate limited (provider=%s, attempt=%s/%s). Sleeping %.2fs",
+                    self.AGENT_ID,
+                    e.provider,
+                    rate_limit_attempt,
+                    self.LLM_RATE_LIMIT_MAX_ATTEMPTS,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            except LLMTimeoutError as e:
+                timeout_attempt += 1
+                if timeout_attempt >= self.LLM_TIMEOUT_MAX_ATTEMPTS:
+                    raise
+
+                base_timeout = effective_timeout if effective_timeout is not None else e.timeout
+                effective_timeout = min(base_timeout * 2, BaseLLMService.MAX_BACKGROUND_TIMEOUT)
+                logger.info(
+                    "Sub-agent %s timed out (provider=%s), retrying with timeout=%.1fs",
+                    self.AGENT_ID,
+                    e.provider,
+                    effective_timeout,
+                )
+                await asyncio.sleep(self.LLM_TIMEOUT_RETRY_DELAY_SECONDS)
 
         response_content = response.content
 

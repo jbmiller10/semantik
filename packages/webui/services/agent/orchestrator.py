@@ -7,19 +7,24 @@ conversation recovery.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from shared.llm.base import BaseLLMService
 from shared.llm.exceptions import (
     LLMAuthenticationError,
     LLMContextLengthError,
     LLMRateLimitError,
+    LLMTimeoutError,
 )
 from webui.api.v2.agent_schemas import AgentStreamEvent, AgentStreamEventType
 from webui.services.agent.exceptions import (
+    AgentBusyError,
     AgentError,
     ConversationNotActiveError,
     ToolExecutionError,
@@ -171,6 +176,13 @@ When you're done responding (no more tools to call), just write your response no
         re.DOTALL,
     )
 
+    # Retry policy (best-effort, interactive)
+    LLM_RATE_LIMIT_MAX_ATTEMPTS: ClassVar[int] = 3
+    LLM_RATE_LIMIT_BASE_DELAY_SECONDS: ClassVar[float] = 1.0
+    LLM_RATE_LIMIT_MAX_DELAY_SECONDS: ClassVar[float] = 10.0
+    LLM_TIMEOUT_MAX_ATTEMPTS: ClassVar[int] = 2  # initial + 1 retry
+    LLM_TIMEOUT_RETRY_DELAY_SECONDS: ClassVar[float] = 0.25
+
     def __init__(
         self,
         conversation: AgentConversation,
@@ -203,6 +215,70 @@ When you're done responding (no more tools to call), just write your response no
         for tool_class in ORCHESTRATOR_TOOL_CLASSES:
             tool = tool_class(context)
             self.tools[tool.NAME] = tool
+
+    async def _llm_generate_with_retries(
+        self,
+        provider: BaseLLMService,
+        *,
+        prompt: str,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        """Call provider.generate() with retry/backoff for rate limits and timeouts.
+
+        Retry policy (matches Phase 3 design doc):
+        - Rate limits: exponential backoff, max 3 attempts
+        - Timeouts: retry once with longer timeout
+        - Other LLM errors: no retry
+        """
+        rate_limit_attempt = 0
+        timeout_attempt = 0
+        effective_timeout = timeout
+
+        while True:
+            try:
+                return await provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    timeout=effective_timeout,
+                )
+            except LLMRateLimitError as e:
+                rate_limit_attempt += 1
+                if rate_limit_attempt >= self.LLM_RATE_LIMIT_MAX_ATTEMPTS:
+                    raise
+
+                base = e.retry_after if e.retry_after is not None else (
+                    self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1))
+                )
+                delay = min(base, self.LLM_RATE_LIMIT_MAX_DELAY_SECONDS)
+                delay += random.random() * 0.25
+
+                logger.info(
+                    "LLM rate limited (provider=%s, attempt=%s/%s). Sleeping %.2fs",
+                    e.provider,
+                    rate_limit_attempt,
+                    self.LLM_RATE_LIMIT_MAX_ATTEMPTS,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            except LLMTimeoutError as e:
+                timeout_attempt += 1
+                if timeout_attempt >= self.LLM_TIMEOUT_MAX_ATTEMPTS:
+                    raise
+
+                base_timeout = effective_timeout if effective_timeout is not None else e.timeout
+                effective_timeout = min(base_timeout * 2, BaseLLMService.MAX_BACKGROUND_TIMEOUT)
+
+                logger.info(
+                    "LLM timed out (provider=%s, retrying with timeout=%.1fs)",
+                    e.provider,
+                    effective_timeout,
+                )
+                await asyncio.sleep(self.LLM_TIMEOUT_RETRY_DELAY_SECONDS)
 
     def _build_tool_context(self) -> dict[str, Any]:
         """Build context dictionary for tools."""
@@ -360,26 +436,30 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
         self._tool_calls_made = []
 
         try:
-            # Load messages (or recover from summary)
-            messages = await self._load_or_recover_messages()
+            async with self.message_store.conversation_lock(self.conversation.id) as acquired:
+                if not acquired:
+                    raise AgentBusyError(self.conversation.id)
 
-            # Append user message
-            user_msg = ConversationMessage.create("user", user_message)
-            messages.append(user_msg)
-            await self.message_store.append_message(self.conversation.id, user_msg)
+                # Load messages (or recover from summary)
+                messages = await self._load_or_recover_messages()
 
-            # Run the conversation loop
-            final_response = await self._run_conversation_loop(messages)
+                # Append user message
+                user_msg = ConversationMessage.create("user", user_message)
+                messages.append(user_msg)
+                await self.message_store.append_message(self.conversation.id, user_msg)
 
-            # Generate summary if needed
-            await self._generate_summary_if_needed(messages)
+                # Run the conversation loop
+                final_response = await self._run_conversation_loop(messages)
 
-            return AgentResponse(
-                content=final_response,
-                tool_calls_made=self._tool_calls_made,
-                pipeline_updated=self._pipeline_updated,
-                uncertainties_added=self._uncertainties_added,
-            )
+                # Generate summary if needed
+                await self._generate_summary_if_needed(messages)
+
+                return AgentResponse(
+                    content=final_response,
+                    tool_calls_made=self._tool_calls_made,
+                    pipeline_updated=self._pipeline_updated,
+                    uncertainties_added=self._uncertainties_added,
+                )
 
         except ConversationNotActiveError:
             raise
@@ -436,25 +516,41 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
         self._tool_calls_made = []
 
         try:
-            # Load messages (or recover from summary)
-            messages = await self._load_or_recover_messages()
+            async with self.message_store.conversation_lock(self.conversation.id) as acquired:
+                if not acquired:
+                    yield AgentStreamEvent(
+                        event=AgentStreamEventType.ERROR,
+                        data={
+                            "error": f"Conversation {self.conversation.id} is busy processing another request",
+                            "type": "conversation_busy",
+                        },
+                    )
+                    return
 
-            # Append user message
-            user_msg = ConversationMessage.create("user", user_message)
-            messages.append(user_msg)
-            await self.message_store.append_message(self.conversation.id, user_msg)
+                # Load messages (or recover from summary)
+                messages = await self._load_or_recover_messages()
 
-            # Run the conversation loop with streaming
-            async for event in self._run_conversation_loop_streaming(messages):
-                yield event
+                # Append user message
+                user_msg = ConversationMessage.create("user", user_message)
+                messages.append(user_msg)
+                await self.message_store.append_message(self.conversation.id, user_msg)
 
-            # Generate summary if needed
-            await self._generate_summary_if_needed(messages)
+                # Run the conversation loop with streaming
+                async for event in self._run_conversation_loop_streaming(messages):
+                    yield event
+
+                # Generate summary if needed
+                await self._generate_summary_if_needed(messages)
 
         except ConversationNotActiveError as e:
             yield AgentStreamEvent(
                 event=AgentStreamEventType.ERROR,
                 data={"error": str(e), "type": "conversation_not_active"},
+            )
+        except AgentBusyError as e:
+            yield AgentStreamEvent(
+                event=AgentStreamEventType.ERROR,
+                data={"error": str(e), "type": "conversation_busy"},
             )
         except Exception as e:
             logger.exception(f"Error handling message for conversation {self.conversation.id}: {e}")
@@ -495,7 +591,8 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                     prompt = self._build_prompt(messages)
 
                     # Call LLM
-                    response = await provider.generate(
+                    response = await self._llm_generate_with_retries(
+                        provider,
                         prompt=prompt,
                         system_prompt=self._build_system_prompt(),
                         max_tokens=4096,
@@ -709,14 +806,12 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                         )
 
                 # Check if tool added uncertainties
+                before_uncertainties = len(self._uncertainties_added)
                 await self._check_for_uncertainties_streaming(call.name, data)
 
-                # Yield uncertainties if any were added this tool call
-                for uncertainty in self._uncertainties_added[-1:]:  # Just the latest
-                    yield AgentStreamEvent(
-                        event=AgentStreamEventType.UNCERTAINTY,
-                        data=uncertainty,
-                    )
+                # Yield uncertainties added by this tool call
+                for uncertainty in self._uncertainties_added[before_uncertainties:]:
+                    yield AgentStreamEvent(event=AgentStreamEventType.UNCERTAINTY, data=uncertainty)
 
                 # Yield end event
                 yield AgentStreamEvent(
@@ -864,7 +959,8 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                     prompt = self._build_prompt(messages)
 
                     # Call LLM
-                    response = await provider.generate(
+                    response = await self._llm_generate_with_retries(
+                        provider,
                         prompt=prompt,
                         system_prompt=self._build_system_prompt(),
                         max_tokens=4096,
@@ -1078,14 +1174,31 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
         if not isinstance(result, dict):
             return
 
-        # Check for uncertainties from spawn tools
+        # Check for uncertainties from tool results
         uncertainties = result.get("uncertainties", [])
         if not uncertainties:
             return
 
         logger.debug(f"Tool {tool_name} returned {len(uncertainties)} uncertainties")
 
+        # If uncertainties already include IDs, assume they were persisted by the tool.
+        # In that case, just surface them in the response without re-inserting.
+        if all(isinstance(u, dict) and u.get("id") for u in uncertainties):
+            for u in uncertainties:
+                self._uncertainties_added.append(
+                    {
+                        "id": u.get("id"),
+                        "severity": u.get("severity", "info"),
+                        "message": u.get("message", "Unknown uncertainty"),
+                        "resolved": bool(u.get("resolved", False)),
+                        "context": u.get("context"),
+                    }
+                )
+            return
+
         # Use independent session to avoid SSE connection lifecycle issues
+        from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
         from shared.database.postgres_database import pg_connection_manager
 
         try:
@@ -1112,8 +1225,14 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                                 "severity": severity.value,
                                 "message": uncertainty.message,
                                 "resolved": False,
+                                "context": uncertainty.context,
                             }
                         )
+        except AsyncpgInterfaceError as e:
+            # Connection was closed during long-running operation
+            logger.warning(
+                f"DB connection closed during uncertainty persistence from {tool_name}: {e}"
+            )
         except Exception as e:
             logger.error(f"Failed to persist uncertainties from {tool_name}: {e}", exc_info=True)
             # Notify user that results weren't saved
@@ -1138,6 +1257,8 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
             return
 
         # Use independent session to avoid SSE connection lifecycle issues
+        from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
         from shared.database.postgres_database import pg_connection_manager
 
         try:
@@ -1149,6 +1270,14 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                     pipeline_config=self.conversation.current_pipeline,
                 )
                 # Commit happens automatically via the context manager
+        except AsyncpgInterfaceError as e:
+            # Connection was closed during long-running operation (e.g., SSE timeout)
+            # This is expected when sub-agents take a long time and the connection
+            # pool times out idle connections. Log at warning level, not error.
+            logger.warning(
+                f"DB connection closed during state persistence for conversation "
+                f"{self.conversation.id}: {e}. Pipeline state may need to be rebuilt."
+            )
         except Exception as e:
             logger.error(f"Failed to persist state changes: {e}", exc_info=True)
             # Don't re-raise - we don't want to crash the conversation loop
@@ -1186,7 +1315,8 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                             f"Conversation:\n{self._build_prompt(messages[-20:])}"
                         )
 
-                        response = await provider.generate(
+                        response = await self._llm_generate_with_retries(
+                            provider,
                             prompt=summary_prompt,
                             max_tokens=256,
                             temperature=0.3,
@@ -1201,6 +1331,16 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                         logger.info(f"Generated summary for conversation {self.conversation.id}")
 
             except Exception as e:
+                from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
+                if isinstance(e, AsyncpgInterfaceError):
+                    # Connection closed during long-running operation - expected, don't escalate
+                    logger.warning(
+                        f"DB connection closed during summary generation for conversation "
+                        f"{self.conversation.id}: {e}"
+                    )
+                    return
+
                 logger.error(f"Failed to generate summary for conversation {self.conversation.id}: {e}", exc_info=True)
                 # Best-effort: try to add uncertainty with independent session
                 try:
@@ -1248,6 +1388,8 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
 
         # Update source analysis if from source analyzer
         if subagent_type == "source_analyzer" and result:
+            from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
             from shared.database.postgres_database import pg_connection_manager
 
             try:
@@ -1258,6 +1400,13 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                         user_id=self.conversation.user_id,
                         source_analysis=result,
                     )
+                self.conversation.source_analysis = result
+            except AsyncpgInterfaceError as e:
+                # Connection closed during long-running sub-agent operation
+                logger.warning(
+                    f"DB connection closed during source analysis update: {e}. "
+                    "Local state updated but may need to re-analyze."
+                )
                 self.conversation.source_analysis = result
             except Exception as e:
                 logger.error(f"Failed to update source analysis: {e}", exc_info=True)

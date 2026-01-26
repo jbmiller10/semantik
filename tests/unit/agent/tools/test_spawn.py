@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.pipeline.types import FileReference
 from webui.services.agent.tools.spawn import (
     SpawnPipelineValidatorTool,
     SpawnSourceAnalyzerTool,
@@ -553,8 +554,9 @@ class TestSpawnSourceAnalyzerTool:
             )
             await tool.execute()
 
-        # Verify analysis was stored in conversation
-        assert mock_conversation.source_analysis == analysis_data
+        # Verify analysis was stored in conversation (augmented with source context)
+        assert mock_conversation.source_analysis["total_files"] == 100
+        assert mock_conversation.source_analysis["source_type"] == "local"
         # Verify repository update was called
         mock_conv_repo.update_source_analysis.assert_called_once()
 
@@ -594,7 +596,12 @@ class TestSpawnSourceAnalyzerTool:
         mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
 
         mock_conv_repo = MagicMock()
-        mock_conv_repo.add_uncertainty = AsyncMock()
+        mock_conv_repo.add_uncertainty = AsyncMock(
+            side_effect=[
+                MagicMock(id="u1", message="Some files may be scanned PDFs", resolved=False, context={"affected_files": 5}),
+                MagicMock(id="u2", message="Detected multiple languages", resolved=False, context=None),
+            ]
+        )
         mock_conv_repo.update_source_analysis = AsyncMock()
 
         with (
@@ -627,8 +634,9 @@ class TestSpawnSourceAnalyzerTool:
 
         # Verify add_uncertainty was called for each uncertainty
         assert mock_conv_repo.add_uncertainty.call_count == 2
-        assert result["uncertainties"][0]["severity"] == "warning"
+        assert result["uncertainties"][0]["severity"] == "notable"
         assert result["uncertainties"][1]["message"] == "Detected multiple languages"
+        assert result["uncertainties"][0]["id"] == "u1"
 
     @pytest.mark.asyncio()
     async def test_user_intent_passed_to_subagent_context(self, mock_session, mock_llm_factory, mock_llm_provider):
@@ -721,6 +729,40 @@ class TestSpawnPipelineValidatorTool:
         assert "No LLM factory" in result["error"]
 
     @pytest.mark.asyncio()
+    async def test_missing_pipeline_argument_returns_error(self, mock_session, mock_llm_factory):
+        """Test that missing pipeline argument returns graceful error instead of TypeError.
+
+        This was BUG #1: When LLM calls spawn_pipeline_validator without providing the
+        required 'pipeline' argument, Python would raise TypeError. Now we handle this
+        gracefully with an informative error message.
+        """
+        tool = SpawnPipelineValidatorTool(
+            context={"session": mock_session, "user_id": 1, "llm_factory": mock_llm_factory}
+        )
+
+        # Call without pipeline argument (simulates LLM not providing required arg)
+        result = await tool.execute()
+
+        assert result["success"] is False
+        assert "Missing required argument" in result["error"]
+        assert "pipeline" in result["error"]
+        assert "build_pipeline" in result["error"]  # Should mention how to get the pipeline
+
+    @pytest.mark.asyncio()
+    async def test_none_pipeline_argument_returns_error(self, mock_session, mock_llm_factory):
+        """Test that explicit None pipeline returns same graceful error."""
+        tool = SpawnPipelineValidatorTool(
+            context={"session": mock_session, "user_id": 1, "llm_factory": mock_llm_factory}
+        )
+
+        # Call with explicit None (simulates LLM providing pipeline=None)
+        result = await tool.execute(pipeline=None)
+
+        assert result["success"] is False
+        assert "Missing required argument" in result["error"]
+        assert "pipeline" in result["error"]
+
+    @pytest.mark.asyncio()
     async def test_missing_source_analysis_returns_error(self, mock_session, mock_llm_factory, mock_conversation):
         """Test that missing source_analysis returns error."""
         tool = SpawnPipelineValidatorTool(
@@ -758,22 +800,21 @@ class TestSpawnPipelineValidatorTool:
 
     @pytest.mark.asyncio()
     async def test_select_samples_from_source_analysis(self):
-        """Test _select_samples extracts sample URIs correctly."""
+        """Test _select_samples extracts FileReferences correctly."""
         tool = SpawnPipelineValidatorTool(context={})
 
         source_analysis = {
-            "by_extension": {
-                ".pdf": {"count": 10, "sample_uris": ["file1.pdf", "file2.pdf"]},
-                ".docx": {"count": 5, "sample_uris": ["doc1.docx"]},
-            }
+            "sample_files": [
+                FileReference(uri="file1.pdf", source_type="local", content_type="document", extension=".pdf").to_dict(),
+                FileReference(uri="file2.pdf", source_type="local", content_type="document", extension=".pdf").to_dict(),
+                FileReference(uri="doc1.docx", source_type="local", content_type="document", extension=".docx").to_dict(),
+            ]
         }
 
         samples = tool._select_samples(source_analysis, sample_count=10)
 
         assert len(samples) == 3
-        assert {"uri": "file1.pdf"} in samples
-        assert {"uri": "file2.pdf"} in samples
-        assert {"uri": "doc1.docx"} in samples
+        assert {s.uri for s in samples} == {"file1.pdf", "file2.pdf", "doc1.docx"}
 
     @pytest.mark.asyncio()
     async def test_select_samples_respects_limit(self):
@@ -781,12 +822,10 @@ class TestSpawnPipelineValidatorTool:
         tool = SpawnPipelineValidatorTool(context={})
 
         source_analysis = {
-            "by_extension": {
-                ".pdf": {
-                    "count": 100,
-                    "sample_uris": [f"file{i}.pdf" for i in range(50)],
-                },
-            }
+            "sample_files": [
+                FileReference(uri=f"file{i}.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+                for i in range(50)
+            ]
         }
 
         samples = tool._select_samples(source_analysis, sample_count=10)
@@ -798,7 +837,12 @@ class TestSpawnPipelineValidatorTool:
         """Test that connector from context is used when available."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
-        mock_conversation.source_analysis = {"by_extension": {".pdf": {"sample_uris": ["test.pdf"]}}}
+        mock_conversation.source_id = None
+        mock_conversation.source_analysis = {
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ]
+        }
         mock_conversation.current_pipeline_validation = None
 
         mock_result = MockSubAgentResult(
@@ -842,9 +886,12 @@ class TestSpawnPipelineValidatorTool:
         """Test that connector is created from source_id when not in context."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
+        mock_conversation.source_id = None
         mock_conversation.source_analysis = {
             "source_id": 42,
-            "by_extension": {".pdf": {"sample_uris": ["test.pdf"]}},
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ],
         }
         mock_conversation.current_pipeline_validation = None
 
@@ -904,8 +951,12 @@ class TestSpawnPipelineValidatorTool:
     async def test_no_connector_available_returns_error(self, mock_session, mock_llm_factory):
         """Test that missing connector returns error."""
         mock_conversation = MagicMock()
+        mock_conversation.source_id = None
+        mock_conversation.inline_source_config = None
         mock_conversation.source_analysis = {
-            "by_extension": {".pdf": {"sample_uris": ["test.pdf"]}},
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ],
             # No source_id
         }
 
@@ -928,7 +979,12 @@ class TestSpawnPipelineValidatorTool:
         """Test successful pipeline validation."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
-        mock_conversation.source_analysis = {"by_extension": {".pdf": {"sample_uris": ["test.pdf"]}}}
+        mock_conversation.source_id = None
+        mock_conversation.source_analysis = {
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ]
+        }
         mock_conversation.current_pipeline_validation = None
 
         validation_report = {
@@ -983,7 +1039,12 @@ class TestSpawnPipelineValidatorTool:
         """Test that validation report is stored in conversation."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
-        mock_conversation.source_analysis = {"by_extension": {".pdf": {"sample_uris": ["test.pdf"]}}}
+        mock_conversation.source_id = None
+        mock_conversation.source_analysis = {
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ]
+        }
         mock_conversation.current_pipeline_validation = None
 
         validation_report = {"passed": True}
@@ -1032,7 +1093,12 @@ class TestSpawnPipelineValidatorTool:
         """Test that subagent exceptions are caught and return error."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
-        mock_conversation.source_analysis = {"by_extension": {".pdf": {"sample_uris": ["test.pdf"]}}}
+        mock_conversation.source_id = None
+        mock_conversation.source_analysis = {
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ]
+        }
 
         mock_validator = MagicMock()
         mock_validator.run = AsyncMock(side_effect=Exception("Validation crashed"))
@@ -1070,7 +1136,12 @@ class TestSpawnPipelineValidatorTool:
         """Test that validation uncertainties are persisted."""
         mock_conversation = MagicMock()
         mock_conversation.id = "test-conv-123"
-        mock_conversation.source_analysis = {"by_extension": {".pdf": {"sample_uris": ["test.pdf"]}}}
+        mock_conversation.source_id = None
+        mock_conversation.source_analysis = {
+            "sample_files": [
+                FileReference(uri="test.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+            ]
+        }
 
         uncertainties = [
             MockUncertainty(
@@ -1093,7 +1164,9 @@ class TestSpawnPipelineValidatorTool:
         mock_pg_manager.get_session = lambda: mock_get_session(mock_session)
 
         mock_conv_repo = MagicMock()
-        mock_conv_repo.add_uncertainty = AsyncMock()
+        mock_conv_repo.add_uncertainty = AsyncMock(
+            return_value=MagicMock(id="u1", message="Some chunks are very small", resolved=False, context=None)
+        )
 
         with (
             patch(
@@ -1121,4 +1194,5 @@ class TestSpawnPipelineValidatorTool:
             result = await tool.execute(pipeline={"stages": []})
 
         assert mock_conv_repo.add_uncertainty.call_count == 1
-        assert result["uncertainties"][0]["severity"] == "warning"
+        assert result["uncertainties"][0]["severity"] == "notable"
+        assert result["uncertainties"][0]["id"] == "u1"
