@@ -56,6 +56,7 @@ class AgentStreamEventType(str, Enum):
     ERROR = "error"
     STATUS = "status"
     ACTIVITY = "activity"
+    QUESTION = "question"
 
 
 class AgentStreamEvent(BaseModel):
