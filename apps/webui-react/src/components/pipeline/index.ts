@@ -9,4 +9,6 @@ export { SourceAnalysisSummary } from './SourceAnalysisSummary';
 export { AgentStatusBar } from './AgentStatusBar';
 export { ActivityLog } from './ActivityLog';
 export { AgentInput } from './AgentInput';
+export { QuestionPrompt } from './QuestionPrompt';
+export { QuestionQueue } from './QuestionQueue';
 export type { PipelineVisualizationProps } from '@/types/pipeline';
