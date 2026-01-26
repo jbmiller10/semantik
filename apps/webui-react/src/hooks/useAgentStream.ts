@@ -24,6 +24,7 @@ import type {
   StatusEvent,
   ActivityEvent,
   AgentPhase,
+  QuestionEvent,
 } from '../types/agent';
 
 export interface UseAgentStreamCallbacks {
@@ -38,6 +39,7 @@ export interface UseAgentStreamCallbacks {
   onError?: (error: string) => void;
   onStatus?: (data: StatusEvent) => void;
   onActivity?: (data: ActivityEvent) => void;
+  onQuestion?: (data: QuestionEvent) => void;
 }
 
 export interface UseAgentStreamReturn {
@@ -54,9 +56,11 @@ export interface UseAgentStreamReturn {
     progress?: { current: number; total: number };
   } | null;
   activities: Array<{ message: string; timestamp: string }>;
+  pendingQuestions: QuestionEvent[];
   sendMessage: (message: string) => Promise<void>;
   cancel: () => void;
   reset: () => void;
+  dismissQuestion: (questionId: string) => void;
 }
 
 /**
@@ -106,6 +110,7 @@ export function useAgentStream(
     progress?: { current: number; total: number };
   } | null>(null);
   const [activities, setActivities] = useState<Array<{ message: string; timestamp: string }>>([]);
+  const [pendingQuestions, setPendingQuestions] = useState<QuestionEvent[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const token = useAuthStore((state) => state.token);
@@ -118,6 +123,7 @@ export function useAgentStream(
     setSubagents([]);
     setStatus(null);
     setActivities([]);
+    setPendingQuestions([]);
   }, []);
 
   const cancel = useCallback(() => {
@@ -126,6 +132,10 @@ export function useAgentStream(
       abortControllerRef.current = null;
     }
     setIsStreaming(false);
+  }, []);
+
+  const dismissQuestion = useCallback((questionId: string) => {
+    setPendingQuestions((prev) => prev.filter((q) => q.id !== questionId));
   }, []);
 
   const sendMessage = useCallback(
@@ -325,6 +335,13 @@ export function useAgentStream(
                 callbacks.onActivity?.(activityData);
                 break;
               }
+
+              case 'question': {
+                const questionData = data as unknown as QuestionEvent;
+                setPendingQuestions((prev) => [...prev, questionData]);
+                callbacks.onQuestion?.(questionData);
+                break;
+              }
             }
           }
         }
@@ -385,8 +402,10 @@ export function useAgentStream(
     pipeline,
     status,
     activities,
+    pendingQuestions,
     sendMessage,
     cancel,
     reset,
+    dismissQuestion,
   };
 }
