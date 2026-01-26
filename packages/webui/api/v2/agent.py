@@ -28,6 +28,8 @@ from shared.llm.factory import LLMServiceFactory
 from shared.llm.types import LLMQualityTier
 from webui.api.v2.agent_schemas import (
     AgentMessageResponse,
+    AnswerQuestionRequest,
+    AnswerQuestionResponse,
     ApplyPipelineRequest,
     ApplyPipelineResponse,
     ConversationDetailResponse,
@@ -373,6 +375,73 @@ async def send_message_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/answer",
+    response_model=AnswerQuestionResponse,
+    responses={
+        400: {"description": "Invalid answer or conversation not active"},
+        404: {"description": "Conversation not found"},
+    },
+)
+async def answer_question(
+    conversation_id: str,
+    request: AnswerQuestionRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AnswerQuestionResponse:
+    """Answer a question from the agent.
+
+    Submits an answer to a pending question, either by selecting
+    a pre-defined option or providing a custom response.
+    """
+    user_id = int(current_user["id"])
+
+    # Get conversation with ownership check
+    conversation = await _get_conversation_for_user(
+        db,
+        conversation_id,
+        user_id,
+        include_uncertainties=False,
+    )
+
+    # Verify conversation is active
+    if conversation.status != ConversationStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Conversation is not active (status: {conversation.status.value})",
+        )
+
+    # Store the answer in the message store for the orchestrator to pick up
+    message_store = await _get_message_store()
+
+    # Build answer message
+    if request.option_id:
+        answer_content = f"[Selected option: {request.option_id}]"
+    else:
+        answer_content = request.custom_response or ""
+
+    # Store as user message with question metadata
+    from webui.services.agent.message_store import ConversationMessage
+
+    answer_msg = ConversationMessage.create(
+        "user",
+        answer_content,
+        metadata={
+            "question_id": request.question_id,
+            "option_id": request.option_id,
+            "is_question_answer": True,
+        },
+    )
+    await message_store.append_message(conversation_id, answer_msg)
+
+    logger.info(f"Stored answer to question {request.question_id} for conversation {conversation_id}")
+
+    return AnswerQuestionResponse(
+        success=True,
+        message="Answer recorded",
     )
 
 
