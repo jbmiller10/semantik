@@ -1,7 +1,7 @@
 """Add extra_data column to agent_conversations for mode toggle.
 
 Revision ID: 202601251200
-Revises: 202601021000
+Revises: 20260125120000
 Create Date: 2026-01-25 12:00:00.000000
 
 """
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 revision: str = "202601251200"
-down_revision: str | Sequence[str] | None = "202601021000"
+down_revision: str | Sequence[str] | None = "20260125120000"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

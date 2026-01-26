@@ -419,11 +419,7 @@ async def answer_question(
     message_store = await _get_message_store()
 
     # Build answer message
-    answer_content = (
-        f"[Selected option: {request.option_id}]"
-        if request.option_id
-        else request.custom_response or ""
-    )
+    answer_content = f"[Selected option: {request.option_id}]" if request.option_id else request.custom_response or ""
 
     # Store as user message with question metadata
     from webui.services.agent.message_store import ConversationMessage
@@ -736,9 +732,7 @@ async def pause_agent(
     """
     user_id = int(current_user["id"])
 
-    conversation = await _get_conversation_for_user(
-        db, conversation_id, user_id, include_uncertainties=False
-    )
+    conversation = await _get_conversation_for_user(db, conversation_id, user_id, include_uncertainties=False)
 
     if conversation.status != ConversationStatus.ACTIVE:
         raise HTTPException(
@@ -784,9 +778,7 @@ async def resume_agent(
     """
     user_id = int(current_user["id"])
 
-    conversation = await _get_conversation_for_user(
-        db, conversation_id, user_id, include_uncertainties=False
-    )
+    conversation = await _get_conversation_for_user(db, conversation_id, user_id, include_uncertainties=False)
 
     if conversation.status != ConversationStatus.ACTIVE:
         raise HTTPException(
