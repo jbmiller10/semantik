@@ -63,6 +63,26 @@ export const agentApi = {
     }),
 
   /**
+   * Answer a question from the agent.
+   */
+  answerQuestion: async (
+    conversationId: string,
+    questionId: string,
+    optionId?: string,
+    customResponse?: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const response = await apiClient.post(
+      `/api/v2/agent/conversations/${conversationId}/answer`,
+      {
+        question_id: questionId,
+        option_id: optionId,
+        custom_response: customResponse,
+      }
+    );
+    return response.data;
+  },
+
+  /**
    * Get the SSE stream URL for sending messages.
    * The actual streaming is handled by useAgentStream hook using fetch.
    */
