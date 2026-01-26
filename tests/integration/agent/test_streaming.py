@@ -139,10 +139,25 @@ async def api_client(
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
+    # Also patch pg_connection_manager.get_session to return the test session
+    # This is needed because the streaming endpoint uses an independent session
+    # to avoid request-bound session lifecycle issues
+    from contextlib import asynccontextmanager
+
+    from shared.database import pg_connection_manager
+
+    @asynccontextmanager
+    async def mock_get_session():
+        yield db_session
+
+    original_get_session = pg_connection_manager.get_session
+    pg_connection_manager.get_session = mock_get_session
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
+    pg_connection_manager.get_session = original_get_session
     app.dependency_overrides.clear()
 
 
