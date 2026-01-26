@@ -239,6 +239,34 @@ When you're done responding (no more tools to call), just write your response no
             },
         )
 
+    def _emit_question(
+        self,
+        question_id: str,
+        message: str,
+        options: list[dict[str, str]],
+        allow_custom: bool = True,
+    ) -> AgentStreamEvent:
+        """Create a question event for streaming.
+
+        Args:
+            question_id: Unique identifier for this question
+            message: The question text
+            options: List of options with 'id', 'label', and optional 'description'
+            allow_custom: Whether user can provide custom text response
+
+        Returns:
+            AgentStreamEvent with question data
+        """
+        return AgentStreamEvent(
+            event=AgentStreamEventType.QUESTION,
+            data={
+                "id": question_id,
+                "message": message,
+                "options": options,
+                "allowCustom": allow_custom,
+            },
+        )
+
     def _get_tool_descriptions(self) -> str:
         """Generate formatted tool descriptions for the system prompt."""
         descriptions = []
