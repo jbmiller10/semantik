@@ -229,13 +229,13 @@ When you're done responding (no more tools to call), just write your response no
         Returns:
             AgentStreamEvent with activity data
         """
-        from datetime import datetime, timezone
+        from datetime import UTC, datetime
 
         return AgentStreamEvent(
             event=AgentStreamEventType.ACTIVITY,
             data={
                 "message": message,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             },
         )
 
