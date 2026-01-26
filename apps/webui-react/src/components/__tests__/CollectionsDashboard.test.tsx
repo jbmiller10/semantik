@@ -375,8 +375,8 @@ describe('CollectionsDashboard', () => {
       expect(screen.getByText('Get started by creating your first collection to begin embedding your documents.')).toBeInTheDocument();
 
       // Should show the create button in empty state
-      const createButtons = screen.getAllByText('Create Collection');
-      expect(createButtons.length).toBeGreaterThan(1); // Header and empty state
+      expect(screen.getByRole('button', { name: /new collection/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /create collection/i })).toBeInTheDocument();
     });
 
     it('should show no results message when search returns no matches', () => {
@@ -515,7 +515,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0]; // Header button
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
       expect(screen.getByTestId('create-collection-modal')).toBeInTheDocument();
@@ -531,8 +531,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButtons = screen.getAllByText('Create Collection');
-      const emptyStateButton = createButtons[createButtons.length - 1]; // Last button is in empty state
+      const emptyStateButton = screen.getByRole('button', { name: /create collection/i });
       fireEvent.click(emptyStateButton);
 
       expect(screen.getByTestId('create-collection-modal')).toBeInTheDocument();
@@ -548,7 +547,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0];
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
       const closeButton = screen.getByText('Close Modal');
@@ -569,7 +568,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0];
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
       const successButton = screen.getByText('Create Success');

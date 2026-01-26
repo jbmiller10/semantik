@@ -4,13 +4,11 @@ import { useAnimationEnabled } from '../contexts/AnimationContext';
 import { withAnimation } from '../utils/animationClasses';
 import CollectionCard from './CollectionCard';
 import CreateCollectionModal from './CreateCollectionModal';
-import { GuidedSetupModal } from './agent';
 
 function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showGuidedSetupModal, setShowGuidedSetupModal] = useState(false);
   const animationEnabled = useAnimationEnabled();
 
   // Use React Query hook to fetch collections
@@ -75,26 +73,15 @@ function CollectionsDashboard() {
               Manage your document collections and knowledge bases
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowGuidedSetupModal(true)}
-              className="btn-secondary inline-flex items-center"
-            >
-              <svg className="mr-2 -ml-1 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              Guided Setup
-            </button>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn-primary inline-flex items-center"
-            >
-              <svg className="mr-2 -ml-1 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Create Collection
-            </button>
-          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary inline-flex items-center"
+          >
+            <svg className="mr-2 -ml-1 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Collection
+          </button>
         </div>
 
         {/* Search and Filters */}
@@ -191,13 +178,6 @@ function CollectionsDashboard() {
         <CreateCollectionModal
           onClose={() => setShowCreateModal(false)}
           onSuccess={handleCreateSuccess}
-        />
-      )}
-
-      {/* Guided Setup Modal */}
-      {showGuidedSetupModal && (
-        <GuidedSetupModal
-          onClose={() => setShowGuidedSetupModal(false)}
         />
       )}
     </div>

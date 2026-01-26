@@ -1,5 +1,5 @@
 // apps/webui-react/src/components/pipeline/QuestionPrompt.tsx
-import { useState, useCallback, type KeyboardEvent } from 'react';
+import { useState, useCallback, useEffect, type KeyboardEvent } from 'react';
 import { X, Send, HelpCircle } from 'lucide-react';
 import type { QuestionEvent } from '@/types/agent';
 
@@ -36,6 +36,18 @@ export function QuestionPrompt({ question, onAnswer, onDismiss }: QuestionPrompt
     },
     [handleCustomSubmit]
   );
+
+  // Handle Escape key to dismiss
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onDismiss(question.id);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [question.id, onDismiss]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

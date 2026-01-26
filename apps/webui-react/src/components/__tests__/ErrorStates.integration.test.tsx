@@ -182,13 +182,13 @@ describe('Error States - Integration Tests', () => {
       expect(screen.getByText(/no collections yet/i)).toBeInTheDocument()
       expect(screen.getByText(/get started by creating your first collection/i)).toBeInTheDocument()
 
-      // Should show prominent create button(s)
-      const createButtons = screen.getAllByRole('button', { name: /create.*collection/i })
-      expect(createButtons.length).toBeGreaterThan(0)
-      // Check at least one has a button style (btn-primary)
-      expect(createButtons.some(button =>
-        button.classList.contains('btn-primary')
-      )).toBe(true)
+      // Should show prominent create button(s) - header has "New Collection", empty state has "Create Collection"
+      const headerButton = screen.getByRole('button', { name: /new collection/i })
+      const emptyStateButton = screen.getByRole('button', { name: /create collection/i })
+      expect(headerButton).toBeInTheDocument()
+      expect(emptyStateButton).toBeInTheDocument()
+      // Header button should have btn-primary style
+      expect(headerButton.classList.contains('btn-primary')).toBe(true)
     })
 
     it('should show empty search results appropriately', () => {

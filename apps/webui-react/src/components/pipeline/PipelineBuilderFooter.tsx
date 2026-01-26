@@ -75,6 +75,7 @@ export function PipelineBuilderFooter({
         <button
           onClick={onValidate}
           disabled={isDisabled}
+          title="Validate pipeline (⌘S)"
           className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)]
                      border border-[var(--border)] rounded-lg
                      hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
@@ -95,6 +96,7 @@ export function PipelineBuilderFooter({
         <button
           onClick={onApply}
           disabled={!isReady || isDisabled}
+          title="Apply and start indexing (⌘↵)"
           className="px-4 py-2 text-sm font-bold text-gray-900 bg-gray-200 dark:bg-white
                      rounded-lg shadow-lg
                      hover:bg-gray-300 dark:hover:bg-gray-100

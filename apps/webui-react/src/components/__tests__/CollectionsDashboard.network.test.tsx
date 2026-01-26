@@ -197,7 +197,7 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       
       // Open create modal - when empty state, there are two buttons, click the header one
       const header = screen.getByRole('heading', { name: 'Collections' }).parentElement?.parentElement
-      const headerButton = within(header!).getByRole('button', { name: /create.*collection/i })
+      const headerButton = within(header!).getByRole('button', { name: /new collection/i })
       await userEvent.click(headerButton)
       
       // Wait for modal to open and be fully rendered

@@ -195,6 +195,40 @@ export function PipelineBuilderPage() {
     }
   }, [conversationId, conversation, applyMutation, addToast, navigate]);
 
+  // Check if pipeline is ready (needed for keyboard shortcuts)
+  const isPipelineReady = dag && dag.nodes.length > 0 && dag.edges.length > 0;
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape: Clear selection (if no pending questions)
+      if (e.key === 'Escape') {
+        if (pendingQuestions.length === 0 && selection.type !== 'none') {
+          setSelection({ type: 'none' });
+        }
+      }
+
+      // Cmd/Ctrl+S: Validate (prevent default save)
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (isPipelineReady && !isValidating) {
+          handleValidate();
+        }
+      }
+
+      // Cmd/Ctrl+Enter: Apply (if ready)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (isPipelineReady && !applyMutation.isPending) {
+          handleApply();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selection, pendingQuestions.length, isPipelineReady, isValidating, applyMutation.isPending, handleValidate, handleApply]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -233,9 +267,6 @@ export function PipelineBuilderPage() {
     || 'Unknown source';
   const sourceType = sourceInfo?.source_type || 'directory';
 
-  // Check if pipeline is ready
-  const isPipelineReady = dag && dag.nodes.length > 0 && dag.edges.length > 0;
-
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col">
       {/* Header */}
@@ -248,20 +279,46 @@ export function PipelineBuilderPage() {
       />
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left: Pipeline Visualization (~60%) */}
-        <div className="flex-[3] border-r border-[var(--border)] overflow-auto p-4">
-          {dag && (
+        <div className="flex-1 lg:flex-[3] border-b lg:border-b-0 lg:border-r border-[var(--border)] overflow-auto p-4 min-h-[300px] lg:min-h-0">
+          {dag && dag.nodes.length > 0 ? (
             <PipelineVisualization
               dag={dag}
               selection={selection}
               onSelectionChange={setSelection}
             />
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <div className="w-12 h-12 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">
+                  No pipeline configured
+                </h3>
+                <p className="text-sm text-[var(--text-muted)] mb-4">
+                  {mode === 'assisted'
+                    ? 'The agent is analyzing your source to recommend a pipeline configuration.'
+                    : 'Start building your pipeline by adding parser, chunker, and embedder nodes.'}
+                </p>
+                {mode === 'manual' && (
+                  <button
+                    onClick={() => handleModeChange('assisted')}
+                    className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline"
+                  >
+                    Or let the agent help →
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
         {/* Right: Configuration Panel (~40%) */}
-        <div className="flex-[2] overflow-auto">
+        <div className="flex-1 lg:flex-[2] overflow-auto">
           {dag && (
             <ConfigurationPanel
               dag={dag}
