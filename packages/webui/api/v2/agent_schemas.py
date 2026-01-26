@@ -269,6 +269,32 @@ class ResolveUncertaintyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AnswerQuestionRequest(BaseModel):
+    """Request to answer an agent question."""
+
+    question_id: str = Field(..., description="ID of the question being answered")
+    option_id: str | None = Field(None, description="ID of selected option (if choosing from options)")
+    custom_response: str | None = Field(None, description="Custom text response (if not using options)")
+
+    @model_validator(mode="after")
+    def validate_response(self) -> "AnswerQuestionRequest":
+        """Ensure either option_id or custom_response is provided."""
+        if not self.option_id and not self.custom_response:
+            raise ValueError("Either option_id or custom_response must be provided")
+        return self
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AnswerQuestionResponse(BaseModel):
+    """Response after answering a question."""
+
+    success: bool
+    message: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 # =============================================================================
 # Response Schemas
 # =============================================================================
