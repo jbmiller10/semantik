@@ -4,9 +4,12 @@ import { X } from 'lucide-react';
 import { StepProgressIndicator } from './StepProgressIndicator';
 import { BasicsStep } from './steps/BasicsStep';
 import { ConfigureStep } from './steps/ConfigureStep';
+import { AnalysisStep } from './steps/AnalysisStep';
+import { ReviewStep } from './steps/ReviewStep';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
 import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
+import { useCreateConversation } from '../../hooks/useAgentConversation';
 import { useUIStore } from '../../stores/uiStore';
 import type { WizardState, WizardFlow } from '../../types/wizard';
 import type { PipelineDAG } from '../../types/pipeline';
@@ -39,7 +42,12 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
   const [wizardState, setWizardState] = useState<WizardState>(getInitialWizardState('manual'));
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
+  const createConversationMutation = useCreateConversation();
   const { addToast } = useUIStore();
+
+  // Assisted flow state
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [agentSummary, setAgentSummary] = useState('');
 
   // Step 1 (Basics) state
   const [name, setName] = useState('');
@@ -85,10 +93,35 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
     onClose();
   }, [onClose]);
 
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     // Validate current step before proceeding
     if (wizardState.currentStep === 0 && !validateBasics()) {
       return;
+    }
+
+    // Create conversation when entering assisted step 3
+    if (
+      wizardState.currentStep === 1 &&
+      wizardState.flow === 'assisted' &&
+      connectorType !== 'none' &&
+      !conversationId
+    ) {
+      try {
+        const conversation = await createConversationMutation.mutateAsync({
+          inline_source: {
+            source_type: connectorType,
+            source_config: configValues,
+          },
+          secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+        });
+        setConversationId(conversation.id);
+      } catch (error) {
+        addToast({
+          message: error instanceof Error ? error.message : 'Failed to start analysis',
+          type: 'error',
+        });
+        return;
+      }
     }
 
     setWizardState(prev => {
@@ -100,7 +133,7 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
         steps: newSteps,
       };
     });
-  }, [wizardState.currentStep, validateBasics]);
+  }, [wizardState.currentStep, wizardState.flow, validateBasics, connectorType, configValues, secrets, conversationId, createConversationMutation, addToast]);
 
   const handleBack = useCallback(() => {
     setWizardState(prev => ({
@@ -129,6 +162,23 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
       steps: ASSISTED_STEPS.map((s, i) => ({ ...s, isComplete: i < 1 })),
     }));
   }, [handleFlowChange]);
+
+  // Handle switching from assisted to manual
+  const handleSwitchToManual = useCallback(() => {
+    handleFlowChange('manual');
+    // Go back to step 2 (mode selection) when switching
+    setWizardState(prev => ({
+      ...prev,
+      currentStep: 1,
+      flow: 'manual',
+      steps: MANUAL_STEPS.map((s, i) => ({ ...s, isComplete: i < 1 })),
+    }));
+  }, [handleFlowChange]);
+
+  // Handle agent analysis completion
+  const handleAgentComplete = useCallback(() => {
+    // Agent analysis is done - "Next" button will advance to review step
+  }, []);
 
   const handleCreate = useCallback(async () => {
     setIsSubmitting(true);
@@ -218,6 +268,7 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
         role="dialog"
         aria-modal="true"
         aria-labelledby="wizard-title"
+        data-testid="create-collection-modal"
         className={`
           panel relative rounded-2xl shadow-2xl
           flex flex-col overflow-hidden
@@ -323,11 +374,18 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
                   sourceAnalysis={null}
                   onSwitchToAssisted={handleSwitchToAssisted}
                 />
+              ) : conversationId ? (
+                <AnalysisStep
+                  conversationId={conversationId}
+                  dag={dag}
+                  onDagChange={setDag}
+                  onAgentComplete={handleAgentComplete}
+                  onSwitchToManual={handleSwitchToManual}
+                  onSummaryChange={setAgentSummary}
+                />
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <p className="text-[var(--text-muted)]">
-                    Agent Analysis UI (Phase 2)
-                  </p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--text-muted)]" />
                 </div>
               )}
             </div>
@@ -335,11 +393,13 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
 
           {/* Step 4: Review (assisted only) */}
           {wizardState.currentStep === 3 && wizardState.flow === 'assisted' && (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-[var(--text-muted)]">
-                Review Pipeline UI (Phase 2)
-              </p>
-            </div>
+            <ReviewStep
+              dag={dag}
+              onDagChange={setDag}
+              agentSummary={agentSummary || 'The agent has analyzed your source and recommended the pipeline configuration shown.'}
+              conversationId={conversationId || undefined}
+              onBackToAnalysis={() => setWizardState(prev => ({ ...prev, currentStep: 2 }))}
+            />
           )}
         </div>
 
