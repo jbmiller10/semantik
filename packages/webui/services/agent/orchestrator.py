@@ -1117,9 +1117,7 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
             except json.JSONDecodeError as e:
                 # Log more context for debugging malformed tool calls from LLM
                 raw_content = match.group(1).strip()[:200]  # Truncate for logging
-                logger.warning(
-                    f"Failed to parse tool call at index {i}: {e}. Raw content (truncated): {raw_content!r}"
-                )
+                logger.warning(f"Failed to parse tool call at index {i}: {e}. Raw content (truncated): {raw_content!r}")
                 continue
 
         return tool_calls
