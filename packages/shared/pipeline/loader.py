@@ -26,20 +26,31 @@ class LoadError(Exception):
     Attributes:
         file_uri: URI of the file that failed to load
         reason: Human-readable error description
+        stage_id: Optional pipeline stage ID where error occurred
+        stage_type: Optional pipeline stage type where error occurred
     """
 
     def __init__(self, file_uri: str, reason: str) -> None:
         self.file_uri = file_uri
         self.reason = reason
+        self.stage_id: str | None = None
+        self.stage_type: str | None = None
         super().__init__(f"Failed to load {file_uri}: {reason}")
 
 
 class PipelineLoader:
-    """Loads file content and computes SHA-256 hashes.
+    """Loads file content and computes SHA-256 hashes for pipeline processing.
 
     This class handles content loading for files enumerated by connectors.
     For file:// URIs, it reads directly from the filesystem. For other
     schemes, it delegates to the connector's load_content() method.
+
+    Security Note:
+        This class trusts that FileReference objects come from validated
+        connectors. FileReference should NEVER be constructed from untrusted
+        user input, as the loader will read from the specified paths.
+        Connectors are responsible for path traversal protection (see
+        LocalFileConnector for the reference implementation).
 
     Example:
         ```python
@@ -110,10 +121,7 @@ class PipelineLoader:
         parsed = urlparse(file_ref.uri)
         scheme = parsed.scheme.lower()
 
-        # Handle file:// URIs
-        # Note: This method trusts that file_ref comes from a validated connector.
-        # FileReference objects should not be constructed from untrusted input.
-        # Connectors are responsible for path traversal protection (see LocalFileConnector).
+        # Handle file:// URIs (see class docstring for security note)
         if scheme == "file":
             # Extract path from file:// URI
             path = parsed.path

@@ -28,7 +28,7 @@ interface CreateCollectionModalProps {
 const DEFAULT_EMBEDDING_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 const DEFAULT_QUANTIZATION = 'float16';
 
-function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
+function QuickCreateModal({ onClose, onSuccess }: CreateCollectionModalProps) {
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
@@ -66,6 +66,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const [detectedFileType, setDetectedFileType] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Sparse indexing state
   const [sparseEnabled, setSparseEnabled] = useState(false);
@@ -998,5 +999,5 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   );
 }
 
-export default CreateCollectionModal;
-export { CreateCollectionModal };
+export default QuickCreateModal;
+export { QuickCreateModal };

@@ -150,6 +150,7 @@ class PipelineExecutor:
 
         # Execution state
         self._stage_timings: dict[str, float] = {}
+        self._callback_failures: int = 0
 
     async def execute(
         self,
@@ -318,6 +319,7 @@ class PipelineExecutor:
             sample_outputs=sample_outputs,
             halted=halted,
             halt_reason=halt_reason,
+            callback_failures=self._callback_failures,
         )
 
     async def _process_file(
@@ -340,8 +342,8 @@ class PipelineExecutor:
             load_result = await self._loader.load(file_ref)
         except LoadError as e:
             # Add stage info for error tracking
-            e.stage_id = "loader"  # noqa: B010
-            e.stage_type = "loader"  # noqa: B010
+            e.stage_id = "loader"
+            e.stage_type = "loader"
             raise
 
         self._record_timing("loader", stage_start)
@@ -400,12 +402,13 @@ class PipelineExecutor:
                                 file_ref=file_ref,
                                 doc_id=doc_id,
                             )
-                        except Exception:
-                            # Mark document as FAILED so it's not stuck in PENDING
+                        except Exception as embed_error:
+                            # Mark document as FAILED with actual error details
+                            error_msg = f"Embedding failed: {type(embed_error).__name__}: {embed_error}"
                             await self._doc_repo.update_status(
                                 doc_id,
                                 DocumentStatus.FAILED,
-                                error_message="Embedding failed",
+                                error_message=error_msg[:500],  # Truncate for DB field
                             )
                             await self.session.commit()
                             raise
@@ -479,7 +482,7 @@ class PipelineExecutor:
             e.stage_type = "database"  # type: ignore[attr-defined]
             raise
 
-        if existing and existing.content_hash == content_hash:
+        if existing is not None and existing.content_hash == content_hash:
             return "unchanged"
 
         return None
@@ -612,7 +615,9 @@ class PipelineExecutor:
         }
 
         # Call VecPipe /embed endpoint
-        vecpipe_url = "http://vecpipe:8000/embed"
+        from shared.config import settings
+
+        vecpipe_url = f"{settings.SEARCH_API_URL}/embed"
         embed_request = {
             "texts": texts,
             "model_name": embedding_model,
@@ -666,7 +671,7 @@ class PipelineExecutor:
 
         # Upsert to Qdrant via VecPipe in batches
         batch_size = 100
-        vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+        vecpipe_upsert_url = f"{settings.SEARCH_API_URL}/upsert"
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             for batch_start in range(0, len(points), batch_size):
@@ -760,7 +765,16 @@ class PipelineExecutor:
             try:
                 await callback(event)
             except Exception as e:
-                logger.warning("Progress callback failed for %s: %s", event.event_type, e, exc_info=True)
+                self._callback_failures += 1
+                logger.warning(
+                    "Progress callback failed for %s (failure #%d): %s",
+                    event.event_type,
+                    self._callback_failures,
+                    e,
+                    exc_info=True,
+                )
+                if self._callback_failures >= 5:
+                    logger.error("Progress callbacks failing repeatedly (%d failures)", self._callback_failures)
 
 
 __all__ = [

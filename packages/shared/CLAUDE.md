@@ -481,9 +481,9 @@
 
 <development>
   <commands>
-    - Test: `poetry run pytest tests/`
-    - Lint: `poetry run ruff check packages/shared/`
-    - Type check: `poetry run mypy packages/shared/`
+    - Test: `uv run pytest tests/shared/`
+    - Lint: `uv run ruff check packages/shared/`
+    - Type check: `uv run mypy packages/shared/`
   </commands>
   <test-locations>
     - tests/unit/: Repository and utility tests

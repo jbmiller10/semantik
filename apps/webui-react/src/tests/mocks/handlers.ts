@@ -1713,4 +1713,130 @@ export const handlers = [
 
     return HttpResponse.json(template)
   }),
+
+  // =============================================================================
+  // Agent Conversation Endpoints
+  // =============================================================================
+
+  // Create a new agent conversation
+  http.post('*/api/v2/agent/conversations', async ({ request }) => {
+    const body = await request.json() as { source_id: number }
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: 'conv-test-123',
+      status: 'active',
+      source_id: body.source_id,
+      collection_id: null,
+      current_pipeline: null,
+      source_analysis: {
+        total_files: 247,
+        total_size_bytes: 47185920,
+        file_types: { '.pdf': 150, '.txt': 97 },
+        sample_files: ['/docs/file1.pdf', '/docs/file2.txt'],
+        warnings: [],
+      },
+      uncertainties: [],
+      messages: [],
+      summary: null,
+      created_at: now,
+      updated_at: now,
+    })
+  }),
+
+  // Get agent conversation by ID
+  http.get('*/api/v2/agent/conversations/:id', ({ params }) => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: params.id,
+      status: 'active',
+      source_id: 42,
+      collection_id: null,
+      current_pipeline: {
+        embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+        quantization: 'float16',
+        chunking_strategy: 'semantic',
+        chunking_config: { max_tokens: 512, overlap_tokens: 50 },
+      },
+      source_analysis: {
+        total_files: 247,
+        total_size_bytes: 47185920,
+        file_types: { '.pdf': 150, '.txt': 97 },
+        sample_files: ['/docs/file1.pdf', '/docs/file2.txt'],
+        warnings: [],
+      },
+      uncertainties: [
+        {
+          id: 'unc-1',
+          severity: 'notable',
+          message: 'Some PDF files appear to be scanned images',
+          resolved: false,
+          context: { affected_files: 5 },
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: 'Help me set up a pipeline for my documents',
+          timestamp: now,
+        },
+        {
+          role: 'assistant',
+          content: 'I found 247 files in your source. Let me analyze them...',
+          timestamp: now,
+        },
+      ],
+      summary: null,
+      created_at: now,
+      updated_at: now,
+    })
+  }),
+
+  // List agent conversations
+  http.get('*/api/v2/agent/conversations', () => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      conversations: [
+        {
+          id: 'conv-test-123',
+          status: 'active',
+          source_id: 42,
+          created_at: now,
+        },
+        {
+          id: 'conv-test-456',
+          status: 'applied',
+          source_id: 43,
+          created_at: now,
+        },
+      ],
+      total: 2,
+    })
+  }),
+
+  // Apply pipeline
+  http.post('*/api/v2/agent/conversations/:id/apply', async ({ request }) => {
+    const body = await request.json() as { collection_name: string; force?: boolean }
+
+    return HttpResponse.json({
+      collection_id: 'coll-new-123',
+      collection_name: body.collection_name,
+      operation_id: 'op-index-123',
+      status: 'indexing',
+    })
+  }),
+
+  // Abandon conversation
+  http.patch('*/api/v2/agent/conversations/:id/status', ({ params }) => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: params.id,
+      status: 'abandoned',
+      source_id: 42,
+      created_at: now,
+    })
+  }),
 ]

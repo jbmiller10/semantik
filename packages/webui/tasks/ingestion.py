@@ -720,8 +720,8 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     headers = _build_internal_api_headers()
-                    await client.post("http://vecpipe:8000/embed", json=embed_req, headers=headers)
-                    await client.post("http://vecpipe:8000/upsert", json=upsert_req, headers=headers)
+                    await client.post(f"{settings.SEARCH_API_URL}/embed", json=embed_req, headers=headers)
+                    await client.post(f"{settings.SEARCH_API_URL}/upsert", json=upsert_req, headers=headers)
 
                 try:
                     doc.chunk_count = len(chunks)
@@ -1854,7 +1854,7 @@ async def _process_append_operation_impl(
 
                     texts = [chunk.get("text") or chunk.get("content") for chunk in chunks]
 
-                    vecpipe_url = "http://vecpipe:8000/embed"
+                    vecpipe_url = f"{settings.SEARCH_API_URL}/embed"
                     embed_request = {
                         "texts": texts,
                         "model_name": embedding_model,
@@ -1950,7 +1950,7 @@ async def _process_append_operation_impl(
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
                             headers = _build_internal_api_headers()
-                            vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+                            vecpipe_upsert_url = f"{settings.SEARCH_API_URL}/upsert"
                             response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
 
                             if response.status_code != 200:

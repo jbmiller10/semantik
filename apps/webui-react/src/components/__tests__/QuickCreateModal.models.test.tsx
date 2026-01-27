@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import { CreateCollectionModal } from '../CreateCollectionModal';
+import { QuickCreateModal } from '../QuickCreateModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 
 // Mock hooks
@@ -51,14 +51,14 @@ vi.mock('../../hooks/useOperationProgress', () => ({
   })),
 }));
 
-const renderCreateCollectionModal = (props = {}) => {
+const renderQuickCreateModal = (props = {}) => {
   return render(
-    <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} {...props} />,
+    <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} {...props} />,
     { wrapper: TestWrapper }
   );
 };
 
-describe('CreateCollectionModal - Dynamic Model Loading', () => {
+describe('QuickCreateModal - Dynamic Model Loading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateCollectionMutation.mutateAsync.mockReset();
@@ -66,7 +66,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
   });
 
   it('should render models from API including plugin models', async () => {
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     // Wait for models to load from MSW mock
     await waitFor(() => {
@@ -82,7 +82,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
   });
 
   it('should display plugin model with provider indicator', async () => {
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/embedding model/i);
@@ -95,7 +95,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
   });
 
   it('should sort models alphabetically', async () => {
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/embedding model/i);
@@ -113,7 +113,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
   });
 
   it('should display current device information', async () => {
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     await waitFor(() => {
       // MSW mock returns current_device: 'cuda:0'
@@ -123,7 +123,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
 
   it('should use default model when models are loading', () => {
     // This test checks the initial loading state
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     const modelSelect = screen.getByLabelText(/embedding model/i);
     // During loading, the select shows "Loading models..."
@@ -135,7 +135,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
     const mockOnSuccess = vi.fn();
     mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-id' });
 
-    renderCreateCollectionModal({ onSuccess: mockOnSuccess });
+    renderQuickCreateModal({ onSuccess: mockOnSuccess });
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/embedding model/i);
@@ -161,7 +161,7 @@ describe('CreateCollectionModal - Dynamic Model Loading', () => {
   });
 
   it('should not show provider indicator for built-in dense_local models', async () => {
-    renderCreateCollectionModal();
+    renderQuickCreateModal();
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/embedding model/i);

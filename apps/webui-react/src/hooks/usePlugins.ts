@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pluginsApi } from '../services/api/v2/plugins';
+import { useUIStore } from '../stores/uiStore';
+import { handleApiError } from '../services/api/v2/collections';
 import type {
   PluginInfo,
   PluginListFilters,
@@ -11,7 +13,12 @@ import type {
   AvailablePluginFilters,
   PluginInstallRequest,
   PluginInstallResponse,
+  PipelinePluginInfo,
+  PipelinePluginFilters,
 } from '../types/plugin';
+
+// Re-export PluginConfigSchema for convenience
+export type { PluginConfigSchema } from '../types/plugin';
 
 /**
  * Query key factory for plugin queries
@@ -25,6 +32,8 @@ export const pluginKeys = {
   health: (pluginId: string) => [...pluginKeys.all, 'health', pluginId] as const,
   available: (filters?: AvailablePluginFilters) =>
     [...pluginKeys.all, 'available', filters] as const,
+  pipeline: (filters?: PipelinePluginFilters) =>
+    [...pluginKeys.all, 'pipeline', filters] as const,
 };
 
 /**
@@ -113,6 +122,7 @@ export function usePluginHealth(pluginId: string) {
  */
 export function useEnablePlugin() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginStatusResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -124,6 +134,10 @@ export function useEnablePlugin() {
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
     },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to enable plugin "${pluginId}": ${errorMessage}` });
+    },
   });
 }
 
@@ -133,6 +147,7 @@ export function useEnablePlugin() {
  */
 export function useDisablePlugin() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginStatusResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -144,6 +159,10 @@ export function useDisablePlugin() {
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
     },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to disable plugin "${pluginId}": ${errorMessage}` });
+    },
   });
 }
 
@@ -153,6 +172,7 @@ export function useDisablePlugin() {
  */
 export function useUpdatePluginConfig() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<
     PluginInfo,
@@ -168,6 +188,10 @@ export function useUpdatePluginConfig() {
       queryClient.setQueryData(pluginKeys.detail(pluginId), data);
       // Invalidate all list queries regardless of filters
       queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
+    },
+    onError: (error, { pluginId }) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to update config for "${pluginId}": ${errorMessage}` });
     },
   });
 }
@@ -191,6 +215,42 @@ export function useRefreshPluginHealth() {
       // Invalidate all list queries regardless of filters (e.g., include_health)
       queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
     },
+  });
+}
+
+// --- Pipeline Plugins (for wizard) ---
+
+/**
+ * Hook to fetch all plugins (builtin + external) for pipeline configuration
+ * Used by the wizard's pipeline editor to show available plugins for each stage.
+ * @param filters Optional filters for plugin type
+ */
+export function usePipelinePlugins(filters?: PipelinePluginFilters) {
+  return useQuery({
+    queryKey: pluginKeys.pipeline(filters),
+    queryFn: async (): Promise<PipelinePluginInfo[]> => {
+      const response = await pluginsApi.listPipeline(filters);
+      return response.data.plugins;
+    },
+    staleTime: 60 * 1000, // Cache for 60 seconds (plugins don't change often)
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  });
+}
+
+/**
+ * Hook to fetch a plugin's configuration schema for pipeline configuration
+ * Works for both builtin and external plugins.
+ * @param pluginId The plugin identifier
+ */
+export function usePipelinePluginConfigSchema(pluginId: string) {
+  return useQuery({
+    queryKey: [...pluginKeys.all, 'pipeline-config-schema', pluginId] as const,
+    queryFn: async (): Promise<PluginConfigSchema | null> => {
+      const response = await pluginsApi.getPipelineConfigSchema(pluginId);
+      return response.data;
+    },
+    enabled: !!pluginId,
+    staleTime: 5 * 60 * 1000, // Schemas don't change often
   });
 }
 
@@ -242,6 +302,7 @@ export function useRefreshAvailablePlugins() {
  */
 export function usePluginInstall() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginInstallResponse, Error, PluginInstallRequest>({
     mutationFn: async (request: PluginInstallRequest) => {
@@ -254,6 +315,10 @@ export function usePluginInstall() {
         queryKey: [...pluginKeys.all, 'available'],
       });
     },
+    onError: (error, request) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to install plugin "${request.plugin_id}": ${errorMessage}` });
+    },
   });
 }
 
@@ -263,6 +328,7 @@ export function usePluginInstall() {
  */
 export function usePluginUninstall() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginInstallResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -272,6 +338,10 @@ export function usePluginUninstall() {
     onSuccess: () => {
       // Invalidate all plugin queries
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
+    },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to uninstall plugin "${pluginId}": ${errorMessage}` });
     },
   });
 }

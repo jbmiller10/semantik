@@ -178,6 +178,31 @@ class PluginErrorDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PipelinePluginInfo(BaseModel):
+    """Simplified plugin info for pipeline configuration.
+
+    Used by the wizard to show all available plugins (builtin + external)
+    for each pipeline stage.
+    """
+
+    id: str
+    type: str
+    display_name: str
+    description: str
+    source: str  # "builtin" or "external"
+    enabled: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PipelinePluginListResponse(BaseModel):
+    """Response for listing all plugins for pipeline configuration."""
+
+    plugins: list[PipelinePluginInfo]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PluginErrorResponse(BaseModel):
     """Structured error response for plugin API endpoints.
 

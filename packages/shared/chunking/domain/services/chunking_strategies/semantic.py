@@ -6,10 +6,12 @@ This module provides a wrapper around the unified semantic chunking strategy
 to make it compatible with domain tests that expect specific methods to patch.
 """
 
+from typing import Any
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
+from shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy as UnifiedSemanticStrategy
 
 
 class SemanticChunkingStrategy(DomainStrategyAdapter):
@@ -81,3 +83,8 @@ class SemanticChunkingStrategy(DomainStrategyAdapter):
                 chunk.metadata.custom_attributes["breakpoint_threshold"] = config.similarity_threshold
 
         return chunks
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration."""
+        return UnifiedSemanticStrategy.get_config_schema()

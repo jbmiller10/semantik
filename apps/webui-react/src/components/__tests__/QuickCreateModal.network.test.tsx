@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import CreateCollectionModal from '../CreateCollectionModal'
+import QuickCreateModal from '../QuickCreateModal'
 import { 
   renderWithErrorHandlers, 
   expectFormDataPreserved,
@@ -94,7 +94,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-describe('CreateCollectionModal - Network Error Handling', () => {
+describe('QuickCreateModal - Network Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -104,7 +104,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'))
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         collectionErrorHandlers.networkError()
       )
 
@@ -132,7 +132,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'))
 
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         collectionErrorHandlers.networkError()
       )
 
@@ -176,7 +176,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       const onClose = vi.fn()
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={onClose} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={onClose} onSuccess={vi.fn()} />,
         []
       )
 
@@ -220,7 +220,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       )
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -247,7 +247,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       mockAddSourceMutation.mutateAsync.mockRejectedValue(new Error('Network error during add source'))
 
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -276,7 +276,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       // But component doesn't retry automatically, so this test just verifies the warning
 
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -302,7 +302,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'))
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         collectionErrorHandlers.networkError()
       )
 
@@ -330,7 +330,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       )
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 

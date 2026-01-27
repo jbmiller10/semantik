@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { CreateCollectionModal } from '../CreateCollectionModal';
+import { QuickCreateModal } from '../QuickCreateModal';
 import { TestWrapper } from '../../tests/utils/TestWrapper';
 
 // Mock react-router-dom
@@ -156,14 +156,14 @@ vi.mock('../../hooks/usePreferences', () => ({
 }));
 
 // Helper function to render with wrapper
-const renderCreateCollectionModal = (props = {}) => {
+const renderQuickCreateModal = (props = {}) => {
   return render(
-    <CreateCollectionModal {...props} />,
+    <QuickCreateModal {...props} />,
     { wrapper: TestWrapper }
   );
 };
 
-describe('CreateCollectionModal', () => {
+describe('QuickCreateModal', () => {
   const mockOnClose = vi.fn();
   const mockOnSuccess = vi.fn();
 
@@ -194,7 +194,7 @@ describe('CreateCollectionModal', () => {
 
   describe('Initial Render', () => {
     it('should render with default values', async () => {
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Check modal is visible
       expect(screen.getByRole('heading', { name: /create new collection/i })).toBeInTheDocument();
@@ -233,7 +233,7 @@ describe('CreateCollectionModal', () => {
 
     it('should have proper ARIA labels for accessibility', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Check core inputs have labels
       expect(screen.getByLabelText(/collection name/i)).toHaveAttribute('id', 'name');
@@ -251,7 +251,7 @@ describe('CreateCollectionModal', () => {
   describe('Form Validation', () => {
     it('should show validation error for empty collection name', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Try to submit without filling required field
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -269,7 +269,7 @@ describe('CreateCollectionModal', () => {
 
     it('should show validation error for collection name exceeding 100 characters', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       const longName = 'a'.repeat(101);
       await user.type(screen.getByLabelText(/collection name/i), longName);
@@ -286,7 +286,7 @@ describe('CreateCollectionModal', () => {
 
     it('should show validation error for description exceeding 500 characters', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
       const longDescription = 'a'.repeat(501);
@@ -304,7 +304,7 @@ describe('CreateCollectionModal', () => {
 
     it('should clear validation errors when fields are corrected', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Submit without required field
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -336,7 +336,7 @@ describe('CreateCollectionModal', () => {
         initial_operation_id: null,
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Fill form
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
@@ -377,7 +377,7 @@ describe('CreateCollectionModal', () => {
         new Promise(resolve => setTimeout(() => resolve({ id: 'test-id' }), 100))
       );
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
       
@@ -401,7 +401,7 @@ describe('CreateCollectionModal', () => {
         new Promise(resolve => setTimeout(() => resolve({ id: 'test-id' }), 100))
       );
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -427,7 +427,7 @@ describe('CreateCollectionModal', () => {
       // Mock successful source addition
       mockAddSourceMutation.mutateAsync.mockResolvedValue({});
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Fill form with source - first select Directory connector
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
@@ -499,7 +499,7 @@ describe('CreateCollectionModal', () => {
       // Mock source addition failure
       mockAddSourceMutation.mutateAsync.mockRejectedValue(new Error('Failed to add source'));
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
       // First select Directory connector
@@ -536,7 +536,7 @@ describe('CreateCollectionModal', () => {
   describe('Advanced Settings', () => {
     it('should toggle advanced settings visibility', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Chunking strategy is always visible (not in advanced settings anymore)
       expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument();
@@ -570,7 +570,7 @@ describe('CreateCollectionModal', () => {
   describe('Modal Lifecycle', () => {
     it('should handle escape key to close modal', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Press escape
       await user.keyboard('{Escape}');
@@ -585,7 +585,7 @@ describe('CreateCollectionModal', () => {
         new Promise(resolve => setTimeout(() => resolve({ id: 'test-id' }), 100))
       );
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test');
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -599,7 +599,7 @@ describe('CreateCollectionModal', () => {
 
     it('should handle cancel button click', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.click(screen.getByRole('button', { name: /cancel/i }));
 
@@ -608,7 +608,7 @@ describe('CreateCollectionModal', () => {
 
     it('should prevent form submission on enter key in input fields', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Type and press enter in name field
       const nameInput = screen.getByLabelText(/collection name/i);
@@ -630,7 +630,7 @@ describe('CreateCollectionModal', () => {
       // Mock submission failure
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'));
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Fill form
       const formData = {
@@ -670,7 +670,7 @@ describe('CreateCollectionModal', () => {
   describe('Embedding Model Selection', () => {
     it('should allow selecting different embedding models', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Wait for models to load from API (via MSW mock)
       await waitFor(() => {
@@ -709,7 +709,7 @@ describe('CreateCollectionModal', () => {
       // Skipped: Quantization field is conditionally rendered based on model support
       // This test requires mocking a model that supports quantization
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       const quantSelect = screen.getByLabelText(/model quantization/i);
 
@@ -751,7 +751,7 @@ describe('CreateCollectionModal', () => {
         initial_operation_id: null,
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
       // First select Directory connector
@@ -776,7 +776,7 @@ describe('CreateCollectionModal', () => {
       const user = userEvent.setup();
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-id' });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test');
 
@@ -795,7 +795,7 @@ describe('CreateCollectionModal', () => {
 
     it('should handle whitespace-only collection name', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), '   ');
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -820,7 +820,7 @@ describe('CreateCollectionModal', () => {
         refs_found: ['main', 'develop'],
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select Git connector
       await user.click(screen.getByText('Git Repository'));
@@ -852,7 +852,7 @@ describe('CreateCollectionModal', () => {
         refs_found: ['main', 'develop', 'v1.0.0'],
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select Git connector
       await user.click(screen.getByText('Git Repository'));
@@ -874,7 +874,7 @@ describe('CreateCollectionModal', () => {
       const user = userEvent.setup();
       mockGitPreviewMutation.mutateAsync.mockRejectedValue(new Error('Authentication failed'));
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select Git connector
       await user.click(screen.getByText('Git Repository'));
@@ -906,7 +906,7 @@ describe('CreateCollectionModal', () => {
         mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select IMAP connector
       await user.click(screen.getByText(/email.*imap/i));
@@ -945,7 +945,7 @@ describe('CreateCollectionModal', () => {
         mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select IMAP connector
       await user.click(screen.getByText(/email.*imap/i));
@@ -971,7 +971,7 @@ describe('CreateCollectionModal', () => {
   describe('Sync Configuration', () => {
     it('should show sync interval input when continuous mode is selected', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Initially, interval input should not be visible (default is one_time mode)
       expect(screen.queryByLabelText(/sync interval/i)).not.toBeInTheDocument();
@@ -988,7 +988,7 @@ describe('CreateCollectionModal', () => {
 
     it('should hide sync interval input when switching back to one-time mode', async () => {
       const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select continuous mode
       await user.click(screen.getByLabelText(/continuous sync/i));
@@ -1010,7 +1010,7 @@ describe('CreateCollectionModal', () => {
     it('should clear connector state when switching to none', async () => {
       const user = userEvent.setup();
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select Git connector
       await user.click(screen.getByText('Git Repository'));
@@ -1031,7 +1031,7 @@ describe('CreateCollectionModal', () => {
     it('should set default values from catalog when selecting connector type', async () => {
       const user = userEvent.setup();
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       // Select Directory connector
       await user.click(screen.getByText('Directory'));
@@ -1050,7 +1050,7 @@ describe('CreateCollectionModal', () => {
       });
       mockAddSourceMutation.mutateAsync.mockResolvedValue({});
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
 
@@ -1098,7 +1098,7 @@ describe('CreateCollectionModal', () => {
         initial_operation_id: 'op-123',
       });
 
-      renderCreateCollectionModal(defaultProps);
+      renderQuickCreateModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
 

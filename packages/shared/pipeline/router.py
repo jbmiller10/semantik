@@ -100,20 +100,27 @@ class PipelineRouter:
         current: PipelineNode,
         file_ref: FileReference,
     ) -> list[PipelineNode]:
-        """Find the next node to process after the current node completes.
+        """Find the next node(s) to process after the current node completes.
 
-        Examines outgoing edges from the current node and returns the first
-        matching node. Uses first-match-wins semantics: predicate edges are
-        evaluated in order, and the first matching edge determines the next
-        node. Catch-all edges (when=None) are checked only if no predicate
-        edges match.
+        Uses first-match-wins semantics: returns a single-element list with
+        the first matching node, or empty list at terminal nodes.
+
+        Predicate edges are evaluated in order, and the first matching edge
+        determines the next node. Catch-all edges (when=None) are checked
+        only if no predicate edges match.
+
+        Note:
+            Returns a list for API consistency, but always contains 0 or 1 nodes.
+            This allows callers to use iteration patterns even though only one
+            node is ever returned.
 
         Args:
             current: The node that just completed processing
-            file_ref: The file being processed
+            file_ref: The file being processed (used for predicate matching)
 
         Returns:
-            List containing the first matching node, or empty list at terminal nodes.
+            Single-element list with the first matching node, or empty list at
+            terminal nodes (embedder) or when no edges match.
         """
         outgoing = self._outgoing_edges.get(current.id, [])
 

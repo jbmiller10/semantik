@@ -23,7 +23,7 @@ export interface PluginManifest {
 /**
  * Available plugin types
  */
-export type PluginType = 'embedding' | 'chunking' | 'connector' | 'reranker' | 'extractor';
+export type PluginType = 'embedding' | 'chunking' | 'connector' | 'reranker' | 'extractor' | 'parser';
 
 /**
  * Health status of a plugin
@@ -136,12 +136,14 @@ export const PLUGIN_TYPE_LABELS: Record<PluginType, string> = {
   connector: 'Connectors',
   reranker: 'Rerankers',
   extractor: 'Extractors',
+  parser: 'Parsers',
 };
 
 /**
  * Plugin type sort order for consistent display
  */
 export const PLUGIN_TYPE_ORDER: PluginType[] = [
+  'parser',
   'embedding',
   'reranker',
   'extractor',
@@ -161,6 +163,7 @@ export function groupPluginsByType(
     connector: [],
     reranker: [],
     extractor: [],
+    parser: [],
   };
 
   for (const plugin of plugins) {
@@ -177,6 +180,36 @@ export function groupPluginsByType(
   }
 
   return grouped;
+}
+
+// --- Pipeline Plugins (for wizard) ---
+
+/**
+ * Simplified plugin info for pipeline configuration.
+ * Used by the wizard to show all available plugins (builtin + external)
+ * for each pipeline stage.
+ */
+export interface PipelinePluginInfo {
+  id: string;
+  type: PluginType;
+  display_name: string;
+  description: string;
+  source: 'builtin' | 'external';
+  enabled: boolean;
+}
+
+/**
+ * Response from listing pipeline plugins
+ */
+export interface PipelinePluginListResponse {
+  plugins: PipelinePluginInfo[];
+}
+
+/**
+ * Filters for listing pipeline plugins
+ */
+export interface PipelinePluginFilters {
+  plugin_type?: PluginType;
 }
 
 // --- Available Plugins (from registry) ---
@@ -251,6 +284,7 @@ export function groupAvailablePluginsByType(
     connector: [],
     reranker: [],
     extractor: [],
+    parser: [],
   };
 
   for (const plugin of plugins) {

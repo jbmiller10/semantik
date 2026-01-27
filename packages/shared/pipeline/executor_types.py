@@ -186,6 +186,7 @@ class ExecutionResult:
         sample_outputs: Sample outputs in DRY_RUN mode (None in FULL mode)
         halted: Whether execution was halted due to consecutive failures
         halt_reason: Reason for halt (if halted)
+        callback_failures: Number of times progress callbacks failed
     """
 
     mode: ExecutionMode
@@ -201,6 +202,15 @@ class ExecutionResult:
     sample_outputs: list[SampleOutput] | None = None
     halted: bool = False
     halt_reason: str | None = None
+    callback_failures: int = 0
+
+    def __post_init__(self) -> None:
+        """Validate invariants after initialization."""
+        outcome_sum = self.files_succeeded + self.files_failed + self.files_skipped
+        if outcome_sum > self.files_processed:
+            raise ValueError(f"Sum of outcomes ({outcome_sum}) cannot exceed files_processed ({self.files_processed})")
+        if self.halt_reason and not self.halted:
+            raise ValueError("halt_reason requires halted=True")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
@@ -218,6 +228,7 @@ class ExecutionResult:
             "sample_outputs": [s.to_dict() for s in self.sample_outputs] if self.sample_outputs else None,
             "halted": self.halted,
             "halt_reason": self.halt_reason,
+            "callback_failures": self.callback_failures,
         }
 
 

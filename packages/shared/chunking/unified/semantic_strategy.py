@@ -828,3 +828,17 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
         # Semantic chunking tends to create slightly fewer, more coherent chunks
         base_estimate = config.estimate_chunks(estimated_tokens)
         return max(1, int(base_estimate * 0.8))
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for semantic chunking configuration."""
+        base_schema = super().get_config_schema()
+        base_schema["properties"]["semantic_threshold"] = {
+            "type": "number",
+            "title": "Semantic Threshold",
+            "description": "Threshold for semantic similarity (0.0 to 1.0). Lower values create more chunks.",
+            "default": 0.7,
+            "minimum": 0.0,
+            "maximum": 1.0,
+        }
+        return base_schema
