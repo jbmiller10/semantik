@@ -598,7 +598,9 @@ class TestSpawnSourceAnalyzerTool:
         mock_conv_repo = MagicMock()
         mock_conv_repo.add_uncertainty = AsyncMock(
             side_effect=[
-                MagicMock(id="u1", message="Some files may be scanned PDFs", resolved=False, context={"affected_files": 5}),
+                MagicMock(
+                    id="u1", message="Some files may be scanned PDFs", resolved=False, context={"affected_files": 5}
+                ),
                 MagicMock(id="u2", message="Detected multiple languages", resolved=False, context=None),
             ]
         )
@@ -805,9 +807,15 @@ class TestSpawnPipelineValidatorTool:
 
         source_analysis = {
             "sample_files": [
-                FileReference(uri="file1.pdf", source_type="local", content_type="document", extension=".pdf").to_dict(),
-                FileReference(uri="file2.pdf", source_type="local", content_type="document", extension=".pdf").to_dict(),
-                FileReference(uri="doc1.docx", source_type="local", content_type="document", extension=".docx").to_dict(),
+                FileReference(
+                    uri="file1.pdf", source_type="local", content_type="document", extension=".pdf"
+                ).to_dict(),
+                FileReference(
+                    uri="file2.pdf", source_type="local", content_type="document", extension=".pdf"
+                ).to_dict(),
+                FileReference(
+                    uri="doc1.docx", source_type="local", content_type="document", extension=".docx"
+                ).to_dict(),
             ]
         }
 
@@ -823,7 +831,9 @@ class TestSpawnPipelineValidatorTool:
 
         source_analysis = {
             "sample_files": [
-                FileReference(uri=f"file{i}.pdf", source_type="local", content_type="document", extension=".pdf").to_dict()
+                FileReference(
+                    uri=f"file{i}.pdf", source_type="local", content_type="document", extension=".pdf"
+                ).to_dict()
                 for i in range(50)
             ]
         }

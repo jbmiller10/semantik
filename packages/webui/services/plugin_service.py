@@ -478,14 +478,16 @@ class PluginService:
             if not is_enabled:
                 continue
 
-            results.append({
-                "id": record.plugin_id,
-                "type": record.plugin_type,
-                "display_name": record.manifest.display_name,
-                "description": record.manifest.description,
-                "source": record.source.value,
-                "enabled": is_enabled,
-            })
+            results.append(
+                {
+                    "id": record.plugin_id,
+                    "type": record.plugin_type,
+                    "display_name": record.manifest.display_name,
+                    "description": record.manifest.description,
+                    "source": record.source.value,
+                    "enabled": is_enabled,
+                }
+            )
 
         return results
 

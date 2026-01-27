@@ -282,9 +282,11 @@ class SpawnSourceAnalyzerTool(BaseTool):
                     "analysis": analysis_data,
                     "summary": result.summary,
                     "error": result.summary if not result.success else None,
-                    "uncertainties": persisted_uncertainties
-                    if persisted_uncertainties
-                    else [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                    "uncertainties": (
+                        persisted_uncertainties
+                        if persisted_uncertainties
+                        else [{"severity": u.severity, "message": u.message} for u in result.uncertainties]
+                    ),
                 }
 
         except Exception as e:
@@ -612,9 +614,11 @@ class SpawnPipelineValidatorTool(BaseTool):
                     "success": result.success,
                     "report": result.data,
                     "summary": result.summary,
-                    "uncertainties": persisted_uncertainties
-                    if persisted_uncertainties
-                    else [{"severity": u.severity, "message": u.message} for u in result.uncertainties],
+                    "uncertainties": (
+                        persisted_uncertainties
+                        if persisted_uncertainties
+                        else [{"severity": u.severity, "message": u.message} for u in result.uncertainties]
+                    ),
                 }
 
         except Exception as e:
@@ -666,7 +670,7 @@ class SpawnPipelineValidatorTool(BaseTool):
             for ext_data in by_extension.values():
                 if len(sample_refs) >= sample_count:
                     break
-                for d in (ext_data.get("sample_files") or []):
+                for d in ext_data.get("sample_files") or []:
                     if len(sample_refs) >= sample_count:
                         break
                     if not isinstance(d, dict):
@@ -684,7 +688,7 @@ class SpawnPipelineValidatorTool(BaseTool):
         by_extension = source_analysis.get("by_extension", {})
         if isinstance(by_extension, dict):
             for ext_data in by_extension.values():
-                for uri in (ext_data.get("sample_uris") or []):
+                for uri in ext_data.get("sample_uris") or []:
                     if isinstance(uri, str) and uri and uri not in uris:
                         uris.append(uri)
                     if len(uris) >= sample_count:

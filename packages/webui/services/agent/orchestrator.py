@@ -251,8 +251,10 @@ When you're done responding (no more tools to call), just write your response no
                 if rate_limit_attempt >= self.LLM_RATE_LIMIT_MAX_ATTEMPTS:
                     raise
 
-                base = e.retry_after if e.retry_after is not None else (
-                    self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1))
+                base = (
+                    e.retry_after
+                    if e.retry_after is not None
+                    else (self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1)))
                 )
                 delay = min(base, self.LLM_RATE_LIMIT_MAX_DELAY_SECONDS)
                 delay += random.random() * 0.25
@@ -491,9 +493,7 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                     f"Timeout error ({error_type}): The operation took too long. "
                     "Please try again with a simpler request."
                 ) from e
-            raise AgentError(
-                f"An unexpected error occurred ({error_type}): {str(e)[:100]}"
-            ) from e
+            raise AgentError(f"An unexpected error occurred ({error_type}): {str(e)[:100]}") from e
 
     async def handle_message_streaming(self, user_message: str) -> AsyncGenerator[AgentStreamEvent, None]:
         """Process user message with streaming events.
@@ -1118,8 +1118,7 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 # Log more context for debugging malformed tool calls from LLM
                 raw_content = match.group(1).strip()[:200]  # Truncate for logging
                 logger.warning(
-                    f"Failed to parse tool call at index {i}: {e}. "
-                    f"Raw content (truncated): {raw_content!r}"
+                    f"Failed to parse tool call at index {i}: {e}. " f"Raw content (truncated): {raw_content!r}"
                 )
                 continue
 

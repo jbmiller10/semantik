@@ -285,8 +285,10 @@ class SubAgent(ABC):
                 if rate_limit_attempt >= self.LLM_RATE_LIMIT_MAX_ATTEMPTS:
                     raise
 
-                base = e.retry_after if e.retry_after is not None else (
-                    self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1))
+                base = (
+                    e.retry_after
+                    if e.retry_after is not None
+                    else (self.LLM_RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** (rate_limit_attempt - 1)))
                 )
                 delay = min(base, self.LLM_RATE_LIMIT_MAX_DELAY_SECONDS)
                 delay += random.random() * 0.25
