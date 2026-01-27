@@ -46,6 +46,8 @@ export function AnalysisStep({
     sendMessage,
     currentContent,
     pipeline,
+    error: streamError,
+    reset: resetStream,
   } = useAgentStream(conversationId, streamCallbacks);
 
   // Auto-start agent analysis
@@ -223,8 +225,30 @@ export function AnalysisStep({
               </div>
             )}
 
+            {/* Error state */}
+            {streamError && (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="text-sm font-medium text-red-400">Analysis failed</span>
+                </div>
+                <p className="text-sm text-red-300 mb-3">{streamError}</p>
+                <button
+                  onClick={() => {
+                    resetStream();
+                    setHasAutoStarted(false);
+                  }}
+                  className="text-sm text-red-400 hover:text-red-300 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
             {/* Empty state */}
-            {!currentContent && activities.length === 0 && (
+            {!currentContent && activities.length === 0 && !streamError && (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--text-muted)] mx-auto mb-4" />
                 <p className="text-sm text-[var(--text-muted)]">Analyzing your source...</p>

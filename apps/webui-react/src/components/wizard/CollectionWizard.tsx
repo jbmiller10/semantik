@@ -7,6 +7,7 @@ import { ConfigureStep } from './steps/ConfigureStep';
 import { AnalysisStep } from './steps/AnalysisStep';
 import { ReviewStep } from './steps/ReviewStep';
 import { useWizardKeyboard } from './hooks/useWizardKeyboard';
+import ErrorBoundary from '../ErrorBoundary';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
 import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
@@ -320,6 +321,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
 
         {/* Content area */}
         <div className="flex-1 overflow-y-auto">
+          <ErrorBoundary level="section">
           {/* Step 1: Basics & Source */}
           {wizardState.currentStep === 0 && (
             <div className="px-6 py-4">
@@ -421,6 +423,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
               onBackToAnalysis={() => setWizardState(prev => ({ ...prev, currentStep: 2 }))}
             />
           )}
+          </ErrorBoundary>
         </div>
 
         {/* Footer */}
