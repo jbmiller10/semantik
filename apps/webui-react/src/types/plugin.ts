@@ -182,6 +182,36 @@ export function groupPluginsByType(
   return grouped;
 }
 
+// --- Pipeline Plugins (for wizard) ---
+
+/**
+ * Simplified plugin info for pipeline configuration.
+ * Used by the wizard to show all available plugins (builtin + external)
+ * for each pipeline stage.
+ */
+export interface PipelinePluginInfo {
+  id: string;
+  type: PluginType;
+  display_name: string;
+  description: string;
+  source: 'builtin' | 'external';
+  enabled: boolean;
+}
+
+/**
+ * Response from listing pipeline plugins
+ */
+export interface PipelinePluginListResponse {
+  plugins: PipelinePluginInfo[];
+}
+
+/**
+ * Filters for listing pipeline plugins
+ */
+export interface PipelinePluginFilters {
+  plugin_type?: PluginType;
+}
+
 // --- Available Plugins (from registry) ---
 
 /**

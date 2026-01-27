@@ -84,8 +84,11 @@ export function AnalysisStep({
           {
             id: 'embedder1',
             type: 'embedder',
-            plugin_id: (pipeline as Record<string, unknown>).embedding_model as string || 'default',
-            config: {},
+            // Plugin is always dense_local, model is stored in config
+            plugin_id: 'dense_local',
+            config: {
+              model: (pipeline as Record<string, unknown>).embedding_model as string || undefined,
+            },
           },
         ],
         edges: [

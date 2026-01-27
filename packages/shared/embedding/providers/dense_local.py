@@ -733,3 +733,35 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         gc.collect()
 
         logger.info("Dense local embedding provider cleaned up")
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration.
+
+        Note: The 'model' field uses x-model-selector to indicate that the UI
+        should fetch the list of installed models from the model manager API
+        rather than using a static enum.
+
+        Advanced options (batch_size, device) are omitted as they are handled
+        automatically by the adaptive batch sizing system and device auto-detection.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "title": "Model",
+                    "description": "Embedding model to use for dense vectors",
+                    "default": "sentence-transformers/all-MiniLM-L6-v2",
+                    # Custom extension to indicate dynamic model selection
+                    "x-model-selector": True,
+                },
+                "quantization": {
+                    "type": "string",
+                    "title": "Quantization",
+                    "description": "Model precision (float16 recommended for most cases)",
+                    "enum": ["float16", "float32", "int8"],
+                    "default": "float16",
+                },
+            },
+        }

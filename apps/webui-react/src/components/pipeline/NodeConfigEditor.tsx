@@ -4,16 +4,96 @@
  */
 
 import { useCallback } from 'react';
-import { usePlugins, usePluginConfigSchema } from '@/hooks/usePlugins';
+import { usePipelinePlugins, usePipelinePluginConfigSchema } from '@/hooks/usePlugins';
+import { useModelManagerModels } from '@/hooks/useModelManager';
 import { nodeTypeToPluginType, NODE_TYPE_LABELS } from '@/utils/pipelinePluginMapping';
 import type { PipelineNode } from '@/types/pipeline';
 import type { JsonSchemaProperty, PluginConfigSchema } from '@/types/plugin';
 import { Settings, Loader2 } from 'lucide-react';
 
+/**
+ * Extended JSON Schema property that may include x-model-selector extension.
+ */
+interface ExtendedSchemaProperty extends JsonSchemaProperty {
+  'x-model-selector'?: boolean;
+}
+
 interface NodeConfigEditorProps {
   node: PipelineNode;
   onChange: (node: PipelineNode) => void;
   readOnly?: boolean;
+}
+
+/**
+ * Model selector field that fetches installed embedding models.
+ */
+function ModelSelectorField({
+  name,
+  property,
+  value,
+  onChange,
+  disabled,
+}: {
+  name: string;
+  property: ExtendedSchemaProperty;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  disabled?: boolean;
+}) {
+  const label = property.title || name;
+  const description = property.description;
+
+  // Fetch installed embedding models
+  const { data: modelsResponse, isLoading } = useModelManagerModels({
+    modelType: 'embedding',
+    installedOnly: true,
+  });
+
+  const installedModels = modelsResponse?.models || [];
+
+  if (isLoading) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">
+          {label}
+        </label>
+        <div className="flex items-center gap-2 text-[var(--text-muted)]">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-sm">Loading models...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor={name} className="block text-sm font-medium text-[var(--text-primary)] mb-1">
+        {label}
+      </label>
+      {description && (
+        <p className="text-xs text-[var(--text-muted)] mb-2">{description}</p>
+      )}
+      <select
+        id={name}
+        value={(value as string) ?? property.default ?? ''}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        disabled={disabled}
+        className="input-field w-full"
+      >
+        <option value="">Select a model...</option>
+        {installedModels.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.name || model.id}
+          </option>
+        ))}
+      </select>
+      {installedModels.length === 0 && (
+        <p className="text-xs text-amber-400 mt-1">
+          No embedding models installed. Install models from the Model Manager.
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -27,11 +107,23 @@ function ConfigField({
   disabled,
 }: {
   name: string;
-  property: JsonSchemaProperty;
+  property: ExtendedSchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 }) {
+  // Check for x-model-selector extension - use dynamic model selector
+  if (property['x-model-selector']) {
+    return (
+      <ModelSelectorField
+        name={name}
+        property={property}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+      />
+    );
+  }
   const label = property.title || name;
   const description = property.description;
 
@@ -141,11 +233,11 @@ export function NodeConfigEditor({
   const pluginType = nodeTypeToPluginType(node.type);
   const nodeTypeLabel = NODE_TYPE_LABELS[node.type];
 
-  // Fetch available plugins for this node type
-  const { data: plugins, isLoading: pluginsLoading } = usePlugins({ type: pluginType, enabled: true });
+  // Fetch available plugins for this node type (includes both builtin and external)
+  const { data: plugins, isLoading: pluginsLoading } = usePipelinePlugins({ plugin_type: pluginType });
 
-  // Fetch config schema for the current plugin
-  const { data: schema, isLoading: schemaLoading } = usePluginConfigSchema(node.plugin_id);
+  // Fetch config schema for the current plugin (works for both builtin and external)
+  const { data: schema, isLoading: schemaLoading } = usePipelinePluginConfigSchema(node.plugin_id);
 
   // Handle plugin change
   const handlePluginChange = useCallback(
@@ -209,13 +301,13 @@ export function NodeConfigEditor({
         >
           {availablePlugins.map((plugin) => (
             <option key={plugin.id} value={plugin.id}>
-              {plugin.manifest.display_name}
+              {plugin.display_name}
             </option>
           ))}
         </select>
-        {availablePlugins.find((p) => p.id === node.plugin_id)?.manifest.description && (
+        {availablePlugins.find((p) => p.id === node.plugin_id)?.description && (
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            {availablePlugins.find((p) => p.id === node.plugin_id)?.manifest.description}
+            {availablePlugins.find((p) => p.id === node.plugin_id)?.description}
           </p>
         )}
       </div>

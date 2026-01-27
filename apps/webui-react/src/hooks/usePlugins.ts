@@ -11,7 +11,12 @@ import type {
   AvailablePluginFilters,
   PluginInstallRequest,
   PluginInstallResponse,
+  PipelinePluginInfo,
+  PipelinePluginFilters,
 } from '../types/plugin';
+
+// Re-export PluginConfigSchema for convenience
+export type { PluginConfigSchema } from '../types/plugin';
 
 /**
  * Query key factory for plugin queries
@@ -25,6 +30,8 @@ export const pluginKeys = {
   health: (pluginId: string) => [...pluginKeys.all, 'health', pluginId] as const,
   available: (filters?: AvailablePluginFilters) =>
     [...pluginKeys.all, 'available', filters] as const,
+  pipeline: (filters?: PipelinePluginFilters) =>
+    [...pluginKeys.all, 'pipeline', filters] as const,
 };
 
 /**
@@ -191,6 +198,42 @@ export function useRefreshPluginHealth() {
       // Invalidate all list queries regardless of filters (e.g., include_health)
       queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
     },
+  });
+}
+
+// --- Pipeline Plugins (for wizard) ---
+
+/**
+ * Hook to fetch all plugins (builtin + external) for pipeline configuration
+ * Used by the wizard's pipeline editor to show available plugins for each stage.
+ * @param filters Optional filters for plugin type
+ */
+export function usePipelinePlugins(filters?: PipelinePluginFilters) {
+  return useQuery({
+    queryKey: pluginKeys.pipeline(filters),
+    queryFn: async (): Promise<PipelinePluginInfo[]> => {
+      const response = await pluginsApi.listPipeline(filters);
+      return response.data.plugins;
+    },
+    staleTime: 60 * 1000, // Cache for 60 seconds (plugins don't change often)
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  });
+}
+
+/**
+ * Hook to fetch a plugin's configuration schema for pipeline configuration
+ * Works for both builtin and external plugins.
+ * @param pluginId The plugin identifier
+ */
+export function usePipelinePluginConfigSchema(pluginId: string) {
+  return useQuery({
+    queryKey: [...pluginKeys.all, 'pipeline-config-schema', pluginId] as const,
+    queryFn: async (): Promise<PluginConfigSchema | null> => {
+      const response = await pluginsApi.getPipelineConfigSchema(pluginId);
+      return response.data;
+    },
+    enabled: !!pluginId,
+    staleTime: 5 * 60 * 1000, // Schemas don't change often
   });
 }
 

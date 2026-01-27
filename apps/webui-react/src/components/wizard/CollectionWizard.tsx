@@ -32,7 +32,8 @@ function getDefaultDAG(): PipelineDAG {
     nodes: [
       { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
       { id: 'chunker1', type: 'chunker', plugin_id: 'semantic', config: {} },
-      { id: 'embedder1', type: 'embedder', plugin_id: 'Qwen/Qwen3-Embedding-0.6B', config: {} },
+      // Note: plugin_id is the embedding provider plugin, model is selected in config
+      { id: 'embedder1', type: 'embedder', plugin_id: 'dense_local', config: {} },
     ],
     edges: [
       { from_node: '_source', to_node: 'parser1', when: null },
@@ -210,11 +211,15 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       const chunkerNode = dag.nodes.find(n => n.type === 'chunker');
       const embedderNode = dag.nodes.find(n => n.type === 'embedder');
 
+      // Get embedding model from config (if using dense_local plugin) or fall back to plugin_id for legacy compatibility
+      const embeddingModel = (embedderNode?.config?.model as string) || embedderNode?.plugin_id || 'sentence-transformers/all-MiniLM-L6-v2';
+      const quantization = (embedderNode?.config?.quantization as string) || 'float16';
+
       const response = await createCollectionMutation.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
-        embedding_model: embedderNode?.plugin_id || 'Qwen/Qwen3-Embedding-0.6B',
-        quantization: 'float16',
+        embedding_model: embeddingModel,
+        quantization: quantization,
         chunking_strategy: chunkerNode?.plugin_id || 'semantic',
         chunking_config: (chunkerNode?.config || {}) as Record<string, string | number | boolean>,
         sync_mode: syncMode,

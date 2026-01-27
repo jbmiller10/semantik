@@ -722,3 +722,17 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             total_chunks += max(1, level_chunks)
 
         return total_chunks
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for hierarchical chunking configuration."""
+        base_schema = super().get_config_schema()
+        base_schema["properties"]["hierarchy_levels"] = {
+            "type": "integer",
+            "title": "Hierarchy Levels",
+            "description": "Number of hierarchy levels to create (1-10)",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 10,
+        }
+        return base_schema

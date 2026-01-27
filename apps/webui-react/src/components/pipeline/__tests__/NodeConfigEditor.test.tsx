@@ -5,28 +5,29 @@ import { NodeConfigEditor } from '../NodeConfigEditor';
 import type { PipelineNode } from '@/types/pipeline';
 import * as usePluginsModule from '@/hooks/usePlugins';
 
-// Mock the usePlugins hook
+// Mock the usePlugins hooks
 vi.mock('@/hooks/usePlugins', () => ({
-  usePlugins: vi.fn(),
-  usePluginConfigSchema: vi.fn(),
+  usePipelinePlugins: vi.fn(),
+  usePipelinePluginConfigSchema: vi.fn(),
 }));
 
+// Mock data using the new PipelinePluginInfo structure
 const mockPlugins = [
   {
     id: 'text',
     type: 'parser',
-    version: '1.0.0',
-    manifest: { id: 'text', type: 'parser', version: '1.0.0', display_name: 'Text Parser', description: 'Parse plain text', requires: [] },
+    display_name: 'Text Parser',
+    description: 'Parse plain text',
+    source: 'builtin',
     enabled: true,
-    config: {},
   },
   {
     id: 'unstructured',
     type: 'parser',
-    version: '1.0.0',
-    manifest: { id: 'unstructured', type: 'parser', version: '1.0.0', display_name: 'Unstructured', description: 'Parse PDFs and docs', requires: [] },
+    display_name: 'Unstructured',
+    description: 'Parse PDFs and docs',
+    source: 'builtin',
     enabled: true,
-    config: {},
   },
 ];
 
@@ -45,11 +46,11 @@ const mockSchema = {
 describe('NodeConfigEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (usePluginsModule.usePlugins as ReturnType<typeof vi.fn>).mockReturnValue({
+    (usePluginsModule.usePipelinePlugins as ReturnType<typeof vi.fn>).mockReturnValue({
       data: mockPlugins,
       isLoading: false,
     });
-    (usePluginsModule.usePluginConfigSchema as ReturnType<typeof vi.fn>).mockReturnValue({
+    (usePluginsModule.usePipelinePluginConfigSchema as ReturnType<typeof vi.fn>).mockReturnValue({
       data: mockSchema,
       isLoading: false,
     });
@@ -158,7 +159,7 @@ describe('NodeConfigEditor', () => {
   });
 
   it('shows loading state while fetching plugins', () => {
-    (usePluginsModule.usePlugins as ReturnType<typeof vi.fn>).mockReturnValue({
+    (usePluginsModule.usePipelinePlugins as ReturnType<typeof vi.fn>).mockReturnValue({
       data: undefined,
       isLoading: true,
     });
