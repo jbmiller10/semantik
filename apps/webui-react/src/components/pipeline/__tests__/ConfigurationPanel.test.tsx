@@ -9,6 +9,8 @@ import * as usePluginsModule from '@/hooks/usePlugins';
 vi.mock('@/hooks/usePlugins', () => ({
   usePlugins: vi.fn(),
   usePluginConfigSchema: vi.fn(),
+  usePipelinePlugins: vi.fn(),
+  usePipelinePluginConfigSchema: vi.fn(),
 }));
 
 const mockDAG: PipelineDAG = {
@@ -40,6 +42,15 @@ describe('ConfigurationPanel', () => {
       isLoading: false,
     });
     (usePluginsModule.usePluginConfigSchema as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    // Mock pipeline-specific hooks used by NodeConfigEditor
+    (usePluginsModule as unknown as { usePipelinePlugins: ReturnType<typeof vi.fn> }).usePipelinePlugins.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+    (usePluginsModule as unknown as { usePipelinePluginConfigSchema: ReturnType<typeof vi.fn> }).usePipelinePluginConfigSchema.mockReturnValue({
       data: null,
       isLoading: false,
     });

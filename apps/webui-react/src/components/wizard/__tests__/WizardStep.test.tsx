@@ -1,6 +1,6 @@
 // apps/webui-react/src/components/wizard/__tests__/WizardStep.test.tsx
 import { describe, it, expect } from 'vitest';
-import type { WizardStep, WizardState, WizardFlow } from '../../../types/wizard';
+import type { WizardStep, WizardState } from '../../../types/wizard';
 
 describe('WizardStep types', () => {
   it('defines step structure correctly', () => {

@@ -420,13 +420,13 @@ async def send_message_stream(
             if isinstance(e, AsyncpgInterfaceError):
                 # DB connection closed during long-running operation
                 # This is expected when sub-agents take a long time
-                logger.warning(
-                    f"DB connection closed during SSE stream for conversation {conversation_id}: {e}"
+                logger.warning(f"DB connection closed during SSE stream for conversation {conversation_id}: {e}")
+                error_data = json.dumps(
+                    {
+                        "message": "Connection timeout during processing. Results may be incomplete.",
+                        "recoverable": True,
+                    }
                 )
-                error_data = json.dumps({
-                    "message": "Connection timeout during processing. Results may be incomplete.",
-                    "recoverable": True,
-                })
             else:
                 logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
                 error_data = json.dumps({"message": str(e)})

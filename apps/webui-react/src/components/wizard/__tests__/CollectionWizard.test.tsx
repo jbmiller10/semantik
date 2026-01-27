@@ -1,6 +1,6 @@
 // apps/webui-react/src/components/wizard/__tests__/CollectionWizard.test.tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CollectionWizard } from '../CollectionWizard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
