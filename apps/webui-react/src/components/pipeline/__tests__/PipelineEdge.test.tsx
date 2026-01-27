@@ -32,6 +32,29 @@ describe('PipelineEdgeComponent', () => {
     expect(path).toHaveAttribute('d');
   });
 
+  it('renders vertical bezier path from bottom of source to top of target', () => {
+    render(
+      <svg>
+        <PipelineEdgeComponent
+          edge={mockEdge}
+          fromPosition={fromPosition}
+          toPosition={toPosition}
+          selected={false}
+        />
+      </svg>
+    );
+
+    const path = document.querySelector('path');
+    const d = path?.getAttribute('d');
+
+    // fromPosition: x=100, y=50, width=160, height=80
+    // Bottom center of source: x=180 (100+160/2), y=130 (50+80)
+    // toPosition: x=100, y=230, width=160, height=80
+    // Top center of target: x=180 (100+160/2), y=230
+    expect(d).toMatch(/^M 180 130/); // Starts at bottom center of source
+    expect(d).toMatch(/180 230$/); // Ends at top center of target
+  });
+
   it('renders predicate label when edge has when clause', () => {
     const edgeWithPredicate: PipelineEdge = {
       from_node: '_source',

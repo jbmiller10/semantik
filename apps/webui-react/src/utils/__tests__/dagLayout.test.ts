@@ -109,6 +109,46 @@ describe('computeDAGLayout', () => {
     expect(layout.width).toBeGreaterThan(0);
     expect(layout.height).toBeGreaterThan(0);
   });
+
+  it('horizontally centers nodes in tiers with fewer nodes than the widest tier', () => {
+    const dag: PipelineDAG = {
+      id: 'test',
+      version: '1',
+      nodes: [
+        { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
+        { id: 'parser2', type: 'parser', plugin_id: 'pdf', config: {} },
+        { id: 'chunker1', type: 'chunker', plugin_id: 'recursive', config: {} },
+        { id: 'embedder1', type: 'embedder', plugin_id: 'dense_local', config: {} },
+      ],
+      edges: [
+        { from_node: '_source', to_node: 'parser1', when: null },
+        { from_node: '_source', to_node: 'parser2', when: null },
+        { from_node: 'parser1', to_node: 'chunker1', when: null },
+        { from_node: 'parser2', to_node: 'chunker1', when: null },
+        { from_node: 'chunker1', to_node: 'embedder1', when: null },
+      ],
+    };
+
+    const layout = computeDAGLayout(dag);
+
+    const source = layout.nodes.get('_source')!;
+    const parser1 = layout.nodes.get('parser1')!;
+    const parser2 = layout.nodes.get('parser2')!;
+    const chunker = layout.nodes.get('chunker1')!;
+    const embedder = layout.nodes.get('embedder1')!;
+
+    // Parser tier (2 nodes) is the widest
+    // Single-node tiers (source, chunker, embedder) should be centered
+    const parserTierCenterX = (parser1.x + parser1.width / 2 + parser2.x + parser2.width / 2) / 2;
+    const sourceCenterX = source.x + source.width / 2;
+    const chunkerCenterX = chunker.x + chunker.width / 2;
+    const embedderCenterX = embedder.x + embedder.width / 2;
+
+    // All single-node tiers should be centered relative to the parser tier
+    expect(sourceCenterX).toBe(parserTierCenterX);
+    expect(chunkerCenterX).toBe(parserTierCenterX);
+    expect(embedderCenterX).toBe(parserTierCenterX);
+  });
 });
 
 describe('getNodeTopCenter', () => {
