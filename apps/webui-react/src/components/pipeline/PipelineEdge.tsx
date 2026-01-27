@@ -3,7 +3,7 @@
  */
 
 import type { PipelineEdge, NodePosition } from '@/types/pipeline';
-import { getNodeRightCenter, getNodeLeftCenter } from '@/utils/dagLayout';
+import { getNodeBottomCenter, getNodeTopCenter } from '@/utils/dagLayout';
 
 interface PipelineEdgeComponentProps {
   edge: PipelineEdge;
@@ -71,12 +71,14 @@ export function PipelineEdgeComponent({
   showCatchAll = false,
   onClick,
 }: PipelineEdgeComponentProps) {
-  const from = getNodeRightCenter(fromPosition);
-  const to = getNodeLeftCenter(toPosition);
+  // Vertical layout: edges go from bottom of source to top of target
+  const from = getNodeBottomCenter(fromPosition);
+  const to = getNodeTopCenter(toPosition);
 
-  // Curved path using cubic bezier
-  const controlOffset = 30;
-  const simplePath = `M ${from.x} ${from.y} C ${from.x + controlOffset} ${from.y}, ${to.x - controlOffset} ${to.y}, ${to.x} ${to.y}`;
+  // Curved path using cubic bezier (vertical flow)
+  // Control points offset in Y direction for smooth vertical curves
+  const midY = (from.y + to.y) / 2;
+  const verticalPath = `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
 
   const handleClick = () => {
     onClick?.(edge.from_node, edge.to_node);
@@ -88,9 +90,9 @@ export function PipelineEdgeComponent({
     ? formatPredicate(edge.when!)
     : (showCatchAll ? '*' : null);
 
-  // Label position: midpoint of the edge
-  const labelX = (from.x + to.x) / 2;
-  const labelY = (from.y + to.y) / 2 - 8;
+  // Label position: beside the edge midpoint (offset to the right to avoid overlap)
+  const labelX = (from.x + to.x) / 2 + 40;
+  const labelY = midY;
 
   return (
     <g
@@ -100,7 +102,7 @@ export function PipelineEdgeComponent({
     >
       {/* Edge path */}
       <path
-        d={simplePath}
+        d={verticalPath}
         fill="none"
         stroke={selected ? 'var(--text-primary)' : 'var(--text-muted)'}
         strokeWidth={selected ? 2 : 1}

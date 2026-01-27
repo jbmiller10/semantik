@@ -1,10 +1,10 @@
 /**
  * Computes layout positions for pipeline DAG visualization.
  *
- * Layout algorithm:
+ * Layout algorithm (vertical flow, top-to-bottom):
  * 1. Group nodes by type (parser, chunker, extractor, embedder)
- * 2. Assign columns: _source -> parsers -> chunkers -> extractors -> embedders
- * 3. Stack nodes of same type vertically
+ * 2. Assign tiers: _source (0) -> parsers (1) -> chunkers (2) -> extractors (3) -> embedders (4)
+ * 3. Spread nodes of same type horizontally within their tier
  * 4. Add padding and compute overall dimensions
  */
 
@@ -13,12 +13,12 @@ import type { PipelineDAG, DAGLayout, NodePosition, NodeType } from '@/types/pip
 // Layout constants
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 80;
-const COLUMN_GAP = 100;
-const ROW_GAP = 40;
+const TIER_GAP = 100; // Vertical spacing between tiers
+const NODE_GAP = 40; // Horizontal spacing within a tier
 const PADDING = 40;
 
-// Column order for node types
-const TYPE_COLUMNS: Record<NodeType | '_source', number> = {
+// Tier order for node types (vertical position)
+const TYPE_TIERS: Record<NodeType | '_source', number> = {
   _source: 0,
   parser: 1,
   chunker: 2,
@@ -29,33 +29,44 @@ const TYPE_COLUMNS: Record<NodeType | '_source', number> = {
 export function computeDAGLayout(dag: PipelineDAG): DAGLayout {
   const nodes = new Map<string, NodePosition>();
 
-  // Group nodes by their column
-  const columns: Map<number, string[]> = new Map();
+  // Group nodes by their tier (vertical position)
+  const tiers: Map<number, string[]> = new Map();
 
   // Add _source pseudo-node
-  const sourceCol = TYPE_COLUMNS._source;
-  columns.set(sourceCol, ['_source']);
+  const sourceTier = TYPE_TIERS._source;
+  tiers.set(sourceTier, ['_source']);
 
-  // Group actual nodes by type -> column
+  // Group actual nodes by type -> tier
   for (const node of dag.nodes) {
-    const col = TYPE_COLUMNS[node.type];
-    if (!columns.has(col)) {
-      columns.set(col, []);
+    const tier = TYPE_TIERS[node.type];
+    if (!tiers.has(tier)) {
+      tiers.set(tier, []);
     }
-    columns.get(col)!.push(node.id);
+    tiers.get(tier)!.push(node.id);
   }
 
-  // Compute positions
+  // Find the maximum number of nodes in any tier (for centering)
+  let maxNodesInTier = 0;
+  for (const nodeIds of tiers.values()) {
+    maxNodesInTier = Math.max(maxNodesInTier, nodeIds.length);
+  }
+
+  // Compute positions (vertical flow: Y based on tier, X based on position within tier)
   let maxX = 0;
   let maxY = 0;
 
-  for (const [col, nodeIds] of columns) {
-    const x = PADDING + col * (NODE_WIDTH + COLUMN_GAP);
+  for (const [tier, nodeIds] of tiers) {
+    const y = PADDING + tier * (NODE_HEIGHT + TIER_GAP);
 
-    for (let row = 0; row < nodeIds.length; row++) {
-      const y = PADDING + row * (NODE_HEIGHT + ROW_GAP);
+    // Calculate total width of this tier for centering
+    const tierWidth = nodeIds.length * NODE_WIDTH + (nodeIds.length - 1) * NODE_GAP;
+    const maxTierWidth = maxNodesInTier * NODE_WIDTH + (maxNodesInTier - 1) * NODE_GAP;
+    const tierOffset = (maxTierWidth - tierWidth) / 2;
 
-      nodes.set(nodeIds[row], {
+    for (let posInTier = 0; posInTier < nodeIds.length; posInTier++) {
+      const x = PADDING + tierOffset + posInTier * (NODE_WIDTH + NODE_GAP);
+
+      nodes.set(nodeIds[posInTier], {
         x,
         y,
         width: NODE_WIDTH,
@@ -85,21 +96,21 @@ export function getNodeCenter(pos: NodePosition): { x: number; y: number } {
 }
 
 /**
- * Get the right edge center of a node (for outgoing edges).
+ * Get the bottom center of a node (for outgoing edges in vertical layout).
  */
-export function getNodeRightCenter(pos: NodePosition): { x: number; y: number } {
+export function getNodeBottomCenter(pos: NodePosition): { x: number; y: number } {
   return {
-    x: pos.x + pos.width,
-    y: pos.y + pos.height / 2,
+    x: pos.x + pos.width / 2,
+    y: pos.y + pos.height,
   };
 }
 
 /**
- * Get the left edge center of a node (for incoming edges).
+ * Get the top center of a node (for incoming edges in vertical layout).
  */
-export function getNodeLeftCenter(pos: NodePosition): { x: number; y: number } {
+export function getNodeTopCenter(pos: NodePosition): { x: number; y: number } {
   return {
-    x: pos.x,
-    y: pos.y + pos.height / 2,
+    x: pos.x + pos.width / 2,
+    y: pos.y,
   };
 }
