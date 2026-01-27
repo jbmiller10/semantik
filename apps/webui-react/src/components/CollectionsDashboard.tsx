@@ -3,7 +3,7 @@ import { useCollections } from '../hooks/useCollections';
 import { useAnimationEnabled } from '../contexts/AnimationContext';
 import { withAnimation } from '../utils/animationClasses';
 import CollectionCard from './CollectionCard';
-import CreateCollectionModal from './CreateCollectionModal';
+import { CollectionWizard } from './wizard';
 
 function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -173,9 +173,9 @@ function CollectionsDashboard() {
         </div>
       )}
 
-      {/* Create Collection Modal */}
+      {/* Create Collection Wizard */}
       {showCreateModal && (
-        <CreateCollectionModal
+        <CollectionWizard
           onClose={() => setShowCreateModal(false)}
           onSuccess={handleCreateSuccess}
         />
