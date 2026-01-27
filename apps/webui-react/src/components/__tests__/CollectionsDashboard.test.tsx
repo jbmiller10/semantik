@@ -9,12 +9,13 @@ vi.mock('../../hooks/useCollections', () => ({
   useCollections: vi.fn(),
 }));
 
-// Mock the CreateCollectionModal component
-vi.mock('../CreateCollectionModal', () => ({
-  default: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => (
+// Mock the CollectionWizard component
+vi.mock('../wizard', () => ({
+  CollectionWizard: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => (
     <div data-testid="create-collection-modal">
-      <button onClick={onClose}>Close Modal</button>
-      <button onClick={onSuccess}>Create Success</button>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <button onClick={onClose}>Cancel</button>
+      <button onClick={onSuccess}>Create Collection</button>
     </div>
   ),
 }));
@@ -550,7 +551,8 @@ describe('CollectionsDashboard', () => {
       const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
-      const closeButton = screen.getByText('Close Modal');
+      // Wizard uses aria-label="Close" on the X button
+      const closeButton = screen.getByRole('button', { name: /close/i });
       fireEvent.click(closeButton);
 
       await waitFor(() => {
@@ -558,7 +560,7 @@ describe('CollectionsDashboard', () => {
       });
     });
 
-    it('should close modal when success is triggered', async () => {
+    it('should close modal when cancel is clicked', async () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
@@ -571,8 +573,9 @@ describe('CollectionsDashboard', () => {
       const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
-      const successButton = screen.getByText('Create Success');
-      fireEvent.click(successButton);
+      // Wizard uses Cancel button on step 1
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      fireEvent.click(cancelButton);
 
       await waitFor(() => {
         expect(screen.queryByTestId('create-collection-modal')).not.toBeInTheDocument();
