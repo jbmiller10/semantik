@@ -72,8 +72,15 @@ export interface ContentEvent {
 
 export interface DoneEvent {
   pipeline_updated: boolean;
-  uncertainties_added: string[];
+  uncertainties_added: Array<{
+    id: string;
+    severity: string;
+    message: string;
+    resolved: boolean;
+    context?: Record<string, unknown>;
+  }>;
   tool_calls: Array<{ tool: string; success: boolean }>;
+  max_turns_reached?: boolean;
 }
 
 export interface ErrorEvent {

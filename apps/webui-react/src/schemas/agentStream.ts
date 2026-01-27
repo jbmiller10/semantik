@@ -76,13 +76,22 @@ export const PipelineUpdateEventSchema = z.object({
 
 export const DoneEventSchema = z.object({
   pipeline_updated: z.boolean(),
-  uncertainties_added: z.array(z.string()),
+  uncertainties_added: z.array(
+    z.object({
+      id: z.string(),
+      severity: z.string(),
+      message: z.string(),
+      resolved: z.boolean(),
+      context: z.record(z.unknown()).optional(),
+    })
+  ),
   tool_calls: z.array(
     z.object({
       tool: z.string(),
       success: z.boolean(),
     })
   ),
+  max_turns_reached: z.boolean().optional(),
 });
 
 export const ErrorEventSchema = z.object({

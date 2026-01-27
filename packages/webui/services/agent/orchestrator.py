@@ -292,6 +292,11 @@ When you're done responding (no more tools to call), just write your response no
             "llm_factory": self.llm_factory,
         }
 
+    async def _is_paused(self) -> bool:
+        """Check if the conversation is paused."""
+        extra_data = self.conversation.extra_data or {}
+        return bool(extra_data.get("is_paused", False))
+
     def _emit_status(self, phase: str, message: str, progress: dict[str, int] | None = None) -> AgentStreamEvent:
         """Create a status event for streaming.
 
@@ -432,6 +437,13 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 self.conversation.status.value,
             )
 
+        # Check if paused
+        if await self._is_paused():
+            raise ConversationNotActiveError(
+                self.conversation.id,
+                "paused",
+            )
+
         # Reset turn tracking
         self._pipeline_updated = False
         self._uncertainties_added = []
@@ -525,6 +537,17 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 data={
                     "error": f"Conversation is not active (status: {self.conversation.status.value})",
                     "conversation_id": self.conversation.id,
+                },
+            )
+            return
+
+        # Check if paused
+        if await self._is_paused():
+            yield AgentStreamEvent(
+                event=AgentStreamEventType.ERROR,
+                data={
+                    "error": "Agent is paused. Resume to continue.",
+                    "type": "agent_paused",
                 },
             )
             return

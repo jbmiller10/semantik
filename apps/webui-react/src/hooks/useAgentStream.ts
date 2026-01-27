@@ -228,10 +228,16 @@ export function useAgentStream(
                 parseFailureCount = (parseError as { parseFailureCount: number }).parseFailureCount;
               }
               totalParseFailures++;
-              console.warn(`SSE parse failure (total: ${totalParseFailures}, consecutive: ${parseFailureCount})`);
-              // Surface error to user after threshold consecutive failures
+              console.warn(`SSE parse failure (total: ${totalParseFailures}, consecutive: ${parseFailureCount})`, parseError);
+
+              // Surface warning to user on first failure (non-blocking)
+              if (totalParseFailures === 1) {
+                callbacks.onError?.('Some data may be missing due to a communication issue');
+              }
+
+              // Surface error to user after threshold consecutive failures (blocking)
               if (parseFailureCount >= PARSE_FAILURE_THRESHOLD) {
-                const errorMsg = `Multiple SSE parse failures (${totalParseFailures} total) - stream may be corrupted`;
+                const errorMsg = `Stream corrupted: ${totalParseFailures} parse failures - please refresh and try again`;
                 setError(errorMsg);
                 callbacks.onError?.(errorMsg);
               }

@@ -25,6 +25,7 @@ export function AnalysisStep({
 }: AnalysisStepProps) {
   const [selection, setSelection] = useState<DAGSelection>({ type: 'none' });
   const [hasAutoStarted, setHasAutoStarted] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
 
   // Memoize callbacks to avoid re-creating on every render
   const streamCallbacks = useMemo(() => ({
@@ -107,11 +108,15 @@ export function AnalysisStep({
     optionId?: string,
     customResponse?: string
   ) => {
+    setAnswerError(null);
     try {
       await agentApi.answerQuestion(conversationId, questionId, optionId, customResponse);
       dismissQuestion(questionId);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
       console.error('Failed to submit answer:', err);
+      setAnswerError(`Could not submit your answer: ${errorMessage}. Please try again.`);
+      // NOTE: Do NOT dismiss the question - let user retry
     }
   }, [conversationId, dismissQuestion]);
 
@@ -262,6 +267,12 @@ export function AnalysisStep({
           {/* Pending questions */}
           {pendingQuestions.length > 0 && (
             <div className="border-t border-[var(--border)] p-4 bg-[var(--bg-secondary)] shrink-0">
+              {/* Answer error message */}
+              {answerError && (
+                <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-400">{answerError}</p>
+                </div>
+              )}
               {pendingQuestions.map((question) => (
                 <div key={question.id} className="space-y-3">
                   <p className="text-sm font-medium text-[var(--text-primary)]">

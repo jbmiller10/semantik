@@ -31,6 +31,7 @@ def mock_conversation():
     conv.summary = None
     conv.uncertainties = []
     conv.inline_source_config = None
+    conv.extra_data = None  # Not paused by default
     return conv
 
 

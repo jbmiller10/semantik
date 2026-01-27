@@ -34,7 +34,7 @@ export const agentApi = {
    * Create a new agent conversation for a source.
    */
   createConversation: (data: CreateConversationRequest) =>
-    apiClient.post<ConversationDetail>('/api/v2/agent/conversations', data),
+    apiClient.post<Conversation>('/api/v2/agent/conversations', data),
 
   /**
    * Get conversation details by ID.
@@ -45,7 +45,7 @@ export const agentApi = {
   /**
    * List all conversations for the current user.
    */
-  listConversations: (params?: { status?: string; offset?: number; limit?: number }) =>
+  listConversations: (params?: { status?: string; skip?: number; limit?: number }) =>
     apiClient.get<ConversationListResponse>('/api/v2/agent/conversations', { params }),
 
   /**
@@ -58,9 +58,9 @@ export const agentApi = {
    * Abandon a conversation.
    */
   abandonConversation: (id: string) =>
-    apiClient.patch<Conversation>(`/api/v2/agent/conversations/${id}/status`, {
-      status: 'abandoned',
-    }),
+    apiClient.patch<Conversation>(
+      `/api/v2/agent/conversations/${id}/status?status=abandoned`
+    ),
 
   /**
    * Answer a question from the agent.
