@@ -1118,7 +1118,7 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 # Log more context for debugging malformed tool calls from LLM
                 raw_content = match.group(1).strip()[:200]  # Truncate for logging
                 logger.warning(
-                    f"Failed to parse tool call at index {i}: {e}. " f"Raw content (truncated): {raw_content!r}"
+                    f"Failed to parse tool call at index {i}: {e}. Raw content (truncated): {raw_content!r}"
                 )
                 continue
 
