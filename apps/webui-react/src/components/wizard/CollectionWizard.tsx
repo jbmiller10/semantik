@@ -1,11 +1,12 @@
 // apps/webui-react/src/components/wizard/CollectionWizard.tsx
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { StepProgressIndicator } from './StepProgressIndicator';
 import { BasicsStep } from './steps/BasicsStep';
 import { ConfigureStep } from './steps/ConfigureStep';
 import { AnalysisStep } from './steps/AnalysisStep';
 import { ReviewStep } from './steps/ReviewStep';
+import { useWizardKeyboard } from './hooks/useWizardKeyboard';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
 import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
@@ -243,17 +244,6 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
     }
   }, [wizardState.currentStep, wizardState.steps.length, handleCreate, handleNext]);
 
-  // Keyboard: Escape to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleClose, isSubmitting]);
-
   const isNextDisabled = useMemo(() => {
     if (wizardState.currentStep === 0) {
       return !name.trim();
@@ -263,9 +253,19 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
 
   const isFinalStep = wizardState.currentStep === wizardState.steps.length - 1;
 
+  // Keyboard navigation and focus management
+  const { modalRef } = useWizardKeyboard({
+    onClose: handleClose,
+    onNext: handleFinalAction,
+    onBack: handleBack,
+    canAdvance: !isNextDisabled,
+    isSubmitting,
+  });
+
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/80 flex items-center justify-center p-4 z-50">
       <div
+        ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="wizard-title"
