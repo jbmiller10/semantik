@@ -1,36 +1,96 @@
 // apps/webui-react/src/components/wizard/CollectionWizard.tsx
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { StepProgressIndicator } from './StepProgressIndicator';
+import { BasicsStep } from './steps/BasicsStep';
+import { ConfigureStep } from './steps/ConfigureStep';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
+import { useCreateCollection } from '../../hooks/useCollections';
+import { useAddSource } from '../../hooks/useCollectionOperations';
+import { useUIStore } from '../../stores/uiStore';
 import type { WizardState, WizardFlow } from '../../types/wizard';
+import type { PipelineDAG } from '../../types/pipeline';
+import type { SyncMode } from '../../types/collection';
 
 interface CollectionWizardProps {
   onClose: () => void;
   onSuccess: () => void;
 }
 
+// Default pipeline DAG
+function getDefaultDAG(): PipelineDAG {
+  return {
+    id: 'default',
+    version: '1',
+    nodes: [
+      { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
+      { id: 'chunker1', type: 'chunker', plugin_id: 'semantic', config: {} },
+      { id: 'embedder1', type: 'embedder', plugin_id: 'Qwen/Qwen3-Embedding-0.6B', config: {} },
+    ],
+    edges: [
+      { from_node: '_source', to_node: 'parser1', when: null },
+      { from_node: 'parser1', to_node: 'chunker1', when: null },
+      { from_node: 'chunker1', to_node: 'embedder1', when: null },
+    ],
+  };
+}
+
 export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) {
   const [wizardState, setWizardState] = useState<WizardState>(getInitialWizardState('manual'));
+  const createCollectionMutation = useCreateCollection();
+  const addSourceMutation = useAddSource();
+  const { addToast } = useUIStore();
 
-  // Form data for step 1 (basics)
+  // Step 1 (Basics) state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [connectorType, setConnectorType] = useState<string>('none');
+  const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
+  const [syncMode, setSyncMode] = useState<SyncMode>('one_time');
+  const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(60);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Step 3 (Configure) state
+  const [dag, setDag] = useState<PipelineDAG>(getDefaultDAG());
+
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Determine modal size based on current step
-  // Steps 0-1: compact, Step 2+: expanded
   const isExpanded = wizardState.currentStep >= 2;
 
-  // Modal size classes
   const sizeClasses = isExpanded
     ? 'w-[90vw] max-w-7xl h-[85vh]'
     : 'w-full max-w-2xl max-h-[90vh]';
+
+  const validateBasics = useCallback(() => {
+    const newErrors: Record<string, string> = {};
+
+    if (!name.trim()) {
+      newErrors.name = 'Collection name is required';
+    } else if (name.length > 100) {
+      newErrors.name = 'Name must be 100 characters or less';
+    }
+
+    if (description && description.length > 500) {
+      newErrors.description = 'Description must be 500 characters or less';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [name, description]);
 
   const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
 
   const handleNext = useCallback(() => {
+    // Validate current step before proceeding
+    if (wizardState.currentStep === 0 && !validateBasics()) {
+      return;
+    }
+
     setWizardState(prev => {
       const newSteps = [...prev.steps];
       newSteps[prev.currentStep] = { ...newSteps[prev.currentStep], isComplete: true };
@@ -40,7 +100,7 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
         steps: newSteps,
       };
     });
-  }, []);
+  }, [wizardState.currentStep, validateBasics]);
 
   const handleBack = useCallback(() => {
     setWizardState(prev => ({
@@ -53,20 +113,104 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
     setWizardState(prev => ({
       ...prev,
       flow,
-      steps: flow === 'manual' ? [...MANUAL_STEPS] : [...ASSISTED_STEPS],
+      steps: flow === 'manual'
+        ? MANUAL_STEPS.map((s, i) => ({ ...s, isComplete: i < prev.currentStep }))
+        : ASSISTED_STEPS.map((s, i) => ({ ...s, isComplete: i < prev.currentStep })),
     }));
   }, []);
+
+  const handleSwitchToAssisted = useCallback(() => {
+    handleFlowChange('assisted');
+    // Go back to step 2 (mode selection) when switching
+    setWizardState(prev => ({
+      ...prev,
+      currentStep: 1,
+      flow: 'assisted',
+      steps: ASSISTED_STEPS.map((s, i) => ({ ...s, isComplete: i < 1 })),
+    }));
+  }, [handleFlowChange]);
+
+  const handleCreate = useCallback(async () => {
+    setIsSubmitting(true);
+
+    try {
+      // Extract config from DAG
+      const chunkerNode = dag.nodes.find(n => n.type === 'chunker');
+      const embedderNode = dag.nodes.find(n => n.type === 'embedder');
+
+      const response = await createCollectionMutation.mutateAsync({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        embedding_model: embedderNode?.plugin_id || 'Qwen/Qwen3-Embedding-0.6B',
+        quantization: 'float16',
+        chunking_strategy: chunkerNode?.plugin_id || 'semantic',
+        chunking_config: (chunkerNode?.config || {}) as Record<string, string | number | boolean>,
+        sync_mode: syncMode,
+        sync_interval_minutes: syncMode === 'continuous' ? syncIntervalMinutes : undefined,
+      });
+
+      // Add source if configured
+      if (connectorType !== 'none' && Object.keys(configValues).length > 0) {
+        const sourcePath = (configValues.path as string) || (configValues.repo_url as string) || '';
+        if (sourcePath) {
+          await addSourceMutation.mutateAsync({
+            collectionId: response.id,
+            sourceType: connectorType,
+            sourceConfig: configValues,
+            secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+            sourcePath,
+          });
+        }
+      }
+
+      addToast({
+        message: 'Collection created successfully!',
+        type: 'success',
+      });
+
+      onSuccess();
+    } catch (error) {
+      addToast({
+        message: error instanceof Error ? error.message : 'Failed to create collection',
+        type: 'error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    name, description, dag, connectorType, configValues, secrets,
+    syncMode, syncIntervalMinutes, createCollectionMutation, addSourceMutation,
+    addToast, onSuccess,
+  ]);
+
+  // Handle final step action
+  const handleFinalAction = useCallback(() => {
+    if (wizardState.currentStep === wizardState.steps.length - 1) {
+      handleCreate();
+    } else {
+      handleNext();
+    }
+  }, [wizardState.currentStep, wizardState.steps.length, handleCreate, handleNext]);
 
   // Keyboard: Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !isSubmitting) {
         handleClose();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleClose]);
+  }, [handleClose, isSubmitting]);
+
+  const isNextDisabled = useMemo(() => {
+    if (wizardState.currentStep === 0) {
+      return !name.trim();
+    }
+    return false;
+  }, [wizardState.currentStep, name]);
+
+  const isFinalStep = wizardState.currentStep === wizardState.steps.length - 1;
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/80 flex items-center justify-center p-4 z-50">
@@ -82,21 +226,21 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
         `}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+        <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] shrink-0">
           <div className="flex items-center justify-between">
             <h2 id="wizard-title" className="text-lg font-semibold text-[var(--text-primary)]">
               Create Collection
             </h2>
             <button
               onClick={handleClose}
+              disabled={isSubmitting}
               aria-label="Close"
-              className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
+              className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] disabled:opacity-50"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Step indicator */}
           <StepProgressIndicator
             steps={wizardState.steps}
             currentStep={wizardState.currentStep}
@@ -104,47 +248,33 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
         </div>
 
         {/* Content area */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto">
           {/* Step 1: Basics & Source */}
           {wizardState.currentStep === 0 && (
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                  Collection Name
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  aria-label="Collection name"
-                  className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                  placeholder="My Collection"
-                />
-              </div>
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                  Description (optional)
-                </label>
-                <textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] resize-none"
-                  rows={3}
-                  placeholder="Describe what this collection contains..."
-                />
-              </div>
-              {/* Source configuration will be added here */}
-              <p className="text-sm text-[var(--text-muted)]">
-                Source configuration coming in next task...
-              </p>
+            <div className="px-6 py-4">
+              <BasicsStep
+                name={name}
+                description={description}
+                connectorType={connectorType}
+                configValues={configValues}
+                secrets={secrets}
+                syncMode={syncMode}
+                syncIntervalMinutes={syncIntervalMinutes}
+                onNameChange={setName}
+                onDescriptionChange={setDescription}
+                onConnectorTypeChange={setConnectorType}
+                onConfigChange={setConfigValues}
+                onSecretsChange={setSecrets}
+                onSyncModeChange={setSyncMode}
+                onSyncIntervalChange={setSyncIntervalMinutes}
+                errors={errors}
+              />
             </div>
           )}
 
           {/* Step 2: Mode Selection */}
           {wizardState.currentStep === 1 && (
-            <div className="space-y-4">
+            <div className="px-6 py-4 space-y-4">
               <p className="text-sm text-[var(--text-secondary)]">
                 Choose how you want to configure your pipeline:
               </p>
@@ -187,13 +317,14 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
           {wizardState.currentStep === 2 && (
             <div className="h-full">
               {wizardState.flow === 'manual' ? (
-                <div className="text-center py-12">
-                  <p className="text-[var(--text-muted)]">
-                    DAG Editor will be integrated here in Task 5
-                  </p>
-                </div>
+                <ConfigureStep
+                  dag={dag}
+                  onDagChange={setDag}
+                  sourceAnalysis={null}
+                  onSwitchToAssisted={handleSwitchToAssisted}
+                />
               ) : (
-                <div className="text-center py-12">
+                <div className="flex items-center justify-center h-full">
                   <p className="text-[var(--text-muted)]">
                     Agent Analysis UI (Phase 2)
                   </p>
@@ -204,31 +335,33 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
 
           {/* Step 4: Review (assisted only) */}
           {wizardState.currentStep === 3 && wizardState.flow === 'assisted' && (
-            <div className="h-full">
-              <div className="text-center py-12">
-                <p className="text-[var(--text-muted)]">
-                  Review Pipeline UI (Phase 2)
-                </p>
-              </div>
+            <div className="h-full flex items-center justify-center">
+              <p className="text-[var(--text-muted)]">
+                Review Pipeline UI (Phase 2)
+              </p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] flex justify-between">
+        <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] flex justify-between shrink-0">
           <button
             onClick={wizardState.currentStep === 0 ? handleClose : handleBack}
-            className="px-4 py-2 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+            disabled={isSubmitting}
+            className="px-4 py-2 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] disabled:opacity-50"
           >
             {wizardState.currentStep === 0 ? 'Cancel' : 'Back'}
           </button>
 
           <button
-            onClick={handleNext}
-            disabled={wizardState.currentStep === 0 && !name.trim()}
-            className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-white text-gray-900 dark:text-gray-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleFinalAction}
+            disabled={isNextDisabled || isSubmitting}
+            className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-white text-gray-900 dark:text-gray-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {wizardState.currentStep === wizardState.steps.length - 1 ? 'Create Collection' : 'Next'}
+            {isSubmitting && (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-600 border-t-transparent" />
+            )}
+            {isFinalStep ? 'Create Collection' : 'Next'}
           </button>
         </div>
       </div>
