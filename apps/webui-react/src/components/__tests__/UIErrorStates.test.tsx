@@ -2,7 +2,7 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Toast from '../Toast'
-import { CreateCollectionModal } from '../CreateCollectionModal'
+import { QuickCreateModal } from '../QuickCreateModal'
 import { AddDataToCollectionModal } from '../AddDataToCollectionModal'
 import { useUIStore } from '../../stores/uiStore'
 import { renderWithErrorHandlers } from '../../tests/utils/errorTestUtils'
@@ -169,7 +169,7 @@ describe('UI Error States', () => {
   })
 
   describe('Form Validation Error Display', () => {
-    it('should show inline validation errors in CreateCollectionModal', async () => {
+    it('should show inline validation errors in QuickCreateModal', async () => {
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
@@ -183,7 +183,7 @@ describe('UI Error States', () => {
       })
       
       renderWithErrorHandlers(
-        <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
+        <QuickCreateModal isOpen={true} onClose={vi.fn()} />,
         []
       )
       
@@ -213,7 +213,7 @@ describe('UI Error States', () => {
       })
       
       renderWithErrorHandlers(
-        <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
+        <QuickCreateModal isOpen={true} onClose={vi.fn()} />,
         []
       )
       
@@ -295,7 +295,7 @@ describe('UI Error States', () => {
       })
       
       renderWithErrorHandlers(
-        <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
+        <QuickCreateModal isOpen={true} onClose={vi.fn()} />,
         []
       )
       
@@ -499,7 +499,7 @@ describe('UI Error States', () => {
       })
       
       renderWithErrorHandlers(
-        <CreateCollectionModal isOpen={true} onClose={vi.fn()} />,
+        <QuickCreateModal isOpen={true} onClose={vi.fn()} />,
         []
       )
       
