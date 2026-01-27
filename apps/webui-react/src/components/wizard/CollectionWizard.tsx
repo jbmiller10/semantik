@@ -19,6 +19,8 @@ import type { SyncMode } from '../../types/collection';
 interface CollectionWizardProps {
   onClose: () => void;
   onSuccess: () => void;
+  /** Optional conversation ID to resume an in-progress setup */
+  resumeConversationId?: string;
 }
 
 // Default pipeline DAG
@@ -39,15 +41,32 @@ function getDefaultDAG(): PipelineDAG {
   };
 }
 
-export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) {
-  const [wizardState, setWizardState] = useState<WizardState>(getInitialWizardState('manual'));
+export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: CollectionWizardProps) {
+  // Determine initial state based on whether we're resuming
+  const isResuming = Boolean(resumeConversationId);
+  const initialFlow = isResuming ? 'assisted' : 'manual';
+  const initialStep = isResuming ? 2 : 0; // Skip to analysis step if resuming
+
+  const [wizardState, setWizardState] = useState<WizardState>(() => {
+    const state = getInitialWizardState(initialFlow);
+    if (isResuming) {
+      // Mark previous steps as complete when resuming
+      return {
+        ...state,
+        currentStep: initialStep,
+        steps: state.steps.map((s, i) => ({ ...s, isComplete: i < initialStep })),
+      };
+    }
+    return state;
+  });
+
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
   const createConversationMutation = useCreateConversation();
   const { addToast } = useUIStore();
 
-  // Assisted flow state
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  // Assisted flow state - initialize with resume ID if provided
+  const [conversationId, setConversationId] = useState<string | null>(resumeConversationId || null);
   const [agentSummary, setAgentSummary] = useState('');
 
   // Step 1 (Basics) state
