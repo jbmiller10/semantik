@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { computeDAGLayout } from '../dagLayout';
-import type { PipelineDAG } from '@/types/pipeline';
+import { computeDAGLayout, getNodeTopCenter, getNodeBottomCenter } from '../dagLayout';
+import type { PipelineDAG, NodePosition } from '@/types/pipeline';
 
 describe('computeDAGLayout', () => {
-  it('positions nodes in columns by type', () => {
+  it('positions nodes in tiers vertically by type (top-to-bottom flow)', () => {
     const dag: PipelineDAG = {
       id: 'test',
       version: '1',
@@ -21,22 +21,23 @@ describe('computeDAGLayout', () => {
 
     const layout = computeDAGLayout(dag);
 
-    // Parser should be in first column (after source)
+    const source = layout.nodes.get('_source');
     const parser = layout.nodes.get('parser1');
-    expect(parser).toBeDefined();
-
-    // Chunker should be in second column
     const chunker = layout.nodes.get('chunker1');
-    expect(chunker).toBeDefined();
-    expect(chunker!.x).toBeGreaterThan(parser!.x);
-
-    // Embedder should be in third column
     const embedder = layout.nodes.get('embedder1');
+
+    expect(source).toBeDefined();
+    expect(parser).toBeDefined();
+    expect(chunker).toBeDefined();
     expect(embedder).toBeDefined();
-    expect(embedder!.x).toBeGreaterThan(chunker!.x);
+
+    // Vertical flow: Y increases as we go down the pipeline
+    expect(source!.y).toBeLessThan(parser!.y);
+    expect(parser!.y).toBeLessThan(chunker!.y);
+    expect(chunker!.y).toBeLessThan(embedder!.y);
   });
 
-  it('stacks multiple nodes of same type vertically', () => {
+  it('spreads multiple nodes of same type horizontally within their tier', () => {
     const dag: PipelineDAG = {
       id: 'test',
       version: '1',
@@ -60,13 +61,13 @@ describe('computeDAGLayout', () => {
     const parser1 = layout.nodes.get('parser1');
     const parser2 = layout.nodes.get('parser2');
 
-    // Same x position (same column)
-    expect(parser1!.x).toBe(parser2!.x);
-    // Different y positions
-    expect(parser1!.y).not.toBe(parser2!.y);
+    // Same Y position (same tier)
+    expect(parser1!.y).toBe(parser2!.y);
+    // Different X positions (spread horizontally)
+    expect(parser1!.x).not.toBe(parser2!.x);
   });
 
-  it('includes source node in layout', () => {
+  it('includes source node in layout at top tier', () => {
     const dag: PipelineDAG = {
       id: 'test',
       version: '1',
@@ -84,9 +85,9 @@ describe('computeDAGLayout', () => {
 
     const source = layout.nodes.get('_source');
     expect(source).toBeDefined();
-    // Source is in leftmost column (column 0) with padding
+    // Source is at the top (tier 0), parser below it
     const parser = layout.nodes.get('parser1');
-    expect(source!.x).toBeLessThan(parser!.x);
+    expect(source!.y).toBeLessThan(parser!.y);
   });
 
   it('computes overall width and height', () => {
@@ -107,5 +108,21 @@ describe('computeDAGLayout', () => {
 
     expect(layout.width).toBeGreaterThan(0);
     expect(layout.height).toBeGreaterThan(0);
+  });
+});
+
+describe('getNodeTopCenter', () => {
+  it('returns center of top edge', () => {
+    const pos: NodePosition = { x: 100, y: 50, width: 160, height: 80 };
+    const result = getNodeTopCenter(pos);
+    expect(result).toEqual({ x: 180, y: 50 }); // x + width/2, y
+  });
+});
+
+describe('getNodeBottomCenter', () => {
+  it('returns center of bottom edge', () => {
+    const pos: NodePosition = { x: 100, y: 50, width: 160, height: 80 };
+    const result = getNodeBottomCenter(pos);
+    expect(result).toEqual({ x: 180, y: 130 }); // x + width/2, y + height
   });
 });

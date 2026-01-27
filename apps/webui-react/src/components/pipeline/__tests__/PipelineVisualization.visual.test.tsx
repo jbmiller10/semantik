@@ -98,10 +98,10 @@ describe('PipelineVisualization Visual Tests', () => {
     expect(svg1?.getAttribute('height')).toBe(svg2?.getAttribute('height'));
   });
 
-  it('scales height with vertical stacking', () => {
-    // Pipeline with 3 parsers (vertical stacking)
-    const tallPipeline: PipelineDAG = {
-      id: 'tall',
+  it('scales width with horizontal spread within tiers', () => {
+    // Pipeline with 3 parsers (horizontal spread in vertical layout)
+    const widePipeline: PipelineDAG = {
+      id: 'wide',
       version: '1',
       nodes: [
         { id: 'p1', type: 'parser', plugin_id: 'text', config: {} },
@@ -119,13 +119,13 @@ describe('PipelineVisualization Visual Tests', () => {
       ],
     };
 
-    const { container: tallContainer } = render(<PipelineVisualization dag={tallPipeline} />);
+    const { container: wideContainer } = render(<PipelineVisualization dag={widePipeline} />);
     const { container: defaultContainer } = render(<PipelineVisualization dag={defaultPipeline} />);
 
-    const tallHeight = parseInt(tallContainer.querySelector('svg')?.getAttribute('height') || '0');
-    const defaultHeight = parseInt(defaultContainer.querySelector('svg')?.getAttribute('height') || '0');
+    const wideWidth = parseInt(wideContainer.querySelector('svg')?.getAttribute('width') || '0');
+    const defaultWidth = parseInt(defaultContainer.querySelector('svg')?.getAttribute('width') || '0');
 
-    // Tall pipeline should be taller (3 parsers vs 2)
-    expect(tallHeight).toBeGreaterThan(defaultHeight);
+    // Wide pipeline should be wider (3 parsers vs 2 in parser tier)
+    expect(wideWidth).toBeGreaterThan(defaultWidth);
   });
 });

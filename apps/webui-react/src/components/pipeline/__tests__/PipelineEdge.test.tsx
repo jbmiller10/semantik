@@ -5,8 +5,9 @@ import { PipelineEdgeComponent } from '../PipelineEdge';
 import type { PipelineEdge, NodePosition } from '@/types/pipeline';
 
 describe('PipelineEdgeComponent', () => {
+  // Vertical layout: source node above, target node below
   const fromPosition: NodePosition = { x: 100, y: 50, width: 160, height: 80 };
-  const toPosition: NodePosition = { x: 360, y: 50, width: 160, height: 80 };
+  const toPosition: NodePosition = { x: 100, y: 230, width: 160, height: 80 };
 
   const mockEdge: PipelineEdge = {
     from_node: 'parser1',
