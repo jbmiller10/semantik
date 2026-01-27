@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pluginsApi } from '../services/api/v2/plugins';
+import { useUIStore } from '../stores/uiStore';
+import { handleApiError } from '../services/api/v2/collections';
 import type {
   PluginInfo,
   PluginListFilters,
@@ -120,6 +122,7 @@ export function usePluginHealth(pluginId: string) {
  */
 export function useEnablePlugin() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginStatusResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -131,6 +134,10 @@ export function useEnablePlugin() {
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
     },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to enable plugin "${pluginId}": ${errorMessage}` });
+    },
   });
 }
 
@@ -140,6 +147,7 @@ export function useEnablePlugin() {
  */
 export function useDisablePlugin() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginStatusResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -151,6 +159,10 @@ export function useDisablePlugin() {
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
     },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to disable plugin "${pluginId}": ${errorMessage}` });
+    },
   });
 }
 
@@ -160,6 +172,7 @@ export function useDisablePlugin() {
  */
 export function useUpdatePluginConfig() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<
     PluginInfo,
@@ -175,6 +188,10 @@ export function useUpdatePluginConfig() {
       queryClient.setQueryData(pluginKeys.detail(pluginId), data);
       // Invalidate all list queries regardless of filters
       queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
+    },
+    onError: (error, { pluginId }) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to update config for "${pluginId}": ${errorMessage}` });
     },
   });
 }
@@ -285,6 +302,7 @@ export function useRefreshAvailablePlugins() {
  */
 export function usePluginInstall() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginInstallResponse, Error, PluginInstallRequest>({
     mutationFn: async (request: PluginInstallRequest) => {
@@ -297,6 +315,10 @@ export function usePluginInstall() {
         queryKey: [...pluginKeys.all, 'available'],
       });
     },
+    onError: (error, request) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to install plugin "${request.plugin_id}": ${errorMessage}` });
+    },
   });
 }
 
@@ -306,6 +328,7 @@ export function usePluginInstall() {
  */
 export function usePluginUninstall() {
   const queryClient = useQueryClient();
+  const { addToast } = useUIStore();
 
   return useMutation<PluginInstallResponse, Error, string>({
     mutationFn: async (pluginId: string) => {
@@ -315,6 +338,10 @@ export function usePluginUninstall() {
     onSuccess: () => {
       // Invalidate all plugin queries
       queryClient.invalidateQueries({ queryKey: pluginKeys.all });
+    },
+    onError: (error, pluginId) => {
+      const errorMessage = handleApiError(error);
+      addToast({ type: 'error', message: `Failed to uninstall plugin "${pluginId}": ${errorMessage}` });
     },
   });
 }

@@ -228,10 +228,10 @@ When you're done responding (no more tools to call), just write your response no
     ) -> Any:
         """Call provider.generate() with retry/backoff for rate limits and timeouts.
 
-        Retry policy (matches Phase 3 design doc):
-        - Rate limits: exponential backoff, max 3 attempts
-        - Timeouts: retry once with longer timeout
-        - Other LLM errors: no retry
+        Retry policy:
+        - Rate limits: exponential backoff with jitter, max 3 attempts
+        - Timeouts: retry once with doubled timeout (capped at MAX_BACKGROUND_TIMEOUT)
+        - Other LLM errors (auth, context length): no retry, propagate immediately
         """
         rate_limit_attempt = 0
         timeout_attempt = 0
@@ -474,7 +474,26 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
             raise AgentError("Message too long. Please shorten and try again.") from e
         except Exception as e:
             logger.exception(f"Error handling message for conversation {self.conversation.id}: {e}")
-            raise AgentError(f"An unexpected error occurred: {type(e).__name__}") from e
+            # Provide more context based on exception type
+            error_type = type(e).__name__
+            if "redis" in error_type.lower() or "connection" in str(e).lower():
+                raise AgentError(
+                    f"Connection error ({error_type}): Unable to communicate with message store. "
+                    "Please try again in a moment."
+                ) from e
+            if "database" in error_type.lower() or "asyncpg" in error_type.lower():
+                raise AgentError(
+                    f"Database error ({error_type}): Unable to persist conversation state. "
+                    "Your message may not have been saved."
+                ) from e
+            if "timeout" in error_type.lower():
+                raise AgentError(
+                    f"Timeout error ({error_type}): The operation took too long. "
+                    "Please try again with a simpler request."
+                ) from e
+            raise AgentError(
+                f"An unexpected error occurred ({error_type}): {str(e)[:100]}"
+            ) from e
 
     async def handle_message_streaming(self, user_message: str) -> AsyncGenerator[AgentStreamEvent, None]:
         """Process user message with streaming events.
@@ -836,6 +855,15 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
 
             except ToolExecutionError as e:
                 logger.warning(f"Tool {call.name} failed: {e}")
+                # Track failed tool call for metrics
+                self._tool_calls_made.append(
+                    {
+                        "name": call.name,
+                        "arguments": call.arguments,
+                        "error": str(e),
+                        "success": False,
+                    }
+                )
                 yield AgentStreamEvent(
                     event=AgentStreamEventType.TOOL_CALL_END,
                     data={
@@ -853,6 +881,15 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 )
             except Exception as e:
                 logger.exception(f"Unexpected error in tool {call.name}: {e}")
+                # Track failed tool call for metrics
+                self._tool_calls_made.append(
+                    {
+                        "name": call.name,
+                        "arguments": call.arguments,
+                        "error": f"Internal error: {e}",
+                        "success": False,
+                    }
+                )
                 yield AgentStreamEvent(
                     event=AgentStreamEventType.TOOL_CALL_END,
                     data={
@@ -1022,8 +1059,9 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
             # Persist any state changes
             await self._persist_state_changes()
 
-        # This should never be reached, but satisfies type checker
-        return "Unexpected conversation loop exit"
+        # All code paths in the try block return, but the type checker
+        # cannot prove this, so we need an explicit return here.
+        raise AssertionError("Unreachable: all conversation loop paths return")
 
     def _build_prompt(self, messages: list[ConversationMessage]) -> str:
         """Build a prompt string from message history.
@@ -1077,7 +1115,12 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                     logger.debug(f"Parsed tool call: {tool_call.name}")
 
             except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse tool call: {e}")
+                # Log more context for debugging malformed tool calls from LLM
+                raw_content = match.group(1).strip()[:200]  # Truncate for logging
+                logger.warning(
+                    f"Failed to parse tool call at index {i}: {e}. "
+                    f"Raw content (truncated): {raw_content!r}"
+                )
                 continue
 
         return tool_calls
@@ -1140,6 +1183,15 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
 
             except ToolExecutionError as e:
                 logger.warning(f"Tool {call.name} failed: {e}")
+                # Track failed tool call for metrics
+                self._tool_calls_made.append(
+                    {
+                        "name": call.name,
+                        "arguments": call.arguments,
+                        "error": str(e),
+                        "success": False,
+                    }
+                )
                 results.append(
                     ToolResult(
                         tool_call_id=call.id,
@@ -1150,6 +1202,15 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                 )
             except Exception as e:
                 logger.exception(f"Unexpected error in tool {call.name}: {e}")
+                # Track failed tool call for metrics
+                self._tool_calls_made.append(
+                    {
+                        "name": call.name,
+                        "arguments": call.arguments,
+                        "error": f"Internal error: {e}",
+                        "success": False,
+                    }
+                )
                 results.append(
                     ToolResult(
                         tool_call_id=call.id,
@@ -1230,8 +1291,28 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
                         )
         except AsyncpgInterfaceError as e:
             # Connection was closed during long-running operation
+            # Include uncertainty data in warning so it can be reviewed in logs
+            uncertainty_summaries = [
+                f"[{u.get('severity', 'info')}] {u.get('message', 'Unknown')[:80]}"
+                for u in uncertainties
+                if isinstance(u, dict)
+            ]
             logger.warning(
-                f"DB connection closed during uncertainty persistence from {tool_name}: {e}"
+                f"DB connection closed during uncertainty persistence from {tool_name}: {e}. "
+                f"Unpersisted uncertainties ({len(uncertainties)}): {uncertainty_summaries}"
+            )
+            # Notify user that uncertainties weren't saved
+            self._uncertainties_added.append(
+                {
+                    "id": "connection_warning",
+                    "severity": "notable",
+                    "message": (
+                        f"Connection lost: {len(uncertainties)} analysis result(s) from "
+                        f"{tool_name} could not be saved. They may need to be re-generated."
+                    ),
+                    "resolved": False,
+                    "context": {"tool": tool_name, "count": len(uncertainties)},
+                }
             )
         except Exception as e:
             logger.error(f"Failed to persist uncertainties from {tool_name}: {e}", exc_info=True)
@@ -1277,6 +1358,19 @@ You should use spawn_source_analyzer to analyze this source and recommend an app
             logger.warning(
                 f"DB connection closed during state persistence for conversation "
                 f"{self.conversation.id}: {e}. Pipeline state may need to be rebuilt."
+            )
+            # Notify user that pipeline changes may not have been saved
+            self._uncertainties_added.append(
+                {
+                    "id": "state_persistence_warning",
+                    "severity": "notable",
+                    "message": (
+                        "Connection lost: Pipeline changes may not have been saved. "
+                        "If you refresh and changes are missing, please re-apply them."
+                    ),
+                    "resolved": False,
+                    "context": {"conversation_id": self.conversation.id},
+                }
             )
         except Exception as e:
             logger.error(f"Failed to persist state changes: {e}", exc_info=True)
