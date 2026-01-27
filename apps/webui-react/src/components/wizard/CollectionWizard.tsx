@@ -68,8 +68,9 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
   // Determine modal size based on current step
   const isExpanded = wizardState.currentStep >= 2;
 
+  // Mobile: full screen when expanded, responsive otherwise
   const sizeClasses = isExpanded
-    ? 'w-[90vw] max-w-7xl h-[85vh]'
+    ? 'w-full lg:w-[90vw] max-w-7xl h-[100dvh] lg:h-[85vh]'
     : 'w-full max-w-2xl max-h-[90vh]';
 
   const validateBasics = useCallback(() => {
@@ -329,7 +330,7 @@ export function CollectionWizard({ onClose, onSuccess }: CollectionWizardProps) 
               <p className="text-sm text-[var(--text-secondary)]">
                 Choose how you want to configure your pipeline:
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button
                   onClick={() => handleFlowChange('assisted')}
                   className={`
