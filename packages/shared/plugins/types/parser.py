@@ -16,7 +16,7 @@ import mimetypes
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NotRequired, TypedDict
 
 from shared.plugins.base import SemanticPlugin
 from shared.plugins.manifest import AgentHints, PluginManifest
@@ -102,6 +102,48 @@ class ParserOutput:
 
     metadata: dict[str, Any] = field(default_factory=dict)
     """Document-level metadata (parser, filename, mime_type, etc.)."""
+
+
+class ParsedMetadata(TypedDict, total=False):
+    """Standardized parsed metadata fields.
+
+    These fields are written to FileReference.metadata["parsed"] and can be
+    used for mid-pipeline routing decisions.
+
+    All fields are optional (NotRequired) as parsers emit only fields they can compute.
+    """
+
+    # Document structure
+    page_count: NotRequired[int]
+    """Number of pages (PDF, DOCX)"""
+
+    line_count: NotRequired[int]
+    """Number of text lines"""
+
+    # Content characteristics
+    has_tables: NotRequired[bool]
+    """Contains table elements"""
+
+    has_images: NotRequired[bool]
+    """Contains images"""
+
+    has_code_blocks: NotRequired[bool]
+    """Contains markdown code fences"""
+
+    # Language and tokens
+    detected_language: NotRequired[str | None]
+    """ISO 639-1 code (en, zh, etc.) or None if detection fails"""
+
+    approx_token_count: NotRequired[int]
+    """Approximate token count"""
+
+    # Element metadata (unstructured parser)
+    element_types: NotRequired[list[str]]
+    """Unique element types found"""
+
+    # Quality metrics (future OCR)
+    text_quality: NotRequired[float]
+    """0.0-1.0 OCR confidence score"""
 
 
 # ============================================================================
@@ -546,6 +588,7 @@ __all__ = [
     # Data classes
     "ParsedElement",
     "ParserOutput",
+    "ParsedMetadata",
     # Helper functions
     "EXTENSION_MIME_FALLBACKS",
     "derive_input_types_from_extensions",

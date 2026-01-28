@@ -76,6 +76,35 @@ def _is_binary_content(content: bytes) -> bool:
     return (non_printable / len(sample)) > 0.30
 
 
+def _detect_language(text: str) -> str | None:
+    """Detect dominant language in text sample.
+
+    Returns ISO 639-1 code (en, zh, es, etc.) or None if detection fails.
+    Uses first 5000 chars to balance accuracy and performance.
+    """
+    if len(text) < 50:
+        return None
+
+    try:
+        from langdetect import detect
+
+        result = detect(text[:5000])
+        return str(result) if result else None
+    except Exception:
+        # langdetect not installed or detection failed
+        return None
+
+
+def _has_code_blocks(text: str) -> bool:
+    """Check if text contains markdown code fences (```).
+
+    Detects both standalone fences and language-tagged fences.
+    """
+    import re
+
+    return bool(re.search(r"```[\s\S]*?```", text))
+
+
 class TextParserPlugin(ParserPlugin):
     """Lightweight parser for plain text files.
 
@@ -301,6 +330,12 @@ class TextParserPlugin(ParserPlugin):
             mime_type=mime_type,
             caller_metadata=metadata,
         )
+
+        # Enrich with parsed metadata for routing
+        base_metadata["detected_language"] = _detect_language(text)
+        base_metadata["approx_token_count"] = len(text.split())
+        base_metadata["line_count"] = text.count("\n") + 1
+        base_metadata["has_code_blocks"] = _has_code_blocks(text)
 
         return ParserOutput(
             text=text,

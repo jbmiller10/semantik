@@ -360,7 +360,11 @@ class TestLegacyEquivalence:
         assert legacy_extensions == plugin_extensions
 
     def test_same_output_structure(self) -> None:
-        """Verify plugin produces equivalent output to legacy parser."""
+        """Verify plugin produces equivalent output to legacy parser.
+
+        Note: Plugin emits additional parsed metadata fields (detected_language,
+        approx_token_count, line_count, has_code_blocks) that legacy parser doesn't.
+        """
         from shared.text_processing.parsers.text import TextParser
 
         content = b"Hello, world!"
@@ -375,9 +379,16 @@ class TestLegacyEquivalence:
         # Same text content
         assert legacy_result.text == plugin_result.text
 
-        # Same metadata keys
-        assert legacy_result.metadata.keys() == plugin_result.metadata.keys()
-        assert legacy_result.metadata["parser"] == plugin_result.metadata["parser"]
+        # Legacy metadata keys are present in plugin result
+        for key in legacy_result.metadata.keys():
+            assert key in plugin_result.metadata
+            assert legacy_result.metadata[key] == plugin_result.metadata[key]
+
+        # Plugin has additional parsed metadata fields
+        assert "detected_language" in plugin_result.metadata
+        assert "approx_token_count" in plugin_result.metadata
+        assert "line_count" in plugin_result.metadata
+        assert "has_code_blocks" in plugin_result.metadata
 
     def test_same_bom_handling(self) -> None:
         """Verify plugin handles BOM same as legacy parser."""
@@ -432,3 +443,143 @@ class TestConfigSchema:
         # Schema should have all options as properties
         for opt in options:
             assert opt["name"] in schema["properties"]
+
+
+# ============================================================================
+# Parser Metadata Emission Tests (Phase 3)
+# ============================================================================
+
+
+class TestTextParserMetadataEmission:
+    """Tests for TextParserPlugin parsed metadata emission."""
+
+    def test_emits_approx_token_count(self) -> None:
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(b"Hello world this is a test")
+        assert "approx_token_count" in result.metadata
+        assert result.metadata["approx_token_count"] == 6
+
+    def test_emits_line_count(self) -> None:
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(b"Line 1\nLine 2\nLine 3")
+        assert result.metadata["line_count"] == 3
+
+    def test_emits_line_count_single_line(self) -> None:
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(b"Single line")
+        assert result.metadata["line_count"] == 1
+
+    def test_detects_code_blocks_markdown(self) -> None:
+        content = b"# Title\n```python\nprint('hello')\n```\nMore text"
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(content)
+        assert result.metadata["has_code_blocks"] is True
+
+    def test_detects_code_blocks_multiple(self) -> None:
+        content = b"```js\ncode1\n```\n\ntext\n\n```python\ncode2\n```"
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(content)
+        assert result.metadata["has_code_blocks"] is True
+
+    def test_no_code_blocks_for_plain_text(self) -> None:
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(b"Just plain text with no code fences")
+        assert result.metadata["has_code_blocks"] is False
+
+    def test_language_detection_english(self) -> None:
+        content = b"This is a longer English text that should be detected as English language."
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(content)
+        # Language detection may return 'en' or None if langdetect not installed
+        if result.metadata.get("detected_language"):
+            assert result.metadata["detected_language"] == "en"
+
+    def test_language_detection_short_text_returns_none(self) -> None:
+        content = b"Hi"  # Too short for detection
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(content)
+        # Short text should return None
+        assert result.metadata.get("detected_language") is None
+
+    def test_all_metadata_fields_present(self) -> None:
+        """Verify all expected parsed metadata fields are emitted."""
+        content = b"# Test\n```python\ncode\n```\nSome text here"
+        parser = TextParserPlugin()
+        result = parser.parse_bytes(content)
+
+        # Check all expected fields exist
+        assert "approx_token_count" in result.metadata
+        assert "line_count" in result.metadata
+        assert "has_code_blocks" in result.metadata
+        assert "detected_language" in result.metadata  # May be None
+
+
+class TestUnstructuredParserMetadataEmission:
+    """Tests for UnstructuredParserPlugin parsed metadata emission."""
+
+    def test_emits_approx_token_count(self) -> None:
+        """Test that unstructured parser emits token count."""
+        try:
+            from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        except ImportError:
+            pytest.skip("unstructured not installed")
+
+        content = b"This is test content with multiple words"
+        parser = UnstructuredParserPlugin()
+        result = parser.parse_bytes(content, mime_type="text/plain")
+
+        # Should have approx_token_count
+        assert "approx_token_count" in result.metadata
+        assert result.metadata["approx_token_count"] > 0
+
+    def test_has_tables_false_for_plain_text(self) -> None:
+        """Test that has_tables is False for plain text."""
+        try:
+            from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        except ImportError:
+            pytest.skip("unstructured not installed")
+
+        content = b"Just plain text with no tables"
+        parser = UnstructuredParserPlugin()
+        result = parser.parse_bytes(content, mime_type="text/plain")
+        assert result.metadata.get("has_tables") is False
+
+    def test_has_images_false_for_plain_text(self) -> None:
+        """Test that has_images is False for plain text."""
+        try:
+            from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        except ImportError:
+            pytest.skip("unstructured not installed")
+
+        content = b"Just plain text with no images"
+        parser = UnstructuredParserPlugin()
+        result = parser.parse_bytes(content, mime_type="text/plain")
+        assert result.metadata.get("has_images") is False
+
+    def test_element_types_collected(self) -> None:
+        """Test that element_types list is populated."""
+        try:
+            from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        except ImportError:
+            pytest.skip("unstructured not installed")
+
+        content = b"Title\n\nParagraph text"
+        parser = UnstructuredParserPlugin()
+        result = parser.parse_bytes(content, mime_type="text/plain")
+        assert "element_types" in result.metadata
+        assert isinstance(result.metadata["element_types"], list)
+
+    def test_page_count_emitted(self) -> None:
+        """Test that page_count is emitted."""
+        try:
+            from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        except ImportError:
+            pytest.skip("unstructured not installed")
+
+        content = b"Page 1 content\n\nPage 2 content"
+        parser = UnstructuredParserPlugin()
+        result = parser.parse_bytes(content, mime_type="text/plain")
+
+        # Should have page_count (at least 1)
+        assert "page_count" in result.metadata
+        assert result.metadata["page_count"] >= 1

@@ -391,6 +391,9 @@ class PipelineExecutor:
                     )
                     self._record_timing(f"parser:{current_node.id}", stage_start)
 
+                    # Enrich file_ref with parsed metadata for mid-pipeline routing
+                    self._enrich_parsed_metadata(file_ref, parse_metadata)
+
                 elif current_node.type == NodeType.CHUNKER:
                     chunks, token_counts = self._execute_chunker(
                         current_node,
@@ -500,6 +503,45 @@ class PipelineExecutor:
             return "unchanged"
 
         return None
+
+    def _enrich_parsed_metadata(
+        self,
+        file_ref: FileReference,
+        parse_metadata: dict[str, Any],
+    ) -> None:
+        """Enrich FileReference with parsed metadata for mid-pipeline routing.
+
+        Copies standardized parsed.* fields from parser output to
+        file_ref.metadata["parsed"] for use in routing predicates.
+
+        Args:
+            file_ref: File reference to enrich
+            parse_metadata: Metadata dict from parser output
+        """
+        if not parse_metadata:
+            return
+
+        # Recognized parsed.* field names from ParsedMetadata schema
+        parsed_fields = {
+            "page_count",
+            "has_tables",
+            "has_images",
+            "has_code_blocks",
+            "detected_language",
+            "approx_token_count",
+            "line_count",
+            "element_types",
+            "text_quality",
+        }
+
+        # Initialize parsed namespace if needed
+        if "parsed" not in file_ref.metadata:
+            file_ref.metadata["parsed"] = {}
+
+        # Copy only recognized fields
+        for key, value in parse_metadata.items():
+            if key in parsed_fields:
+                file_ref.metadata["parsed"][key] = value
 
     def _execute_parser(
         self,

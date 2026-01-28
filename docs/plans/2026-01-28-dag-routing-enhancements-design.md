@@ -218,15 +218,76 @@ This architecture is deliberate—sparse indexing (especially BM25) is stateful 
 3. **Integrate into routing** - sniff runs before `get_entry_node()`
 4. **Handle sniff failures gracefully** - missing detected fields don't break routing
 
-### Phase 3: Parser Metadata Emission
+### Phase 3: Parser Metadata Emission ✅ COMPLETE
 
-1. **Define `parsed.*` field conventions** for each parser type
-2. **Update parser plugins** to emit metadata during parsing:
-   - PDF parser: `page_count`, `has_tables`, `has_images`
-   - Text parser: `detected_language`, `approx_token_count`
-   - Markdown parser: `has_code_blocks`
-3. **Enable mid-pipeline routing** - predicates can use `parsed.*` fields
-4. **Document emitted fields** per parser plugin
+**Status:** Implemented 2026-01-28
+
+1. ✅ **Define `parsed.*` field conventions** - Added `ParsedMetadata` TypedDict in `parser.py`
+2. ✅ **Update parser plugins** to emit metadata during parsing:
+   - TextParserPlugin: emits `detected_language`, `approx_token_count`, `line_count`, `has_code_blocks`
+   - UnstructuredParserPlugin: emits `page_count`, `has_tables`, `has_images`, `element_types`, `approx_token_count`
+3. ✅ **Enable mid-pipeline routing** - executor wires metadata to `file_ref.metadata["parsed"]` via `_enrich_parsed_metadata()`
+4. ✅ **Document emitted fields** - See `ParsedMetadata` schema and routing examples below
+
+#### Implementation Details
+
+**Metadata Flow:**
+1. Parser computes metadata during `parse_bytes()`
+2. Returns metadata in `ParserOutput.metadata`
+3. Executor copies recognized fields to `file_ref.metadata["parsed"]` via `_enrich_parsed_metadata()`
+4. Subsequent routing uses `metadata.parsed.*` predicates
+
+**Emitted Fields by Parser:**
+
+| Field | TextParser | UnstructuredParser | Description |
+|-------|------------|-------------------|-------------|
+| `detected_language` | ✓ | - | ISO 639-1 code via langdetect (optional dependency) |
+| `approx_token_count` | ✓ | ✓ | Word count approximation |
+| `line_count` | ✓ | - | Number of text lines |
+| `has_code_blocks` | ✓ | - | Markdown code fences detected via regex |
+| `page_count` | - | ✓ | Maximum page number found in elements |
+| `has_tables` | - | ✓ | True if any element has category="Table" |
+| `has_images` | - | ✓ | True if any element has category="Image" |
+| `element_types` | - | ✓ | Sorted list of unique element categories |
+
+**Mid-Pipeline Routing Examples:**
+
+```yaml
+# Route Chinese documents to multilingual embedder
+edges:
+  - from_node: parser
+    to_node: multilingual_embedder
+    when:
+      metadata.parsed.detected_language: zh
+
+# Route large documents to semantic chunker
+edges:
+  - from_node: parser
+    to_node: semantic_chunker
+    when:
+      metadata.parsed.approx_token_count: ">10000"
+
+# Route documents with tables to table-aware chunker
+edges:
+  - from_node: parser
+    to_node: table_chunker
+    when:
+      metadata.parsed.has_tables: true
+
+# Route code-heavy documents to code chunker
+edges:
+  - from_node: parser
+    to_node: code_chunker
+    when:
+      metadata.parsed.has_code_blocks: true
+```
+
+**Testing:**
+- Unit tests: `tests/unit/plugins/test_parser_plugins.py` (14 tests for metadata emission)
+- Integration tests: `tests/integration/pipeline/test_parsed_metadata_routing.py` (7 tests for routing)
+
+**Dependencies:**
+- `langdetect` added as optional dependency in `pyproject.toml` for language detection
 
 ### Phase 4: Route Preview UI
 
