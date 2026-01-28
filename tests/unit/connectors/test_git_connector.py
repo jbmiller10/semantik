@@ -794,7 +794,7 @@ class TestGitConnectorEnumerate:
                 refs = [ref async for ref in connector.enumerate()]
 
             assert len(refs) == 2
-            paths = [ref.source_metadata["relative_path"] for ref in refs]
+            paths = [ref.metadata.get("source", {}).get("relative_path") for ref in refs]
             assert "README.md" in paths
             assert "src/main.py" in paths
 
@@ -803,8 +803,9 @@ class TestGitConnectorEnumerate:
                 assert ref.source_type == "git"
                 assert ref.uri.startswith("git://")
                 assert ref.change_hint == "blob123"
-                assert ref.source_metadata["commit_sha"] == "abc123"
-                assert ref.source_metadata["repo_url"] == "https://github.com/user/repo.git"
+                source = ref.metadata.get("source", {})
+                assert source.get("commit_sha") == "abc123"
+                assert source.get("repo_url") == "https://github.com/user/repo.git"
 
     @pytest.mark.asyncio()
     async def test_enumerate_skips_git_directory(self):
@@ -832,7 +833,7 @@ class TestGitConnectorEnumerate:
 
             # Only README.md should be yielded, not .git/config
             assert len(refs) == 1
-            assert refs[0].source_metadata["relative_path"] == "README.md"
+            assert refs[0].metadata.get("source", {}).get("relative_path") == "README.md"
 
     @pytest.mark.asyncio()
     async def test_enumerate_respects_include_patterns(self):
@@ -862,7 +863,7 @@ class TestGitConnectorEnumerate:
 
             # Only .md files should be yielded
             assert len(refs) == 2
-            paths = [ref.source_metadata["relative_path"] for ref in refs]
+            paths = [ref.metadata.get("source", {}).get("relative_path") for ref in refs]
             assert "README.md" in paths
             assert "CHANGELOG.md" in paths
             assert "main.py" not in paths
@@ -893,7 +894,7 @@ class TestGitConnectorEnumerate:
                 refs = [ref async for ref in connector.enumerate()]
 
             # app.min.js should be excluded
-            paths = [ref.source_metadata["relative_path"] for ref in refs]
+            paths = [ref.metadata.get("source", {}).get("relative_path") for ref in refs]
             assert "app.js" in paths
             assert "app.min.js" not in paths
 

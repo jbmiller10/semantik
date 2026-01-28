@@ -45,7 +45,10 @@ class FileReference:
         mime_type: MIME type if known (e.g., "application/pdf")
         size_bytes: File size in bytes (must be >= 0)
         change_hint: Optional hint for change detection (mtime, etag, hash)
-        source_metadata: Additional source-specific metadata
+        metadata: Namespaced metadata dict with the following structure:
+            - metadata["source"]: Source-specific metadata (local_path, relative_path, etc.)
+            - metadata["detected"]: Auto-detected metadata (future Phase 2)
+            - metadata["parsed"]: Parser-extracted metadata (future Phase 3)
     """
 
     uri: str
@@ -56,7 +59,7 @@ class FileReference:
     mime_type: str | None = None
     size_bytes: int = 0
     change_hint: str | None = None
-    source_metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -76,8 +79,28 @@ class FileReference:
                 ext = f".{ext}"
             self.extension = ext
 
+    @property
+    def source_metadata(self) -> dict[str, Any]:
+        """DEPRECATED: Use metadata['source'] instead.
+
+        Returns the source-specific metadata from the namespaced metadata dict.
+        This property exists for backward compatibility during migration.
+        """
+        import warnings
+
+        warnings.warn(
+            "source_metadata is deprecated, use metadata['source'] instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.metadata.get("source", {})
+
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """Return a JSON-serializable representation.
+
+        Emits both 'metadata' (new format) and 'source_metadata' (legacy format)
+        for backward compatibility during migration.
+        """
         return {
             "uri": self.uri,
             "source_type": self.source_type,
@@ -87,12 +110,28 @@ class FileReference:
             "mime_type": self.mime_type,
             "size_bytes": self.size_bytes,
             "change_hint": self.change_hint,
-            "source_metadata": dict(self.source_metadata),
+            "metadata": dict(self.metadata),
+            # Legacy key for backward compatibility
+            "source_metadata": self.metadata.get("source", {}),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileReference:
-        """Create a FileReference from a dictionary."""
+        """Create a FileReference from a dictionary.
+
+        Accepts both new 'metadata' format and legacy 'source_metadata' format.
+        If 'metadata' is present, it is used directly. Otherwise, 'source_metadata'
+        is normalized to 'metadata.source'.
+        """
+        # Handle metadata format migration
+        if "metadata" in data:
+            metadata = dict(data["metadata"])
+        elif "source_metadata" in data:
+            # Legacy format: convert to new namespaced structure
+            metadata = {"source": dict(data["source_metadata"])}
+        else:
+            metadata = {}
+
         return cls(
             uri=data["uri"],
             source_type=data["source_type"],
@@ -102,7 +141,7 @@ class FileReference:
             mime_type=data.get("mime_type"),
             size_bytes=data.get("size_bytes", 0),
             change_hint=data.get("change_hint"),
-            source_metadata=data.get("source_metadata", {}),
+            metadata=metadata,
         )
 
 

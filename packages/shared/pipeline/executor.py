@@ -646,7 +646,7 @@ class PipelineExecutor:
             raise RuntimeError(f"Embedding count mismatch: got {len(embeddings)}, expected {len(chunks)}")
 
         # Build points for Qdrant
-        path = file_ref.source_metadata.get("local_path", file_ref.uri)
+        path = file_ref.metadata.get("source", {}).get("local_path", file_ref.uri)
         total_chunks = len(chunks)
         points = []
 
@@ -723,13 +723,14 @@ class PipelineExecutor:
         try:
             doc = await self._doc_repo.create(
                 collection_id=self.collection_id,
-                file_path=file_ref.source_metadata.get("local_path", file_ref.uri),
+                file_path=file_ref.metadata.get("source", {}).get("local_path", file_ref.uri),
                 file_name=file_ref.filename or file_ref.uri.split("/")[-1],
                 file_size=file_ref.size_bytes,
                 content_hash=content_hash,
                 mime_type=file_ref.mime_type,
                 uri=file_ref.uri,
-                source_metadata=file_ref.source_metadata,
+                # DB column is still called source_metadata - pass the source namespace
+                source_metadata=file_ref.metadata.get("source", {}),
             )
             await self.session.commit()
             return str(doc.id)

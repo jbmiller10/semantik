@@ -2,7 +2,12 @@
 
 import pytest
 
-from shared.pipeline.predicates import get_nested_value, match_value, matches_predicate
+from shared.pipeline.predicates import (
+    _translate_legacy_path,
+    get_nested_value,
+    match_value,
+    matches_predicate,
+)
 from shared.pipeline.types import FileReference
 
 
@@ -54,15 +59,46 @@ class TestGetNestedValue:
         assert get_nested_value(ref, "mime_type") == "application/pdf"
 
     def test_dataclass_nested_dict(self) -> None:
-        """Test getting nested dict from dataclass."""
+        """Test getting nested dict from dataclass with new metadata format."""
         ref = FileReference(
             uri="file:///doc.pdf",
             source_type="directory",
             content_type="document",
-            source_metadata={"language": "zh", "author": "Test"},
+            metadata={"source": {"language": "zh", "author": "Test"}},
         )
-        assert get_nested_value(ref, "source_metadata.language") == "zh"
-        assert get_nested_value(ref, "source_metadata.author") == "Test"
+        assert get_nested_value(ref, "metadata.source.language") == "zh"
+        assert get_nested_value(ref, "metadata.source.author") == "Test"
+
+
+class TestTranslateLegacyPath:
+    """Tests for _translate_legacy_path helper function."""
+
+    def test_translate_source_metadata_dot_path(self) -> None:
+        """Test translating source_metadata.X to metadata.source.X."""
+        assert _translate_legacy_path("source_metadata.language") == "metadata.source.language"
+        assert _translate_legacy_path("source_metadata.author") == "metadata.source.author"
+        assert _translate_legacy_path("source_metadata.deep.nested") == "metadata.source.deep.nested"
+
+    def test_translate_source_metadata_root(self) -> None:
+        """Test translating bare source_metadata to metadata.source."""
+        assert _translate_legacy_path("source_metadata") == "metadata.source"
+
+    def test_no_translation_for_new_paths(self) -> None:
+        """Test that new metadata paths are not modified."""
+        assert _translate_legacy_path("metadata.source.language") == "metadata.source.language"
+        assert _translate_legacy_path("metadata.detected.type") == "metadata.detected.type"
+
+    def test_no_translation_for_other_fields(self) -> None:
+        """Test that non-metadata fields are not modified."""
+        assert _translate_legacy_path("mime_type") == "mime_type"
+        assert _translate_legacy_path("extension") == "extension"
+        assert _translate_legacy_path("size_bytes") == "size_bytes"
+        assert _translate_legacy_path("uri") == "uri"
+
+    def test_no_translation_for_partial_match(self) -> None:
+        """Test that partial matches are not translated."""
+        # Should not translate source_metadata_extra (doesn't start with source_metadata.)
+        assert _translate_legacy_path("source_metadata_extra") == "source_metadata_extra"
 
 
 class TestMatchValue:
@@ -234,7 +270,7 @@ class TestMatchesPredicate:
             extension=".pdf",
             mime_type="application/pdf",
             size_bytes=1024000,  # 1MB
-            source_metadata={"language": "en", "pages": 10},
+            metadata={"source": {"language": "en", "pages": 10}},
         )
 
     @pytest.fixture()
@@ -248,7 +284,7 @@ class TestMatchesPredicate:
             extension=".md",
             mime_type="text/markdown",
             size_bytes=5000,
-            source_metadata={"language": "zh", "encoding": "utf-8"},
+            metadata={"source": {"language": "zh", "encoding": "utf-8"}},
         )
 
     def test_catch_all_none(self, pdf_file_ref: FileReference) -> None:
@@ -296,8 +332,15 @@ class TestMatchesPredicate:
         assert matches_predicate(markdown_file_ref, predicate) is True
         assert matches_predicate(pdf_file_ref, predicate) is False
 
-    def test_nested_field_match(self, pdf_file_ref: FileReference, markdown_file_ref: FileReference) -> None:
-        """Test nested field access with dot notation."""
+    def test_nested_field_match_new_format(self, pdf_file_ref: FileReference, markdown_file_ref: FileReference) -> None:
+        """Test nested field access with new metadata.source path."""
+        assert matches_predicate(pdf_file_ref, {"metadata.source.language": "en"}) is True
+        assert matches_predicate(pdf_file_ref, {"metadata.source.language": "zh"}) is False
+        assert matches_predicate(markdown_file_ref, {"metadata.source.language": "zh"}) is True
+
+    def test_nested_field_match_legacy_format(self, pdf_file_ref: FileReference, markdown_file_ref: FileReference) -> None:
+        """Test nested field access with legacy source_metadata path (auto-translated)."""
+        # Legacy paths should be automatically translated to metadata.source
         assert matches_predicate(pdf_file_ref, {"source_metadata.language": "en"}) is True
         assert matches_predicate(pdf_file_ref, {"source_metadata.language": "zh"}) is False
         assert matches_predicate(markdown_file_ref, {"source_metadata.language": "zh"}) is True
@@ -317,12 +360,22 @@ class TestMatchesPredicate:
         assert matches_predicate(pdf_file_ref, predicate) is False
 
     def test_complex_predicate(self, pdf_file_ref: FileReference) -> None:
-        """Test complex predicate with multiple conditions."""
+        """Test complex predicate with multiple conditions using new format."""
         predicate = {
             "mime_type": "application/*",
             "extension": [".pdf", ".docx"],
             "size_bytes": "<=2000000",
-            "source_metadata.language": "en",
+            "metadata.source.language": "en",
+        }
+        assert matches_predicate(pdf_file_ref, predicate) is True
+
+    def test_complex_predicate_legacy_format(self, pdf_file_ref: FileReference) -> None:
+        """Test complex predicate with legacy source_metadata path."""
+        predicate = {
+            "mime_type": "application/*",
+            "extension": [".pdf", ".docx"],
+            "size_bytes": "<=2000000",
+            "source_metadata.language": "en",  # Legacy path - auto translated
         }
         assert matches_predicate(pdf_file_ref, predicate) is True
 
@@ -352,7 +405,9 @@ class TestMatchesPredicate:
 
     def test_missing_nested_field(self, pdf_file_ref: FileReference) -> None:
         """Test matching when nested field doesn't exist."""
-        # source_metadata doesn't have "author" key
+        # metadata.source doesn't have "author" key
+        assert matches_predicate(pdf_file_ref, {"metadata.source.author": "John"}) is False
+        # Legacy path should also work
         assert matches_predicate(pdf_file_ref, {"source_metadata.author": "John"}) is False
 
     def test_source_type_match(self, pdf_file_ref: FileReference) -> None:
@@ -376,9 +431,11 @@ class TestPredicateEdgeCases:
             source_type="directory",
             content_type="document",
             filename="文档.pdf",
-            source_metadata={"author": "张三"},
+            metadata={"source": {"author": "张三"}},
         )
         assert matches_predicate(ref, {"filename": "文档.pdf"}) is True
+        assert matches_predicate(ref, {"metadata.source.author": "张三"}) is True
+        # Legacy path still works
         assert matches_predicate(ref, {"source_metadata.author": "张三"}) is True
 
     def test_special_characters_in_values(self) -> None:
@@ -397,11 +454,13 @@ class TestPredicateEdgeCases:
             uri="file:///doc.pdf",
             source_type="directory",
             content_type="document",
-            source_metadata={"version": "2"},
+            metadata={"source": {"version": "2"}},
         )
         # String "2" should be comparable
+        assert matches_predicate(ref, {"metadata.source.version": ">1"}) is True
+        assert matches_predicate(ref, {"metadata.source.version": "<1"}) is False
+        # Legacy paths
         assert matches_predicate(ref, {"source_metadata.version": ">1"}) is True
-        assert matches_predicate(ref, {"source_metadata.version": "<1"}) is False
 
     def test_very_large_size(self) -> None:
         """Test matching very large file sizes."""
@@ -447,18 +506,24 @@ class TestPredicateEdgeCases:
         assert matches_predicate(ref, {"extension": []}) is False
 
     def test_deeply_nested_metadata(self) -> None:
-        """Test deeply nested source_metadata access."""
+        """Test deeply nested metadata.source access."""
         ref = FileReference(
             uri="file:///doc.pdf",
             source_type="directory",
             content_type="document",
-            source_metadata={
-                "custom": {
-                    "deep": {
-                        "value": "found",
+            metadata={
+                "source": {
+                    "custom": {
+                        "deep": {
+                            "value": "found",
+                        },
                     },
                 },
             },
         )
+        # New format
+        assert matches_predicate(ref, {"metadata.source.custom.deep.value": "found"}) is True
+        assert matches_predicate(ref, {"metadata.source.custom.deep.missing": "x"}) is False
+        # Legacy format (translated)
         assert matches_predicate(ref, {"source_metadata.custom.deep.value": "found"}) is True
         assert matches_predicate(ref, {"source_metadata.custom.deep.missing": "x"}) is False

@@ -62,7 +62,7 @@ class TestFileReference:
         assert ref.mime_type is None
         assert ref.size_bytes == 0
         assert ref.change_hint is None
-        assert ref.source_metadata == {}
+        assert ref.metadata == {}
 
     def test_valid_construction_all_fields(self) -> None:
         """Test creating FileReference with all fields."""
@@ -75,7 +75,7 @@ class TestFileReference:
             mime_type="application/pdf",
             size_bytes=1024,
             change_hint="mtime:1234567890",
-            source_metadata={"author": "test"},
+            metadata={"source": {"author": "test", "local_path": "/path/to/doc.pdf"}},
         )
         assert ref.uri == "file:///path/to/doc.pdf"
         assert ref.filename == "doc.pdf"
@@ -83,7 +83,7 @@ class TestFileReference:
         assert ref.mime_type == "application/pdf"
         assert ref.size_bytes == 1024
         assert ref.change_hint == "mtime:1234567890"
-        assert ref.source_metadata == {"author": "test"}
+        assert ref.metadata == {"source": {"author": "test", "local_path": "/path/to/doc.pdf"}}
 
     def test_extension_normalization_lowercase(self) -> None:
         """Test that extension is normalized to lowercase."""
@@ -173,7 +173,7 @@ class TestFileReference:
             mime_type="application/pdf",
             size_bytes=1024,
             change_hint="mtime:123",
-            source_metadata={"key": "value"},
+            metadata={"source": {"key": "value"}},
         )
         d = ref.to_dict()
         assert d["uri"] == "file:///doc.pdf"
@@ -184,10 +184,37 @@ class TestFileReference:
         assert d["mime_type"] == "application/pdf"
         assert d["size_bytes"] == 1024
         assert d["change_hint"] == "mtime:123"
+        # New format
+        assert d["metadata"] == {"source": {"key": "value"}}
+        # Legacy format for backward compat
         assert d["source_metadata"] == {"key": "value"}
 
-    def test_from_dict(self) -> None:
-        """Test deserialization from dictionary."""
+    def test_from_dict_new_format(self) -> None:
+        """Test deserialization from dictionary with new metadata format."""
+        d = {
+            "uri": "file:///doc.pdf",
+            "source_type": "directory",
+            "content_type": "document",
+            "filename": "doc.pdf",
+            "extension": ".pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 1024,
+            "change_hint": "mtime:123",
+            "metadata": {"source": {"key": "value"}},
+        }
+        ref = FileReference.from_dict(d)
+        assert ref.uri == "file:///doc.pdf"
+        assert ref.source_type == "directory"
+        assert ref.content_type == "document"
+        assert ref.filename == "doc.pdf"
+        assert ref.extension == ".pdf"
+        assert ref.mime_type == "application/pdf"
+        assert ref.size_bytes == 1024
+        assert ref.change_hint == "mtime:123"
+        assert ref.metadata == {"source": {"key": "value"}}
+
+    def test_from_dict_legacy_format(self) -> None:
+        """Test deserialization from dictionary with legacy source_metadata format."""
         d = {
             "uri": "file:///doc.pdf",
             "source_type": "directory",
@@ -203,12 +230,8 @@ class TestFileReference:
         assert ref.uri == "file:///doc.pdf"
         assert ref.source_type == "directory"
         assert ref.content_type == "document"
-        assert ref.filename == "doc.pdf"
-        assert ref.extension == ".pdf"
-        assert ref.mime_type == "application/pdf"
-        assert ref.size_bytes == 1024
-        assert ref.change_hint == "mtime:123"
-        assert ref.source_metadata == {"key": "value"}
+        # Legacy source_metadata is normalized to metadata.source
+        assert ref.metadata == {"source": {"key": "value"}}
 
     def test_roundtrip_serialization(self) -> None:
         """Test to_dict -> from_dict preserves all fields."""
@@ -221,7 +244,7 @@ class TestFileReference:
             mime_type="application/pdf",
             size_bytes=1024,
             change_hint="mtime:123",
-            source_metadata={"nested": {"key": "value"}},
+            metadata={"source": {"nested": {"key": "value"}}},
         )
         restored = FileReference.from_dict(original.to_dict())
         assert restored.uri == original.uri
@@ -232,7 +255,7 @@ class TestFileReference:
         assert restored.mime_type == original.mime_type
         assert restored.size_bytes == original.size_bytes
         assert restored.change_hint == original.change_hint
-        assert restored.source_metadata == original.source_metadata
+        assert restored.metadata == original.metadata
 
     def test_json_serializable(self) -> None:
         """Test that to_dict output is JSON serializable."""
@@ -240,12 +263,49 @@ class TestFileReference:
             uri="file:///doc.pdf",
             source_type="directory",
             content_type="document",
-            source_metadata={"nested": {"key": [1, 2, 3]}},
+            metadata={"source": {"nested": {"key": [1, 2, 3]}}},
         )
         # Should not raise
         json_str = json.dumps(ref.to_dict())
         restored = json.loads(json_str)
         assert restored["uri"] == "file:///doc.pdf"
+        assert restored["metadata"] == {"source": {"nested": {"key": [1, 2, 3]}}}
+
+    def test_source_metadata_property_deprecated(self) -> None:
+        """Test that source_metadata property emits deprecation warning."""
+        import warnings
+
+        ref = FileReference(
+            uri="file:///doc.pdf",
+            source_type="directory",
+            content_type="document",
+            metadata={"source": {"key": "value"}},
+        )
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = ref.source_metadata
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "source_metadata is deprecated" in str(w[0].message)
+            assert result == {"key": "value"}
+
+    def test_source_metadata_property_returns_empty_dict(self) -> None:
+        """Test that source_metadata returns empty dict when source namespace missing."""
+        import warnings
+
+        ref = FileReference(
+            uri="file:///doc.pdf",
+            source_type="directory",
+            content_type="document",
+            metadata={},  # No source namespace
+        )
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = ref.source_metadata
+            assert len(w) == 1
+            assert result == {}
 
 
 class TestLoadResult:

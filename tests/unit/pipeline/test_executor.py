@@ -206,7 +206,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(5)
         ]
@@ -253,7 +253,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -297,7 +297,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -342,7 +342,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -393,7 +393,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -435,7 +435,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(20)
         ]
@@ -497,7 +497,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(3)
         ]
@@ -559,7 +559,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -614,7 +614,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=11,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         # Write "Hello World" to temp file to match the hash
@@ -660,7 +660,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:

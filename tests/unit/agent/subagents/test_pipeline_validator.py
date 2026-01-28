@@ -37,7 +37,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".pdf",
             mime_type="application/pdf",
             size_bytes=100000,
-            source_metadata={"local_path": "/docs/paper1.pdf"},
+            metadata={"source": {"local_path": "/docs/paper1.pdf"}},
         ),
         FileReference(
             uri="file:///docs/notes.md",
@@ -47,7 +47,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".md",
             mime_type="text/markdown",
             size_bytes=5000,
-            source_metadata={"local_path": "/docs/notes.md"},
+            metadata={"source": {"local_path": "/docs/notes.md"}},
         ),
     ]
 
