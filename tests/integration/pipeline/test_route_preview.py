@@ -9,13 +9,13 @@ from shared.pipeline.types import FileReference
 from webui.services.pipeline_preview_service import PipelinePreviewService
 
 
-@pytest.fixture
+@pytest.fixture()
 def preview_service() -> PipelinePreviewService:
     """Create a preview service instance."""
     return PipelinePreviewService(SniffConfig(timeout_seconds=5.0))
 
 
-@pytest.fixture
+@pytest.fixture()
 def simple_dag() -> dict:
     """Create a simple pipeline DAG for testing."""
     return {
@@ -37,7 +37,7 @@ def simple_dag() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def dag_with_metadata_predicates() -> dict:
     """Create a DAG with predicates on detected metadata."""
     return {
@@ -74,7 +74,7 @@ def dag_with_metadata_predicates() -> dict:
 class TestPipelinePreviewService:
     """Integration tests for PipelinePreviewService."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_pdf_file(
         self,
         preview_service: PipelinePreviewService,
@@ -116,7 +116,7 @@ startxref
         assert entry_stage.stage == "entry_routing"
         assert entry_stage.selected_node == "parser1"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_text_file(
         self,
         preview_service: PipelinePreviewService,
@@ -143,7 +143,7 @@ startxref
         assert "chunker" in result.path
         assert "embedder" in result.path
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_shows_field_evaluations(
         self,
         preview_service: PipelinePreviewService,
@@ -182,7 +182,7 @@ startxref
         assert mime_eval.matched is False
         assert mime_eval.pattern == "application/pdf"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_timing_included(
         self,
         preview_service: PipelinePreviewService,
@@ -198,7 +198,7 @@ startxref
 
         assert result.total_duration_ms > 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_empty_dag_returns_warnings(
         self,
         preview_service: PipelinePreviewService,
@@ -223,7 +223,7 @@ startxref
         # Should have warning about no matching route
         assert any("No matching route" in w for w in result.warnings)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_no_matching_route(
         self,
         preview_service: PipelinePreviewService,
@@ -259,7 +259,7 @@ startxref
         assert len(result.path) > 1
         assert "_source" in result.path
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_detects_code_files(
         self,
         preview_service: PipelinePreviewService,
@@ -287,7 +287,7 @@ if __name__ == "__main__":
         assert result.sniff_result is not None
         assert result.sniff_result.get("is_code") is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_detects_json_files(
         self,
         preview_service: PipelinePreviewService,
@@ -312,7 +312,7 @@ if __name__ == "__main__":
 class TestContentSniffer:
     """Tests for content sniffing functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sniff_code_by_extension(self) -> None:
         """Test code detection by file extension."""
         sniffer = ContentSniffer()
@@ -327,7 +327,7 @@ class TestContentSniffer:
         result = await sniffer.sniff(b"print('hello')", file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sniff_code_by_shebang(self) -> None:
         """Test code detection by shebang line."""
         sniffer = ContentSniffer()
@@ -343,7 +343,7 @@ class TestContentSniffer:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sniff_json_content(self) -> None:
         """Test JSON detection."""
         sniffer = ContentSniffer()
@@ -360,7 +360,7 @@ class TestContentSniffer:
         assert result.is_structured_data is True
         assert result.structured_format == "json"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sniff_csv_content(self) -> None:
         """Test CSV detection."""
         sniffer = ContentSniffer()

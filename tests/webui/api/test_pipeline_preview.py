@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from fastapi import status
-from fastapi.testclient import TestClient
 
 from webui.api.v2.pipeline_schemas import RoutePreviewResponse
 
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
-@pytest.fixture
+
+@pytest.fixture()
 def sample_dag() -> dict[str, Any]:
     """Sample pipeline DAG for testing."""
     return {
@@ -33,7 +35,7 @@ def sample_dag() -> dict[str, Any]:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_pdf_content() -> bytes:
     """Minimal PDF content for testing."""
     # This is a minimal valid PDF structure
@@ -60,7 +62,7 @@ startxref
 %%EOF"""
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_text_content() -> bytes:
     """Sample text file content for testing."""
     return b"This is a sample text file for testing routing."
