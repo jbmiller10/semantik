@@ -2,6 +2,7 @@
 export { PipelineVisualization } from './PipelineVisualization';
 export { PipelineNodeComponent } from './PipelineNode';
 export { PipelineEdgeComponent } from './PipelineEdge';
+export { DragPreviewEdge } from './DragPreviewEdge';
 export { ConfigurationPanel } from './ConfigurationPanel';
 export { NodeConfigEditor } from './NodeConfigEditor';
 export { EdgePredicateEditor } from './EdgePredicateEditor';

@@ -3,11 +3,31 @@
  * Renders a DAG of pipeline nodes and edges in SVG.
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
 import type { PipelineVisualizationProps } from '@/types/pipeline';
-import { computeDAGLayout } from '@/utils/dagLayout';
+import { computeDAGLayout, getNodeBottomCenter } from '@/utils/dagLayout';
+import { useDragToConnect } from '@/hooks/useDragToConnect';
 import { PipelineNodeComponent } from './PipelineNode';
 import { PipelineEdgeComponent } from './PipelineEdge';
+import { DragPreviewEdge } from './DragPreviewEdge';
+
+/**
+ * Convert screen coordinates to SVG coordinates.
+ * Handles any transforms applied to the SVG.
+ */
+function screenToSVG(
+  svg: SVGSVGElement,
+  screenX: number,
+  screenY: number
+): { x: number; y: number } {
+  const point = svg.createSVGPoint();
+  point.x = screenX;
+  point.y = screenY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: screenX, y: screenY };
+  const transformed = point.matrixTransform(ctm.inverse());
+  return { x: transformed.x, y: transformed.y };
+}
 
 export function PipelineVisualization({
   dag,
@@ -16,8 +36,18 @@ export function PipelineVisualization({
   readOnly = false,
   className = '',
 }: PipelineVisualizationProps) {
+  // SVG ref for coordinate conversion
+  const svgRef = useRef<SVGSVGElement>(null);
+
   // Compute layout
   const layout = useMemo(() => computeDAGLayout(dag), [dag]);
+
+  // Drag-to-connect state and handlers
+  const { dragState, startDrag, updateDrag, endDrag, cancelDrag, isValidDropTarget } =
+    useDragToConnect({
+      dag,
+      layout,
+    });
 
   // Handle node click
   const handleNodeClick = useCallback((nodeId: string) => {
@@ -38,6 +68,55 @@ export function PipelineVisualization({
       onSelectionChange({ type: 'none' });
     }
   }, [onSelectionChange]);
+
+  // Handle drag start from a node's output port
+  const handleStartDrag = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (nodeId: string, screenPosition: { x: number; y: number }) => {
+      if (readOnly || !svgRef.current) return;
+      // Get the node's output port position in SVG coordinates
+      const nodePosition = layout.nodes.get(nodeId);
+      if (!nodePosition) return;
+      const portPosition = getNodeBottomCenter(nodePosition);
+      startDrag(nodeId, portPosition);
+    },
+    [readOnly, layout, startDrag]
+  );
+
+  // Handle mouse move during drag
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (!dragState.isDragging || !svgRef.current) return;
+      const svgPosition = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      updateDrag(svgPosition);
+    },
+    [dragState.isDragging, updateDrag]
+  );
+
+  // Handle mouse up (end drag)
+  const handleMouseUp = useCallback(() => {
+    if (dragState.isDragging) {
+      endDrag();
+    }
+  }, [dragState.isDragging, endDrag]);
+
+  // Handle mouse leave (cancel drag)
+  const handleMouseLeave = useCallback(() => {
+    if (dragState.isDragging) {
+      cancelDrag();
+    }
+  }, [dragState.isDragging, cancelDrag]);
+
+  // Handle Escape key to cancel drag
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragState.isDragging) {
+        cancelDrag();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dragState.isDragging, cancelDrag]);
 
   // Check if node is selected
   const isNodeSelected = (nodeId: string) =>
@@ -69,9 +148,13 @@ export function PipelineVisualization({
   return (
     <div className={`overflow-auto ${className}`}>
       <svg
+        ref={svgRef}
         width={layout.width}
         height={layout.height}
         onClick={handleBackgroundClick}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         style={{ minWidth: '100%', minHeight: '100%' }}
       >
         {/* Arrow marker definition */}
@@ -138,6 +221,8 @@ export function PipelineVisualization({
             selected={isNodeSelected('_source')}
             isSource={true}
             onClick={readOnly ? undefined : handleNodeClick}
+            onStartDrag={readOnly ? undefined : handleStartDrag}
+            showPorts={dragState.isDragging}
           />
         )}
 
@@ -154,10 +239,21 @@ export function PipelineVisualization({
                 position={position}
                 selected={isNodeSelected(node.id)}
                 onClick={readOnly ? undefined : handleNodeClick}
+                onStartDrag={readOnly ? undefined : handleStartDrag}
+                showPorts={dragState.isDragging}
+                isValidDropTarget={isValidDropTarget(node.id)}
               />
             );
           })}
         </g>
+
+        {/* Render preview edge during drag */}
+        {dragState.isDragging && dragState.sourcePosition && dragState.cursorPosition && (
+          <DragPreviewEdge
+            from={dragState.sourcePosition}
+            to={dragState.cursorPosition}
+          />
+        )}
       </svg>
     </div>
   );

@@ -434,3 +434,17 @@ textarea:focus-visible {
 .highlight-inserted {
   animation: highlight-pulse 1.5s ease-out;
 }
+
+/* ============================================
+   Pipeline Drag Preview Animation
+   ============================================ */
+
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+.preview-edge {
+  animation: dash-flow 0.5s linear infinite;
+}

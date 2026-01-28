@@ -21,7 +21,16 @@ interface PipelineNodeComponentProps {
   selected: boolean;
   isSource?: boolean;
   onClick?: (nodeId: string) => void;
+  /** Callback when drag starts from output port */
+  onStartDrag?: (nodeId: string, position: { x: number; y: number }) => void;
+  /** Whether to show ports (during drag operations) */
+  showPorts?: boolean;
+  /** Whether this node is a valid drop target */
+  isValidDropTarget?: boolean;
 }
+
+// Port styling constants
+const PORT_RADIUS = 6;
 
 export function PipelineNodeComponent({
   node,
@@ -29,9 +38,18 @@ export function PipelineNodeComponent({
   selected,
   isSource = false,
   onClick,
+  onStartDrag,
+  showPorts = false,
+  isValidDropTarget = false,
 }: PipelineNodeComponentProps) {
   const colors = isSource ? SOURCE_COLOR : NODE_COLORS[node.type];
   const borderRadius = 8;
+
+  // Determine if this is an embedder (terminal node - no output port)
+  const isEmbedder = node.type === 'embedder';
+
+  // Show ports on hover or when dragging
+  const shouldShowPorts = showPorts;
 
   const handleClick = () => {
     onClick?.(node.id);
@@ -92,6 +110,48 @@ export function PipelineNodeComponent({
         >
           {Object.keys(node.config).length} options
         </text>
+      )}
+
+      {/* Input port (top center) - not shown on source node */}
+      {!isSource && (
+        <circle
+          cx={position.x + position.width / 2}
+          cy={position.y}
+          r={PORT_RADIUS}
+          className="input-port"
+          fill={isValidDropTarget ? 'var(--text-primary)' : 'var(--bg-tertiary)'}
+          stroke={isValidDropTarget ? 'var(--text-primary)' : 'var(--border)'}
+          strokeWidth={1}
+          style={{
+            opacity: shouldShowPorts || isValidDropTarget ? 1 : 0,
+            transition: 'opacity 0.15s ease-in-out, fill 0.15s ease-in-out',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* Output port (bottom center) - not shown on embedder (terminal) */}
+      {!isEmbedder && (
+        <circle
+          cx={position.x + position.width / 2}
+          cy={position.y + position.height}
+          r={PORT_RADIUS}
+          className="output-port"
+          fill="var(--bg-tertiary)"
+          stroke="var(--border)"
+          strokeWidth={1}
+          style={{
+            opacity: shouldShowPorts ? 1 : 0,
+            transition: 'opacity 0.15s ease-in-out',
+            cursor: onStartDrag ? 'crosshair' : 'default',
+          }}
+          onMouseDown={(e) => {
+            if (onStartDrag) {
+              e.stopPropagation();
+              onStartDrag(node.id, { x: e.clientX, y: e.clientY });
+            }
+          }}
+        />
       )}
     </g>
   );

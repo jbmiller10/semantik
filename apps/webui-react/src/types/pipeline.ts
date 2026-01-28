@@ -59,6 +59,34 @@ export type DAGSelection =
   | { type: 'edge'; fromNode: string; toNode: string };
 
 // =============================================================================
+// Drag State Types
+// =============================================================================
+
+/** State for drag-to-connect interaction */
+export interface DragState {
+  isDragging: boolean;
+  sourceNodeId: string | null;
+  sourcePosition: { x: number; y: number } | null;
+  cursorPosition: { x: number; y: number } | null;
+}
+
+/** Initial drag state (not dragging) */
+export const INITIAL_DRAG_STATE: DragState = {
+  isDragging: false,
+  sourceNodeId: null,
+  sourcePosition: null,
+  cursorPosition: null,
+};
+
+/** Position of a port on a node */
+export interface PortPosition {
+  nodeId: string;
+  type: 'input' | 'output';
+  x: number;
+  y: number;
+}
+
+// =============================================================================
 // Component Props
 // =============================================================================
 
