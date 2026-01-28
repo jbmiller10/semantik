@@ -13,9 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.pipeline.types import FileReference
-from webui.services.agent.subagents.base import (
-    Message,
-)
+from webui.services.agent.subagents.base import Message
 from webui.services.agent.subagents.pipeline_validator import (
     FailureCategory,
     PipelineFix,

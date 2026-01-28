@@ -8,11 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.plugins.builtins.text_parser import (
-    TextParserPlugin,
-    _detect_bom,
-    _is_binary_content,
-)
+from shared.plugins.builtins.text_parser import TextParserPlugin, _detect_bom, _is_binary_content
 from shared.plugins.types.parser import (
     ExtractionFailedError,
     ParsedElement,
@@ -399,9 +395,7 @@ class TestLegacyEquivalence:
 
     def test_same_binary_rejection(self) -> None:
         """Verify plugin rejects binary content same as legacy parser."""
-        from shared.text_processing.parsers.exceptions import (
-            UnsupportedFormatError as LegacyUnsupportedFormatError,
-        )
+        from shared.text_processing.parsers.exceptions import UnsupportedFormatError as LegacyUnsupportedFormatError
         from shared.text_processing.parsers.text import TextParser
 
         content = b"\x00\x01\x02\x03"

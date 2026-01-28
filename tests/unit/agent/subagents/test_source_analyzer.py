@@ -13,10 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.pipeline.types import FileReference
-from webui.services.agent.subagents.base import (
-    Message,
-    Uncertainty,
-)
+from webui.services.agent.subagents.base import Message, Uncertainty
 from webui.services.agent.subagents.source_analyzer import (
     ContentCharacteristics,
     FileTypeStats,

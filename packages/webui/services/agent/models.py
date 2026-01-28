@@ -12,15 +12,7 @@ from datetime import datetime  # noqa: TCH003 - SQLAlchemy needs this at runtime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Enum,
-    ForeignKey,
-    String,
-    Text,
-    func,
-)
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

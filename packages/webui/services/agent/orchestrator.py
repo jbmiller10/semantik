@@ -16,19 +16,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from shared.llm.base import BaseLLMService
-from shared.llm.exceptions import (
-    LLMAuthenticationError,
-    LLMContextLengthError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from shared.llm.exceptions import LLMAuthenticationError, LLMContextLengthError, LLMRateLimitError, LLMTimeoutError
 from webui.api.v2.agent_schemas import AgentStreamEvent, AgentStreamEventType
-from webui.services.agent.exceptions import (
-    AgentBusyError,
-    AgentError,
-    ConversationNotActiveError,
-    ToolExecutionError,
-)
+from webui.services.agent.exceptions import AgentBusyError, AgentError, ConversationNotActiveError, ToolExecutionError
 from webui.services.agent.message_store import ConversationMessage, MessageStore
 from webui.services.agent.models import AgentConversation, ConversationStatus, UncertaintySeverity
 from webui.services.agent.repository import AgentConversationRepository

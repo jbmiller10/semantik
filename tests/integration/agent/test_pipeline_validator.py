@@ -21,11 +21,7 @@ from webui.services.agent.subagents.pipeline_validator import (
     PipelineValidator,
     ValidationReport,
 )
-from webui.services.agent.tools.subagent_tools.validation import (
-    GetFailureDetailsTool,
-    InspectChunksTool,
-    RunDryRunTool,
-)
+from webui.services.agent.tools.subagent_tools.validation import GetFailureDetailsTool, InspectChunksTool, RunDryRunTool
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

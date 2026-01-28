@@ -11,13 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.pipeline.executor_types import (
-    ChunkStats,
-    ExecutionMode,
-    ExecutionResult,
-    SampleOutput,
-    StageFailure,
-)
+from shared.pipeline.executor_types import ChunkStats, ExecutionMode, ExecutionResult, SampleOutput, StageFailure
 
 # StageFailure is used in tests directly for creating test data
 from shared.pipeline.types import FileReference

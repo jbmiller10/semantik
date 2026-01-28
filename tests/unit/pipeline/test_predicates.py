@@ -2,12 +2,7 @@
 
 import pytest
 
-from shared.pipeline.predicates import (
-    _translate_legacy_path,
-    get_nested_value,
-    match_value,
-    matches_predicate,
-)
+from shared.pipeline.predicates import _translate_legacy_path, get_nested_value, match_value, matches_predicate
 from shared.pipeline.types import FileReference
 
 
@@ -338,7 +333,9 @@ class TestMatchesPredicate:
         assert matches_predicate(pdf_file_ref, {"metadata.source.language": "zh"}) is False
         assert matches_predicate(markdown_file_ref, {"metadata.source.language": "zh"}) is True
 
-    def test_nested_field_match_legacy_format(self, pdf_file_ref: FileReference, markdown_file_ref: FileReference) -> None:
+    def test_nested_field_match_legacy_format(
+        self, pdf_file_ref: FileReference, markdown_file_ref: FileReference
+    ) -> None:
         """Test nested field access with legacy source_metadata path (auto-translated)."""
         # Legacy paths should be automatically translated to metadata.source
         assert matches_predicate(pdf_file_ref, {"source_metadata.language": "en"}) is True

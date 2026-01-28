@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.pipeline.templates.types import (
-    PipelineTemplate,
-    TunableParameter,
-    resolve_tunable_path,
-)
+from shared.pipeline.templates.types import PipelineTemplate, TunableParameter, resolve_tunable_path
 from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
 

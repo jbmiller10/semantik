@@ -17,10 +17,7 @@ from sqlalchemy.orm import selectinload
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.exceptions import (
-    DatabaseOperationError,
-    EntityNotFoundError,
-)
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError
 from webui.services.agent.models import (
     AgentConversation,
     ConversationStatus,
