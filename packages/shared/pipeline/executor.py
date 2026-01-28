@@ -31,6 +31,7 @@ from shared.pipeline.executor_types import (
 from shared.pipeline.failure_tracker import ConsecutiveFailureTracker
 from shared.pipeline.loader import LoadError, PipelineLoader
 from shared.pipeline.router import PipelineRouter
+from shared.pipeline.sniff import ContentSniffer, SniffConfig
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineNode
 from shared.text_processing.parsers.registry import get_parser
 
@@ -108,6 +109,7 @@ class PipelineExecutor:
         vector_store_name: str | None = None,
         embedding_model: str | None = None,
         quantization: str = "float16",
+        sniff_config: SniffConfig | None = None,
     ) -> None:
         """Initialize the pipeline executor.
 
@@ -121,6 +123,7 @@ class PipelineExecutor:
             vector_store_name: Qdrant collection name (required for FULL mode)
             embedding_model: Embedding model name (falls back to DAG config if not provided)
             quantization: Model quantization setting
+            sniff_config: Configuration for pre-routing content sniffing
 
         Raises:
             ValueError: If the DAG is invalid
@@ -143,6 +146,7 @@ class PipelineExecutor:
         # Initialize components
         self._router = PipelineRouter(dag)
         self._loader = PipelineLoader(connector)
+        self._sniffer = ContentSniffer(sniff_config)
         self._failure_tracker = ConsecutiveFailureTracker(threshold=consecutive_failure_threshold)
 
         # Repositories
@@ -348,17 +352,27 @@ class PipelineExecutor:
 
         self._record_timing("loader", stage_start)
 
-        # 2. Change detection
+        # 2. Pre-routing sniff (enriches file_ref.metadata["detected"])
+        stage_start = time.perf_counter()
+        try:
+            sniff_result = await self._sniffer.sniff(load_result.content, file_ref)
+            self._sniffer.enrich_file_ref(file_ref, sniff_result)
+        except Exception as e:
+            # Sniff failures are non-fatal - log and continue
+            logger.warning("Sniff failed for %s: %s", file_ref.uri, e)
+        self._record_timing("sniff", stage_start)
+
+        # 3. Change detection
         skip_reason = await self._should_skip(file_ref, load_result.content_hash)
         if skip_reason:
             return {"skipped": True, "skip_reason": skip_reason}
 
-        # 3. Route to entry node
+        # 4. Route to entry node
         entry_node = self._router.get_entry_node(file_ref)
         if entry_node is None:
             return {"skipped": True, "skip_reason": "no_matching_route"}
 
-        # 4. Execute pipeline stages
+        # 5. Execute pipeline stages
         current_node: PipelineNode | None = entry_node
         parsed_text: str = ""
         parse_metadata: dict[str, Any] = {}
