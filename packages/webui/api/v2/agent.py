@@ -10,6 +10,7 @@ in webui.middleware.exception_handlers.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -379,6 +380,8 @@ async def send_message_stream(
         """
         import json
 
+        from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
+
         from shared.database.postgres_database import pg_connection_manager
 
         try:
@@ -405,34 +408,40 @@ async def send_message_stream(
                     message_store=message_store,
                 )
 
-                async for event in orchestrator.handle_message_streaming(message):
-                    # Format as SSE: event: type\ndata: json\n\n
-                    # Note: Only serialize event.data, not the whole event object
-                    # The event type is already in the SSE 'event:' line
-                    event_line = f"event: {event.event.value}\n"
-                    data_line = f"data: {json.dumps(event.data)}\n\n"
-                    yield event_line + data_line
-        except Exception as e:
-            import json
-
-            from asyncpg.exceptions import InterfaceError as AsyncpgInterfaceError
-
-            if isinstance(e, AsyncpgInterfaceError):
-                # DB connection closed during long-running operation
-                # This is expected when sub-agents take a long time
-                logger.warning(f"DB connection closed during SSE stream for conversation {conversation_id}: {e}")
-                error_data = json.dumps(
-                    {
+                try:
+                    async for event in orchestrator.handle_message_streaming(message):
+                        # Format as SSE: event: type\ndata: json\n\n
+                        # Note: Only serialize event.data, not the whole event object
+                        # The event type is already in the SSE 'event:' line
+                        event_line = f"event: {event.event.value}\n"
+                        data_line = f"data: {json.dumps(event.data)}\n\n"
+                        yield event_line + data_line
+                except AsyncpgInterfaceError as e:
+                    # DB connection closed during long-running LLM operation
+                    # Rollback before context manager exit to prevent PendingRollbackError
+                    logger.warning(f"DB connection closed during SSE stream for conversation {conversation_id}: {e}")
+                    with contextlib.suppress(Exception):
+                        await llm_session.rollback()
+                    error_data = json.dumps({
                         "message": "Connection timeout during processing. Results may be incomplete.",
                         "recoverable": True,
-                    }
-                )
-            else:
-                logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
-                error_data = json.dumps({"message": str(e)})
+                    })
+                    yield f"event: error\ndata: {error_data}\n\n"
+                    return
+                except Exception as e:
+                    # Rollback before context manager exit to prevent PendingRollbackError
+                    logger.exception(f"SSE streaming error for conversation {conversation_id}: {e}")
+                    with contextlib.suppress(Exception):
+                        await llm_session.rollback()
+                    error_data = json.dumps({"message": str(e)})
+                    yield f"event: error\ndata: {error_data}\n\n"
+                    return
 
-            error_event = f"event: error\ndata: {error_data}\n\n"
-            yield error_event
+        except Exception as e:
+            # Failed to initialize session or load conversation
+            logger.exception(f"Failed to initialize SSE stream for conversation {conversation_id}: {e}")
+            error_data = json.dumps({"message": "Service temporarily unavailable. Please try again."})
+            yield f"event: error\ndata: {error_data}\n\n"
 
     return StreamingResponse(
         event_generator(),

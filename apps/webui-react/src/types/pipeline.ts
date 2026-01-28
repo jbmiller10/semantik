@@ -59,6 +59,31 @@ export type DAGSelection =
   | { type: 'edge'; fromNode: string; toNode: string };
 
 // =============================================================================
+// Drag State Types
+// =============================================================================
+
+/** State for drag-to-connect interaction */
+export type DragState =
+  | { isDragging: false }
+  | {
+      isDragging: true;
+      sourceNodeId: string;
+      sourcePosition: { x: number; y: number };
+      cursorPosition: { x: number; y: number };
+    };
+
+/** Initial drag state (not dragging) */
+export const INITIAL_DRAG_STATE: DragState = { isDragging: false };
+
+/** Position of a port on a node */
+export interface PortPosition {
+  nodeId: string;
+  type: 'input' | 'output';
+  x: number;
+  y: number;
+}
+
+// =============================================================================
 // Component Props
 // =============================================================================
 
@@ -69,6 +94,8 @@ export interface PipelineVisualizationProps {
   selection?: DAGSelection;
   /** Callback when selection changes */
   onSelectionChange?: (selection: DAGSelection) => void;
+  /** Callback when the DAG is modified (new node/edge created) */
+  onDagChange?: (dag: PipelineDAG) => void;
   /** Whether the visualization is read-only */
   readOnly?: boolean;
   /** Optional CSS class name */

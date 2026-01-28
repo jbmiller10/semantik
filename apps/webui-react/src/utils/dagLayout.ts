@@ -10,12 +10,24 @@
 
 import type { PipelineDAG, DAGLayout, NodePosition, NodeType } from '@/types/pipeline';
 
-// Layout constants
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 80;
-const TIER_GAP = 100; // Vertical spacing between tiers
-const NODE_GAP = 40; // Horizontal spacing within a tier
-const PADDING = 40;
+// Layout constants - exported for use by other components
+export const NODE_WIDTH = 160;
+export const NODE_HEIGHT = 80;
+export const TIER_GAP = 100; // Vertical spacing between tiers
+export const NODE_GAP = 40; // Horizontal spacing within a tier
+export const PADDING = 40;
+
+/**
+ * Bounds for a tier's drop zone.
+ */
+export interface TierBounds {
+  tier: NodeType;
+  tierIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 // Tier order for node types (vertical position)
 const TYPE_TIERS: Record<NodeType | '_source', number> = {
@@ -113,4 +125,95 @@ export function getNodeTopCenter(pos: NodePosition): { x: number; y: number } {
     x: pos.x + pos.width / 2,
     y: pos.y,
   };
+}
+
+/**
+ * All tier types in order (excluding _source which is implicit).
+ */
+export const ALL_TIERS: NodeType[] = ['parser', 'chunker', 'extractor', 'embedder'];
+
+/**
+ * Compute drop zone bounds for each tier.
+ * Used for drag-to-connect interaction to show where new nodes can be added.
+ */
+export function computeTierBounds(
+  dag: PipelineDAG,
+  layout: DAGLayout,
+  viewportWidth: number
+): TierBounds[] {
+  const bounds: TierBounds[] = [];
+  const DROP_ZONE_HEIGHT = NODE_HEIGHT;
+  const DROP_ZONE_PADDING = 20;
+
+  // Find the rightmost edge of the layout
+  let maxNodeRight = 0;
+  for (const pos of layout.nodes.values()) {
+    maxNodeRight = Math.max(maxNodeRight, pos.x + pos.width);
+  }
+
+  // Drop zone width spans from padding to the widest point (or viewport width)
+  const dropZoneWidth = Math.max(
+    maxNodeRight - PADDING + DROP_ZONE_PADDING * 2,
+    viewportWidth - PADDING * 2
+  );
+
+  // Group existing nodes by tier
+  const nodesByTier = new Map<number, string[]>();
+  for (const node of dag.nodes) {
+    const tier = TYPE_TIERS[node.type];
+    if (!nodesByTier.has(tier)) {
+      nodesByTier.set(tier, []);
+    }
+    nodesByTier.get(tier)!.push(node.id);
+  }
+
+  // Create bounds for each tier type
+  for (const tierType of ALL_TIERS) {
+    const tierIndex = TYPE_TIERS[tierType];
+    const tierY = PADDING + tierIndex * (NODE_HEIGHT + TIER_GAP);
+
+    // Check if tier has existing nodes
+    const existingNodes = nodesByTier.get(tierIndex) || [];
+
+    if (existingNodes.length > 0) {
+      // Find rightmost node position in this tier
+      let tierMaxX = 0;
+      for (const nodeId of existingNodes) {
+        const pos = layout.nodes.get(nodeId);
+        if (pos) {
+          tierMaxX = Math.max(tierMaxX, pos.x + pos.width);
+        }
+      }
+
+      // Drop zone starts after existing nodes
+      const dropZoneX = tierMaxX + NODE_GAP;
+      bounds.push({
+        tier: tierType,
+        tierIndex,
+        x: dropZoneX,
+        y: tierY,
+        width: Math.max(NODE_WIDTH + DROP_ZONE_PADDING * 2, dropZoneWidth - dropZoneX + PADDING),
+        height: DROP_ZONE_HEIGHT,
+      });
+    } else {
+      // Empty tier - drop zone spans the full width centered
+      bounds.push({
+        tier: tierType,
+        tierIndex,
+        x: PADDING,
+        y: tierY,
+        width: dropZoneWidth,
+        height: DROP_ZONE_HEIGHT,
+      });
+    }
+  }
+
+  return bounds;
+}
+
+/**
+ * Generate a unique node ID.
+ */
+export function generateNodeId(): string {
+  return `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
