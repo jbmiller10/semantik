@@ -100,4 +100,6 @@ export interface PipelineVisualizationProps {
   readOnly?: boolean;
   /** Optional CSS class name */
   className?: string;
+  /** Highlighted path for route preview (list of node IDs) */
+  highlightedPath?: string[] | null;
 }

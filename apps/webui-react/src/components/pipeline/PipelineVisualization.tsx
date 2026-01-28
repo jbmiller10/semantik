@@ -110,6 +110,7 @@ export function PipelineVisualization({
   onDagChange,
   readOnly = false,
   className = '',
+  highlightedPath = null,
 }: PipelineVisualizationProps) {
   // SVG ref for coordinate conversion
   const svgRef = useRef<SVGSVGElement>(null);
@@ -623,6 +624,21 @@ export function PipelineVisualization({
     selection.fromNode === fromNode &&
     selection.toNode === toNode;
 
+  // Check if node is in highlighted path
+  const isNodeInPath = (nodeId: string) =>
+    highlightedPath?.includes(nodeId) ?? false;
+
+  // Check if edge is in highlighted path (both from and to nodes must be in path and consecutive)
+  const isEdgeInPath = (fromNode: string, toNode: string) => {
+    if (!highlightedPath || highlightedPath.length < 2) return false;
+    for (let i = 0; i < highlightedPath.length - 1; i++) {
+      if (highlightedPath[i] === fromNode && highlightedPath[i + 1] === toNode) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Get valid target tiers for current drag
   const validTargetTiers = useMemo(() => {
     if (!dragState.isDragging) return [];
@@ -735,6 +751,16 @@ export function PipelineVisualization({
           >
             <polygon points="0 0, 10 3.5, 0 7" fill="var(--text-primary)" />
           </marker>
+          <marker
+            id="arrowhead-highlighted"
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(34, 197, 94)" />
+          </marker>
         </defs>
 
         {/* Render tier drop zones (during drag only) */}
@@ -779,6 +805,7 @@ export function PipelineVisualization({
                 showCatchAll={showCatchAll}
                 onClick={readOnly ? undefined : handleEdgeClick}
                 isNew={newEdgeKeys.has(edgeKey)}
+                isHighlighted={isEdgeInPath(edge.from_node, edge.to_node)}
               />
             );
           })}
@@ -794,6 +821,7 @@ export function PipelineVisualization({
             onClick={readOnly ? undefined : handleNodeClick}
             onStartDrag={readOnly || isTouch ? undefined : handleStartDrag}
             showPorts={!isTouch && dragState.isDragging}
+            isInPath={isNodeInPath('_source')}
           />
         )}
 
@@ -814,6 +842,7 @@ export function PipelineVisualization({
                 showPorts={!isTouch && dragState.isDragging}
                 isValidDropTarget={!isTouch && isValidDropTarget(node.id)}
                 isNew={newNodeIds.has(node.id)}
+                isInPath={isNodeInPath(node.id)}
               />
             );
           })}

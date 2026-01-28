@@ -14,6 +14,8 @@ interface PipelineEdgeComponentProps {
   onClick?: (fromNode: string, toNode: string) => void;
   /** Whether this is a newly created edge (for draw-in animation) */
   isNew?: boolean;
+  /** Whether this edge is in the highlighted route preview path */
+  isHighlighted?: boolean;
 }
 
 /**
@@ -73,6 +75,7 @@ export function PipelineEdgeComponent({
   showCatchAll = false,
   onClick,
   isNew = false,
+  isHighlighted = false,
 }: PipelineEdgeComponentProps) {
   // Vertical layout: edges go from bottom of source to top of target
   const from = getNodeBottomCenter(fromPosition);
@@ -107,10 +110,16 @@ export function PipelineEdgeComponent({
       <path
         d={verticalPath}
         fill="none"
-        stroke={selected ? 'var(--text-primary)' : 'var(--text-muted)'}
-        strokeWidth={selected ? 2 : 1}
-        markerEnd="url(#arrowhead)"
-        className={isNew ? 'pipeline-edge-new' : ''}
+        stroke={
+          isHighlighted
+            ? 'rgb(34, 197, 94)'
+            : selected
+              ? 'var(--text-primary)'
+              : 'var(--text-muted)'
+        }
+        strokeWidth={isHighlighted || selected ? 2 : 1}
+        markerEnd={isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)'}
+        className={`${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`}
       />
 
       {/* Predicate label */}
