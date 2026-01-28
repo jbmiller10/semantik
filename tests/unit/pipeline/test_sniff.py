@@ -93,12 +93,12 @@ class TestSniffConfig:
 class TestContentSnifferBasics:
     """Basic tests for ContentSniffer."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create a content sniffer with default config."""
         return ContentSniffer()
 
-    @pytest.fixture
+    @pytest.fixture()
     def text_file_ref(self) -> FileReference:
         """Create a text file reference."""
         return FileReference(
@@ -110,7 +110,7 @@ class TestContentSnifferBasics:
             mime_type="text/plain",
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_disabled_sniffing_returns_empty_result(self) -> None:
         """Test that disabled sniffing returns empty result."""
         config = SniffConfig(enabled=False)
@@ -126,7 +126,7 @@ class TestContentSnifferBasics:
         assert result.is_structured_data is False
         assert result.sniff_duration_ms == 0.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sniff_records_duration(self, sniffer: ContentSniffer, text_file_ref: FileReference) -> None:
         """Test that sniff records duration."""
         result = await sniffer.sniff(b"hello world", text_file_ref)
@@ -176,7 +176,7 @@ class TestContentSnifferBasics:
 class TestPDFDetection:
     """Tests for scanned PDF detection."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def pdf_file_ref(self) -> FileReference:
         """Create a PDF file reference."""
         return FileReference(
@@ -188,7 +188,7 @@ class TestPDFDetection:
             mime_type="application/pdf",
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create content sniffer."""
         return ContentSniffer()
@@ -204,7 +204,7 @@ class TestPDFDetection:
         assert sniffer._is_pdf("application/pdf", "") is True
         assert sniffer._is_pdf("text/plain", "") is False
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_non_pdf_returns_none_for_is_scanned_pdf(self, sniffer: ContentSniffer) -> None:
         """Test that non-PDF files return None for is_scanned_pdf."""
         file_ref = FileReference(
@@ -217,7 +217,7 @@ class TestPDFDetection:
         result = await sniffer.sniff(b"hello world", file_ref)
         assert result.is_scanned_pdf is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_native_pdf_detection(self, sniffer: ContentSniffer, pdf_file_ref: FileReference) -> None:
         """Test detection of native PDF with text layer."""
         # Create a minimal PDF with text content
@@ -264,7 +264,7 @@ startxref
         except ImportError:
             pytest.skip("pypdf not available")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_pdf_logs_error(self, sniffer: ContentSniffer, pdf_file_ref: FileReference) -> None:
         """Test that invalid PDF content records an error."""
         result = await sniffer.sniff(b"not a pdf", pdf_file_ref)
@@ -275,12 +275,12 @@ startxref
 class TestCodeDetection:
     """Tests for code file detection."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create content sniffer."""
         return ContentSniffer()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_extension(self, sniffer: ContentSniffer) -> None:
         """Test code detection by extension."""
         extensions = [".py", ".js", ".ts", ".java", ".go", ".rs", ".cpp"]
@@ -295,7 +295,7 @@ class TestCodeDetection:
             result = await sniffer.sniff(b"// some code", file_ref)
             assert result.is_code is True, f"Extension {ext} should be detected as code"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_non_code_extension(self, sniffer: ContentSniffer) -> None:
         """Test non-code extension is not detected as code."""
         file_ref = FileReference(
@@ -307,7 +307,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(b"hello world", file_ref)
         assert result.is_code is False
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_shebang_python(self, sniffer: ContentSniffer) -> None:
         """Test code detection by Python shebang."""
         file_ref = FileReference(
@@ -320,7 +320,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_shebang_bash(self, sniffer: ContentSniffer) -> None:
         """Test code detection by bash shebang."""
         file_ref = FileReference(
@@ -333,7 +333,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_shebang_node(self, sniffer: ContentSniffer) -> None:
         """Test code detection by node shebang."""
         file_ref = FileReference(
@@ -346,7 +346,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_python_import(self, sniffer: ContentSniffer) -> None:
         """Test code detection by Python import statement."""
         file_ref = FileReference(
@@ -359,7 +359,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_js_const(self, sniffer: ContentSniffer) -> None:
         """Test code detection by JavaScript const declaration."""
         file_ref = FileReference(
@@ -372,7 +372,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_function_def(self, sniffer: ContentSniffer) -> None:
         """Test code detection by function definition."""
         file_ref = FileReference(
@@ -385,7 +385,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_class_def(self, sniffer: ContentSniffer) -> None:
         """Test code detection by class definition."""
         file_ref = FileReference(
@@ -398,7 +398,7 @@ class TestCodeDetection:
         result = await sniffer.sniff(content, file_ref)
         assert result.is_code is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_code_by_c_include(self, sniffer: ContentSniffer) -> None:
         """Test code detection by C include statement."""
         file_ref = FileReference(
@@ -415,12 +415,12 @@ class TestCodeDetection:
 class TestStructuredDataDetection:
     """Tests for structured data detection."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create content sniffer."""
         return ContentSniffer()
 
-    @pytest.fixture
+    @pytest.fixture()
     def generic_file_ref(self) -> FileReference:
         """Create a generic file reference without specific extension."""
         return FileReference(
@@ -430,7 +430,7 @@ class TestStructuredDataDetection:
             extension="",
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_json_object_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test JSON object detection."""
         content = b'{"name": "test", "value": 42}'
@@ -438,7 +438,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "json"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_json_array_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test JSON array detection."""
         content = b'[{"id": 1}, {"id": 2}, {"id": 3}]'
@@ -446,7 +446,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "json"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_json_not_detected(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test that invalid JSON is not detected as JSON."""
         content = b'{"name": "test"'  # Missing closing brace
@@ -454,7 +454,7 @@ class TestStructuredDataDetection:
         # Should not be detected as JSON
         assert result.structured_format != "json"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_xml_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test XML detection."""
         content = b'<?xml version="1.0"?>\n<root><item>test</item></root>'
@@ -462,7 +462,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "xml"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_xml_without_declaration(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test XML detection without declaration."""
         content = b"<root><item>test</item></root>"
@@ -470,7 +470,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "xml"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_html_not_detected_as_xml(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test that HTML is not detected as XML."""
         content = b"<!DOCTYPE html><html><body>Hello</body></html>"
@@ -478,7 +478,7 @@ class TestStructuredDataDetection:
         # HTML should not be detected as structured data
         assert result.structured_format != "xml"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_yaml_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test YAML detection."""
         content = b"---\nname: test\nvalue: 42\nitems:\n  - one\n  - two"
@@ -486,7 +486,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "yaml"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_yaml_without_document_marker(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test YAML detection without --- marker."""
         content = b"name: test\nvalue: 42\nnested:\n  key: value"
@@ -494,7 +494,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "yaml"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_plain_text_not_yaml(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test that plain text is not detected as YAML."""
         content = b"This is just plain text.\nNothing special here."
@@ -502,7 +502,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is False
         assert result.structured_format is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_csv_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test CSV detection."""
         content = b"name,age,city\nJohn,30,NYC\nJane,25,LA\nBob,35,Chicago"
@@ -510,7 +510,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "csv"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_tsv_detection(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test TSV (tab-separated) detection."""
         content = b"name\tage\tcity\nJohn\t30\tNYC\nJane\t25\tLA"
@@ -518,7 +518,7 @@ class TestStructuredDataDetection:
         assert result.is_structured_data is True
         assert result.structured_format == "csv"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_binary_content_not_structured(
         self, sniffer: ContentSniffer, generic_file_ref: FileReference
     ) -> None:
@@ -531,7 +531,7 @@ class TestStructuredDataDetection:
 class TestTimeoutHandling:
     """Tests for timeout handling."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_timeout_returns_partial_result(self) -> None:
         """Test that timeout returns partial result with error."""
         config = SniffConfig(timeout_seconds=0.001)  # Very short timeout
@@ -544,7 +544,7 @@ class TestTimeoutHandling:
         )
 
         # Mock _do_sniff to take longer than timeout
-        async def slow_sniff(*args, **kwargs):
+        async def slow_sniff(*_args, **_kwargs):
             await asyncio.sleep(1)
             return SniffResult(is_code=True)
 
@@ -558,12 +558,12 @@ class TestTimeoutHandling:
 class TestErrorHandling:
     """Tests for error handling."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create content sniffer."""
         return ContentSniffer()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_individual_detector_failure_continues(self, sniffer: ContentSniffer) -> None:
         """Test that failure in one detector doesn't stop others."""
         file_ref = FileReference(
@@ -581,7 +581,7 @@ class TestErrorHandling:
         # But should still return a result
         assert result is not None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_exception_in_sniff_logged(self, sniffer: ContentSniffer) -> None:
         """Test that exceptions during sniff are logged to errors."""
         file_ref = FileReference(
@@ -591,7 +591,7 @@ class TestErrorHandling:
         )
 
         # Mock _do_sniff to raise an exception
-        async def failing_sniff(*args, **kwargs):
+        async def failing_sniff(*_args, **_kwargs):
             raise RuntimeError("Test error")
 
         with patch.object(sniffer, "_do_sniff", failing_sniff):
@@ -604,12 +604,12 @@ class TestErrorHandling:
 class TestPredicateIntegration:
     """Tests for integration with predicate matching."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def sniffer(self) -> ContentSniffer:
         """Create content sniffer."""
         return ContentSniffer()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enriched_file_ref_works_with_predicates(self, sniffer: ContentSniffer) -> None:
         """Test that enriched FileReference works with predicate matching."""
         from shared.pipeline.predicates import matches_predicate
@@ -627,7 +627,7 @@ class TestPredicateIntegration:
         # Should match predicate for code files
         assert matches_predicate(file_ref, {"metadata.detected.is_code": True})
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_enriched_structured_data_predicates(self, sniffer: ContentSniffer) -> None:
         """Test that structured data detection works with predicates."""
         from shared.pipeline.predicates import matches_predicate
