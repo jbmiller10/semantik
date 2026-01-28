@@ -17,6 +17,7 @@ import {
   NODE_WIDTH,
   NODE_GAP,
 } from '@/utils/dagLayout';
+import { findOrphanedNodes, findOrphanedNodesAfterEdgeDeletion } from '@/utils/dagUtils';
 import { useDragToConnect } from '@/hooks/useDragToConnect';
 import { PipelineNodeComponent } from './PipelineNode';
 import { PipelineEdgeComponent } from './PipelineEdge';
@@ -25,6 +26,7 @@ import { TierDropZone } from './TierDropZone';
 import { TierAddButton } from './TierAddButton';
 import { NodePickerPopover } from './NodePickerPopover';
 import { UpstreamNodePicker } from './UpstreamNodePicker';
+import { DeleteConfirmationDialog } from './DeleteConfirmationDialog';
 
 /**
  * Convert screen coordinates to SVG coordinates.
@@ -61,6 +63,17 @@ interface UpstreamPickerState {
   pluginId: string;
   upstreamNodes: PipelineNode[];
   position: { x: number; y: number };
+}
+
+/**
+ * State for the delete confirmation dialog.
+ */
+interface DeleteConfirmationState {
+  type: 'node' | 'edge';
+  nodeId?: string;
+  fromNode?: string;
+  toNode?: string;
+  orphanedNodes: PipelineNode[];
 }
 
 /**
@@ -105,6 +118,7 @@ export function PipelineVisualization({
   // Popover states
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [upstreamPicker, setUpstreamPicker] = useState<UpstreamPickerState | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null);
 
   // Compute layout
   const layout = useMemo(() => computeDAGLayout(dag), [dag]);
@@ -424,6 +438,156 @@ export function PipelineVisualization({
     setUpstreamPicker(null);
   }, []);
 
+  // Execute node deletion
+  const executeNodeDeletion = useCallback(
+    (nodeId: string, includeOrphans: boolean = false) => {
+      if (!onDagChange) return;
+
+      let nodesToDelete = [nodeId];
+
+      if (includeOrphans) {
+        const orphanedNodes = findOrphanedNodes(dag, nodeId);
+        nodesToDelete = [...nodesToDelete, ...orphanedNodes.map((n) => n.id)];
+      }
+
+      const newDag = {
+        ...dag,
+        nodes: dag.nodes.filter((n) => !nodesToDelete.includes(n.id)),
+        edges: dag.edges.filter(
+          (e) => !nodesToDelete.includes(e.from_node) && !nodesToDelete.includes(e.to_node)
+        ),
+      };
+
+      onDagChange(newDag);
+      onSelectionChange?.({ type: 'none' });
+    },
+    [dag, onDagChange, onSelectionChange]
+  );
+
+  // Execute edge deletion
+  const executeEdgeDeletion = useCallback(
+    (fromNode: string, toNode: string, deleteOrphan: boolean = false) => {
+      if (!onDagChange) return;
+
+      let newNodes = dag.nodes;
+      let newEdges = dag.edges.filter(
+        (e) => !(e.from_node === fromNode && e.to_node === toNode)
+      );
+
+      if (deleteOrphan) {
+        // Find and remove orphaned nodes
+        const orphanedNodes = findOrphanedNodesAfterEdgeDeletion(dag, fromNode, toNode);
+        const orphanedIds = orphanedNodes.map((n) => n.id);
+        newNodes = newNodes.filter((n) => !orphanedIds.includes(n.id));
+        newEdges = newEdges.filter(
+          (e) => !orphanedIds.includes(e.from_node) && !orphanedIds.includes(e.to_node)
+        );
+      }
+
+      const newDag = { ...dag, nodes: newNodes, edges: newEdges };
+      onDagChange(newDag);
+      onSelectionChange?.({ type: 'none' });
+    },
+    [dag, onDagChange, onSelectionChange]
+  );
+
+  // Handle node deletion request
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      // Cannot delete source node
+      if (nodeId === '_source') return;
+
+      // Find orphaned nodes
+      const orphanedNodes = findOrphanedNodes(dag, nodeId);
+
+      if (orphanedNodes.length > 0) {
+        // Show confirmation dialog
+        setDeleteConfirmation({
+          type: 'node',
+          nodeId,
+          orphanedNodes,
+        });
+      } else {
+        // Delete immediately
+        executeNodeDeletion(nodeId);
+      }
+    },
+    [dag, executeNodeDeletion]
+  );
+
+  // Handle edge deletion request
+  const handleDeleteEdge = useCallback(
+    (fromNode: string, toNode: string) => {
+      // Check if this would orphan the target node
+      const orphanedNodes = findOrphanedNodesAfterEdgeDeletion(dag, fromNode, toNode);
+
+      if (orphanedNodes.length > 0) {
+        // Show confirmation
+        setDeleteConfirmation({
+          type: 'edge',
+          fromNode,
+          toNode,
+          orphanedNodes,
+        });
+      } else {
+        // Safe to delete
+        executeEdgeDeletion(fromNode, toNode);
+      }
+    },
+    [dag, executeEdgeDeletion]
+  );
+
+  // Handle delete action based on current selection
+  const handleDelete = useCallback(() => {
+    if (selection.type === 'node') {
+      handleDeleteNode(selection.nodeId);
+    } else if (selection.type === 'edge') {
+      handleDeleteEdge(selection.fromNode, selection.toNode);
+    }
+  }, [selection, handleDeleteNode, handleDeleteEdge]);
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = useCallback(
+    (deleteOrphans: boolean) => {
+      if (!deleteConfirmation) return;
+
+      if (deleteConfirmation.type === 'node' && deleteConfirmation.nodeId) {
+        executeNodeDeletion(deleteConfirmation.nodeId, deleteOrphans);
+      } else if (
+        deleteConfirmation.type === 'edge' &&
+        deleteConfirmation.fromNode &&
+        deleteConfirmation.toNode
+      ) {
+        executeEdgeDeletion(deleteConfirmation.fromNode, deleteConfirmation.toNode, deleteOrphans);
+      }
+
+      setDeleteConfirmation(null);
+    },
+    [deleteConfirmation, executeNodeDeletion, executeEdgeDeletion]
+  );
+
+  // Handle delete cancellation
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteConfirmation(null);
+  }, []);
+
+  // Handle Delete/Backspace key to delete selected element
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.type !== 'none' && !readOnly) {
+        // Don't trigger if user is typing in an input
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selection, readOnly, handleDelete]);
+
   // Check if node is selected
   const isNodeSelected = (nodeId: string) =>
     selection.type === 'node' && selection.nodeId === nodeId;
@@ -664,6 +828,21 @@ export function PipelineVisualization({
           position={upstreamPicker.position}
           onSelect={handleUpstreamSelect}
           onCancel={handleUpstreamCancel}
+        />
+      )}
+
+      {/* Render delete confirmation dialog */}
+      {deleteConfirmation && (
+        <DeleteConfirmationDialog
+          type={deleteConfirmation.type}
+          message={
+            deleteConfirmation.type === 'node'
+              ? `Delete the ${dag.nodes.find((n) => n.id === deleteConfirmation.nodeId)?.plugin_id || 'node'} node?`
+              : `Delete the edge from ${deleteConfirmation.fromNode === '_source' ? 'Source' : dag.nodes.find((n) => n.id === deleteConfirmation.fromNode)?.plugin_id || deleteConfirmation.fromNode} to ${dag.nodes.find((n) => n.id === deleteConfirmation.toNode)?.plugin_id || deleteConfirmation.toNode}?`
+          }
+          orphanedNodes={deleteConfirmation.orphanedNodes}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
         />
       )}
     </div>

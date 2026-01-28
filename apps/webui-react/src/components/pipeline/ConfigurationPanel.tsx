@@ -13,7 +13,7 @@ import type { SourceAnalysis } from '@/types/agent';
 import { SourceAnalysisSummary } from './SourceAnalysisSummary';
 import { NodeConfigEditor } from './NodeConfigEditor';
 import { EdgePredicateEditor } from './EdgePredicateEditor';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Trash2 } from 'lucide-react';
 
 interface ConfigurationPanelProps {
   dag: PipelineDAG;
@@ -21,6 +21,7 @@ interface ConfigurationPanelProps {
   sourceAnalysis: SourceAnalysis | null;
   onNodeChange: (node: PipelineNode) => void;
   onEdgeChange: (edge: PipelineEdge) => void;
+  onDelete?: () => void;
   readOnly?: boolean;
   className?: string;
 }
@@ -41,6 +42,7 @@ export function ConfigurationPanel({
   sourceAnalysis,
   onNodeChange,
   onEdgeChange,
+  onDelete,
   readOnly = false,
   className = '',
 }: ConfigurationPanelProps) {
@@ -111,11 +113,27 @@ export function ConfigurationPanel({
       }
 
       return (
-        <NodeConfigEditor
-          node={selectedNode}
-          onChange={handleNodeChange}
-          readOnly={readOnly}
-        />
+        <div className="flex flex-col h-full">
+          {/* Header with delete button */}
+          {!readOnly && onDelete && (
+            <div className="flex justify-end p-2 border-b border-[var(--border)]">
+              <button
+                onClick={onDelete}
+                className="p-2 rounded hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                title="Delete node"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto">
+            <NodeConfigEditor
+              node={selectedNode}
+              onChange={handleNodeChange}
+              readOnly={readOnly}
+            />
+          </div>
+        </div>
       );
     }
 
@@ -134,13 +152,29 @@ export function ConfigurationPanel({
       }
 
       return (
-        <EdgePredicateEditor
-          edge={selectedEdge}
-          fromNodeLabel={getNodeLabel(dag, selectedEdge.from_node)}
-          toNodeLabel={getNodeLabel(dag, selectedEdge.to_node)}
-          onChange={handleEdgeChange}
-          readOnly={readOnly}
-        />
+        <div className="flex flex-col h-full">
+          {/* Header with delete button */}
+          {!readOnly && onDelete && (
+            <div className="flex justify-end p-2 border-b border-[var(--border)]">
+              <button
+                onClick={onDelete}
+                className="p-2 rounded hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                title="Delete edge"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto">
+            <EdgePredicateEditor
+              edge={selectedEdge}
+              fromNodeLabel={getNodeLabel(dag, selectedEdge.from_node)}
+              toNodeLabel={getNodeLabel(dag, selectedEdge.to_node)}
+              onChange={handleEdgeChange}
+              readOnly={readOnly}
+            />
+          </div>
+        </div>
       );
     }
 
