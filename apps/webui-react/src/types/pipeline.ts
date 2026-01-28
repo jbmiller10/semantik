@@ -97,6 +97,8 @@ export interface PipelineVisualizationProps {
   selection?: DAGSelection;
   /** Callback when selection changes */
   onSelectionChange?: (selection: DAGSelection) => void;
+  /** Callback when the DAG is modified (new node/edge created) */
+  onDagChange?: (dag: PipelineDAG) => void;
   /** Whether the visualization is read-only */
   readOnly?: boolean;
   /** Optional CSS class name */

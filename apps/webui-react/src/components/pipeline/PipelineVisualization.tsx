@@ -3,13 +3,28 @@
  * Renders a DAG of pipeline nodes and edges in SVG.
  */
 
-import { useMemo, useCallback, useRef, useEffect } from 'react';
-import type { PipelineVisualizationProps } from '@/types/pipeline';
-import { computeDAGLayout, getNodeBottomCenter } from '@/utils/dagLayout';
+import { useMemo, useCallback, useRef, useEffect, useState } from 'react';
+import type { PipelineVisualizationProps, NodeType, PipelineNode, PipelineEdge as PipelineEdgeType } from '@/types/pipeline';
+import {
+  computeDAGLayout,
+  getNodeBottomCenter,
+  computeTierBounds,
+  generateNodeId,
+  ALL_TIERS,
+  NODE_HEIGHT,
+  TIER_GAP,
+  PADDING,
+  NODE_WIDTH,
+  NODE_GAP,
+} from '@/utils/dagLayout';
 import { useDragToConnect } from '@/hooks/useDragToConnect';
 import { PipelineNodeComponent } from './PipelineNode';
 import { PipelineEdgeComponent } from './PipelineEdge';
 import { DragPreviewEdge } from './DragPreviewEdge';
+import { TierDropZone } from './TierDropZone';
+import { TierAddButton } from './TierAddButton';
+import { NodePickerPopover } from './NodePickerPopover';
+import { UpstreamNodePicker } from './UpstreamNodePicker';
 
 /**
  * Convert screen coordinates to SVG coordinates.
@@ -29,45 +44,193 @@ function screenToSVG(
   return { x: transformed.x, y: transformed.y };
 }
 
+/**
+ * State for the node picker popover.
+ */
+interface PopoverState {
+  tier: NodeType;
+  sourceNodeId: string | null; // null when using "+" button
+  position: { x: number; y: number };
+}
+
+/**
+ * State for the upstream node picker.
+ */
+interface UpstreamPickerState {
+  tier: NodeType;
+  pluginId: string;
+  upstreamNodes: PipelineNode[];
+  position: { x: number; y: number };
+}
+
+/**
+ * Get the tier index for a node type.
+ */
+const TYPE_TIERS: Record<NodeType | '_source', number> = {
+  _source: 0,
+  parser: 1,
+  chunker: 2,
+  extractor: 3,
+  embedder: 4,
+};
+
+/**
+ * Get the tier type that comes before this one.
+ */
+function getPreviousTier(tier: NodeType): NodeType | '_source' | null {
+  const tierIndex = TYPE_TIERS[tier];
+  if (tierIndex <= 0) return null;
+
+  // Find which tier has index tierIndex - 1
+  for (const [key, value] of Object.entries(TYPE_TIERS)) {
+    if (value === tierIndex - 1) {
+      return key as NodeType | '_source';
+    }
+  }
+  return null;
+}
+
 export function PipelineVisualization({
   dag,
   selection = { type: 'none' },
   onSelectionChange,
+  onDagChange,
   readOnly = false,
   className = '',
 }: PipelineVisualizationProps) {
   // SVG ref for coordinate conversion
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Popover states
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [upstreamPicker, setUpstreamPicker] = useState<UpstreamPickerState | null>(null);
 
   // Compute layout
   const layout = useMemo(() => computeDAGLayout(dag), [dag]);
 
-  // Drag-to-connect state and handlers
-  const { dragState, startDrag, updateDrag, endDrag, cancelDrag, isValidDropTarget } =
-    useDragToConnect({
-      dag,
-      layout,
+  // Container width for tier bounds
+  const [containerWidth, setContainerWidth] = useState(600);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    // ResizeObserver may not be available in test environment
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
     });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Compute tier bounds for drop zones
+  const tierBounds = useMemo(
+    () => computeTierBounds(dag, layout, containerWidth),
+    [dag, layout, containerWidth]
+  );
+
+  // Handle connection between nodes
+  const handleConnect = useCallback(
+    (fromNodeId: string, toNodeId: string) => {
+      if (!onDagChange) return;
+
+      // Create new edge
+      const newEdge: PipelineEdgeType = {
+        from_node: fromNodeId,
+        to_node: toNodeId,
+        when: null, // Default to catch-all
+      };
+
+      const newDag = {
+        ...dag,
+        edges: [...dag.edges, newEdge],
+      };
+
+      onDagChange(newDag);
+
+      // Select the new edge
+      if (onSelectionChange) {
+        onSelectionChange({ type: 'edge', fromNode: fromNodeId, toNode: toNodeId });
+      }
+    },
+    [dag, onDagChange, onSelectionChange]
+  );
+
+  // Handle drop on tier zone
+  const handleDropOnZone = useCallback(
+    (sourceNodeId: string, tier: NodeType, cursorPosition: { x: number; y: number }) => {
+      // Convert SVG position to screen position for popover
+      let screenPosition = cursorPosition;
+      if (svgRef.current) {
+        const ctm = svgRef.current.getScreenCTM();
+        if (ctm) {
+          const point = svgRef.current.createSVGPoint();
+          point.x = cursorPosition.x;
+          point.y = cursorPosition.y;
+          const transformed = point.matrixTransform(ctm);
+          screenPosition = { x: transformed.x, y: transformed.y };
+        }
+      }
+
+      setPopover({
+        tier,
+        sourceNodeId,
+        position: screenPosition,
+      });
+    },
+    []
+  );
+
+  // Drag-to-connect state and handlers
+  const {
+    dragState,
+    startDrag,
+    updateDrag,
+    endDrag,
+    cancelDrag,
+    isValidDropTarget,
+    getValidTargetTiers: getValidTiers,
+    getHoveredTier,
+  } = useDragToConnect({
+    dag,
+    layout,
+    tierBounds,
+    onConnect: handleConnect,
+    onDropOnZone: handleDropOnZone,
+  });
+
+  // Get hovered tier for drop zone highlighting
+  const hoveredTier = getHoveredTier();
 
   // Handle node click
-  const handleNodeClick = useCallback((nodeId: string) => {
-    if (readOnly || !onSelectionChange) return;
-    onSelectionChange({ type: 'node', nodeId });
-  }, [readOnly, onSelectionChange]);
+  const handleNodeClick = useCallback(
+    (nodeId: string) => {
+      if (readOnly || !onSelectionChange) return;
+      onSelectionChange({ type: 'node', nodeId });
+    },
+    [readOnly, onSelectionChange]
+  );
 
   // Handle edge click
-  const handleEdgeClick = useCallback((fromNode: string, toNode: string) => {
-    if (readOnly || !onSelectionChange) return;
-    onSelectionChange({ type: 'edge', fromNode, toNode });
-  }, [readOnly, onSelectionChange]);
+  const handleEdgeClick = useCallback(
+    (fromNode: string, toNode: string) => {
+      if (readOnly || !onSelectionChange) return;
+      onSelectionChange({ type: 'edge', fromNode, toNode });
+    },
+    [readOnly, onSelectionChange]
+  );
 
   // Handle background click (clear selection)
-  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
-    // Only clear if clicking the SVG background itself
-    if (e.target === e.currentTarget && onSelectionChange) {
-      onSelectionChange({ type: 'none' });
-    }
-  }, [onSelectionChange]);
+  const handleBackgroundClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Only clear if clicking the SVG background itself
+      if (e.target === e.currentTarget && onSelectionChange) {
+        onSelectionChange({ type: 'none' });
+      }
+    },
+    [onSelectionChange]
+  );
 
   // Handle drag start from a node's output port
   const handleStartDrag = useCallback(
@@ -94,11 +257,15 @@ export function PipelineVisualization({
   );
 
   // Handle mouse up (end drag)
-  const handleMouseUp = useCallback(() => {
-    if (dragState.isDragging) {
-      endDrag();
-    }
-  }, [dragState.isDragging, endDrag]);
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (dragState.isDragging && svgRef.current) {
+        const svgPosition = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        endDrag(svgPosition);
+      }
+    },
+    [dragState.isDragging, endDrag]
+  );
 
   // Handle mouse leave (cancel drag)
   const handleMouseLeave = useCallback(() => {
@@ -118,6 +285,145 @@ export function PipelineVisualization({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dragState.isDragging, cancelDrag]);
 
+  // Handle plugin selection from popover
+  const handlePluginSelect = useCallback(
+    (pluginId: string) => {
+      if (!popover || !onDagChange) {
+        setPopover(null);
+        return;
+      }
+
+      // If sourceNodeId is null, this came from "+" button - need to determine upstream
+      if (popover.sourceNodeId === null) {
+        // Find potential upstream nodes for this tier
+        const prevTierType = getPreviousTier(popover.tier);
+        let upstreamNodes: PipelineNode[] = [];
+
+        if (prevTierType === '_source') {
+          // Only source can connect to parser tier
+          upstreamNodes = []; // Will connect from _source
+        } else if (prevTierType) {
+          // Find all nodes in the previous tier
+          upstreamNodes = dag.nodes.filter((n) => n.type === prevTierType);
+        }
+
+        // Also check if chunker can connect to embedder (skip extractor)
+        if (popover.tier === 'embedder') {
+          const chunkers = dag.nodes.filter((n) => n.type === 'chunker');
+          const extractors = dag.nodes.filter((n) => n.type === 'extractor');
+          upstreamNodes = [...extractors, ...chunkers];
+        }
+
+        if (upstreamNodes.length > 1) {
+          // Multiple upstream nodes - show picker
+          setUpstreamPicker({
+            tier: popover.tier,
+            pluginId,
+            upstreamNodes,
+            position: popover.position,
+          });
+          setPopover(null);
+          return;
+        }
+
+        // Single or no upstream node - proceed with creation
+        const sourceNodeId =
+          upstreamNodes.length === 1 ? upstreamNodes[0].id : '_source';
+
+        createNodeAndConnect(pluginId, popover.tier, [sourceNodeId]);
+      } else {
+        // Drag-and-drop case - sourceNodeId is known
+        createNodeAndConnect(pluginId, popover.tier, [popover.sourceNodeId]);
+      }
+
+      setPopover(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [popover, dag, onDagChange]
+  );
+
+  // Create node and connect from source(s)
+  const createNodeAndConnect = useCallback(
+    (pluginId: string, tier: NodeType, sourceNodeIds: string[]) => {
+      if (!onDagChange) return;
+
+      // Create new node
+      const newNode: PipelineNode = {
+        id: generateNodeId(),
+        type: tier,
+        plugin_id: pluginId,
+        config: {},
+      };
+
+      // Create edges from all source nodes
+      const newEdges: PipelineEdgeType[] = sourceNodeIds.map((sourceId) => ({
+        from_node: sourceId,
+        to_node: newNode.id,
+        when: null, // Default to catch-all
+      }));
+
+      const newDag = {
+        ...dag,
+        nodes: [...dag.nodes, newNode],
+        edges: [...dag.edges, ...newEdges],
+      };
+
+      onDagChange(newDag);
+
+      // Select the new node
+      if (onSelectionChange) {
+        onSelectionChange({ type: 'node', nodeId: newNode.id });
+      }
+    },
+    [dag, onDagChange, onSelectionChange]
+  );
+
+  // Handle upstream node selection
+  const handleUpstreamSelect = useCallback(
+    (nodeIds: string[]) => {
+      if (!upstreamPicker) return;
+
+      createNodeAndConnect(upstreamPicker.pluginId, upstreamPicker.tier, nodeIds);
+      setUpstreamPicker(null);
+    },
+    [upstreamPicker, createNodeAndConnect]
+  );
+
+  // Handle "+" button click
+  const handleAddButtonClick = useCallback(
+    (tier: NodeType, position: { x: number; y: number }) => {
+      // Convert SVG position to screen position for popover
+      let screenPosition = position;
+      if (svgRef.current) {
+        const ctm = svgRef.current.getScreenCTM();
+        if (ctm) {
+          const point = svgRef.current.createSVGPoint();
+          point.x = position.x;
+          point.y = position.y;
+          const transformed = point.matrixTransform(ctm);
+          screenPosition = { x: transformed.x, y: transformed.y };
+        }
+      }
+
+      setPopover({
+        tier,
+        sourceNodeId: null, // null indicates "+" button origin
+        position: screenPosition,
+      });
+    },
+    []
+  );
+
+  // Cancel popover
+  const handlePopoverCancel = useCallback(() => {
+    setPopover(null);
+  }, []);
+
+  // Cancel upstream picker
+  const handleUpstreamCancel = useCallback(() => {
+    setUpstreamPicker(null);
+  }, []);
+
   // Check if node is selected
   const isNodeSelected = (nodeId: string) =>
     selection.type === 'node' && selection.nodeId === nodeId;
@@ -127,6 +433,67 @@ export function PipelineVisualization({
     selection.type === 'edge' &&
     selection.fromNode === fromNode &&
     selection.toNode === toNode;
+
+  // Get valid target tiers for current drag
+  const validTargetTiers = useMemo(() => {
+    if (!dragState.isDragging || !dragState.sourceNodeId) return [];
+    return getValidTiers(dragState.sourceNodeId);
+  }, [dragState.isDragging, dragState.sourceNodeId, getValidTiers]);
+
+  // Compute "+" button positions for each tier
+  const addButtonPositions = useMemo(() => {
+    const positions: { tier: NodeType; x: number; y: number }[] = [];
+
+    // Group existing nodes by tier
+    const nodesByTier = new Map<number, string[]>();
+    for (const node of dag.nodes) {
+      const tier = TYPE_TIERS[node.type];
+      if (!nodesByTier.has(tier)) {
+        nodesByTier.set(tier, []);
+      }
+      nodesByTier.get(tier)!.push(node.id);
+    }
+
+    for (const tierType of ALL_TIERS) {
+      const tierIndex = TYPE_TIERS[tierType];
+      const tierY = PADDING + tierIndex * (NODE_HEIGHT + TIER_GAP) + NODE_HEIGHT / 2;
+
+      const existingNodes = nodesByTier.get(tierIndex) || [];
+
+      if (existingNodes.length > 0) {
+        // Find rightmost node
+        let maxX = 0;
+        for (const nodeId of existingNodes) {
+          const pos = layout.nodes.get(nodeId);
+          if (pos) {
+            maxX = Math.max(maxX, pos.x + pos.width);
+          }
+        }
+        positions.push({
+          tier: tierType,
+          x: maxX + NODE_GAP + 14, // 14 is button radius
+          y: tierY,
+        });
+      } else {
+        // Empty tier - center the button
+        positions.push({
+          tier: tierType,
+          x: PADDING + NODE_WIDTH / 2,
+          y: tierY,
+        });
+      }
+    }
+
+    return positions;
+  }, [dag.nodes, layout]);
+
+  // Compute extended layout height to include all tiers
+  const extendedHeight = useMemo(() => {
+    // Ensure we have space for all tiers including embedder (tier 4)
+    const maxTierIndex = 4; // embedder
+    const neededHeight = PADDING + (maxTierIndex + 1) * (NODE_HEIGHT + TIER_GAP);
+    return Math.max(layout.height, neededHeight);
+  }, [layout.height]);
 
   // Empty state
   if (dag.nodes.length === 0) {
@@ -146,11 +513,11 @@ export function PipelineVisualization({
   const sourcePosition = layout.nodes.get('_source');
 
   return (
-    <div className={`overflow-auto ${className}`}>
+    <div ref={containerRef} className={`overflow-auto ${className}`}>
       <svg
         ref={svgRef}
         width={layout.width}
-        height={layout.height}
+        height={extendedHeight}
         onClick={handleBackgroundClick}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -167,10 +534,7 @@ export function PipelineVisualization({
             refY="3.5"
             orient="auto"
           >
-            <polygon
-              points="0 0, 10 3.5, 0 7"
-              fill="var(--text-muted)"
-            />
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--text-muted)" />
           </marker>
           <marker
             id="arrowhead-selected"
@@ -180,12 +544,28 @@ export function PipelineVisualization({
             refY="3.5"
             orient="auto"
           >
-            <polygon
-              points="0 0, 10 3.5, 0 7"
-              fill="var(--text-primary)"
-            />
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--text-primary)" />
           </marker>
         </defs>
+
+        {/* Render tier drop zones (during drag only) */}
+        {dragState.isDragging && (
+          <g className="tier-drop-zones">
+            {tierBounds.map((bounds) => {
+              const isActive = validTargetTiers.includes(bounds.tier);
+              const isHovered = hoveredTier === bounds.tier;
+              return (
+                <TierDropZone
+                  key={bounds.tier}
+                  tier={bounds.tier}
+                  bounds={bounds}
+                  isActive={isActive}
+                  isHovered={isHovered}
+                />
+              );
+            })}
+          </g>
+        )}
 
         {/* Render edges first (below nodes) */}
         <g className="edges">
@@ -247,14 +627,45 @@ export function PipelineVisualization({
           })}
         </g>
 
+        {/* Render "+" buttons (when not dragging and not read-only) */}
+        {!readOnly && !dragState.isDragging && (
+          <g className="tier-add-buttons">
+            {addButtonPositions.map(({ tier, x, y }) => (
+              <TierAddButton
+                key={tier}
+                tier={tier}
+                position={{ x, y }}
+                onClick={() => handleAddButtonClick(tier, { x, y })}
+              />
+            ))}
+          </g>
+        )}
+
         {/* Render preview edge during drag */}
         {dragState.isDragging && dragState.sourcePosition && dragState.cursorPosition && (
-          <DragPreviewEdge
-            from={dragState.sourcePosition}
-            to={dragState.cursorPosition}
-          />
+          <DragPreviewEdge from={dragState.sourcePosition} to={dragState.cursorPosition} />
         )}
       </svg>
+
+      {/* Render node picker popover (outside SVG) */}
+      {popover && (
+        <NodePickerPopover
+          tier={popover.tier}
+          position={popover.position}
+          onSelect={handlePluginSelect}
+          onCancel={handlePopoverCancel}
+        />
+      )}
+
+      {/* Render upstream node picker (outside SVG) */}
+      {upstreamPicker && (
+        <UpstreamNodePicker
+          upstreamNodes={upstreamPicker.upstreamNodes}
+          position={upstreamPicker.position}
+          onSelect={handleUpstreamSelect}
+          onCancel={handleUpstreamCancel}
+        />
+      )}
     </div>
   );
 }

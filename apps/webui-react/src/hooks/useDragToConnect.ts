@@ -6,22 +6,25 @@
 import { useState, useCallback } from 'react';
 import type { PipelineDAG, DAGLayout, NodeType, DragState } from '@/types/pipeline';
 import { INITIAL_DRAG_STATE } from '@/types/pipeline';
+import type { TierBounds } from '@/utils/dagLayout';
 
 interface UseDragToConnectOptions {
   dag: PipelineDAG;
   layout: DAGLayout;
+  tierBounds?: TierBounds[];
   onConnect?: (fromNodeId: string, toNodeId: string) => void;
-  onDropOnZone?: (fromNodeId: string, tier: NodeType) => void;
+  onDropOnZone?: (fromNodeId: string, tier: NodeType, cursorPosition: { x: number; y: number }) => void;
 }
 
 interface UseDragToConnectResult {
   dragState: DragState;
   startDrag: (nodeId: string, position: { x: number; y: number }) => void;
   updateDrag: (cursorPosition: { x: number; y: number }) => void;
-  endDrag: () => void;
+  endDrag: (cursorPosition?: { x: number; y: number }) => void;
   cancelDrag: () => void;
   getValidTargetTiers: (sourceNodeId: string) => NodeType[];
   isValidDropTarget: (targetNodeId: string) => boolean;
+  getHoveredTier: () => NodeType | null;
 }
 
 /**
@@ -50,17 +53,61 @@ export function getValidTargetTiers(sourceNodeId: string, dag: PipelineDAG): Nod
   }
 }
 
+/**
+ * Find which node (if any) the cursor is over.
+ */
+function findNodeAtPoint(
+  point: { x: number; y: number },
+  layout: DAGLayout,
+  dag: PipelineDAG
+): { id: string; type: NodeType } | null {
+  for (const [nodeId, pos] of layout.nodes) {
+    if (
+      point.x >= pos.x &&
+      point.x <= pos.x + pos.width &&
+      point.y >= pos.y &&
+      point.y <= pos.y + pos.height
+    ) {
+      // Return node info - handle _source specially
+      if (nodeId === '_source') {
+        return null; // Can't drop on source
+      }
+      const node = dag.nodes.find((n) => n.id === nodeId);
+      if (node) {
+        return { id: node.id, type: node.type };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Find which tier drop zone (if any) the cursor is over.
+ */
+function findTierAtPoint(
+  point: { x: number; y: number },
+  tierBounds: TierBounds[]
+): NodeType | null {
+  for (const bounds of tierBounds) {
+    if (
+      point.x >= bounds.x &&
+      point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y <= bounds.y + bounds.height
+    ) {
+      return bounds.tier;
+    }
+  }
+  return null;
+}
+
 export function useDragToConnect({
   dag,
-  // Phase 3 will use these for drop handling
-  layout: _layout,
-  onConnect: _onConnect,
-  onDropOnZone: _onDropOnZone,
+  layout,
+  tierBounds = [],
+  onConnect,
+  onDropOnZone,
 }: UseDragToConnectOptions): UseDragToConnectResult {
-  // Suppress unused variable warnings - these will be used in Phase 3
-  void _layout;
-  void _onConnect;
-  void _onDropOnZone;
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
 
   const startDrag = useCallback((nodeId: string, position: { x: number; y: number }) => {
@@ -82,11 +129,50 @@ export function useDragToConnect({
     });
   }, []);
 
-  const endDrag = useCallback(() => {
-    // Phase 3 will add drop handling logic here
-    // For now, just reset the state
-    setDragState(INITIAL_DRAG_STATE);
-  }, []);
+  const endDrag = useCallback(
+    (cursorPosition?: { x: number; y: number }) => {
+      if (!dragState.isDragging || !dragState.sourceNodeId) {
+        setDragState(INITIAL_DRAG_STATE);
+        return;
+      }
+
+      const dropPoint = cursorPosition || dragState.cursorPosition;
+      if (!dropPoint) {
+        setDragState(INITIAL_DRAG_STATE);
+        return;
+      }
+
+      const validTiers = getValidTargetTiers(dragState.sourceNodeId, dag);
+
+      // Check if over an existing node's input port
+      const targetNode = findNodeAtPoint(dropPoint, layout, dag);
+      if (targetNode && validTiers.includes(targetNode.type)) {
+        // Check if edge already exists
+        const edgeExists = dag.edges.some(
+          (e) => e.from_node === dragState.sourceNodeId && e.to_node === targetNode.id
+        );
+        if (!edgeExists && onConnect) {
+          onConnect(dragState.sourceNodeId, targetNode.id);
+        }
+        setDragState(INITIAL_DRAG_STATE);
+        return;
+      }
+
+      // Check if over a tier drop zone
+      const targetTier = findTierAtPoint(dropPoint, tierBounds);
+      if (targetTier && validTiers.includes(targetTier)) {
+        if (onDropOnZone) {
+          onDropOnZone(dragState.sourceNodeId, targetTier, dropPoint);
+        }
+        setDragState(INITIAL_DRAG_STATE);
+        return;
+      }
+
+      // No valid drop target - cancel drag
+      setDragState(INITIAL_DRAG_STATE);
+    },
+    [dragState, dag, layout, tierBounds, onConnect, onDropOnZone]
+  );
 
   const cancelDrag = useCallback(() => {
     setDragState(INITIAL_DRAG_STATE);
@@ -119,6 +205,20 @@ export function useDragToConnect({
     [dragState.isDragging, dragState.sourceNodeId, dag]
   );
 
+  const getHoveredTier = useCallback((): NodeType | null => {
+    if (!dragState.isDragging || !dragState.sourceNodeId || !dragState.cursorPosition) {
+      return null;
+    }
+
+    const validTiers = getValidTargetTiers(dragState.sourceNodeId, dag);
+    const tier = findTierAtPoint(dragState.cursorPosition, tierBounds);
+
+    if (tier && validTiers.includes(tier)) {
+      return tier;
+    }
+    return null;
+  }, [dragState, dag, tierBounds]);
+
   return {
     dragState,
     startDrag,
@@ -127,6 +227,7 @@ export function useDragToConnect({
     cancelDrag,
     getValidTargetTiers: getValidTargetTiersForSource,
     isValidDropTarget,
+    getHoveredTier,
   };
 }
 
