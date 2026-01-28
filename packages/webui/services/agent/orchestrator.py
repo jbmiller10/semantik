@@ -157,6 +157,12 @@ When you're done responding (no more tools to call), just write your response no
 
 {tool_descriptions}
 
+## Available Templates
+
+These are the pre-configured pipeline templates you can use with build_pipeline(template_id="..."):
+
+{available_templates}
+
 ## Important Notes
 
 - Always validate pipelines before applying
@@ -375,9 +381,31 @@ When you're done responding (no more tools to call), just write your response no
             descriptions.append(desc)
         return "\n".join(descriptions)
 
+    def _get_template_summaries(self) -> str:
+        """Generate formatted template summaries for the system prompt."""
+        try:
+            from shared.pipeline.templates import list_templates
+
+            templates = list_templates()
+            if not templates:
+                return "No templates available."
+
+            summaries = []
+            for t in templates:
+                suggested = ", ".join(t.suggested_for[:3])  # First 3 use cases
+                summaries.append(f"- **{t.id}**: {t.name} - {t.description[:100]}... (for: {suggested})")
+
+            return "\n".join(summaries)
+        except Exception as e:
+            logger.warning(f"Failed to load templates for system prompt: {e}")
+            return "Templates unavailable - use list_templates tool to discover them."
+
     def _build_system_prompt(self) -> str:
-        """Build the full system prompt with tool descriptions and source context."""
-        base_prompt = self.SYSTEM_PROMPT.format(tool_descriptions=self._get_tool_descriptions())
+        """Build the full system prompt with tool descriptions, templates, and source context."""
+        base_prompt = self.SYSTEM_PROMPT.format(
+            tool_descriptions=self._get_tool_descriptions(),
+            available_templates=self._get_template_summaries(),
+        )
 
         # Add source context if available
         if self.conversation.inline_source_config:
@@ -402,8 +430,43 @@ When you're done responding (no more tools to call), just write your response no
 The user has already configured a data source for this pipeline:
 - **Type**: {source_type}
 - {source_info}
+"""
 
-You should use spawn_source_analyzer to analyze this source and recommend an appropriate pipeline configuration. Do NOT ask the user about their source - you already have the information above."""
+        # Add state-aware instructions based on what's already been done
+        has_analysis = bool(self.conversation.source_analysis)
+        has_pipeline = bool(self.conversation.current_pipeline)
+
+        if has_pipeline:
+            # Pipeline already built - just help refine or apply it
+            base_prompt += """
+## Current State: Pipeline Ready
+
+A pipeline has already been configured. You can:
+- Use get_pipeline_state to review it
+- Use build_pipeline to modify it if the user requests changes
+- Use apply_pipeline to create the collection when the user is ready
+- Do NOT re-analyze the source unless the user explicitly asks
+
+Respond to the user's request without re-running analysis or rebuilding the pipeline unless asked."""
+
+        elif has_analysis:
+            # Source analyzed but no pipeline yet - build one
+            base_prompt += """
+## Current State: Source Analyzed
+
+The source has been analyzed. Now you should:
+- Review the analysis results already in the conversation
+- Use build_pipeline to create a pipeline based on the analysis
+- Do NOT call spawn_source_analyzer again - analysis is complete
+
+Build the pipeline now based on the analysis."""
+
+        elif self.conversation.inline_source_config:
+            # Source configured but not analyzed - analyze it
+            base_prompt += """
+## Current State: Awaiting Analysis
+
+Use spawn_source_analyzer to analyze this source and recommend an appropriate pipeline configuration. Do NOT ask the user about their source - you already have the information above."""
 
         return base_prompt
 

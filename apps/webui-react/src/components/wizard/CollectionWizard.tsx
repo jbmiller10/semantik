@@ -13,6 +13,7 @@ import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
 import { useCreateConversation } from '../../hooks/useAgentConversation';
 import { useUIStore } from '../../stores/uiStore';
+import { waitForCollectionReady } from '../../services/api/v2/collections';
 import type { WizardState, WizardFlow } from '../../types/wizard';
 import type { PipelineDAG } from '../../types/pipeline';
 import type { SyncMode } from '../../types/collection';
@@ -230,6 +231,13 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       if (connectorType !== 'none' && Object.keys(configValues).length > 0) {
         const sourcePath = (configValues.path as string) || (configValues.repo_url as string) || '';
         if (sourcePath) {
+          // Wait for collection to become ready before adding source
+          // This prevents 409 Conflict errors when the initial CREATE operation is still in progress
+          await waitForCollectionReady(response.id, {
+            timeout: 30000,
+            pollInterval: 500,
+          });
+
           await addSourceMutation.mutateAsync({
             collectionId: response.id,
             sourceType: connectorType,

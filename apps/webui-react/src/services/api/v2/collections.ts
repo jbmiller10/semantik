@@ -137,3 +137,47 @@ export const v2Api = {
   projections: projectionsV2Api,
   search: searchV2Api,
 };
+
+/**
+ * Wait for a collection to become ready (initial operation completes).
+ * Polls the collection status until it transitions from 'pending' to 'ready' or an error state.
+ *
+ * @param collectionId - The collection UUID to wait for
+ * @param options - Configuration options
+ * @returns The collection once it's ready
+ * @throws Error if the collection enters an error state or times out
+ */
+export async function waitForCollectionReady(
+  collectionId: string,
+  options: {
+    /** Maximum time to wait in milliseconds (default: 30000) */
+    timeout?: number;
+    /** Polling interval in milliseconds (default: 500) */
+    pollInterval?: number;
+    /** Callback for progress updates */
+    onProgress?: (status: string) => void;
+  } = {}
+): Promise<Collection> {
+  const { timeout = 30000, pollInterval = 500, onProgress } = options;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    const response = await collectionsV2Api.get(collectionId);
+    const collection = response.data;
+
+    onProgress?.(collection.status);
+
+    if (collection.status === 'ready') {
+      return collection;
+    }
+
+    if (collection.status === 'error') {
+      throw new Error(collection.status_message || 'Collection initialization failed');
+    }
+
+    // Still pending or processing, wait and retry
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error('Timed out waiting for collection to become ready');
+}
