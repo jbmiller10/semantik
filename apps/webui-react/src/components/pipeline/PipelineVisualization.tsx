@@ -42,7 +42,12 @@ function screenToSVG(
   point.x = screenX;
   point.y = screenY;
   const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: screenX, y: screenY };
+  if (!ctm) {
+    if (import.meta.env.DEV) {
+      console.warn('screenToSVG: getScreenCTM() returned null, using raw coordinates');
+    }
+    return { x: screenX, y: screenY };
+  }
   const transformed = point.matrixTransform(ctm.inverse());
   return { x: transformed.x, y: transformed.y };
 }
@@ -50,11 +55,9 @@ function screenToSVG(
 /**
  * State for the node picker popover.
  */
-interface PopoverState {
-  tier: NodeType;
-  sourceNodeId: string | null; // null when using "+" button
-  position: { x: number; y: number };
-}
+type PopoverState =
+  | { origin: 'button'; tier: NodeType; position: { x: number; y: number } }
+  | { origin: 'drag'; tier: NodeType; sourceNodeId: string; position: { x: number; y: number } };
 
 /**
  * State for the upstream node picker.
@@ -69,13 +72,9 @@ interface UpstreamPickerState {
 /**
  * State for the delete confirmation dialog.
  */
-interface DeleteConfirmationState {
-  type: 'node' | 'edge';
-  nodeId?: string;
-  fromNode?: string;
-  toNode?: string;
-  orphanedNodes: PipelineNode[];
-}
+type DeleteConfirmationState =
+  | { type: 'node'; nodeId: string; orphanedNodes: PipelineNode[] }
+  | { type: 'edge'; fromNode: string; toNode: string; orphanedNodes: PipelineNode[] };
 
 /**
  * Get the tier index for a node type.
@@ -192,10 +191,13 @@ export function PipelineVisualization({
           point.y = cursorPosition.y;
           const transformed = point.matrixTransform(ctm);
           screenPosition = { x: transformed.x, y: transformed.y };
+        } else if (import.meta.env.DEV) {
+          console.warn('handleDropOnZone: getScreenCTM() returned null, using raw SVG coordinates');
         }
       }
 
       setPopover({
+        origin: 'drag',
         tier,
         sourceNodeId,
         position: screenPosition,
@@ -307,63 +309,6 @@ export function PipelineVisualization({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dragState.isDragging, cancelDrag]);
 
-  // Handle plugin selection from popover
-  const handlePluginSelect = useCallback(
-    (pluginId: string) => {
-      if (!popover || !onDagChange) {
-        setPopover(null);
-        return;
-      }
-
-      // If sourceNodeId is null, this came from "+" button - need to determine upstream
-      if (popover.sourceNodeId === null) {
-        // Find potential upstream nodes for this tier
-        const prevTierType = getPreviousTier(popover.tier);
-        let upstreamNodes: PipelineNode[] = [];
-
-        if (prevTierType === '_source') {
-          // Only source can connect to parser tier
-          upstreamNodes = []; // Will connect from _source
-        } else if (prevTierType) {
-          // Find all nodes in the previous tier
-          upstreamNodes = dag.nodes.filter((n) => n.type === prevTierType);
-        }
-
-        // Also check if chunker can connect to embedder (skip extractor)
-        if (popover.tier === 'embedder') {
-          const chunkers = dag.nodes.filter((n) => n.type === 'chunker');
-          const extractors = dag.nodes.filter((n) => n.type === 'extractor');
-          upstreamNodes = [...extractors, ...chunkers];
-        }
-
-        if (upstreamNodes.length > 1) {
-          // Multiple upstream nodes - show picker
-          setUpstreamPicker({
-            tier: popover.tier,
-            pluginId,
-            upstreamNodes,
-            position: popover.position,
-          });
-          setPopover(null);
-          return;
-        }
-
-        // Single or no upstream node - proceed with creation
-        const sourceNodeId =
-          upstreamNodes.length === 1 ? upstreamNodes[0].id : '_source';
-
-        createNodeAndConnect(pluginId, popover.tier, [sourceNodeId]);
-      } else {
-        // Drag-and-drop case - sourceNodeId is known
-        createNodeAndConnect(pluginId, popover.tier, [popover.sourceNodeId]);
-      }
-
-      setPopover(null);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [popover, dag, onDagChange]
-  );
-
   // Create node and connect from source(s)
   const createNodeAndConnect = useCallback(
     (pluginId: string, tier: NodeType, sourceNodeIds: string[]) => {
@@ -407,6 +352,61 @@ export function PipelineVisualization({
     [dag, onDagChange, onSelectionChange]
   );
 
+  // Handle plugin selection from popover
+  const handlePluginSelect = useCallback(
+    (pluginId: string) => {
+      if (!popover || !onDagChange) {
+        setPopover(null);
+        return;
+      }
+
+      if (popover.origin === 'button') {
+        // "+" button origin - need to determine upstream
+        const prevTierType = getPreviousTier(popover.tier);
+        let upstreamNodes: PipelineNode[] = [];
+
+        if (prevTierType === '_source') {
+          // Only source can connect to parser tier
+          upstreamNodes = []; // Will connect from _source
+        } else if (prevTierType) {
+          // Find all nodes in the previous tier
+          upstreamNodes = dag.nodes.filter((n) => n.type === prevTierType);
+        }
+
+        // Also check if chunker can connect to embedder (skip extractor)
+        if (popover.tier === 'embedder') {
+          const chunkers = dag.nodes.filter((n) => n.type === 'chunker');
+          const extractors = dag.nodes.filter((n) => n.type === 'extractor');
+          upstreamNodes = [...extractors, ...chunkers];
+        }
+
+        if (upstreamNodes.length > 1) {
+          // Multiple upstream nodes - show picker
+          setUpstreamPicker({
+            tier: popover.tier,
+            pluginId,
+            upstreamNodes,
+            position: popover.position,
+          });
+          setPopover(null);
+          return;
+        }
+
+        // Single or no upstream node - proceed with creation
+        const sourceNodeId =
+          upstreamNodes.length === 1 ? upstreamNodes[0].id : '_source';
+
+        createNodeAndConnect(pluginId, popover.tier, [sourceNodeId]);
+      } else {
+        // Drag-and-drop case - sourceNodeId is known
+        createNodeAndConnect(pluginId, popover.tier, [popover.sourceNodeId]);
+      }
+
+      setPopover(null);
+    },
+    [popover, dag, onDagChange, createNodeAndConnect]
+  );
+
   // Clear "new" status after animation completes
   useEffect(() => {
     if (newNodeIds.size === 0 && newEdgeKeys.size === 0) return;
@@ -443,12 +443,14 @@ export function PipelineVisualization({
           point.y = position.y;
           const transformed = point.matrixTransform(ctm);
           screenPosition = { x: transformed.x, y: transformed.y };
+        } else if (import.meta.env.DEV) {
+          console.warn('handleAddButtonClick: getScreenCTM() returned null, using raw SVG coordinates');
         }
       }
 
       setPopover({
+        origin: 'button',
         tier,
-        sourceNodeId: null, // null indicates "+" button origin
         position: screenPosition,
       });
     },
@@ -578,13 +580,9 @@ export function PipelineVisualization({
     (deleteOrphans: boolean) => {
       if (!deleteConfirmation) return;
 
-      if (deleteConfirmation.type === 'node' && deleteConfirmation.nodeId) {
+      if (deleteConfirmation.type === 'node') {
         executeNodeDeletion(deleteConfirmation.nodeId, deleteOrphans);
-      } else if (
-        deleteConfirmation.type === 'edge' &&
-        deleteConfirmation.fromNode &&
-        deleteConfirmation.toNode
-      ) {
+      } else {
         executeEdgeDeletion(deleteConfirmation.fromNode, deleteConfirmation.toNode, deleteOrphans);
       }
 
@@ -627,9 +625,9 @@ export function PipelineVisualization({
 
   // Get valid target tiers for current drag
   const validTargetTiers = useMemo(() => {
-    if (!dragState.isDragging || !dragState.sourceNodeId) return [];
+    if (!dragState.isDragging) return [];
     return getValidTiers(dragState.sourceNodeId);
-  }, [dragState.isDragging, dragState.sourceNodeId, getValidTiers]);
+  }, [dragState, getValidTiers]);
 
   // Compute "+" button positions for each tier
   const addButtonPositions = useMemo(() => {
@@ -838,7 +836,7 @@ export function PipelineVisualization({
         )}
 
         {/* Render preview edge during drag */}
-        {dragState.isDragging && dragState.sourcePosition && dragState.cursorPosition && (
+        {dragState.isDragging && (
           <DragPreviewEdge from={dragState.sourcePosition} to={dragState.cursorPosition} />
         )}
       </svg>

@@ -3,8 +3,8 @@
  * Shows a list of available plugins for the selected tier.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { AlertCircle, X, Loader2 } from 'lucide-react';
 import { useAvailablePlugins } from '@/hooks/useAvailablePlugins';
 import { NODE_TYPE_LABELS } from '@/utils/pipelinePluginMapping';
 import type { NodeType } from '@/types/pipeline';
@@ -23,7 +23,7 @@ export function NodePickerPopover({
   onCancel,
 }: NodePickerPopoverProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { plugins, isLoading, error } = useAvailablePlugins(tier);
+  const { plugins, isLoading, error, refetch } = useAvailablePlugins(tier);
 
   // Handle click outside to cancel
   useEffect(() => {
@@ -56,12 +56,17 @@ export function NodePickerPopover({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onCancel]);
 
+  // Track whether auto-select has fired to prevent duplicate calls
+  // when React Query refetches and plugins array gets a new reference
+  const [hasAutoSelected, setHasAutoSelected] = useState(false);
+
   // Auto-select if only one plugin available
   useEffect(() => {
-    if (!isLoading && plugins.length === 1) {
+    if (!isLoading && plugins.length === 1 && !hasAutoSelected) {
+      setHasAutoSelected(true);
       onSelect(plugins[0].id);
     }
-  }, [isLoading, plugins, onSelect]);
+  }, [isLoading, plugins, onSelect, hasAutoSelected]);
 
   // Keep popover in viewport
   const adjustedPosition = useCallback(() => {
@@ -126,8 +131,22 @@ export function NodePickerPopover({
         )}
 
         {error && (
-          <div className="px-3 py-4 text-sm text-red-500">
-            Failed to load plugins
+          <div className="px-3 py-3">
+            <div className="flex items-start gap-2 text-red-400">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className="font-medium">Failed to load plugins</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  {error.message || 'An unexpected error occurred'}
+                </p>
+                <button
+                  onClick={() => refetch()}
+                  className="text-xs text-red-400 hover:text-red-300 underline mt-2"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

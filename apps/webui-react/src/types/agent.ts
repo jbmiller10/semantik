@@ -119,10 +119,24 @@ export interface QuestionEvent {
   allowCustom: boolean;
 }
 
-export interface AgentStreamEvent {
-  event: AgentStreamEventType;
-  data: Record<string, unknown>;
-}
+/**
+ * Discriminated union for agent stream events.
+ * TypeScript will narrow the data type based on the event field,
+ * eliminating the need for explicit type casts in switch statements.
+ */
+export type AgentStreamEvent =
+  | { event: 'content'; data: ContentEvent }
+  | { event: 'tool_call_start'; data: ToolCallStartEvent }
+  | { event: 'tool_call_end'; data: ToolCallEndEvent }
+  | { event: 'subagent_start'; data: SubagentStartEvent }
+  | { event: 'subagent_end'; data: SubagentEndEvent }
+  | { event: 'uncertainty'; data: UncertaintyEvent }
+  | { event: 'pipeline_update'; data: PipelineUpdateEvent }
+  | { event: 'done'; data: DoneEvent }
+  | { event: 'error'; data: ErrorEvent }
+  | { event: 'status'; data: StatusEvent }
+  | { event: 'activity'; data: ActivityEvent }
+  | { event: 'question'; data: QuestionEvent };
 
 // =============================================================================
 // Entity Types
@@ -216,16 +230,22 @@ export interface InlineSourceConfig {
 
 /**
  * Request to create a new agent conversation.
- * Either source_id OR inline_source must be provided, but not both.
+ * Uses a discriminated union to enforce XOR: either source_id OR inline_source, not both.
  */
-export interface CreateConversationRequest {
-  /** ID of an existing collection source to configure */
-  source_id?: number;
-  /** Configuration for a new source (created when pipeline is applied) */
-  inline_source?: InlineSourceConfig;
-  /** Secrets for inline_source (e.g., passwords, tokens). Only used with inline_source. */
-  secrets?: Record<string, string>;
-}
+export type CreateConversationRequest =
+  | {
+      /** ID of an existing collection source to configure */
+      source_id: number;
+      inline_source?: never;
+      secrets?: never;
+    }
+  | {
+      source_id?: never;
+      /** Configuration for a new source (created when pipeline is applied) */
+      inline_source: InlineSourceConfig;
+      /** Secrets for inline_source (e.g., passwords, tokens). Only used with inline_source. */
+      secrets?: Record<string, string>;
+    };
 
 export interface SendMessageRequest {
   message: string;

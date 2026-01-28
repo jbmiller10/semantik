@@ -278,6 +278,56 @@ describe('NodePickerPopover', () => {
     });
   });
 
+  it('auto-select fires only once even when effect re-runs due to React Query refetch', async () => {
+    const singlePlugin = [{ id: 'only-one', name: 'Only One', description: 'The only plugin' }];
+
+    mockUseAvailablePlugins.mockReturnValue({
+      plugins: singlePlugin,
+      isLoading: false,
+      error: null,
+    });
+
+    const onSelect = vi.fn();
+    const onCancel = vi.fn();
+
+    const { rerender } = render(
+      <NodePickerPopover
+        tier="chunker"
+        position={{ x: 100, y: 200 }}
+        onSelect={onSelect}
+        onCancel={onCancel}
+      />,
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith('only-one');
+    });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    // Simulate React Query refetch returning a new array reference with same content
+    mockUseAvailablePlugins.mockReturnValue({
+      plugins: [...singlePlugin], // New array reference
+      isLoading: false,
+      error: null,
+    });
+
+    rerender(
+      <NodePickerPopover
+        tier="chunker"
+        position={{ x: 100, y: 200 }}
+        onSelect={onSelect}
+        onCancel={onCancel}
+      />
+    );
+
+    // Give time for any potential extra effect runs
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // onSelect should still have been called only once
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('has proper accessibility attributes', () => {
     const onSelect = vi.fn();
     const onCancel = vi.fn();

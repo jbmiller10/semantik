@@ -131,16 +131,12 @@ export function useDragToConnect({
 
   const endDrag = useCallback(
     (cursorPosition?: { x: number; y: number }) => {
-      if (!dragState.isDragging || !dragState.sourceNodeId) {
+      if (!dragState.isDragging) {
         setDragState(INITIAL_DRAG_STATE);
         return;
       }
 
       const dropPoint = cursorPosition || dragState.cursorPosition;
-      if (!dropPoint) {
-        setDragState(INITIAL_DRAG_STATE);
-        return;
-      }
 
       const validTiers = getValidTargetTiers(dragState.sourceNodeId, dag);
 
@@ -187,7 +183,7 @@ export function useDragToConnect({
 
   const isValidDropTarget = useCallback(
     (targetNodeId: string) => {
-      if (!dragState.isDragging || !dragState.sourceNodeId) return false;
+      if (!dragState.isDragging) return false;
 
       // Can't drop on self
       if (targetNodeId === dragState.sourceNodeId) return false;
@@ -202,11 +198,11 @@ export function useDragToConnect({
       if (!targetNode) return false;
       return validTiers.includes(targetNode.type);
     },
-    [dragState.isDragging, dragState.sourceNodeId, dag]
+    [dragState, dag]
   );
 
   const getHoveredTier = useCallback((): NodeType | null => {
-    if (!dragState.isDragging || !dragState.sourceNodeId || !dragState.cursorPosition) {
+    if (!dragState.isDragging) {
       return null;
     }
 

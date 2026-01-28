@@ -11,12 +11,12 @@ import {
   type AgentEventType,
 } from '../schemas/agentStream';
 import type {
+  AgentStreamEvent,
   AgentStreamEventType,
   ToolCallState,
   SubagentState,
   Uncertainty,
   PipelineConfig,
-  ContentEvent,
   ToolCallStartEvent,
   ToolCallEndEvent,
   SubagentStartEvent,
@@ -24,7 +24,6 @@ import type {
   UncertaintyEvent,
   PipelineUpdateEvent,
   DoneEvent,
-  ErrorEvent,
   StatusEvent,
   ActivityEvent,
   AgentPhase,
@@ -248,160 +247,154 @@ export function useAgentStream(
 
             const { event, data } = parsed;
 
-            // Validate event data against Zod schema (if known event type)
+            // Validate event data against Zod schema and build typed event
             const isKnownEvent = (e: string): e is AgentEventType =>
               ['content', 'tool_call_start', 'tool_call_end', 'subagent_start', 'subagent_end',
                'uncertainty', 'pipeline_update', 'done', 'error', 'status', 'activity', 'question'].includes(e);
 
-            if (isKnownEvent(event)) {
-              const validatedData = validateEventData(event, data);
-              if (validatedData === null) {
-                // Validation failed - skip this event but don't stop streaming
-                console.warn(`Skipping invalid ${event} event`);
-                continue;
-              }
+            if (!isKnownEvent(event)) {
+              console.warn(`Unknown event type: ${event}`);
+              continue;
             }
 
-            switch (event) {
+            const validatedData = validateEventData(event, data);
+            if (validatedData === null) {
+              // Validation failed - skip this event but don't stop streaming
+              console.warn(`Skipping invalid ${event} event`);
+              continue;
+            }
+
+            // Build the typed event - TypeScript narrows based on event discriminant
+            const typedEvent = { event, data: validatedData } as AgentStreamEvent;
+
+            switch (typedEvent.event) {
               case 'content': {
-                const contentData = data as unknown as ContentEvent;
-                setCurrentContent((prev) => prev + contentData.text);
-                callbacks.onContent?.(contentData.text);
+                setCurrentContent((prev) => prev + typedEvent.data.text);
+                callbacks.onContent?.(typedEvent.data.text);
                 break;
               }
 
               case 'tool_call_start': {
-                const startData = data as unknown as ToolCallStartEvent;
-                const toolCallId = `${Date.now()}-${startData.tool}`;
+                const toolCallId = `${Date.now()}-${typedEvent.data.tool}`;
                 setToolCalls((prev) => [
                   ...prev,
                   {
                     id: toolCallId,
-                    tool: startData.tool,
-                    arguments: startData.arguments,
+                    tool: typedEvent.data.tool,
+                    arguments: typedEvent.data.arguments,
                     status: 'running',
                   },
                 ]);
-                callbacks.onToolCallStart?.(startData);
+                callbacks.onToolCallStart?.(typedEvent.data);
                 break;
               }
 
               case 'tool_call_end': {
-                const endData = data as unknown as ToolCallEndEvent;
                 setToolCalls((prev) =>
                   prev.map((tc) =>
-                    tc.tool === endData.tool && tc.status === 'running'
+                    tc.tool === typedEvent.data.tool && tc.status === 'running'
                       ? {
                           ...tc,
-                          status: endData.success ? 'success' : 'error',
-                          result: endData.result,
-                          error: endData.error,
+                          status: typedEvent.data.success ? 'success' : 'error',
+                          result: typedEvent.data.result,
+                          error: typedEvent.data.error,
                         }
                       : tc
                   )
                 );
-                callbacks.onToolCallEnd?.(endData);
+                callbacks.onToolCallEnd?.(typedEvent.data);
                 break;
               }
 
               case 'subagent_start': {
-                const subagentData = data as unknown as SubagentStartEvent;
-                const subagentId = `${Date.now()}-${subagentData.name}`;
+                const subagentId = `${Date.now()}-${typedEvent.data.name}`;
                 setSubagents((prev) => [
                   ...prev,
                   {
                     id: subagentId,
-                    name: subagentData.name,
-                    task: subagentData.task,
+                    name: typedEvent.data.name,
+                    task: typedEvent.data.task,
                     status: 'running',
                   },
                 ]);
-                callbacks.onSubagentStart?.(subagentData);
+                callbacks.onSubagentStart?.(typedEvent.data);
                 break;
               }
 
               case 'subagent_end': {
-                const subagentEndData = data as unknown as SubagentEndEvent;
                 setSubagents((prev) =>
                   prev.map((sa) =>
-                    sa.name === subagentEndData.name && sa.status === 'running'
+                    sa.name === typedEvent.data.name && sa.status === 'running'
                       ? {
                           ...sa,
-                          status: subagentEndData.success ? 'success' : 'error',
-                          result: subagentEndData.result,
-                          error: subagentEndData.error,
+                          status: typedEvent.data.success ? 'success' : 'error',
+                          result: typedEvent.data.result,
+                          error: typedEvent.data.error,
                         }
                       : sa
                   )
                 );
-                callbacks.onSubagentEnd?.(subagentEndData);
+                callbacks.onSubagentEnd?.(typedEvent.data);
                 break;
               }
 
               case 'uncertainty': {
-                const uncertaintyData = data as unknown as UncertaintyEvent;
                 setUncertainties((prev) => [
                   ...prev,
                   {
-                    id: uncertaintyData.id,
-                    severity: uncertaintyData.severity,
-                    message: uncertaintyData.message,
+                    id: typedEvent.data.id,
+                    severity: typedEvent.data.severity,
+                    message: typedEvent.data.message,
                     resolved: false,
-                    context: uncertaintyData.context,
+                    context: typedEvent.data.context,
                   },
                 ]);
-                callbacks.onUncertainty?.(uncertaintyData);
+                callbacks.onUncertainty?.(typedEvent.data);
                 break;
               }
 
               case 'pipeline_update': {
-                const pipelineData = data as unknown as PipelineUpdateEvent;
-                setPipeline(pipelineData.pipeline);
-                callbacks.onPipelineUpdate?.(pipelineData);
+                setPipeline(typedEvent.data.pipeline);
+                callbacks.onPipelineUpdate?.(typedEvent.data);
                 break;
               }
 
               case 'done': {
-                const doneData = data as unknown as DoneEvent;
-                callbacks.onDone?.(doneData);
+                callbacks.onDone?.(typedEvent.data);
                 break;
               }
 
               case 'error': {
-                const errorData = data as unknown as ErrorEvent;
-                setError(errorData.message);
-                callbacks.onError?.(errorData.message);
+                setError(typedEvent.data.message);
+                callbacks.onError?.(typedEvent.data.message);
                 break;
               }
 
               case 'status': {
-                const statusData = data as unknown as StatusEvent;
                 setStatus({
-                  phase: statusData.phase,
-                  message: statusData.message,
-                  progress: statusData.progress,
+                  phase: typedEvent.data.phase,
+                  message: typedEvent.data.message,
+                  progress: typedEvent.data.progress,
                 });
-                callbacks.onStatus?.(statusData);
+                callbacks.onStatus?.(typedEvent.data);
                 break;
               }
 
               case 'activity': {
-                const activityData = data as unknown as ActivityEvent;
                 setActivities((prev) => [
                   ...prev,
                   {
-                    message: activityData.message,
-                    timestamp: activityData.timestamp,
+                    message: typedEvent.data.message,
+                    timestamp: typedEvent.data.timestamp,
                   },
                 ]);
-                callbacks.onActivity?.(activityData);
+                callbacks.onActivity?.(typedEvent.data);
                 break;
               }
 
               case 'question': {
-                const questionData = data as unknown as QuestionEvent;
-                setPendingQuestions((prev) => [...prev, questionData]);
-                callbacks.onQuestion?.(questionData);
+                setPendingQuestions((prev) => [...prev, typedEvent.data]);
+                callbacks.onQuestion?.(typedEvent.data);
                 break;
               }
             }

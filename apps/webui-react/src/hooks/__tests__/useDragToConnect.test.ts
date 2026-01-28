@@ -58,14 +58,16 @@ describe('useDragToConnect', () => {
       expect(result.current.dragState.isDragging).toBe(false);
     });
 
-    it('starts with null positions', () => {
+    it('starts with no drag-related properties (discriminated union)', () => {
       const { result } = renderHook(() =>
         useDragToConnect({ dag: testDAG, layout: testLayout })
       );
 
-      expect(result.current.dragState.sourceNodeId).toBeNull();
-      expect(result.current.dragState.sourcePosition).toBeNull();
-      expect(result.current.dragState.cursorPosition).toBeNull();
+      // When isDragging is false, no other properties exist
+      expect(result.current.dragState.isDragging).toBe(false);
+      expect('sourceNodeId' in result.current.dragState).toBe(false);
+      expect('sourcePosition' in result.current.dragState).toBe(false);
+      expect('cursorPosition' in result.current.dragState).toBe(false);
     });
   });
 
@@ -135,7 +137,9 @@ describe('useDragToConnect', () => {
         result.current.updateDrag({ x: 200, y: 250 });
       });
 
-      expect(result.current.dragState.cursorPosition).toBeNull();
+      // When not dragging, state stays as initial (no cursorPosition property)
+      expect(result.current.dragState.isDragging).toBe(false);
+      expect('cursorPosition' in result.current.dragState).toBe(false);
     });
 
     it('preserves sourcePosition during drag', () => {

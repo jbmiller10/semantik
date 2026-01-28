@@ -19,6 +19,7 @@ export interface UseAvailablePluginsResult {
   plugins: AvailablePluginOption[];
   isLoading: boolean;
   error: Error | null;
+  refetch: () => void;
 }
 
 /**
@@ -28,7 +29,7 @@ export interface UseAvailablePluginsResult {
 export function useAvailablePlugins(type: NodeType): UseAvailablePluginsResult {
   const pluginType = nodeTypeToPluginType(type);
 
-  const { data: allPlugins, isLoading, error } = usePipelinePlugins({
+  const { data: allPlugins, isLoading, error, refetch } = usePipelinePlugins({
     plugin_type: pluginType,
   });
 
@@ -49,6 +50,7 @@ export function useAvailablePlugins(type: NodeType): UseAvailablePluginsResult {
     plugins,
     isLoading,
     error: error as Error | null,
+    refetch,
   };
 }
 
