@@ -10,6 +10,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shared.plugins.validation import PLUGIN_ID_MAX_LENGTH, PLUGIN_ID_REGEX, validate_git_ref, validate_plugin_id
 
 
+class AgentHintsSchema(BaseModel):
+    """Agent-facing metadata for plugin selection."""
+
+    purpose: str
+    best_for: list[str]
+    not_recommended_for: list[str]
+    input_types: list[str] | None = None
+    output_type: str | None = None
+    tradeoffs: str | None = None
+    examples: list[dict[str, Any]] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PluginManifestSchema(BaseModel):
     id: str
     type: str
@@ -22,6 +36,7 @@ class PluginManifestSchema(BaseModel):
     requires: list[str] = Field(default_factory=list)
     semantik_version: str | None = None
     capabilities: dict[str, Any] = Field(default_factory=dict)
+    agent_hints: AgentHintsSchema | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -159,6 +174,31 @@ class PluginErrorDetail(BaseModel):
 
     suggestion: str | None = None
     """Optional suggestion for how to fix the error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PipelinePluginInfo(BaseModel):
+    """Simplified plugin info for pipeline configuration.
+
+    Used by the wizard to show all available plugins (builtin + external)
+    for each pipeline stage.
+    """
+
+    id: str
+    type: str
+    display_name: str
+    description: str
+    source: str  # "builtin" or "external"
+    enabled: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PipelinePluginListResponse(BaseModel):
+    """Response for listing all plugins for pipeline configuration."""
+
+    plugins: list[PipelinePluginInfo]
 
     model_config = ConfigDict(extra="forbid")
 

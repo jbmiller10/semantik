@@ -24,6 +24,8 @@ from webui.api.schemas import ErrorResponse
 from webui.api.v2.plugins_schemas import (
     AvailablePluginInfo,
     AvailablePluginsListResponse,
+    PipelinePluginInfo,
+    PipelinePluginListResponse,
     PluginConfigUpdateRequest,
     PluginErrorDetail,
     PluginErrorResponse,
@@ -79,6 +81,52 @@ async def list_plugins(
     """List all installed external plugins."""
     plugins = await service.list_plugins(plugin_type=plugin_type, enabled=enabled, include_health=include_health)
     return PluginListResponse(plugins=[PluginInfo(**plugin) for plugin in plugins])
+
+
+# --- Pipeline Plugins (all plugins for wizard) ---
+
+
+@router.get(
+    "/pipeline",
+    response_model=PipelinePluginListResponse,
+    responses={401: {"model": ErrorResponse, "description": "Unauthorized"}},
+)
+async def list_pipeline_plugins(
+    plugin_type: str | None = None,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: PluginService = Depends(_get_plugin_service),
+) -> PipelinePluginListResponse:
+    """List all plugins (builtin + external) for pipeline configuration.
+
+    This endpoint returns ALL registered plugins for the wizard's pipeline editor,
+    including built-in plugins like chunking strategies and parsers.
+    Use the `plugin_type` parameter to filter by type (e.g., "chunking", "parser", "embedding").
+    """
+    plugins = await service.list_all_plugins_for_pipeline(plugin_type=plugin_type)
+    return PipelinePluginListResponse(plugins=[PipelinePluginInfo(**plugin) for plugin in plugins])
+
+
+@router.get(
+    "/pipeline/{plugin_id}/config-schema",
+    response_model=dict[str, Any] | None,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Plugin not found"},
+    },
+)
+async def get_pipeline_plugin_config_schema(
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: PluginService = Depends(_get_plugin_service),
+) -> dict[str, Any] | None:
+    """Get JSON Schema for any plugin configuration (builtin or external).
+
+    This endpoint works for all registered plugins, unlike the regular
+    config-schema endpoint which only works for external plugins.
+    """
+    schema: dict[str, Any] | None = await service.get_config_schema_for_any_plugin(plugin_id)
+    # Note: We don't return 404 if schema is None because the plugin may exist but have no config
+    return schema
 
 
 # --- Available Plugins (from registry) ---

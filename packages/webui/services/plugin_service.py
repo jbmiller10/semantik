@@ -447,6 +447,50 @@ class PluginService:
         self.db_session = db_session
         self.repo = PluginConfigRepository(db_session)
 
+    async def list_all_plugins_for_pipeline(
+        self,
+        *,
+        plugin_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List ALL plugins (builtin + external) for pipeline configuration.
+
+        Unlike list_plugins which only returns external plugins for the settings UI,
+        this method returns all registered plugins for the wizard's pipeline editor.
+        """
+        load_plugins(plugin_types={plugin_type} if plugin_type else _DEFAULT_PLUGIN_TYPES)
+
+        # Get ALL records (both builtin and external)
+        records = plugin_registry.list_records(plugin_type=plugin_type)
+
+        # Get configs for external plugins (to check enabled status)
+        configs = await self.repo.list_configs(plugin_type=plugin_type)
+        config_map = {config.id: config for config in configs}
+
+        results: list[dict[str, Any]] = []
+        for record in records:
+            # Check enabled status (builtin plugins are always enabled)
+            config_row = config_map.get(record.plugin_id)
+            is_enabled = True
+            if record.source == PluginSource.EXTERNAL:
+                is_enabled = config_row.enabled if config_row else True
+
+            # Skip disabled external plugins
+            if not is_enabled:
+                continue
+
+            results.append(
+                {
+                    "id": record.plugin_id,
+                    "type": record.plugin_type,
+                    "display_name": record.manifest.display_name,
+                    "description": record.manifest.description,
+                    "source": record.source.value,
+                    "enabled": is_enabled,
+                }
+            )
+
+        return results
+
     async def list_plugins(
         self,
         *,
@@ -559,6 +603,18 @@ class PluginService:
 
     async def get_config_schema(self, plugin_id: str) -> dict[str, Any] | None:
         record = self._get_external_record(plugin_id)
+        if record is None:
+            return None
+        return cast(dict[str, Any] | None, get_config_schema(record.plugin_class))
+
+    async def get_config_schema_for_any_plugin(self, plugin_id: str) -> dict[str, Any] | None:
+        """Get config schema for any plugin (builtin or external).
+
+        Unlike get_config_schema which only works for external plugins,
+        this method works for all registered plugins.
+        """
+        load_plugins(plugin_types=_DEFAULT_PLUGIN_TYPES)
+        record = plugin_registry.find_by_id(plugin_id)
         if record is None:
             return None
         return cast(dict[str, Any] | None, get_config_schema(record.plugin_class))

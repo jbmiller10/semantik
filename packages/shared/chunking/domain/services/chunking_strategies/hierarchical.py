@@ -6,9 +6,14 @@ This module provides a wrapper around the unified hierarchical chunking strategy
 to make it compatible with domain tests that expect specific methods to patch.
 """
 
+from typing import Any
+
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
+from shared.chunking.unified.hierarchical_strategy import (
+    HierarchicalChunkingStrategy as UnifiedHierarchicalStrategy,
+)
 
 
 class HierarchicalChunkingStrategy(DomainStrategyAdapter):
@@ -76,3 +81,8 @@ class HierarchicalChunkingStrategy(DomainStrategyAdapter):
                 chunk.metadata.custom_attributes["summary"] = self._generate_summary(chunk.content)
 
         return chunks
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration."""
+        return UnifiedHierarchicalStrategy.get_config_schema()

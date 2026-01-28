@@ -496,7 +496,7 @@ class TestEntryPointExceptionHandling:
         assert "metadata corruption" in caplog.text
 
     def test_entry_point_load_exception_logs_and_audits(self, monkeypatch, caplog):
-        """Test that exception during ep.load() logs warning and creates audit log."""
+        """Test that exception during ep.load() logs error and creates audit log."""
 
         class FailingEntryPoint:
             name = "failing_plugin"
@@ -512,10 +512,10 @@ class TestEntryPointExceptionHandling:
         monkeypatch.setattr(metadata, "entry_points", lambda: DummyEntryPoints())
 
         with patch("shared.plugins.loader.audit_log") as mock_audit:
-            with caplog.at_level(logging.WARNING):
+            with caplog.at_level(logging.ERROR):
                 load_plugins(plugin_types={"embedding"}, include_builtins=False)
 
-            # Verify warning was logged
+            # Verify error was logged
             assert "Failed to load plugin entry point" in caplog.text
             assert "failing_plugin" in caplog.text
 
@@ -524,7 +524,7 @@ class TestEntryPointExceptionHandling:
                 "failing_plugin",
                 "plugin.load.failed",
                 {"entry_point": "failing_plugin", "error": ANY},
-                level=logging.WARNING,
+                level=logging.ERROR,
             )
 
     def test_entry_point_type_error_logs_and_audits(self, monkeypatch, caplog):

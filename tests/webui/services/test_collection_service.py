@@ -128,6 +128,8 @@ class TestCreateCollection:
             sync_mode="one_time",
             sync_interval_minutes=None,
             sync_next_run_at=None,
+            pipeline_config=ANY,
+            persist_originals=False,
         )
 
         mock_operation_repo.create.assert_called_once_with(
@@ -201,6 +203,8 @@ class TestCreateCollection:
             sync_mode="one_time",
             sync_interval_minutes=None,
             sync_next_run_at=None,
+            pipeline_config=ANY,
+            persist_originals=False,
         )
 
     @pytest.mark.asyncio()
@@ -281,6 +285,8 @@ class TestCreateCollection:
             sync_mode="one_time",
             sync_interval_minutes=None,
             sync_next_run_at=None,
+            pipeline_config=ANY,
+            persist_originals=False,
         )
 
 

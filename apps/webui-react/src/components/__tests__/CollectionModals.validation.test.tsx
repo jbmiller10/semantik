@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import CreateCollectionModal from '../CreateCollectionModal'
+import QuickCreateModal from '../QuickCreateModal'
 import AddDataToCollectionModal from '../AddDataToCollectionModal'
 import RenameCollectionModal from '../RenameCollectionModal'
 import ReindexCollectionModal from '../ReindexCollectionModal'
@@ -150,7 +150,7 @@ describe('Collection Modals - API Validation Errors', () => {
     vi.clearAllMocks()
   })
 
-  describe('CreateCollectionModal - Validation Errors', () => {
+  describe('QuickCreateModal - Validation Errors', () => {
     it('should handle duplicate collection name error', async () => {
       // Mock the mutation to reject with an Error (as the component expects)
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(
@@ -158,7 +158,7 @@ describe('Collection Modals - API Validation Errors', () => {
       )
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -191,7 +191,7 @@ describe('Collection Modals - API Validation Errors', () => {
       )
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -215,7 +215,7 @@ describe('Collection Modals - API Validation Errors', () => {
       )
       
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -233,7 +233,7 @@ describe('Collection Modals - API Validation Errors', () => {
 
     it('should handle invalid chunk size validation', async () => {
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -516,7 +516,7 @@ describe('Collection Modals - API Validation Errors', () => {
   describe('Field-level Validation', () => {
     it('should show inline validation for collection name', async () => {
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
@@ -534,7 +534,7 @@ describe('Collection Modals - API Validation Errors', () => {
 
     it('should validate numeric fields stay within bounds', async () => {
       renderWithErrorHandlers(
-        <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
+        <QuickCreateModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 

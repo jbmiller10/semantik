@@ -1,5 +1,25 @@
 """Built-in document parsers.
 
+.. deprecated::
+    This module is deprecated. Use `shared.plugins` for parser access instead.
+
+    The parser plugin system in `shared.plugins.types.parser` provides:
+    - TextParserPlugin: For plain text, markdown, and code files
+    - UnstructuredParserPlugin: For PDF, DOCX, PPTX, HTML, and email files
+
+    Example migration:
+        # Old way (deprecated)
+        from shared.text_processing.parsers import get_parser
+        parser = get_parser("text", {})
+        result = parser.parse_bytes(content)
+
+        # New way (preferred)
+        from shared.plugins import load_plugins, plugin_registry
+        load_plugins(plugin_types=["parser"])
+        record = plugin_registry.get("parser", "text")
+        parser = record.plugin_class({})
+        result = parser.parse_bytes(content)
+
 Parsers extract text from documents. Most callers should use `parse_content()`
 to parse `bytes | str` inputs with built-in selection and fallback behavior.
 
@@ -15,18 +35,40 @@ Example:
     print(result.text)
 """
 
+import warnings
 from typing import Any
 
-from .base import BaseParser, ParsedElement, ParseResult
-from .exceptions import ExtractionFailedError, ParserConfigError, ParserError, UnsupportedFormatError
-from .normalization import (
+
+def _emit_deprecation_warning() -> None:
+    """Emit deprecation warning for this module.
+
+    Called when accessing legacy functions/classes that are being migrated
+    to the plugin system.
+    """
+    warnings.warn(
+        "shared.text_processing.parsers is deprecated. "
+        "Use shared.plugins for parser access. "
+        "See shared.plugins.types.parser for ParserPlugin base class.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
+from .base import BaseParser, ParsedElement, ParseResult  # noqa: E402
+from .exceptions import (  # noqa: E402
+    ExtractionFailedError,
+    ParserConfigError,
+    ParserError,
+    UnsupportedFormatError,
+)
+from .normalization import (  # noqa: E402
     PROTECTED_METADATA_KEYS,
     build_parser_metadata,
     normalize_extension,
     normalize_file_type,
     normalize_mime_type,
 )
-from .registry import (
+from .registry import (  # noqa: E402
     ensure_registered,
     get_default_parser_map,
     get_parser,
@@ -36,8 +78,8 @@ from .registry import (
     parser_candidates_for_extension,
     register_parser,
 )
-from .text import TextParser
-from .unstructured import UnstructuredParser
+from .text import TextParser  # noqa: E402
+from .unstructured import UnstructuredParser  # noqa: E402
 
 PARSER_REGISTRY = get_parser_registry()
 DEFAULT_PARSER_MAP = get_default_parser_map()

@@ -10,12 +10,13 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,24 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
     or token count, with optional overlap to maintain context between chunks.
     Can optionally use LlamaIndex for enhanced tokenization.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Creates fixed-size chunks based on character/token count. Simple and predictable splitting.",
+        best_for=[
+            "log files with uniform structure",
+            "raw text requiring consistent chunk sizes",
+            "content without natural boundaries",
+            "baseline chunking when structure doesn't matter",
+        ],
+        not_recommended_for=[
+            "documents with clear structure (use markdown or hierarchical)",
+            "narrative content (use semantic for better coherence)",
+            "code files (may split mid-function or mid-statement)",
+        ],
+        output_type="chunks",
+        tradeoffs="Fast and predictable but ignores content structure. "
+        "May split mid-sentence or mid-word without overlap.",
+    )
 
     def __init__(self, use_llama_index: bool = False) -> None:
         """

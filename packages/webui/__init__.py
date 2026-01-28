@@ -23,6 +23,7 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
         def _patched_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             _orig_init(self, *args, **kwargs)
             # Replace selected coroutine methods with AsyncMocks so tests can set return_value/side_effect
+            # Note: 'delete' is NOT included because it breaks FakeRedis lock/key operations
             for _name in (
                 "ping",
                 "xadd",
@@ -32,7 +33,6 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
                 "xgroup_create",
                 "xack",
                 "xgroup_delconsumer",
-                "delete",
                 "xinfo_groups",
                 "xgroup_destroy",
                 "xinfo_stream",

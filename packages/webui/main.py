@@ -48,6 +48,7 @@ from shared.embedding import configure_global_embedding_service
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
+    agent as v2_agent,
     api_keys as v2_api_keys,
     benchmark_datasets as v2_benchmark_datasets,
     benchmarks as v2_benchmarks,
@@ -70,6 +71,7 @@ from .api.v2 import (
     sources as v2_sources,
     system as v2_system,
     system_settings as v2_system_settings,
+    templates as v2_templates,
     user_preferences as v2_user_preferences,
 )
 from .api.v2.directory_scan import directory_scan_websocket
@@ -343,6 +345,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
+    app.include_router(v2_agent.router)
     app.include_router(v2_api_keys.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
@@ -362,6 +365,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
     app.include_router(v2_system_settings.router)
+    app.include_router(v2_templates.router)
     app.include_router(v2_llm_settings.router)
     app.include_router(v2_user_preferences.router)
     app.include_router(v2_benchmark_datasets.router)

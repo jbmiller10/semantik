@@ -1543,4 +1543,300 @@ export const handlers = [
     delete benchmarkMockState.benchmarkRunsByBenchmarkId[benchmarkId]
     return new HttpResponse(null, { status: 204 })
   }),
+
+  // =============================================================================
+  // Templates (v2)
+  // =============================================================================
+
+  http.get('*/api/v2/templates', () => {
+    return HttpResponse.json({
+      templates: [
+        {
+          id: 'academic-papers',
+          name: 'Academic Papers',
+          description: 'Optimized for academic papers and research documents',
+          suggested_for: ['PDF papers', 'research documents', 'academic publications'],
+        },
+        {
+          id: 'codebase',
+          name: 'Codebase',
+          description: 'Optimized for source code repositories',
+          suggested_for: ['source code', 'git repositories', 'documentation'],
+        },
+        {
+          id: 'documentation',
+          name: 'Documentation',
+          description: 'Optimized for technical documentation',
+          suggested_for: ['markdown files', 'technical docs', 'wikis'],
+        },
+        {
+          id: 'email-archive',
+          name: 'Email Archive',
+          description: 'Optimized for email archives with attachments',
+          suggested_for: ['emails', 'IMAP archives', 'mbox files'],
+        },
+        {
+          id: 'mixed-documents',
+          name: 'Mixed Documents',
+          description: 'Balanced configuration for varied file types',
+          suggested_for: ['general documents', 'mixed file types'],
+        },
+      ],
+      total: 5,
+    })
+  }),
+
+  http.get('*/api/v2/templates/:templateId', ({ params }) => {
+    const templateId = params.templateId as string
+
+    const templates: Record<string, object> = {
+      'academic-papers': {
+        id: 'academic-papers',
+        name: 'Academic Papers',
+        description: 'Optimized for academic papers and research documents',
+        suggested_for: ['PDF papers', 'research documents', 'academic publications'],
+        pipeline: {
+          id: 'academic-papers-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'unstructured', config: { strategy: 'hi_res' } },
+            { id: 'chunker', type: 'chunker', plugin_id: 'semantic', config: { max_tokens: 512 } },
+            { id: 'extractor', type: 'extractor', plugin_id: 'keyword_extractor', config: {} },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'extractor', when: null },
+            { from_node: 'extractor', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [
+          { path: 'nodes.chunker.config.max_tokens', description: 'Maximum tokens per chunk', default: 512, range: [256, 1024], options: null },
+        ],
+      },
+      'codebase': {
+        id: 'codebase',
+        name: 'Codebase',
+        description: 'Optimized for source code repositories',
+        suggested_for: ['source code', 'git repositories', 'documentation'],
+        pipeline: {
+          id: 'codebase-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 1000, chunk_overlap: 200 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [
+          { path: 'nodes.chunker.config.chunk_size', description: 'Chunk size in characters', default: 1000, range: [500, 2000], options: null },
+          { path: 'nodes.chunker.config.chunk_overlap', description: 'Overlap between chunks', default: 200, range: [50, 500], options: null },
+        ],
+      },
+      'documentation': {
+        id: 'documentation',
+        name: 'Documentation',
+        description: 'Optimized for technical documentation',
+        suggested_for: ['markdown files', 'technical docs', 'wikis'],
+        pipeline: {
+          id: 'documentation-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'markdown', config: {} },
+            { id: 'extractor', type: 'extractor', plugin_id: 'keyword_extractor', config: {} },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'extractor', when: null },
+            { from_node: 'extractor', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+      'email-archive': {
+        id: 'email-archive',
+        name: 'Email Archive',
+        description: 'Optimized for email archives with attachments',
+        suggested_for: ['emails', 'IMAP archives', 'mbox files'],
+        pipeline: {
+          id: 'email-archive-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 800, chunk_overlap: 100 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+      'mixed-documents': {
+        id: 'mixed-documents',
+        name: 'Mixed Documents',
+        description: 'Balanced configuration for varied file types',
+        suggested_for: ['general documents', 'mixed file types'],
+        pipeline: {
+          id: 'mixed-documents-pipeline',
+          version: '1.0',
+          nodes: [
+            { id: 'parser', type: 'parser', plugin_id: 'text', config: {} },
+            { id: 'chunker', type: 'chunker', plugin_id: 'recursive', config: { chunk_size: 1000, chunk_overlap: 200 } },
+            { id: 'embedder', type: 'embedder', plugin_id: 'dense_local', config: {} },
+          ],
+          edges: [
+            { from_node: '_source', to_node: 'parser', when: null },
+            { from_node: 'parser', to_node: 'chunker', when: null },
+            { from_node: 'chunker', to_node: 'embedder', when: null },
+          ],
+        },
+        tunable: [],
+      },
+    }
+
+    const template = templates[templateId]
+    if (!template) {
+      return HttpResponse.json({ detail: `Template '${templateId}' not found` }, { status: 404 })
+    }
+
+    return HttpResponse.json(template)
+  }),
+
+  // =============================================================================
+  // Agent Conversation Endpoints
+  // =============================================================================
+
+  // Create a new agent conversation
+  http.post('*/api/v2/agent/conversations', async ({ request }) => {
+    const body = await request.json() as { source_id: number }
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: 'conv-test-123',
+      status: 'active',
+      source_id: body.source_id,
+      collection_id: null,
+      current_pipeline: null,
+      source_analysis: {
+        total_files: 247,
+        total_size_bytes: 47185920,
+        file_types: { '.pdf': 150, '.txt': 97 },
+        sample_files: ['/docs/file1.pdf', '/docs/file2.txt'],
+        warnings: [],
+      },
+      uncertainties: [],
+      messages: [],
+      summary: null,
+      created_at: now,
+      updated_at: now,
+    })
+  }),
+
+  // Get agent conversation by ID
+  http.get('*/api/v2/agent/conversations/:id', ({ params }) => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: params.id,
+      status: 'active',
+      source_id: 42,
+      collection_id: null,
+      current_pipeline: {
+        embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
+        quantization: 'float16',
+        chunking_strategy: 'semantic',
+        chunking_config: { max_tokens: 512, overlap_tokens: 50 },
+      },
+      source_analysis: {
+        total_files: 247,
+        total_size_bytes: 47185920,
+        file_types: { '.pdf': 150, '.txt': 97 },
+        sample_files: ['/docs/file1.pdf', '/docs/file2.txt'],
+        warnings: [],
+      },
+      uncertainties: [
+        {
+          id: 'unc-1',
+          severity: 'notable',
+          message: 'Some PDF files appear to be scanned images',
+          resolved: false,
+          context: { affected_files: 5 },
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: 'Help me set up a pipeline for my documents',
+          timestamp: now,
+        },
+        {
+          role: 'assistant',
+          content: 'I found 247 files in your source. Let me analyze them...',
+          timestamp: now,
+        },
+      ],
+      summary: null,
+      created_at: now,
+      updated_at: now,
+    })
+  }),
+
+  // List agent conversations
+  http.get('*/api/v2/agent/conversations', () => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      conversations: [
+        {
+          id: 'conv-test-123',
+          status: 'active',
+          source_id: 42,
+          created_at: now,
+        },
+        {
+          id: 'conv-test-456',
+          status: 'applied',
+          source_id: 43,
+          created_at: now,
+        },
+      ],
+      total: 2,
+    })
+  }),
+
+  // Apply pipeline
+  http.post('*/api/v2/agent/conversations/:id/apply', async ({ request }) => {
+    const body = await request.json() as { collection_name: string; force?: boolean }
+
+    return HttpResponse.json({
+      collection_id: 'coll-new-123',
+      collection_name: body.collection_name,
+      operation_id: 'op-index-123',
+      status: 'indexing',
+    })
+  }),
+
+  // Abandon conversation
+  http.patch('*/api/v2/agent/conversations/:id/status', ({ params }) => {
+    const now = new Date().toISOString()
+
+    return HttpResponse.json({
+      id: params.id,
+      status: 'abandoned',
+      source_id: 42,
+      created_at: now,
+    })
+  }),
 ]

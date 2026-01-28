@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import { useCollections } from '../hooks/useCollections';
+import { useInProgressConversations } from '../hooks/useInProgressConversations';
 import { useAnimationEnabled } from '../contexts/AnimationContext';
 import { withAnimation } from '../utils/animationClasses';
 import CollectionCard from './CollectionCard';
-import CreateCollectionModal from './CreateCollectionModal';
+import { CollectionWizard } from './wizard';
 
 function CollectionsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [resumeConversationId, setResumeConversationId] = useState<string | undefined>(undefined);
   const animationEnabled = useAnimationEnabled();
 
   // Use React Query hook to fetch collections
   const { data: collections = [], isLoading, error, refetch } = useCollections();
+
+  // Fetch in-progress conversations for resume banner
+  const { conversations: inProgressConversations } = useInProgressConversations();
 
   // Filter collections
   const filteredCollections = collections.filter(collection => {
@@ -34,6 +39,7 @@ function CollectionsDashboard() {
 
   const handleCreateSuccess = () => {
     setShowCreateModal(false);
+    setResumeConversationId(undefined);
     // Toast is shown by the modal itself
     // React Query will automatically refetch due to query invalidation
   };
@@ -80,7 +86,7 @@ function CollectionsDashboard() {
             <svg className="mr-2 -ml-1 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Create Collection
+            New Collection
           </button>
         </div>
 
@@ -138,6 +144,26 @@ function CollectionsDashboard() {
         ) : null}
       </div>
 
+      {/* In-Progress Conversations Banner */}
+      {inProgressConversations.length > 0 && (
+        <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-blue-400">
+              You have {inProgressConversations.length} in-progress collection setup{inProgressConversations.length > 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={() => {
+                setResumeConversationId(inProgressConversations[0].id);
+                setShowCreateModal(true);
+              }}
+              className="text-sm text-blue-400 hover:text-blue-300 underline"
+            >
+              Continue setup →
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Empty State */}
       {collections.length === 0 ? (
         <div className="text-center py-16 card rounded-xl">
@@ -173,11 +199,15 @@ function CollectionsDashboard() {
         </div>
       )}
 
-      {/* Create Collection Modal */}
+      {/* Create Collection Wizard */}
       {showCreateModal && (
-        <CreateCollectionModal
-          onClose={() => setShowCreateModal(false)}
+        <CollectionWizard
+          onClose={() => {
+            setShowCreateModal(false);
+            setResumeConversationId(undefined);
+          }}
           onSuccess={handleCreateSuccess}
+          resumeConversationId={resumeConversationId}
         />
       )}
     </div>

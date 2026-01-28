@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.connectors.local import MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, LocalFileConnector
+from shared.connectors.local import LocalFileConnector
 
 
 class TestLocalFileConnectorConfig:
@@ -58,53 +58,48 @@ class TestLocalFileConnectorAuthenticate:
             await connector.authenticate()
 
 
-class TestLocalFileConnectorLoadDocuments:
-    """Tests for load_documents method."""
+class TestLocalFileConnectorEnumerate:
+    """Tests for enumerate method."""
 
     @pytest.mark.asyncio()
-    async def test_load_documents_txt_file(self, tmp_path: Path) -> None:
-        """Test loading a simple text file."""
+    async def test_enumerate_txt_file(self, tmp_path: Path) -> None:
+        """Test enumerating a simple text file."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("Hello, world!")
 
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert len(docs) == 1
-        assert "Hello" in docs[0].content
-        assert docs[0].source_type == "directory"
-        assert docs[0].unique_id == f"file://{txt_file}"
-        assert len(docs[0].content_hash) == 64
-        assert docs[0].file_path == str(txt_file)
+        assert len(refs) == 1
+        assert refs[0].uri == f"file://{txt_file}"
+        assert refs[0].source_type == "directory"
+        assert refs[0].content_type == "document"
+        assert refs[0].filename == "test.txt"
+        assert refs[0].extension == ".txt"
+        assert refs[0].mime_type == "text/plain"
+        assert refs[0].size_bytes == len("Hello, world!")
+        assert refs[0].change_hint is not None
+        assert refs[0].change_hint.startswith("mtime:")
+        assert ",size:" in refs[0].change_hint
+        assert refs[0].source_metadata["local_path"] == str(txt_file)
+        assert refs[0].source_metadata["relative_path"] == "test.txt"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_md_file(self, tmp_path: Path) -> None:
-        """Test loading a markdown file."""
+    async def test_enumerate_md_file(self, tmp_path: Path) -> None:
+        """Test enumerating a markdown file."""
         md_file = tmp_path / "readme.md"
         md_file.write_text("# Heading\n\nSome content.")
 
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert len(docs) == 1
-        assert "Heading" in docs[0].content
-        assert docs[0].metadata.get("mime_type") == "text/markdown"
-
-    @pytest.mark.asyncio()
-    async def test_load_documents_skips_unsupported(self, tmp_path: Path) -> None:
-        """Test that unsupported extensions are skipped."""
-        (tmp_path / "test.xyz").write_text("content")
-        (tmp_path / "test.txt").write_text("valid")
-
-        connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
-
-        assert len(docs) == 1
-        assert docs[0].file_path is not None
-        assert docs[0].file_path.endswith(".txt")
+        assert len(refs) == 1
+        assert refs[0].filename == "readme.md"
+        assert refs[0].extension == ".md"
+        assert refs[0].mime_type == "text/markdown"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_recursive(self, tmp_path: Path) -> None:
+    async def test_enumerate_recursive(self, tmp_path: Path) -> None:
         """Test recursive directory traversal."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
@@ -112,15 +107,15 @@ class TestLocalFileConnectorLoadDocuments:
         (subdir / "nested.txt").write_text("nested content")
 
         connector = LocalFileConnector({"path": str(tmp_path), "recursive": True})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert len(docs) == 2
-        file_paths = [doc.file_path for doc in docs]
-        assert any("root.txt" in fp for fp in file_paths if fp)
-        assert any("nested.txt" in fp for fp in file_paths if fp)
+        assert len(refs) == 2
+        filenames = [ref.filename for ref in refs]
+        assert "root.txt" in filenames
+        assert "nested.txt" in filenames
 
     @pytest.mark.asyncio()
-    async def test_load_documents_non_recursive(self, tmp_path: Path) -> None:
+    async def test_enumerate_non_recursive(self, tmp_path: Path) -> None:
         """Test non-recursive scanning."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
@@ -128,80 +123,141 @@ class TestLocalFileConnectorLoadDocuments:
         (subdir / "nested.txt").write_text("nested content")
 
         connector = LocalFileConnector({"path": str(tmp_path), "recursive": False})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert len(docs) == 1
-        assert "root" in docs[0].content
+        assert len(refs) == 1
+        assert refs[0].filename == "root.txt"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_empty_directory(self, tmp_path: Path) -> None:
-        """Test loading from empty directory."""
+    async def test_enumerate_empty_directory(self, tmp_path: Path) -> None:
+        """Test enumerating from empty directory."""
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
-        assert len(docs) == 0
+        refs = [ref async for ref in connector.enumerate()]
+        assert len(refs) == 0
 
     @pytest.mark.asyncio()
-    async def test_load_documents_multiple_files(self, tmp_path: Path) -> None:
-        """Test loading multiple files."""
+    async def test_enumerate_multiple_files(self, tmp_path: Path) -> None:
+        """Test enumerating multiple files."""
         (tmp_path / "file1.txt").write_text("Content 1")
         (tmp_path / "file2.txt").write_text("Content 2")
         (tmp_path / "file3.md").write_text("# Content 3")
 
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert len(docs) == 3
+        assert len(refs) == 3
 
     @pytest.mark.asyncio()
-    async def test_load_documents_content_hash_is_deterministic(self, tmp_path: Path) -> None:
-        """Test content hash is deterministic for same content."""
+    async def test_enumerate_change_hint_format(self, tmp_path: Path) -> None:
+        """Test change_hint contains mtime and size."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("Hello, world!")
 
-        connector1 = LocalFileConnector({"path": str(tmp_path)})
-        docs1 = [doc async for doc in connector1.load_documents()]
+        connector = LocalFileConnector({"path": str(tmp_path)})
+        refs = [ref async for ref in connector.enumerate()]
 
-        connector2 = LocalFileConnector({"path": str(tmp_path)})
-        docs2 = [doc async for doc in connector2.load_documents()]
+        assert len(refs) == 1
+        # change_hint format: mtime:{timestamp},size:{bytes}
+        change_hint = refs[0].change_hint
+        assert change_hint is not None
+        assert change_hint.startswith("mtime:")
+        assert ",size:" in change_hint
 
-        assert docs1[0].content_hash == docs2[0].content_hash
+        # Parse and verify
+        parts = change_hint.split(",")
+        mtime_part = parts[0]
+        size_part = parts[1]
+        assert mtime_part.startswith("mtime:")
+        assert size_part.startswith("size:")
+        assert int(mtime_part.split(":")[1]) > 0
+        assert int(size_part.split(":")[1]) == len("Hello, world!")
 
     @pytest.mark.asyncio()
-    async def test_load_documents_different_content_different_hash(self, tmp_path: Path) -> None:
-        """Test different content produces different hashes."""
-        (tmp_path / "file1.txt").write_text("Content A")
-        (tmp_path / "file2.txt").write_text("Content B")
+    async def test_enumerate_source_metadata(self, tmp_path: Path) -> None:
+        """Test source_metadata contains local_path and relative_path."""
+        subdir = tmp_path / "docs"
+        subdir.mkdir()
+        txt_file = subdir / "test.txt"
+        txt_file.write_text("content")
 
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert docs[0].content_hash != docs[1].content_hash
+        assert len(refs) == 1
+        assert refs[0].source_metadata["local_path"] == str(txt_file)
+        assert refs[0].source_metadata["relative_path"] == "docs/test.txt"
 
     @pytest.mark.asyncio()
-    async def test_load_documents_metadata_includes_file_size(self, tmp_path: Path) -> None:
-        """Test metadata includes file size."""
-        content = "Hello, world!"
-        txt_file = tmp_path / "test.txt"
-        txt_file.write_text(content)
+    async def test_enumerate_with_include_patterns(self, tmp_path: Path) -> None:
+        """Test include_patterns filtering."""
+        (tmp_path / "notes.md").write_text("# Notes")
+        (tmp_path / "notes.txt").write_text("Notes")
+        (tmp_path / "data.json").write_text("{}")
+
+        connector = LocalFileConnector(
+            {
+                "path": str(tmp_path),
+                "include_patterns": ["*.md"],
+            }
+        )
+        refs = [ref async for ref in connector.enumerate()]
+
+        assert len(refs) == 1
+        assert refs[0].filename == "notes.md"
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_with_exclude_patterns(self, tmp_path: Path) -> None:
+        """Test exclude_patterns filtering."""
+        (tmp_path / "notes.md").write_text("# Notes")
+        (tmp_path / "secret.md").write_text("# Secret")
+        (tmp_path / "data.txt").write_text("data")
+
+        connector = LocalFileConnector(
+            {
+                "path": str(tmp_path),
+                "exclude_patterns": ["secret*"],
+            }
+        )
+        refs = [ref async for ref in connector.enumerate()]
+
+        assert len(refs) == 2
+        filenames = [ref.filename for ref in refs]
+        assert "notes.md" in filenames
+        assert "data.txt" in filenames
+        assert "secret.md" not in filenames
+
+    @pytest.mark.asyncio()
+    async def test_enumerate_infers_content_type(self, tmp_path: Path) -> None:
+        """Test content_type inference based on extension."""
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4")
+        (tmp_path / "code.py").write_text("print('hello')")
+        (tmp_path / "readme.md").write_text("# README")
 
         connector = LocalFileConnector({"path": str(tmp_path)})
-        docs = [doc async for doc in connector.load_documents()]
+        refs = [ref async for ref in connector.enumerate()]
 
-        assert "file_size" in docs[0].metadata
-        assert docs[0].metadata["file_size"] > 0
+        ref_by_name = {ref.filename: ref for ref in refs}
+        assert ref_by_name["doc.pdf"].content_type == "document"
+        assert ref_by_name["code.py"].content_type == "code"
+        assert ref_by_name["readme.md"].content_type == "document"
 
 
-class TestLocalFileConnectorConstants:
-    """Tests for module constants."""
+class TestLocalFileConnectorConfigFields:
+    """Tests for config field methods."""
 
-    def test_supported_extensions_includes_common_types(self) -> None:
-        """Test SUPPORTED_EXTENSIONS includes common document types."""
-        assert ".pdf" in SUPPORTED_EXTENSIONS
-        assert ".docx" in SUPPORTED_EXTENSIONS
-        assert ".txt" in SUPPORTED_EXTENSIONS
-        assert ".md" in SUPPORTED_EXTENSIONS
-        assert ".html" in SUPPORTED_EXTENSIONS
+    def test_get_config_fields_includes_path(self) -> None:
+        """Test get_config_fields includes path field."""
+        fields = LocalFileConnector.get_config_fields()
+        field_names = [f["name"] for f in fields]
+        assert "path" in field_names
 
-    def test_max_file_size_is_500mb(self) -> None:
-        """Test MAX_FILE_SIZE is 500 MB."""
-        assert MAX_FILE_SIZE == 500 * 1024 * 1024
+    def test_get_config_fields_includes_recursive(self) -> None:
+        """Test get_config_fields includes recursive field."""
+        fields = LocalFileConnector.get_config_fields()
+        field_names = [f["name"] for f in fields]
+        assert "recursive" in field_names
+
+    def test_get_secret_fields_is_empty(self) -> None:
+        """Test get_secret_fields returns empty list."""
+        fields = LocalFileConnector.get_secret_fields()
+        assert fields == []

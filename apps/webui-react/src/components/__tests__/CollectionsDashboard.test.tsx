@@ -9,12 +9,13 @@ vi.mock('../../hooks/useCollections', () => ({
   useCollections: vi.fn(),
 }));
 
-// Mock the CreateCollectionModal component
-vi.mock('../CreateCollectionModal', () => ({
-  default: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => (
+// Mock the CollectionWizard component
+vi.mock('../wizard', () => ({
+  CollectionWizard: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => (
     <div data-testid="create-collection-modal">
-      <button onClick={onClose}>Close Modal</button>
-      <button onClick={onSuccess}>Create Success</button>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <button onClick={onClose}>Cancel</button>
+      <button onClick={onSuccess}>Create Collection</button>
     </div>
   ),
 }));
@@ -375,8 +376,8 @@ describe('CollectionsDashboard', () => {
       expect(screen.getByText('Get started by creating your first collection to begin embedding your documents.')).toBeInTheDocument();
 
       // Should show the create button in empty state
-      const createButtons = screen.getAllByText('Create Collection');
-      expect(createButtons.length).toBeGreaterThan(1); // Header and empty state
+      expect(screen.getByRole('button', { name: /new collection/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /create collection/i })).toBeInTheDocument();
     });
 
     it('should show no results message when search returns no matches', () => {
@@ -515,7 +516,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0]; // Header button
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
       expect(screen.getByTestId('create-collection-modal')).toBeInTheDocument();
@@ -531,8 +532,7 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButtons = screen.getAllByText('Create Collection');
-      const emptyStateButton = createButtons[createButtons.length - 1]; // Last button is in empty state
+      const emptyStateButton = screen.getByRole('button', { name: /create collection/i });
       fireEvent.click(emptyStateButton);
 
       expect(screen.getByTestId('create-collection-modal')).toBeInTheDocument();
@@ -548,10 +548,11 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0];
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
-      const closeButton = screen.getByText('Close Modal');
+      // Wizard uses aria-label="Close" on the X button
+      const closeButton = screen.getByRole('button', { name: /close/i });
       fireEvent.click(closeButton);
 
       await waitFor(() => {
@@ -559,7 +560,7 @@ describe('CollectionsDashboard', () => {
       });
     });
 
-    it('should close modal when success is triggered', async () => {
+    it('should close modal when cancel is clicked', async () => {
       vi.mocked(useCollections).mockReturnValue({
         data: [],
         isLoading: false,
@@ -569,11 +570,12 @@ describe('CollectionsDashboard', () => {
 
       renderWithQueryClient(<CollectionsDashboard />);
 
-      const createButton = screen.getAllByText('Create Collection')[0];
+      const createButton = screen.getByRole('button', { name: /new collection/i });
       fireEvent.click(createButton);
 
-      const successButton = screen.getByText('Create Success');
-      fireEvent.click(successButton);
+      // Wizard uses Cancel button on step 1
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      fireEvent.click(cancelButton);
 
       await waitFor(() => {
         expect(screen.queryByTestId('create-collection-modal')).not.toBeInTheDocument();

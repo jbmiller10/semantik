@@ -32,6 +32,7 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 from typing import TYPE_CHECKING, ClassVar
@@ -212,3 +213,47 @@ def generate_fernet_key() -> str:
     from cryptography.fernet import Fernet
 
     return Fernet.generate_key().decode("utf-8")
+
+
+# Convenience functions for encrypting/decrypting secrets as base64 strings.
+# These are useful when secrets need to be stored in JSON fields (like inline_source_config).
+
+
+def encrypt_secret(plaintext: str) -> str:
+    """Encrypt a secret value and return as base64 string.
+
+    This convenience function encrypts a secret and encodes the ciphertext
+    as a base64 string, suitable for storage in JSON fields.
+
+    Args:
+        plaintext: The secret string to encrypt
+
+    Returns:
+        Base64-encoded ciphertext string
+
+    Raises:
+        EncryptionNotConfiguredError: If encryption is not configured
+        SecretEncryptionError: If encryption fails
+    """
+    ciphertext = SecretEncryption.encrypt(plaintext)
+    return base64.b64encode(ciphertext).decode("utf-8")
+
+
+def decrypt_secret(encoded_ciphertext: str) -> str:
+    """Decrypt a base64-encoded secret value.
+
+    This convenience function decodes a base64 ciphertext and decrypts it,
+    suitable for retrieving secrets stored in JSON fields.
+
+    Args:
+        encoded_ciphertext: Base64-encoded ciphertext string
+
+    Returns:
+        Decrypted plaintext string
+
+    Raises:
+        EncryptionNotConfiguredError: If encryption is not configured
+        DecryptionError: If decryption fails (wrong key, corrupted data)
+    """
+    ciphertext = base64.b64decode(encoded_ciphertext.encode("utf-8"))
+    return SecretEncryption.decrypt(ciphertext)
