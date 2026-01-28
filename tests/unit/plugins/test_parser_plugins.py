@@ -380,7 +380,7 @@ class TestLegacyEquivalence:
         assert legacy_result.text == plugin_result.text
 
         # Legacy metadata keys are present in plugin result
-        for key in legacy_result.metadata.keys():
+        for key in legacy_result.metadata:
             assert key in plugin_result.metadata
             assert legacy_result.metadata[key] == plugin_result.metadata[key]
 

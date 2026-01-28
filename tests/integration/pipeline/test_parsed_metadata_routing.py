@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from shared.plugins.builtins.text_parser import TextParserPlugin
-from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
 from shared.pipeline.types import FileReference
+from shared.plugins.builtins.text_parser import TextParserPlugin
 
 
 class TestParserMetadataEnrichment:
