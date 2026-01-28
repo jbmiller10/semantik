@@ -62,6 +62,7 @@ export function ConfigureStep({
             dag={dag}
             selection={selection}
             onSelectionChange={setSelection}
+            onDagChange={onDagChange}
           />
         </div>
 
