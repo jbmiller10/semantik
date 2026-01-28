@@ -35,22 +35,44 @@ Real-world routing needs:
 
 ## Design Decisions
 
-### 1. Built-in Sniff Step
+### 1. Two-Stage Metadata Enrichment
 
-A lightweight analysis step runs before routing decisions, enriching metadata with derived fields.
+Metadata is enriched at two points in the pipeline:
 
-**Initial sniff capabilities:**
+1. **Pre-routing sniff** (`metadata.detected.*`) - Minimal, only for parser selection
+2. **Parser-emitted metadata** (`metadata.parsed.*`) - Rich metadata discovered during parsing
 
-| Field | Cost | How |
-|-------|------|-----|
-| `detected.mime_type` | ~1ms | Magic bytes (first 4-8KB) |
-| `detected.is_scanned_pdf` | ~10-50ms | PDF structure analysis, text layer check |
-| `detected.language` | ~5-20ms | Sample content, run classifier |
-| `detected.approx_token_count` | ~10-30ms | Sample content, rough tokenization |
+This avoids duplicating work (sniff then parse same content) while enabling routing at both entry and mid-pipeline stages.
 
-**Cost justification:** Total sniff cost (~50-100ms) is ~1-5% of typical pipeline time. Embedding dominates at 1-10s per document. No lazy evaluation needed.
+#### Pre-Routing Sniff (Minimal)
 
-**Extensibility:** New sniff fields can be added in future versions. The design is additive—old DAGs continue working, new DAGs can opt into new fields.
+Only fields needed to select the right parser:
+
+| Field | Cost | How | Use Case |
+|-------|------|-----|----------|
+| `detected.is_scanned_pdf` | ~30ms | PDF structure analysis, text layer check | OCR parser vs fast parser |
+| `detected.is_code` | ~10ms | Heuristics (shebang, syntax patterns, extension) | Code parser vs prose parser |
+| `detected.is_structured_data` | ~5ms | Try parse first N bytes as JSON/CSV/XML | Structured parser vs text parser |
+
+**Total pre-routing cost:** ~45ms worst case (<2% of pipeline time)
+
+#### Parser-Emitted Metadata
+
+Everything else is discovered during parsing and written to `metadata.parsed.*`:
+
+| Field | Emitted By | Use Case |
+|-------|------------|----------|
+| `parsed.page_count` | PDF parser | Downstream chunking decisions |
+| `parsed.has_tables` | PDF/HTML parser | Table-aware chunking |
+| `parsed.has_images` | PDF/HTML parser | Multimodal pipeline routing |
+| `parsed.detected_language` | Any parser | Multilingual embedder selection |
+| `parsed.approx_token_count` | Any parser | Chunking strategy |
+| `parsed.has_code_blocks` | Markdown parser | Code-preserving chunking |
+| `parsed.text_quality` | OCR parser | Quality threshold routing |
+
+**Routing implications:** Entry routing (source → parser) uses `detected.*`. Mid-pipeline routing (parser → chunker) can use `parsed.*`.
+
+**Extensibility:** New sniff fields can be added in future versions. Parser plugins can emit any `parsed.*` fields they discover. The design is additive—old DAGs continue working, new DAGs can opt into new fields.
 
 ### 2. Metadata Architecture
 
@@ -59,17 +81,18 @@ Single `metadata` dict with namespace conventions replaces the current `source_m
 ```
 metadata:
   source:           # From connector/source plugin
-    mime_type: "application/octet-stream"
+    mime_type: "application/pdf"
     size_bytes: 1048576
     created_at: "2026-01-28T10:00:00Z"
-  detected:         # From sniff step
-    mime_type: "application/pdf"
+  detected:         # From pre-routing sniff (minimal)
     is_scanned_pdf: true
-    language: "en"
-    approx_token_count: 15000
-  parsed:           # From parser stage (future)
+    is_code: false
+    is_structured_data: false
+  parsed:           # From parser stage
     page_count: 12
     has_tables: true
+    detected_language: "en"
+    approx_token_count: 15000
   custom:           # User-defined
     department: "engineering"
     priority: "high"
@@ -84,17 +107,25 @@ metadata:
 **Predicate examples:**
 
 ```python
+# Entry routing (source → parser) - uses detected.*
 # Route scanned PDFs to OCR parser
 {"metadata.detected.is_scanned_pdf": true}
 
-# Route Chinese documents to multilingual chunker
-{"metadata.detected.language": "zh"}
+# Route code files to code parser
+{"metadata.detected.is_code": true}
+
+# Route JSON/CSV to structured parser
+{"metadata.detected.is_structured_data": true}
+
+# Mid-pipeline routing (parser → chunker) - uses parsed.*
+# Route Chinese documents to multilingual embedder
+{"metadata.parsed.detected_language": "zh"}
 
 # Route large documents to semantic chunker
-{"metadata.detected.approx_token_count": ">10000"}
+{"metadata.parsed.approx_token_count": ">10000"}
 
-# Combine conditions (AND logic)
-{"metadata.detected.mime_type": "application/pdf", "metadata.detected.is_scanned_pdf": false}
+# Route documents with tables to table-aware chunker
+{"metadata.parsed.has_tables": true}
 ```
 
 ### 3. Route Preview (Recommended Enhancement)
@@ -108,25 +139,40 @@ A "test this file" feature in the DAG editor UI:
 ```
 Sample: quarterly-report.pdf
 
-Metadata detected:
-  detected.mime_type = "application/pdf"
+Pre-routing sniff:
   detected.is_scanned_pdf = false
-  detected.language = "en"
+  detected.is_code = false
+  detected.is_structured_data = false
 
-Edge evaluation:
+Edge evaluation (entry routing):
   ├─ source → ocr_parser
   │    when: {detected.is_scanned_pdf: true}
   │    Result: NOT MATCHED (is_scanned_pdf = false)
   │
   ├─ source → pdf_parser
-  │    when: {detected.mime_type: "application/pdf"}
+  │    when: {source.mime_type: "application/pdf"}
   │    Result: MATCHED ✓
   │
   └─ source → text_parser
        when: null (catch-all)
        Result: SKIPPED (earlier match)
 
-Path: source → pdf_parser → chunker → embedder
+Parser-emitted metadata (after pdf_parser):
+  parsed.page_count = 12
+  parsed.has_tables = true
+  parsed.detected_language = "en"
+  parsed.approx_token_count = 8500
+
+Edge evaluation (mid-pipeline routing):
+  ├─ pdf_parser → table_chunker
+  │    when: {parsed.has_tables: true}
+  │    Result: MATCHED ✓
+  │
+  └─ pdf_parser → default_chunker
+       when: null (catch-all)
+       Result: SKIPPED (earlier match)
+
+Path: source → pdf_parser → table_chunker → embedder
 ```
 
 **Value:** High learnability impact, aids debugging, low implementation complexity.
@@ -162,51 +208,72 @@ This architecture is deliberate—sparse indexing (especially BM25) is stateful 
 3. **Update predicates.py** to handle new structure (backward compatible with old field name during migration)
 4. **Update existing DAGs** to use new predicate paths
 
-### Phase 2: Sniff Step Implementation
+### Phase 2: Pre-Routing Sniff Implementation
 
 1. **Create sniff module** in `packages/shared/pipeline/sniff.py`
-2. **Implement initial detectors:**
-   - MIME via magic bytes (use `python-magic` or similar)
-   - PDF scanned detection (check for text layer)
-   - Language detection (use `langdetect` or `fasttext`)
-   - Token count estimation
+2. **Implement minimal detectors:**
+   - `is_scanned_pdf`: Check PDF text layer presence
+   - `is_code`: Heuristics (shebang, syntax patterns, known extensions)
+   - `is_structured_data`: Try parse first N bytes as JSON/CSV/XML/YAML
 3. **Integrate into routing** - sniff runs before `get_entry_node()`
 4. **Handle sniff failures gracefully** - missing detected fields don't break routing
 
-### Phase 3: Route Preview UI
+### Phase 3: Parser Metadata Emission
+
+1. **Define `parsed.*` field conventions** for each parser type
+2. **Update parser plugins** to emit metadata during parsing:
+   - PDF parser: `page_count`, `has_tables`, `has_images`
+   - Text parser: `detected_language`, `approx_token_count`
+   - Markdown parser: `has_code_blocks`
+3. **Enable mid-pipeline routing** - predicates can use `parsed.*` fields
+4. **Document emitted fields** per parser plugin
+
+### Phase 4: Route Preview UI
 
 1. **Add file upload/select** in DAG editor
 2. **Create preview endpoint** that runs sniff + evaluates predicates
 3. **Display results** with matched/not-matched visualization
 4. **Show final path** through DAG
 
-## Sniff Extensibility
+## Extensibility
 
-The sniff system is designed for future extension:
+The metadata system is designed for future extension at both layers:
 
-### Adding New Sniff Fields
+### Adding Pre-Routing Sniff Fields
+
+Only add to `detected.*` if the field is needed for **parser selection**:
 
 1. Add detector function to `sniff.py`
 2. Write to `metadata.detected.{new_field}`
 3. Document field in sniff capabilities table
 4. No migration needed—existing DAGs unaffected
 
-### Potential Future Fields
+**Criteria for adding to sniff:** Does this field determine which parser to use? If yes, add to sniff. If it's discovered during parsing, it belongs in `parsed.*`.
 
-| Field | Use Case |
-|-------|----------|
-| `detected.has_tables` | Route to table-aware parser |
-| `detected.has_images` | Route to multimodal pipeline |
-| `detected.encoding` | Handle non-UTF8 documents |
-| `detected.is_code` | Route to code-specific chunker |
-| `detected.document_type` | Invoice, resume, article, etc. |
+### Potential Future Sniff Fields
 
-### Plugin-Extensible Sniff (Future)
+| Field | Use Case | Why Pre-Routing |
+|-------|----------|-----------------|
+| `detected.is_encrypted` | Route to decrypt handler | Can't parse without decryption |
+| `detected.encoding` | Route to encoding converter | Parser needs correct encoding |
+| `detected.dominant_script` | Route to script-specific parser | CJK vs Latin handling |
 
-If third-party sniff plugins are needed:
-- Plugins write to `metadata.detected.{plugin_name}.*`
-- Core sniff fields remain in `metadata.detected.*`
-- Plugin fields are opt-in per collection
+### Adding Parser-Emitted Fields
+
+Parsers can emit any `parsed.*` fields they discover:
+
+1. Update parser plugin to write fields during parsing
+2. Document fields in parser plugin documentation
+3. Fields become available for mid-pipeline routing
+
+**Example:** A new "invoice parser" might emit `parsed.is_invoice`, `parsed.vendor_name`, `parsed.total_amount`.
+
+### Plugin-Extensible Metadata (Future)
+
+If third-party plugins need custom metadata:
+- Sniff plugins write to `metadata.detected.{plugin_name}.*`
+- Parser plugins write to `metadata.parsed.{plugin_name}.*`
+- Core fields remain unprefixed within their namespace
 
 ## Migration Strategy
 
@@ -250,7 +317,11 @@ If third-party sniff plugins are needed:
 
 2. **Sniff caching:** Should sniff results be cached for re-indexing? Likely yes, stored alongside source metadata.
 
-3. **Selective sniffing:** Run all detectors always, or only those referenced in DAG predicates? Recommendation: Run all (cost is negligible), keeps behavior predictable.
+3. **Selective sniffing:** Run all detectors always, or only those referenced in DAG predicates? Recommendation: Run all (cost is ~45ms, negligible), keeps behavior predictable.
+
+4. **Parser metadata schema:** Should parsers declare which `parsed.*` fields they emit? Would enable UI to show available fields for mid-pipeline routing.
+
+5. **Mid-pipeline routing validation:** Should validation check that `parsed.*` predicates only appear on edges from nodes that emit those fields?
 
 ## Appendix: Feedback Analysis
 
