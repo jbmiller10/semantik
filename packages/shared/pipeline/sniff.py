@@ -291,6 +291,9 @@ class ContentSniffer:
 
         Returns:
             True if PDF appears to be scanned, False if has text layer
+
+        Raises:
+            ValueError: If all sampled pages fail text extraction
         """
         try:
             from pypdf import PdfReader
@@ -308,17 +311,25 @@ class ContentSniffer:
         # Sample first N pages
         pages_to_check = min(self.config.pdf_sample_pages, total_pages)
         total_chars = 0
+        successful_pages = 0
+        failed_pages: list[tuple[int, str]] = []
 
         for i in range(pages_to_check):
             try:
                 page = reader.pages[i]
                 text = page.extract_text() or ""
                 total_chars += len(text.strip())
-            except Exception:
-                # If page extraction fails, count as no text
-                pass
+                successful_pages += 1
+            except Exception as e:
+                failed_pages.append((i, str(e)))
 
-        avg_chars_per_page = total_chars / pages_to_check
+        # If all pages failed, raise an error
+        if successful_pages == 0:
+            error_details = "; ".join(f"page {p}: {e}" for p, e in failed_pages)
+            raise ValueError(f"All {pages_to_check} pages failed extraction: {error_details}")
+
+        # Calculate average only over successfully extracted pages
+        avg_chars_per_page = total_chars / successful_pages
         return avg_chars_per_page < self.PDF_MIN_CHARS_PER_PAGE
 
     def _detect_code(self, content: bytes, extension: str) -> bool:

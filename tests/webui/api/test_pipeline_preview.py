@@ -273,3 +273,27 @@ class TestRoutePreviewSchemas:
         assert response.file_info["filename"] == "test.pdf"
         assert response.path == ["_source", "pdf_parser", "chunker", "embedder"]
         assert response.total_duration_ms == 42.5
+
+
+class TestPipelinePreviewAuthentication:
+    """Tests for authentication requirements on pipeline preview endpoint."""
+
+    def test_preview_route_requires_authentication(
+        self,
+        unauthenticated_test_client: TestClient,
+        sample_dag: dict[str, Any],
+    ) -> None:
+        """Test that preview route requires authentication."""
+        from shared.config import settings
+
+        original_disable_auth = settings.DISABLE_AUTH
+        settings.DISABLE_AUTH = False
+        try:
+            response = unauthenticated_test_client.post(
+                "/api/v2/pipeline/preview-route",
+                files={"file": ("test.txt", io.BytesIO(b"test content"), "text/plain")},
+                data={"dag": json.dumps(sample_dag)},
+            )
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        finally:
+            settings.DISABLE_AUTH = original_disable_auth

@@ -86,17 +86,9 @@ class RoutePreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Any warnings encountered during preview")
 
 
-class RoutePreviewRequest(BaseModel):
-    """Request body for route preview (when not using multipart form)."""
-
-    dag: dict[str, Any] = Field(..., description="Pipeline DAG definition as JSON")
-    include_parser_metadata: bool = Field(True, description="Whether to run the parser and include parsed metadata")
-
-
 __all__ = [
     "FieldEvaluationResult",
     "EdgeEvaluationResult",
     "StageEvaluationResult",
     "RoutePreviewResponse",
-    "RoutePreviewRequest",
 ]

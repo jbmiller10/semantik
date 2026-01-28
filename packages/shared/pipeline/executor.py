@@ -360,6 +360,10 @@ class PipelineExecutor:
         except Exception as e:
             # Sniff failures are non-fatal - log and continue
             logger.warning("Sniff failed for %s: %s", file_ref.uri, e, exc_info=True)
+            # Record sniff error in metadata for visibility
+            if "errors" not in file_ref.metadata:
+                file_ref.metadata["errors"] = {}
+            file_ref.metadata["errors"]["sniff"] = str(e)
         self._record_timing("sniff", stage_start)
 
         # 3. Change detection

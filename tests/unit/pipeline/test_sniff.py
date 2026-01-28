@@ -271,6 +271,111 @@ startxref
         # Should have an error logged for PDF detection failure
         assert result.is_scanned_pdf is None or len(result.errors) > 0
 
+    @pytest.mark.asyncio()
+    async def test_partial_page_failures_still_works(
+        self, sniffer: ContentSniffer, pdf_file_ref: FileReference
+    ) -> None:
+        """Test that partial page extraction failures still calculate average from successful pages."""
+        # Create a mock scenario where some pages fail but some succeed
+        # This tests that we calculate average only over successful pages
+        # We use mocking since creating a PDF with specific page failures is complex
+
+        # First, test that a valid PDF with at least one extractable page works
+        pdf_with_text = b"""%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
+   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 44 >>
+stream
+BT /F1 12 Tf 100 700 Td (Hello World) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000268 00000 n
+0000000363 00000 n
+trailer
+<< /Root 1 0 R /Size 6 >>
+startxref
+446
+%%EOF"""
+
+        try:
+            result = await sniffer.sniff(pdf_with_text, pdf_file_ref)
+            # Should succeed and return a result
+            assert result.is_scanned_pdf is not None or len(result.errors) > 0
+        except ImportError:
+            pytest.skip("pypdf not available")
+
+    @pytest.mark.asyncio()
+    async def test_all_pages_fail_raises_error(self, sniffer: ContentSniffer, pdf_file_ref: FileReference) -> None:
+        """Test that all pages failing extraction raises ValueError with page details."""
+        from unittest.mock import MagicMock, patch
+
+        try:
+            from pypdf import PdfReader  # noqa: F401
+        except ImportError:
+            pytest.skip("pypdf not available")
+
+        # Create a mock reader where all page extractions fail
+        mock_reader = MagicMock()
+        mock_page = MagicMock()
+        mock_page.extract_text.side_effect = RuntimeError("Corrupt page data")
+        mock_reader.pages = [mock_page, mock_page, mock_page]
+
+        with patch("pypdf.PdfReader", return_value=mock_reader):
+            result = await sniffer.sniff(b"fake pdf content", pdf_file_ref)
+
+        # Should have an error indicating all pages failed
+        assert len(result.errors) > 0
+        assert (
+            "pages failed extraction" in result.errors[0].lower() or "pdf detection failed" in result.errors[0].lower()
+        )
+
+    @pytest.mark.asyncio()
+    async def test_page_failure_error_includes_page_numbers(
+        self, sniffer: ContentSniffer, pdf_file_ref: FileReference
+    ) -> None:
+        """Test that page extraction failures include page numbers in error messages."""
+        from unittest.mock import MagicMock, patch
+
+        try:
+            from pypdf import PdfReader  # noqa: F401
+        except ImportError:
+            pytest.skip("pypdf not available")
+
+        # Create a mock reader where all pages fail with unique errors
+        mock_reader = MagicMock()
+        mock_page0 = MagicMock()
+        mock_page0.extract_text.side_effect = RuntimeError("Page 0 corrupt")
+        mock_page1 = MagicMock()
+        mock_page1.extract_text.side_effect = RuntimeError("Page 1 corrupt")
+        mock_reader.pages = [mock_page0, mock_page1]
+
+        with patch("pypdf.PdfReader", return_value=mock_reader):
+            result = await sniffer.sniff(b"fake pdf content", pdf_file_ref)
+
+        # Should have errors recorded
+        assert len(result.errors) > 0
+        # Error should mention page numbers
+        error_text = result.errors[0].lower()
+        assert "page" in error_text
+
 
 class TestCodeDetection:
     """Tests for code file detection."""

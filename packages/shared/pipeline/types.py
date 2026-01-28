@@ -47,8 +47,10 @@ class FileReference:
         change_hint: Optional hint for change detection (mtime, etag, hash)
         metadata: Namespaced metadata dict with the following structure:
             - metadata["source"]: Source-specific metadata (local_path, relative_path, etc.)
-            - metadata["detected"]: Auto-detected metadata (future Phase 2)
-            - metadata["parsed"]: Parser-extracted metadata (future Phase 3)
+            - metadata["detected"]: Auto-detected content metadata from sniffing (is_code,
+              is_scanned_pdf, is_structured_data, structured_format, sniff_duration_ms)
+            - metadata["parsed"]: Parser-extracted metadata (title, author, page_count, etc.)
+            - metadata["errors"]: Processing errors by stage (sniff, load, parse)
     """
 
     uri: str
