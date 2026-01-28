@@ -53,13 +53,14 @@ export function getValidTargetTiers(sourceNodeId: string, dag: PipelineDAG): Nod
 export function useDragToConnect({
   dag,
   // Phase 3 will use these for drop handling
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  layout,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onConnect,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onDropOnZone,
+  layout: _layout,
+  onConnect: _onConnect,
+  onDropOnZone: _onDropOnZone,
 }: UseDragToConnectOptions): UseDragToConnectResult {
+  // Suppress unused variable warnings - these will be used in Phase 3
+  void _layout;
+  void _onConnect;
+  void _onDropOnZone;
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
 
   const startDrag = useCallback((nodeId: string, position: { x: number; y: number }) => {

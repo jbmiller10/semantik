@@ -71,8 +71,7 @@ export function PipelineVisualization({
 
   // Handle drag start from a node's output port
   const handleStartDrag = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (nodeId: string, screenPosition: { x: number; y: number }) => {
+    (nodeId: string, _screenPosition: { x: number; y: number }) => {
       if (readOnly || !svgRef.current) return;
       // Get the node's output port position in SVG coordinates
       const nodePosition = layout.nodes.get(nodeId);
