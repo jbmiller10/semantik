@@ -38,9 +38,7 @@ def get_pipeline_preview_service() -> PipelinePreviewService:
 async def preview_route(
     file: UploadFile = File(..., description="Sample file to test routing"),
     dag: str = Form(..., description="Pipeline DAG as JSON string"),
-    include_parser_metadata: bool = Form(
-        True, description="Whether to run parser and include metadata"
-    ),
+    include_parser_metadata: bool = Form(True, description="Whether to run parser and include metadata"),
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PipelinePreviewService = Depends(get_pipeline_preview_service),
 ) -> RoutePreviewResponse:

@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field
 class FieldEvaluationResult(BaseModel):
     """Result of evaluating a single predicate field."""
 
-    field: str = Field(..., description="Field path that was evaluated (e.g., 'mime_type', 'metadata.detected.is_code')")
+    field: str = Field(
+        ..., description="Field path that was evaluated (e.g., 'mime_type', 'metadata.detected.is_code')"
+    )
     pattern: Any = Field(..., description="Pattern that was tested")
     value: Any = Field(None, description="Actual value from the file reference")
     matched: bool = Field(..., description="Whether the value matched the pattern")
@@ -59,9 +61,7 @@ class RoutePreviewResponse(BaseModel):
     )
 
     # Sniff results
-    sniff_result: dict[str, Any] | None = Field(
-        None, description="Content detection results (detected.* fields)"
-    )
+    sniff_result: dict[str, Any] | None = Field(None, description="Content detection results (detected.* fields)")
 
     # Routing evaluation
     routing_stages: list[StageEvaluationResult] = Field(
@@ -70,7 +70,8 @@ class RoutePreviewResponse(BaseModel):
 
     # Final path
     path: list[str] = Field(
-        default_factory=list, description="Ordered list of node IDs in the selected path (e.g., ['_source', 'pdf_parser', 'recursive_chunker', 'embedder'])"
+        default_factory=list,
+        description="Ordered list of node IDs in the selected path (e.g., ['_source', 'pdf_parser', 'recursive_chunker', 'embedder'])",
     )
 
     # Parser metadata (if parser was run)
@@ -89,9 +90,7 @@ class RoutePreviewRequest(BaseModel):
     """Request body for route preview (when not using multipart form)."""
 
     dag: dict[str, Any] = Field(..., description="Pipeline DAG definition as JSON")
-    include_parser_metadata: bool = Field(
-        True, description="Whether to run the parser and include parsed metadata"
-    )
+    include_parser_metadata: bool = Field(True, description="Whether to run the parser and include parsed metadata")
 
 
 __all__ = [
