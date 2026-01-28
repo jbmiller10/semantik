@@ -448,3 +448,121 @@ textarea:focus-visible {
 .preview-edge {
   animation: dash-flow 0.5s linear infinite;
 }
+
+/* ============================================
+   Pipeline Node Animations
+   ============================================ */
+
+/* Scale-in animation for newly created nodes */
+@keyframes pipeline-scale-in {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pipeline-node-new {
+  animation: pipeline-scale-in 0.25s ease-out;
+  transform-origin: center center;
+}
+
+/* Pulse animation for valid drop target nodes */
+@keyframes pipeline-port-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.pipeline-port-pulse {
+  animation: pipeline-port-pulse 1s ease-in-out infinite;
+}
+
+/* Drop target node highlight */
+.pipeline-node-drop-target {
+  filter: drop-shadow(0 0 4px var(--text-muted));
+}
+
+/* ============================================
+   Pipeline Edge Animations
+   ============================================ */
+
+/* Draw-in animation for new edges */
+@keyframes pipeline-edge-draw {
+  from {
+    stroke-dashoffset: 200;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.pipeline-edge-new {
+  stroke-dasharray: 200;
+  animation: pipeline-edge-draw 0.4s ease-out forwards;
+}
+
+/* ============================================
+   Pipeline Drop Zone Animations
+   ============================================ */
+
+/* Fade-in animation for tier drop zones */
+@keyframes pipeline-zone-fade-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.tier-drop-zone-fade-in {
+  animation: pipeline-zone-fade-in 0.2s ease-out;
+}
+
+/* Pulse animation for hovered drop zones */
+@keyframes pipeline-zone-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.tier-drop-zone-hover rect {
+  animation: pipeline-zone-pulse 1s ease-in-out infinite;
+}
+
+/* ============================================
+   Reduced Motion Support
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-edge,
+  .pipeline-node-new,
+  .pipeline-port-pulse,
+  .pipeline-edge-new,
+  .tier-drop-zone-fade-in,
+  .tier-drop-zone-hover rect {
+    animation: none;
+  }
+
+  .pipeline-node-new {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .pipeline-edge-new {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}

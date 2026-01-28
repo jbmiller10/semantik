@@ -19,6 +19,7 @@ import {
 } from '@/utils/dagLayout';
 import { findOrphanedNodes, findOrphanedNodesAfterEdgeDeletion } from '@/utils/dagUtils';
 import { useDragToConnect } from '@/hooks/useDragToConnect';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { PipelineNodeComponent } from './PipelineNode';
 import { PipelineEdgeComponent } from './PipelineEdge';
 import { DragPreviewEdge } from './DragPreviewEdge';
@@ -115,10 +116,17 @@ export function PipelineVisualization({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Touch device detection - disable drag features on touch
+  const isTouch = useIsTouchDevice();
+
   // Popover states
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [upstreamPicker, setUpstreamPicker] = useState<UpstreamPickerState | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null);
+
+  // Track newly created nodes/edges for entrance animations
+  const [newNodeIds, setNewNodeIds] = useState<Set<string>>(new Set());
+  const [newEdgeKeys, setNewEdgeKeys] = useState<Set<string>>(new Set());
 
   // Compute layout
   const layout = useMemo(() => computeDAGLayout(dag), [dag]);
@@ -384,6 +392,13 @@ export function PipelineVisualization({
 
       onDagChange(newDag);
 
+      // Track new node/edges for entrance animation
+      setNewNodeIds((prev) => new Set([...prev, newNode.id]));
+      setNewEdgeKeys((prev) => {
+        const edgeKeys = newEdges.map((e) => `${e.from_node}-${e.to_node}`);
+        return new Set([...prev, ...edgeKeys]);
+      });
+
       // Select the new node
       if (onSelectionChange) {
         onSelectionChange({ type: 'node', nodeId: newNode.id });
@@ -391,6 +406,18 @@ export function PipelineVisualization({
     },
     [dag, onDagChange, onSelectionChange]
   );
+
+  // Clear "new" status after animation completes
+  useEffect(() => {
+    if (newNodeIds.size === 0 && newEdgeKeys.size === 0) return;
+
+    const timer = setTimeout(() => {
+      setNewNodeIds(new Set());
+      setNewEdgeKeys(new Set());
+    }, 400); // Animation duration + buffer
+
+    return () => clearTimeout(timer);
+  }, [newNodeIds, newEdgeKeys]);
 
   // Handle upstream node selection
   const handleUpstreamSelect = useCallback(
@@ -739,19 +766,21 @@ export function PipelineVisualization({
 
             if (!fromPos || !toPos) return null;
 
+            const edgeKey = `${edge.from_node}-${edge.to_node}`;
             const selected = isEdgeSelected(edge.from_node, edge.to_node);
             // Show catch-all (*) only for source edges
             const showCatchAll = edge.from_node === '_source' && edge.when === null;
 
             return (
               <PipelineEdgeComponent
-                key={`${edge.from_node}-${edge.to_node}-${index}`}
+                key={`${edgeKey}-${index}`}
                 edge={edge}
                 fromPosition={fromPos}
                 toPosition={toPos}
                 selected={selected}
                 showCatchAll={showCatchAll}
                 onClick={readOnly ? undefined : handleEdgeClick}
+                isNew={newEdgeKeys.has(edgeKey)}
               />
             );
           })}
@@ -765,8 +794,8 @@ export function PipelineVisualization({
             selected={isNodeSelected('_source')}
             isSource={true}
             onClick={readOnly ? undefined : handleNodeClick}
-            onStartDrag={readOnly ? undefined : handleStartDrag}
-            showPorts={dragState.isDragging}
+            onStartDrag={readOnly || isTouch ? undefined : handleStartDrag}
+            showPorts={!isTouch && dragState.isDragging}
           />
         )}
 
@@ -783,16 +812,18 @@ export function PipelineVisualization({
                 position={position}
                 selected={isNodeSelected(node.id)}
                 onClick={readOnly ? undefined : handleNodeClick}
-                onStartDrag={readOnly ? undefined : handleStartDrag}
-                showPorts={dragState.isDragging}
-                isValidDropTarget={isValidDropTarget(node.id)}
+                onStartDrag={readOnly || isTouch ? undefined : handleStartDrag}
+                showPorts={!isTouch && dragState.isDragging}
+                isValidDropTarget={!isTouch && isValidDropTarget(node.id)}
+                isNew={newNodeIds.has(node.id)}
               />
             );
           })}
         </g>
 
         {/* Render "+" buttons (when not dragging and not read-only) */}
-        {!readOnly && !dragState.isDragging && (
+        {/* On touch devices, always visible; on desktop, visible when not dragging */}
+        {!readOnly && (isTouch || !dragState.isDragging) && (
           <g className="tier-add-buttons">
             {addButtonPositions.map(({ tier, x, y }) => (
               <TierAddButton
@@ -800,6 +831,7 @@ export function PipelineVisualization({
                 tier={tier}
                 position={{ x, y }}
                 onClick={() => handleAddButtonClick(tier, { x, y })}
+                isTouch={isTouch}
               />
             ))}
           </g>

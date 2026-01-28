@@ -12,6 +12,8 @@ interface PipelineEdgeComponentProps {
   selected: boolean;
   showCatchAll?: boolean;
   onClick?: (fromNode: string, toNode: string) => void;
+  /** Whether this is a newly created edge (for draw-in animation) */
+  isNew?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export function PipelineEdgeComponent({
   selected,
   showCatchAll = false,
   onClick,
+  isNew = false,
 }: PipelineEdgeComponentProps) {
   // Vertical layout: edges go from bottom of source to top of target
   const from = getNodeBottomCenter(fromPosition);
@@ -107,6 +110,7 @@ export function PipelineEdgeComponent({
         stroke={selected ? 'var(--text-primary)' : 'var(--text-muted)'}
         strokeWidth={selected ? 2 : 1}
         markerEnd="url(#arrowhead)"
+        className={isNew ? 'pipeline-edge-new' : ''}
       />
 
       {/* Predicate label */}

@@ -1,6 +1,10 @@
 /**
  * Drop zone component for creating new nodes in a tier.
  * Displays a dashed rectangle that users can drop connections onto.
+ *
+ * Animations:
+ * - Fades in when dragging starts (isActive becomes true)
+ * - Pulses when cursor enters (isHovered becomes true)
  */
 
 import type { NodeType } from '@/types/pipeline';
@@ -25,7 +29,10 @@ export function TierDropZone({
   const label = `+ Add ${NODE_TYPE_LABELS[tier].toLowerCase()}`;
 
   return (
-    <g className="tier-drop-zone" data-tier={tier}>
+    <g
+      className={`tier-drop-zone tier-drop-zone-fade-in ${isHovered ? 'tier-drop-zone-hover' : ''}`}
+      data-tier={tier}
+    >
       <rect
         x={bounds.x}
         y={bounds.y}
@@ -37,7 +44,7 @@ export function TierDropZone({
         strokeDasharray={isHovered ? 'none' : '8 4'}
         strokeWidth={isHovered ? 2 : 1}
         rx={8}
-        className="transition-all duration-150"
+        className="transition-all duration-200"
       />
       <text
         x={bounds.x + bounds.width / 2}
