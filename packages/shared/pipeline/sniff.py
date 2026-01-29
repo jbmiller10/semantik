@@ -14,6 +14,15 @@ Example:
     >>> sniffer.enrich_file_ref(file_ref, result)
     >>> # Now file_ref.metadata["detected"] contains sniff results
     >>> matches_predicate(file_ref, {"metadata.detected.is_scanned_pdf": True})
+
+Caching:
+    The sniffer supports optional result caching based on content_hash.
+    This can significantly speed up reindexing operations where the same
+    content is processed multiple times.
+
+    >>> cache = SniffCache(maxsize=10000, ttl=3600)
+    >>> sniffer = ContentSniffer(config, cache=cache)
+    >>> result = await sniffer.sniff(content, file_ref, content_hash="abc123...")
 """
 
 from __future__ import annotations
@@ -24,7 +33,9 @@ import io
 import json
 import logging
 import re
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +43,101 @@ if TYPE_CHECKING:
     from shared.pipeline.types import FileReference
 
 logger = logging.getLogger(__name__)
+
+
+class SniffCache:
+    """Thread-safe LRU cache with TTL for sniff results.
+
+    Caches SniffResult objects keyed by content_hash. Items are evicted
+    when the cache reaches maxsize (LRU eviction) or when items exceed
+    their TTL.
+
+    Attributes:
+        maxsize: Maximum number of items to store (default: 10000)
+        ttl: Time-to-live in seconds for cached items (default: 3600)
+
+    Example:
+        >>> cache = SniffCache(maxsize=10000, ttl=3600)
+        >>> cache.set("content_hash_123", sniff_result)
+        >>> cached = cache.get("content_hash_123")
+    """
+
+    def __init__(self, maxsize: int = 10000, ttl: int = 3600) -> None:
+        """Initialize the cache.
+
+        Args:
+            maxsize: Maximum number of items to store
+            ttl: Time-to-live in seconds for cached items
+        """
+        self._maxsize = maxsize
+        self._ttl = ttl
+        self._cache: OrderedDict[str, tuple[SniffResult, float]] = OrderedDict()
+        self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
+
+    def get(self, content_hash: str) -> SniffResult | None:
+        """Retrieve a cached sniff result.
+
+        Args:
+            content_hash: SHA-256 hash of the content
+
+        Returns:
+            Cached SniffResult if found and not expired, None otherwise
+        """
+        with self._lock:
+            if content_hash not in self._cache:
+                self._misses += 1
+                return None
+
+            result, timestamp = self._cache[content_hash]
+
+            # Check TTL
+            if time.time() - timestamp > self._ttl:
+                del self._cache[content_hash]
+                self._misses += 1
+                return None
+
+            # Move to end (most recently used)
+            self._cache.move_to_end(content_hash)
+            self._hits += 1
+            return result
+
+    def set(self, content_hash: str, result: SniffResult) -> None:
+        """Store a sniff result in the cache.
+
+        Args:
+            content_hash: SHA-256 hash of the content
+            result: SniffResult to cache
+        """
+        with self._lock:
+            # Remove oldest items if at capacity
+            while len(self._cache) >= self._maxsize:
+                self._cache.popitem(last=False)
+
+            # Store with current timestamp
+            self._cache[content_hash] = (result, time.time())
+
+    def clear(self) -> None:
+        """Clear all cached items."""
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
+
+    @property
+    def stats(self) -> dict[str, int]:
+        """Get cache statistics.
+
+        Returns:
+            Dict with hits, misses, and size
+        """
+        with self._lock:
+            return {
+                "hits": self._hits,
+                "misses": self._misses,
+                "size": len(self._cache),
+            }
 
 
 @dataclass
@@ -109,10 +215,14 @@ class ContentSniffer:
     inform routing decisions, such as whether a PDF is scanned (needs OCR)
     or whether a file contains structured data.
 
+    Supports optional caching of results by content_hash to speed up
+    reindexing operations.
+
     Example:
         >>> config = SniffConfig(timeout_seconds=3.0)
-        >>> sniffer = ContentSniffer(config)
-        >>> result = await sniffer.sniff(pdf_bytes, file_ref)
+        >>> cache = SniffCache(maxsize=10000, ttl=3600)
+        >>> sniffer = ContentSniffer(config, cache=cache)
+        >>> result = await sniffer.sniff(pdf_bytes, file_ref, content_hash="abc...")
         >>> if result.is_scanned_pdf:
         ...     print("PDF needs OCR processing")
     """
@@ -167,26 +277,45 @@ class ContentSniffer:
     # Minimum chars per page threshold for native PDF detection
     PDF_MIN_CHARS_PER_PAGE = 50
 
-    def __init__(self, config: SniffConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: SniffConfig | None = None,
+        cache: SniffCache | None = None,
+    ) -> None:
         """Initialize the content sniffer.
 
         Args:
             config: Sniff configuration (uses defaults if not provided)
+            cache: Optional cache for sniff results
         """
         self.config = config or SniffConfig()
+        self._cache = cache
 
-    async def sniff(self, content: bytes, file_ref: FileReference) -> SniffResult:
+    async def sniff(
+        self,
+        content: bytes,
+        file_ref: FileReference,
+        content_hash: str | None = None,
+    ) -> SniffResult:
         """Sniff content to detect file characteristics.
 
         Args:
             content: Raw file content bytes
             file_ref: File reference with metadata
+            content_hash: Optional SHA-256 hash for cache lookup
 
         Returns:
             SniffResult with detected characteristics
         """
         if not self.config.enabled:
             return SniffResult()
+
+        # Check cache first
+        if content_hash and self._cache:
+            cached = self._cache.get(content_hash)
+            if cached is not None:
+                logger.debug("Sniff cache hit for %s", file_ref.uri)
+                return cached
 
         start_time = time.perf_counter()
         result = SniffResult()
@@ -205,6 +334,11 @@ class ContentSniffer:
             logger.warning("Sniff failed for %s: %s", file_ref.uri, e)
 
         result.sniff_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Store in cache (only cache successful results without errors)
+        if content_hash and self._cache and not result.errors:
+            self._cache.set(content_hash, result)
+
         return result
 
     async def _do_sniff(
@@ -537,5 +671,6 @@ class ContentSniffer:
 __all__ = [
     "SniffConfig",
     "SniffResult",
+    "SniffCache",
     "ContentSniffer",
 ]

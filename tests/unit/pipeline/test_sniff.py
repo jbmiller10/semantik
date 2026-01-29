@@ -1,11 +1,12 @@
 """Unit tests for pipeline content sniffing."""
 
 import asyncio
+import time
 from unittest.mock import patch
 
 import pytest
 
-from shared.pipeline.sniff import ContentSniffer, SniffConfig, SniffResult
+from shared.pipeline.sniff import ContentSniffer, SniffCache, SniffConfig, SniffResult
 from shared.pipeline.types import FileReference
 
 
@@ -933,3 +934,206 @@ class TestPDFExtractionEdgeCases:
         # This is above the threshold of 50 chars/page, so NOT scanned
         assert result.is_scanned_pdf is False
         # Should have no critical errors (one page failing is recoverable)
+
+
+class TestSniffCache:
+    """Tests for SniffCache LRU+TTL cache."""
+
+    def test_cache_set_and_get(self) -> None:
+        """Test basic cache set and get operations."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+        result = SniffResult(is_code=True)
+
+        cache.set("hash123", result)
+        cached = cache.get("hash123")
+
+        assert cached is not None
+        assert cached.is_code is True
+
+    def test_cache_miss_returns_none(self) -> None:
+        """Test that cache miss returns None."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+
+        cached = cache.get("nonexistent")
+        assert cached is None
+
+    def test_cache_lru_eviction(self) -> None:
+        """Test LRU eviction when cache is full."""
+        cache = SniffCache(maxsize=3, ttl=3600)
+
+        # Fill the cache
+        cache.set("hash1", SniffResult(is_code=True))
+        cache.set("hash2", SniffResult(is_code=False))
+        cache.set("hash3", SniffResult(is_scanned_pdf=True))
+
+        # Access hash1 to make it recently used
+        cache.get("hash1")
+
+        # Add a new item, should evict hash2 (least recently used)
+        cache.set("hash4", SniffResult(is_structured_data=True))
+
+        # hash1 should still be present (was accessed)
+        assert cache.get("hash1") is not None
+        # hash2 should be evicted
+        assert cache.get("hash2") is None
+        # hash3 should still be present
+        assert cache.get("hash3") is not None
+        # hash4 should be present
+        assert cache.get("hash4") is not None
+
+    def test_cache_ttl_expiration(self) -> None:
+        """Test that expired items are not returned."""
+        cache = SniffCache(maxsize=100, ttl=1)  # 1 second TTL
+
+        result = SniffResult(is_code=True)
+        cache.set("hash123", result)
+
+        # Should be present immediately
+        assert cache.get("hash123") is not None
+
+        # Wait for TTL to expire
+        time.sleep(1.1)
+
+        # Should be expired
+        assert cache.get("hash123") is None
+
+    def test_cache_stats(self) -> None:
+        """Test cache statistics."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+
+        # Initial stats
+        stats = cache.stats
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+        assert stats["size"] == 0
+
+        # Add an item
+        cache.set("hash1", SniffResult(is_code=True))
+
+        # Miss
+        cache.get("nonexistent")
+
+        # Hit
+        cache.get("hash1")
+
+        stats = cache.stats
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+        assert stats["size"] == 1
+
+    def test_cache_clear(self) -> None:
+        """Test cache clear operation."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+
+        cache.set("hash1", SniffResult(is_code=True))
+        cache.set("hash2", SniffResult(is_code=False))
+        cache.get("hash1")  # Increment hit counter
+
+        cache.clear()
+
+        assert cache.get("hash1") is None
+        assert cache.get("hash2") is None
+        stats = cache.stats
+        assert stats["hits"] == 0
+        assert stats["misses"] == 2  # Two misses from the get calls above
+        assert stats["size"] == 0
+
+
+class TestContentSnifferWithCache:
+    """Tests for ContentSniffer with caching enabled."""
+
+    @pytest.fixture()
+    def sniffer_with_cache(self) -> ContentSniffer:
+        """Create a content sniffer with cache."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+        return ContentSniffer(cache=cache)
+
+    @pytest.fixture()
+    def text_file_ref(self) -> FileReference:
+        """Create a text file reference."""
+        return FileReference(
+            uri="file:///docs/readme.txt",
+            source_type="directory",
+            content_type="document",
+            filename="readme.txt",
+            extension=".txt",
+            mime_type="text/plain",
+        )
+
+    @pytest.mark.asyncio()
+    async def test_cache_hit_returns_cached_result(
+        self, sniffer_with_cache: ContentSniffer, text_file_ref: FileReference
+    ) -> None:
+        """Test that cache hit returns the cached result without re-sniffing."""
+        content = b"import os\nprint('hello')"
+        content_hash = "abc123"
+
+        # First call - should sniff and cache
+        result1 = await sniffer_with_cache.sniff(content, text_file_ref, content_hash=content_hash)
+        assert result1.is_code is True
+
+        # Second call with same hash - should return cached result
+        result2 = await sniffer_with_cache.sniff(b"different content", text_file_ref, content_hash=content_hash)
+        assert result2.is_code is True  # Same as cached result
+
+        # Verify cache was hit
+        assert sniffer_with_cache._cache is not None
+        stats = sniffer_with_cache._cache.stats
+        assert stats["hits"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_cache_miss_performs_sniff(
+        self, sniffer_with_cache: ContentSniffer, text_file_ref: FileReference
+    ) -> None:
+        """Test that cache miss performs actual sniffing."""
+        content = b"import os"
+        content_hash = "hash1"
+
+        # First call - cache miss
+        result = await sniffer_with_cache.sniff(content, text_file_ref, content_hash=content_hash)
+        assert result.is_code is True
+
+        # Verify cache was populated
+        assert sniffer_with_cache._cache is not None
+        stats = sniffer_with_cache._cache.stats
+        assert stats["misses"] == 1
+        assert stats["size"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_no_hash_skips_cache(self, sniffer_with_cache: ContentSniffer, text_file_ref: FileReference) -> None:
+        """Test that sniffing without content_hash skips cache entirely."""
+        content = b"import os"
+
+        # Call without content_hash
+        result = await sniffer_with_cache.sniff(content, text_file_ref, content_hash=None)
+        assert result.is_code is True
+
+        # Cache should not have been used
+        assert sniffer_with_cache._cache is not None
+        stats = sniffer_with_cache._cache.stats
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+        assert stats["size"] == 0
+
+    @pytest.mark.asyncio()
+    async def test_error_results_not_cached(self, text_file_ref: FileReference) -> None:
+        """Test that results with errors are not cached."""
+        cache = SniffCache(maxsize=100, ttl=3600)
+        # Create sniffer with very short timeout to force timeout error
+        config = SniffConfig(timeout_seconds=0.001)
+        sniffer = ContentSniffer(config, cache=cache)
+
+        # Mock _do_sniff to take too long
+        async def slow_sniff(*_args, **_kwargs):
+            await asyncio.sleep(1)
+            return SniffResult(is_code=True)
+
+        with patch.object(sniffer, "_do_sniff", slow_sniff):
+            result = await sniffer.sniff(b"content", text_file_ref, content_hash="hash123")
+
+        # Should have timeout error
+        assert len(result.errors) > 0
+        assert "timed out" in result.errors[0].lower()
+
+        # Should NOT be cached (has errors)
+        assert cache.stats["size"] == 0

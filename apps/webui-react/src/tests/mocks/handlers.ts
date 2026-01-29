@@ -1844,6 +1844,30 @@ export const handlers = [
   // Pipeline Preview (v2)
   // =============================================================================
 
+  http.post('*/api/v2/pipeline/available-predicate-fields', async () => {
+    // Return mock predicate fields based on source/detected/parsed categories
+    return HttpResponse.json({
+      fields: [
+        // Source metadata (from connector)
+        { value: 'metadata.source.mime_type', label: 'MIME Type', category: 'source' },
+        { value: 'metadata.source.extension', label: 'Extension', category: 'source' },
+        { value: 'metadata.source.source_type', label: 'Source Type', category: 'source' },
+        { value: 'metadata.source.content_type', label: 'Content Type', category: 'source' },
+        // Detected metadata (from pre-routing sniff)
+        { value: 'metadata.detected.is_scanned_pdf', label: 'Is Scanned PDF', category: 'detected' },
+        { value: 'metadata.detected.is_code', label: 'Is Code', category: 'detected' },
+        { value: 'metadata.detected.is_structured_data', label: 'Is Structured Data', category: 'detected' },
+        // Parsed metadata (for mid-pipeline routing)
+        { value: 'metadata.parsed.detected_language', label: 'Detected Language', category: 'parsed' },
+        { value: 'metadata.parsed.approx_token_count', label: 'Token Count', category: 'parsed' },
+        { value: 'metadata.parsed.has_tables', label: 'Has Tables', category: 'parsed' },
+        { value: 'metadata.parsed.has_images', label: 'Has Images', category: 'parsed' },
+        { value: 'metadata.parsed.has_code_blocks', label: 'Has Code Blocks', category: 'parsed' },
+        { value: 'metadata.parsed.page_count', label: 'Page Count', category: 'parsed' },
+      ],
+    })
+  }),
+
   http.post('*/api/v2/pipeline/preview-route', async ({ request }) => {
     const formData = await request.formData()
     const file = formData.get('file') as File | null

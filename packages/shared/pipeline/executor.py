@@ -31,7 +31,7 @@ from shared.pipeline.executor_types import (
 from shared.pipeline.failure_tracker import ConsecutiveFailureTracker
 from shared.pipeline.loader import LoadError, PipelineLoader
 from shared.pipeline.router import PipelineRouter
-from shared.pipeline.sniff import ContentSniffer, SniffConfig
+from shared.pipeline.sniff import ContentSniffer, SniffCache, SniffConfig
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineNode
 from shared.text_processing.parsers.registry import get_parser
 
@@ -146,7 +146,9 @@ class PipelineExecutor:
         # Initialize components
         self._router = PipelineRouter(dag)
         self._loader = PipelineLoader(connector)
-        self._sniffer = ContentSniffer(sniff_config)
+        # Shared cache for sniff results (survives across files in same execution)
+        self._sniff_cache = SniffCache(maxsize=10000, ttl=3600)
+        self._sniffer = ContentSniffer(sniff_config, cache=self._sniff_cache)
         self._failure_tracker = ConsecutiveFailureTracker(threshold=consecutive_failure_threshold)
 
         # Repositories
@@ -353,9 +355,14 @@ class PipelineExecutor:
         self._record_timing("loader", stage_start)
 
         # 2. Pre-routing sniff (enriches file_ref.metadata["detected"])
+        # Pass content_hash for cache lookup to speed up reindexing
         stage_start = time.perf_counter()
         try:
-            sniff_result = await self._sniffer.sniff(load_result.content, file_ref)
+            sniff_result = await self._sniffer.sniff(
+                load_result.content,
+                file_ref,
+                content_hash=load_result.content_hash,
+            )
             self._sniffer.enrich_file_ref(file_ref, sniff_result)
         except Exception as e:
             # Sniff failures are non-fatal - log and continue

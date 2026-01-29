@@ -639,6 +639,32 @@ export function PipelineVisualization({
     return false;
   };
 
+  // Compute edge priority for edges from the same source node
+  // Priority is based on array order (1-indexed)
+  const edgePriorityData = useMemo(() => {
+    const priorityMap = new Map<string, number>();
+    const totalFromSourceMap = new Map<string, number>();
+
+    // Count edges per source node
+    const sourceEdgeCounts = new Map<string, number>();
+    for (const edge of dag.edges) {
+      const count = sourceEdgeCounts.get(edge.from_node) ?? 0;
+      sourceEdgeCounts.set(edge.from_node, count + 1);
+    }
+
+    // Assign priorities (1-indexed, based on array order)
+    const currentPriorityBySource = new Map<string, number>();
+    for (const edge of dag.edges) {
+      const edgeKey = `${edge.from_node}-${edge.to_node}`;
+      const currentPriority = (currentPriorityBySource.get(edge.from_node) ?? 0) + 1;
+      currentPriorityBySource.set(edge.from_node, currentPriority);
+      priorityMap.set(edgeKey, currentPriority);
+      totalFromSourceMap.set(edgeKey, sourceEdgeCounts.get(edge.from_node) ?? 1);
+    }
+
+    return { priorityMap, totalFromSourceMap };
+  }, [dag.edges]);
+
   // Get valid target tiers for current drag
   const validTargetTiers = useMemo(() => {
     if (!dragState.isDragging) return [];
@@ -806,6 +832,8 @@ export function PipelineVisualization({
                 onClick={readOnly ? undefined : handleEdgeClick}
                 isNew={newEdgeKeys.has(edgeKey)}
                 isHighlighted={isEdgeInPath(edge.from_node, edge.to_node)}
+                priority={edgePriorityData.priorityMap.get(edgeKey)}
+                totalFromSource={edgePriorityData.totalFromSourceMap.get(edgeKey)}
               />
             );
           })}

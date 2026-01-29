@@ -18,6 +18,35 @@ interface EdgePredicateEditorProps {
   readOnly?: boolean;
 }
 
+/**
+ * Check if a field is a boolean field (is_* or has_*).
+ */
+function isBooleanField(field: string): boolean {
+  const fieldName = field.split('.').pop() || '';
+  return fieldName.startsWith('is_') || fieldName.startsWith('has_');
+}
+
+/**
+ * Extract negation state from a value.
+ * Returns { isNegated, cleanValue } where cleanValue has the ! prefix removed if present.
+ */
+function extractNegation(value: unknown): { isNegated: boolean; cleanValue: unknown } {
+  if (typeof value === 'string' && value.startsWith('!')) {
+    return { isNegated: true, cleanValue: value.slice(1) };
+  }
+  return { isNegated: false, cleanValue: value };
+}
+
+/**
+ * Apply negation to a value.
+ */
+function applyNegation(value: unknown, isNegated: boolean): unknown {
+  if (!isNegated) return value;
+  if (typeof value === 'string') return `!${value}`;
+  if (typeof value === 'boolean') return `!${value}`;
+  return value;
+}
+
 // Fallback predicate fields (used if API call fails)
 const FALLBACK_FIELDS: PredicateField[] = [
   // Source metadata (from connector)
@@ -96,6 +125,15 @@ export function EdgePredicateEditor({
     return { field: f, value: v };
   }, [edge.when]);
 
+  // Extract negation state from value
+  const { isNegated, cleanValue } = useMemo(
+    () => extractNegation(value),
+    [value]
+  );
+
+  // Check if current field is boolean
+  const isBoolean = useMemo(() => isBooleanField(field), [field]);
+
   // Handle catch-all toggle
   const handleCatchAllToggle = useCallback(
     (checked: boolean) => {
@@ -120,16 +158,41 @@ export function EdgePredicateEditor({
     [edge, onChange]
   );
 
-  // Handle value change
+  // Handle value change (preserves negation state)
   const handleValueChange = useCallback(
     (input: string) => {
       const parsed = parsePredicateValue(input);
+      const finalValue = applyNegation(parsed, isNegated);
       onChange({
         ...edge,
-        when: { [field]: parsed },
+        when: { [field]: finalValue },
       });
     },
-    [edge, field, onChange]
+    [edge, field, onChange, isNegated]
+  );
+
+  // Handle boolean toggle change
+  const handleBooleanChange = useCallback(
+    (boolValue: boolean) => {
+      const finalValue = applyNegation(boolValue, isNegated);
+      onChange({
+        ...edge,
+        when: { [field]: finalValue },
+      });
+    },
+    [edge, field, onChange, isNegated]
+  );
+
+  // Handle negation toggle
+  const handleNegationChange = useCallback(
+    (newIsNegated: boolean) => {
+      const finalValue = applyNegation(cleanValue, newIsNegated);
+      onChange({
+        ...edge,
+        when: { [field]: finalValue },
+      });
+    },
+    [edge, field, onChange, cleanValue]
   );
 
   // Group fields by category
@@ -269,7 +332,7 @@ export function EdgePredicateEditor({
             )}
           </div>
 
-          {/* Value input */}
+          {/* Value input with negation and boolean support */}
           <div>
             <label
               htmlFor="predicate-value"
@@ -277,25 +340,58 @@ export function EdgePredicateEditor({
             >
               Value
             </label>
-            <input
-              type="text"
-              id="predicate-value"
-              value={formatPredicateValue(value)}
-              onChange={(e) => handleValueChange(e.target.value)}
-              placeholder={currentFieldExample}
-              disabled={readOnly}
-              className="input-field w-full"
-            />
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              Use commas to match multiple values (OR logic)
-            </p>
+            <div className="flex items-center gap-2">
+              {/* Negation checkbox */}
+              <label className="flex items-center gap-1 text-sm text-[var(--text-secondary)] whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={isNegated}
+                  onChange={(e) => handleNegationChange(e.target.checked)}
+                  disabled={readOnly}
+                  className="h-4 w-4 rounded border-[var(--border)] bg-[var(--bg-tertiary)]"
+                  aria-label="NOT"
+                />
+                NOT
+              </label>
+
+              {/* Boolean toggle or text input */}
+              {isBoolean ? (
+                <select
+                  id="predicate-value"
+                  value={String(cleanValue === true || cleanValue === 'true')}
+                  onChange={(e) => handleBooleanChange(e.target.value === 'true')}
+                  disabled={readOnly}
+                  className="input-field flex-1"
+                  aria-label="Boolean value"
+                >
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  id="predicate-value"
+                  value={formatPredicateValue(cleanValue)}
+                  onChange={(e) => handleValueChange(e.target.value)}
+                  placeholder={currentFieldExample}
+                  disabled={readOnly}
+                  className="input-field flex-1"
+                />
+              )}
+            </div>
+            {!isBoolean && (
+              <p className="text-xs text-[var(--text-muted)] mt-1">
+                Use commas to match multiple values (OR logic)
+              </p>
+            )}
           </div>
 
           {/* Preview */}
           <div className="p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
             <p className="text-xs text-[var(--text-muted)] mb-1">Preview:</p>
             <code className="text-sm text-[var(--text-primary)] font-mono">
-              {field}: {JSON.stringify(value)}
+              {isNegated && <span className="text-red-400">NOT </span>}
+              {field}: {JSON.stringify(cleanValue)}
             </code>
           </div>
         </div>

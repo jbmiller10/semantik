@@ -16,6 +16,10 @@ interface PipelineEdgeComponentProps {
   isNew?: boolean;
   /** Whether this edge is in the highlighted route preview path */
   isHighlighted?: boolean;
+  /** Priority index (1-based) for edges from the same source node */
+  priority?: number;
+  /** Total number of edges from the same source node */
+  totalFromSource?: number;
 }
 
 /**
@@ -76,6 +80,8 @@ export function PipelineEdgeComponent({
   onClick,
   isNew = false,
   isHighlighted = false,
+  priority,
+  totalFromSource,
 }: PipelineEdgeComponentProps) {
   // Vertical layout: edges go from bottom of source to top of target
   const from = getNodeBottomCenter(fromPosition);
@@ -121,6 +127,31 @@ export function PipelineEdgeComponent({
         markerEnd={isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)'}
         className={`${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`}
       />
+
+      {/* Priority badge (shown when multiple edges from same source) */}
+      {priority !== undefined && totalFromSource !== undefined && totalFromSource > 1 && (
+        <g className="priority-badge">
+          <circle
+            cx={labelX - 45}
+            cy={labelY}
+            r={10}
+            fill="var(--bg-secondary)"
+            stroke="var(--border)"
+            strokeWidth={1}
+          />
+          <text
+            x={labelX - 45}
+            y={labelY + 4}
+            textAnchor="middle"
+            fill="var(--text-secondary)"
+            fontSize={10}
+            fontWeight={500}
+          >
+            {priority}
+          </text>
+          <title>Evaluated #{priority} of {totalFromSource} edges from {edge.from_node === '_source' ? 'Source' : edge.from_node}</title>
+        </g>
+      )}
 
       {/* Predicate label */}
       {labelText && (
