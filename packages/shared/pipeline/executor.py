@@ -439,6 +439,15 @@ class PipelineExecutor:
                 )
                 # Re-raise if all paths fail, otherwise continue
                 if all(ps.error is not None for ps in path_states if ps.completed):
+                    # Update document status to FAILED before re-raising
+                    if self.mode == ExecutionMode.FULL and doc_id:
+                        error_msg = str(e)[:500]
+                        await self._doc_repo.update_status(
+                            doc_id,
+                            DocumentStatus.FAILED,
+                            error_message=error_msg,
+                        )
+                        await self.session.commit()
                     raise
 
         # 8. Update document status if we created chunks
