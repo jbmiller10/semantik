@@ -6,11 +6,15 @@ dynamic predicate fields based on the source node of an edge in the DAG.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from httpx import AsyncClient
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_dag_with_text_parser() -> dict:
     """DAG with a text parser node."""
     return {
@@ -27,7 +31,7 @@ def sample_dag_with_text_parser() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_dag_with_unstructured_parser() -> dict:
     """DAG with an unstructured parser node."""
     return {
@@ -44,7 +48,7 @@ def sample_dag_with_unstructured_parser() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def sample_dag_with_non_parser_node() -> dict:
     """DAG where we test routing from a non-parser node (chunker)."""
     return {
@@ -66,7 +70,7 @@ def sample_dag_with_non_parser_node() -> dict:
 class TestAvailablePredicateFieldsFromSource:
     """Tests for edges originating from _source node."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fields_from_source_node_excludes_parsed(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_text_parser: dict
     ) -> None:
@@ -92,7 +96,7 @@ class TestAvailablePredicateFieldsFromSource:
         # Should NOT have parsed fields (parser hasn't run yet)
         assert "parsed" not in categories
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_always_includes_source_fields(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_text_parser: dict
     ) -> None:
@@ -121,7 +125,7 @@ class TestAvailablePredicateFieldsFromSource:
         }
         assert expected_source_fields.issubset(source_values)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_always_includes_detected_fields(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_text_parser: dict
     ) -> None:
@@ -153,7 +157,7 @@ class TestAvailablePredicateFieldsFromSource:
 class TestAvailablePredicateFieldsFromParser:
     """Tests for edges originating from parser nodes."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fields_from_text_parser_includes_parsed(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_text_parser: dict
     ) -> None:
@@ -188,7 +192,7 @@ class TestAvailablePredicateFieldsFromParser:
         }
         assert expected_text_parser_fields == parsed_values
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fields_from_unstructured_parser_includes_parsed(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_unstructured_parser: dict
     ) -> None:
@@ -228,7 +232,7 @@ class TestAvailablePredicateFieldsFromParser:
 class TestAvailablePredicateFieldsFromNonParser:
     """Tests for edges originating from non-parser nodes."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fields_from_chunker_excludes_parsed(
         self, api_client: AsyncClient, api_auth_headers: dict, sample_dag_with_non_parser_node: dict
     ) -> None:
@@ -257,10 +261,8 @@ class TestAvailablePredicateFieldsFromNonParser:
 class TestAvailablePredicateFieldsUnknownParser:
     """Tests for edges with unknown parser plugin IDs."""
 
-    @pytest.mark.asyncio
-    async def test_fallback_for_unknown_parser(
-        self, api_client: AsyncClient, api_auth_headers: dict
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_fallback_for_unknown_parser(self, api_client: AsyncClient, api_auth_headers: dict) -> None:
         """Verify that unknown parser returns empty parsed.* fields."""
         dag = {
             "id": "test-dag",
@@ -297,7 +299,7 @@ class TestAvailablePredicateFieldsUnknownParser:
 class TestAvailablePredicateFieldsAuthentication:
     """Tests for authentication requirements."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_requires_authentication(self, api_client: AsyncClient) -> None:
         """Verify that the endpoint requires authentication."""
         response = await api_client.post(

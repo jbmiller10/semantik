@@ -98,17 +98,13 @@ class PredicateField(BaseModel):
 
     value: str = Field(..., description="Full field path (e.g., 'metadata.parsed.has_tables')")
     label: str = Field(..., description="Human-readable label (e.g., 'Has Tables')")
-    category: Literal["source", "detected", "parsed"] = Field(
-        ..., description="Field category for UI grouping"
-    )
+    category: Literal["source", "detected", "parsed"] = Field(..., description="Field category for UI grouping")
 
 
 class AvailablePredicateFieldsResponse(BaseModel):
     """Response containing available predicate fields for an edge."""
 
-    fields: list[PredicateField] = Field(
-        default_factory=list, description="List of available predicate fields"
-    )
+    fields: list[PredicateField] = Field(default_factory=list, description="List of available predicate fields")
 
 
 __all__ = [
