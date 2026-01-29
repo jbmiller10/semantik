@@ -637,9 +637,7 @@ class TestParallelEdgeRouting:
         assert "parser_c" in result.path
 
     @pytest.mark.asyncio()
-    async def test_non_parallel_dag_unchanged(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    async def test_non_parallel_dag_unchanged(self, preview_service: PipelinePreviewService) -> None:
         """Test that DAGs without parallel edges work unchanged (backward compat)."""
         dag = {
             "id": "test-dag-simple",
