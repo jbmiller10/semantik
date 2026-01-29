@@ -289,12 +289,157 @@ edges:
 **Dependencies:**
 - `langdetect` added as optional dependency in `pyproject.toml` for language detection
 
-### Phase 4: Route Preview UI
+### Phase 4: Route Preview UI ✅ COMPLETE
 
 1. **Add file upload/select** in DAG editor
 2. **Create preview endpoint** that runs sniff + evaluates predicates
 3. **Display results** with matched/not-matched visualization
 4. **Show final path** through DAG
+
+### Phase 5: Dynamic Field Discovery (Plugin Contract)
+
+**Problem:** The edge predicate editor currently shows all possible metadata fields, but:
+- Not all parsers emit all fields (TextParser vs UnstructuredParser emit different fields)
+- Future plugins may emit custom fields
+- Showing unavailable fields creates a confusing UX
+
+**Solution:** Parsers declare which fields they emit. UI dynamically shows available fields based on context.
+
+#### Backend Changes
+
+1. **Add `EMITTED_FIELDS` to parser plugin base class:**
+
+```python
+# packages/shared/plugins/types/parser.py
+class ParserPlugin(SemanticPlugin, ABC):
+    PLUGIN_TYPE = "parser"
+
+    # Parsers declare which parsed.* fields they emit
+    EMITTED_FIELDS: ClassVar[list[str]] = []
+
+    @abstractmethod
+    async def parse_bytes(self, ...) -> ParserOutput:
+        ...
+```
+
+2. **Update existing parsers to declare their fields:**
+
+```python
+# packages/shared/plugins/builtins/text_parser.py
+class TextParserPlugin(ParserPlugin):
+    EMITTED_FIELDS = [
+        "detected_language",
+        "approx_token_count",
+        "line_count",
+        "has_code_blocks",
+    ]
+
+# packages/shared/plugins/builtins/unstructured_parser.py
+class UnstructuredParserPlugin(ParserPlugin):
+    EMITTED_FIELDS = [
+        "page_count",
+        "has_tables",
+        "has_images",
+        "element_types",
+        "approx_token_count",
+    ]
+```
+
+3. **Add endpoint to query available fields for an edge:**
+
+```
+POST /api/v2/pipeline/available-predicate-fields
+Body: { dag: PipelineDAG, from_node: string }
+
+Response: {
+  fields: [
+    { value: "metadata.source.mime_type", label: "MIME Type", category: "source" },
+    { value: "metadata.detected.is_scanned_pdf", label: "Is Scanned PDF", category: "detected" },
+    { value: "metadata.parsed.has_tables", label: "Has Tables", category: "parsed" },
+    ...
+  ]
+}
+```
+
+**Logic:**
+- Always include `source.*` fields (from connector)
+- Always include `detected.*` fields (from sniff step)
+- For edges from `_source`: No `parsed.*` fields (parser hasn't run yet)
+- For edges from parser nodes: Include `parsed.*` fields from that parser's `EMITTED_FIELDS`
+
+4. **Add field discovery to plugin registry:**
+
+```python
+# packages/shared/plugins/registry.py
+def get_parser_emitted_fields(plugin_id: str) -> list[str]:
+    """Get the parsed.* fields emitted by a parser plugin."""
+    plugin_cls = self.find_by_id(plugin_id)
+    if hasattr(plugin_cls, 'EMITTED_FIELDS'):
+        return plugin_cls.EMITTED_FIELDS
+    return []
+```
+
+#### Frontend Changes
+
+1. **Update EdgePredicateEditor to fetch available fields:**
+
+```typescript
+// Fetch fields when edge is selected
+const { data: availableFields, isLoading } = useQuery({
+  queryKey: ['predicate-fields', edge.from_node, dagHash],
+  queryFn: () => pipelineApi.getAvailablePredicateFields(dag, edge.from_node),
+});
+```
+
+2. **Show loading state while fetching**
+
+3. **Fall back to all fields if fetch fails** (graceful degradation)
+
+4. **Add "Custom field" option** for advanced users to type arbitrary paths
+
+#### Plugin Documentation
+
+Update plugin development docs to include:
+
+```markdown
+## Parser Plugins
+
+### Declaring Emitted Fields
+
+Parser plugins should declare which `parsed.*` metadata fields they emit.
+This enables the UI to show relevant routing options.
+
+class MyCustomParser(ParserPlugin):
+    PLUGIN_ID = "my-custom-parser"
+    EMITTED_FIELDS = [
+        "custom_field_1",
+        "custom_field_2",
+    ]
+
+    async def parse_bytes(self, content, file_ref, config):
+        # ... parsing logic ...
+        return ParserOutput(
+            content=text,
+            metadata={
+                "custom_field_1": value1,
+                "custom_field_2": value2,
+            }
+        )
+
+Fields in EMITTED_FIELDS should match the keys returned in metadata.
+```
+
+#### Migration
+
+- Existing parsers updated to declare `EMITTED_FIELDS`
+- No breaking changes - field declaration is additive
+- Plugins without `EMITTED_FIELDS` show all fields (backward compatible)
+
+#### Testing
+
+- Unit test: Parser plugins have `EMITTED_FIELDS` matching actual emitted keys
+- Integration test: Endpoint returns correct fields based on DAG structure
+- Frontend test: EdgePredicateEditor shows dynamic fields
 
 ## Extensibility
 
