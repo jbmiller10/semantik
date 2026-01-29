@@ -158,9 +158,7 @@ class PipelinePreviewService:
                         fname = file_ref.filename or file_ref.uri
                         error_type = type(e).__name__
 
-                        warnings.append(
-                            f"Parser '{parser_id}' failed on '{fname}': {error_type}: {e}"
-                        )
+                        warnings.append(f"Parser '{parser_id}' failed on '{fname}': {error_type}: {e}")
                         logger.warning(
                             "Parser %s failed during preview for %s: %s",
                             parser_id,

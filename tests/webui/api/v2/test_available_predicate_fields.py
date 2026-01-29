@@ -117,11 +117,12 @@ class TestAvailablePredicateFieldsFromSource:
         source_values = {f["value"] for f in source_fields}
 
         # Should include all expected source fields
+        # NOTE: Source fields are top-level FileReference attributes, not nested under metadata.source
         expected_source_fields = {
-            "metadata.source.mime_type",
-            "metadata.source.extension",
-            "metadata.source.source_type",
-            "metadata.source.content_type",
+            "mime_type",
+            "extension",
+            "source_type",
+            "content_type",
         }
         assert expected_source_fields.issubset(source_values)
 

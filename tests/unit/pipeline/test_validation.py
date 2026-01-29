@@ -248,7 +248,9 @@ class TestRule4NoPathToTerminal:
             nodes=[
                 PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="pdf"),
                 PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
-                PipelineNode(id="dead-end", type=NodeType.CHUNKER, plugin_id="orphan"),  # Chunker is NOT a valid terminal
+                PipelineNode(
+                    id="dead-end", type=NodeType.CHUNKER, plugin_id="orphan"
+                ),  # Chunker is NOT a valid terminal
                 PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
             ],
             edges=[

@@ -170,17 +170,11 @@ class SniffConfig:
             ValueError: If any parameter is invalid
         """
         if self.timeout_seconds <= 0:
-            raise ValueError(
-                f"timeout_seconds must be positive, got {self.timeout_seconds}"
-            )
+            raise ValueError(f"timeout_seconds must be positive, got {self.timeout_seconds}")
         if self.pdf_sample_pages < 1:
-            raise ValueError(
-                f"pdf_sample_pages must be at least 1, got {self.pdf_sample_pages}"
-            )
+            raise ValueError(f"pdf_sample_pages must be at least 1, got {self.pdf_sample_pages}")
         if self.structured_sample_bytes < 1:
-            raise ValueError(
-                f"structured_sample_bytes must be at least 1, got {self.structured_sample_bytes}"
-            )
+            raise ValueError(f"structured_sample_bytes must be at least 1, got {self.structured_sample_bytes}")
 
 
 @dataclass
@@ -685,9 +679,7 @@ class ContentSniffer:
                 for line in lines[:20]:  # Check first 20 lines
                     stripped = line.strip()
                     # Check for YAML patterns
-                    if stripped.startswith(("---", "- ")) or re.match(
-                        r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*", stripped
-                    ):
+                    if stripped.startswith(("---", "- ")) or re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*", stripped):
                         yaml_indicators += 1
 
                 # Require at least 2 YAML indicators
