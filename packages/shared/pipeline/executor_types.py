@@ -220,6 +220,7 @@ class ExecutionResult:
         halted: Whether execution was halted due to consecutive failures
         halt_reason: Reason for halt (if halted)
         callback_failures: Number of times progress callbacks failed
+        warnings: Non-fatal issues encountered (e.g., sniff failures, skipped files)
     """
 
     mode: ExecutionMode
@@ -236,6 +237,7 @@ class ExecutionResult:
     halted: bool = False
     halt_reason: str | None = None
     callback_failures: int = 0
+    warnings: list[str] | None = None
 
     def __post_init__(self) -> None:
         """Validate invariants after initialization."""
@@ -262,6 +264,7 @@ class ExecutionResult:
             "halted": self.halted,
             "halt_reason": self.halt_reason,
             "callback_failures": self.callback_failures,
+            "warnings": self.warnings,
         }
 
 

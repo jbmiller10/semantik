@@ -418,9 +418,10 @@ class PipelineDAG:
         3. Every node is reachable from _source
         4. Every node has a path to the embedder
         5. No cycles
-        6. At least one catch-all edge from _source
+        6. At least one catch-all edge from _source (non-parallel)
         7. Node IDs are unique
         8. Plugin IDs are registered (if known_plugins provided)
+        9. Parallel edges from same node must have unique path_names
 
         Args:
             known_plugins: Optional set of registered plugin IDs for validation

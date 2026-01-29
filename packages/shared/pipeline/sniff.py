@@ -493,7 +493,7 @@ class ContentSniffer:
         try:
             from pypdf import PdfReader
         except ImportError:
-            logger.debug("pypdf not available for scanned PDF detection")
+            logger.warning("pypdf not installed - PDF scanned detection disabled")
             raise
 
         reader = PdfReader(io.BytesIO(content))

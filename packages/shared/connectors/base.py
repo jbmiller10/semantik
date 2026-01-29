@@ -164,6 +164,18 @@ class BaseConnector(ABC):
         """
         ...
 
+    def get_skipped_files(self) -> list[tuple[str, str]]:
+        """Get list of files that were skipped during enumeration.
+
+        This is an optional method that connectors may implement to report
+        files that couldn't be enumerated (e.g., permission denied, broken
+        symlinks). The default implementation returns an empty list.
+
+        Returns:
+            List of (path, reason) tuples for skipped files.
+        """
+        return []
+
     def load_documents(
         self,
         source_id: int | None = None,

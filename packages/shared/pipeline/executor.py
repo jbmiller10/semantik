@@ -160,6 +160,8 @@ class PipelineExecutor:
         # Execution state
         self._stage_timings: dict[str, float] = {}
         self._callback_failures: int = 0
+        self._sniff_failure_count: int = 0
+        self._warnings: list[str] = []
 
     async def execute(
         self,
@@ -178,6 +180,9 @@ class PipelineExecutor:
             ExecutionResult with summary statistics and any failures
         """
         start_time = time.perf_counter()
+
+        # Reset warnings for this execution run
+        self._warnings = []
 
         # Counters
         files_processed = 0
@@ -294,6 +299,20 @@ class PipelineExecutor:
 
         total_duration_ms = (time.perf_counter() - start_time) * 1000
 
+        # Collect skipped files from connector (if available)
+        if self._connector is not None:
+            skipped_files = self._connector.get_skipped_files()
+            if skipped_files:
+                # Summarize to avoid overwhelming warnings for large directories
+                if len(skipped_files) <= 5:
+                    for path, reason in skipped_files:
+                        self._warnings.append(f"Skipped during enumeration: {path}: {reason}")
+                else:
+                    self._warnings.append(
+                        f"Skipped {len(skipped_files)} files during enumeration "
+                        f"(e.g., {skipped_files[0][0]}: {skipped_files[0][1]})"
+                    )
+
         # Calculate chunk stats
         chunk_stats = ChunkStats.from_token_counts(all_token_counts)
 
@@ -332,6 +351,7 @@ class PipelineExecutor:
             halted=halted,
             halt_reason=halt_reason,
             callback_failures=self._callback_failures,
+            warnings=self._warnings if self._warnings else None,
         )
 
     async def _process_file(
@@ -386,8 +406,22 @@ class PipelineExecutor:
             logger.warning("Sniff failed for %s: %s", file_ref.uri, e, exc_info=True)
             sniff_result = SniffResult(errors=[f"Sniff failed: {e}"])
 
+            # Track sniff failures to surface systemic issues
+            self._sniff_failure_count += 1
+            if self._sniff_failure_count == 5:
+                self._warnings.append("Content detection failing repeatedly. Documents processed with default routing.")
+                logger.warning(
+                    "Sniff failing repeatedly (%d times). This may indicate a systemic issue.",
+                    self._sniff_failure_count,
+                )
+
         # Always enrich with whatever results we have (may include errors)
         self._sniffer.enrich_file_ref(file_ref, sniff_result)
+
+        # Collect sniff errors as warnings (non-fatal but user-visible)
+        if sniff_result.errors:
+            for err in sniff_result.errors:
+                self._warnings.append(f"{file_ref.uri}: {err}")
         self._record_timing("sniff", stage_start)
 
         # 3. Change detection
@@ -1028,8 +1062,9 @@ class PipelineExecutor:
                     e,
                     exc_info=True,
                 )
-                if self._callback_failures >= 5:
+                if self._callback_failures == 5:
                     logger.error("Progress callbacks failing repeatedly (%d failures)", self._callback_failures)
+                    self._warnings.append("Progress reporting degraded: real-time updates may be unavailable")
 
 
 __all__ = [
