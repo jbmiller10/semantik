@@ -140,55 +140,84 @@ class PipelinePreviewService:
         all_paths: list[PathInfo] = []
         primary_path: list[str] = [SOURCE_NODE]
         parsed_metadata: dict[str, Any] | None = None
+        ran_parser_for_primary = False
 
         for idx, entry_node_id in enumerate(entry_nodes):
-            is_primary = idx == 0
-            current_path = [SOURCE_NODE, entry_node_id]
-            current_node = router.get_node(entry_node_id)
+            entry_path_name = path_names.get(entry_node_id, entry_node_id)
 
-            while current_node is not None:
-                # Handle parser stage (only for primary path to avoid duplicate work)
-                if is_primary and current_node.type == NodeType.PARSER and include_parser_metadata:
-                    try:
-                        parsed_metadata = self._run_parser(current_node, file_content, file_ref)
-                        # Enrich file_ref with parsed metadata for mid-pipeline routing
-                        self._enrich_parsed_metadata(file_ref, parsed_metadata)
-                    except Exception as e:
-                        parser_id = current_node.plugin_id
-                        fname = file_ref.filename or file_ref.uri
-                        error_type = type(e).__name__
+            # Stack of (current_path, current_node_id, current_path_name, is_primary_path)
+            stack: list[tuple[list[str], str, str, bool]] = [
+                ([SOURCE_NODE, entry_node_id], entry_node_id, entry_path_name, idx == 0)
+            ]
 
-                        warnings.append(f"Parser '{parser_id}' failed on '{fname}': {error_type}: {e}")
-                        logger.warning(
-                            "Parser %s failed during preview for %s: %s",
-                            parser_id,
-                            fname,
-                            e,
-                            exc_info=True,
-                        )
+            while stack:
+                current_path, current_node_id, current_path_name, is_primary_path = stack.pop()
+                current_node = router.get_node(current_node_id)
 
-                # Evaluate next routing stage (only record for primary path to avoid duplicates)
-                next_stage = self._evaluate_next_routing(dag_obj, router, current_node, file_ref)
-                if next_stage is not None:
-                    if is_primary:
+                while current_node is not None:
+                    # Handle parser stage (only for the primary path to avoid duplicate work)
+                    if (
+                        is_primary_path
+                        and not ran_parser_for_primary
+                        and current_node.type == NodeType.PARSER
+                        and include_parser_metadata
+                    ):
+                        ran_parser_for_primary = True
+                        try:
+                            parsed_metadata = self._run_parser(current_node, file_content, file_ref)
+                            # Enrich file_ref with parsed metadata for mid-pipeline routing
+                            self._enrich_parsed_metadata(file_ref, parsed_metadata)
+                        except Exception as e:
+                            parser_id = current_node.plugin_id
+                            fname = file_ref.filename or file_ref.uri
+                            error_type = type(e).__name__
+
+                            warnings.append(f"Parser '{parser_id}' failed on '{fname}': {error_type}: {e}")
+                            logger.warning(
+                                "Parser %s failed during preview for %s: %s",
+                                parser_id,
+                                fname,
+                                e,
+                                exc_info=True,
+                            )
+
+                    # Evaluate next routing stage (only record for primary path to avoid duplicates)
+                    next_stage = self._evaluate_next_routing(dag_obj, router, current_node, file_ref)
+                    if next_stage is None:
+                        break
+
+                    if is_primary_path:
                         routing_stages.append(next_stage)
 
-                    if next_stage.selected_node is not None:
-                        current_path.append(next_stage.selected_node)
-                        current_node = router.get_node(next_stage.selected_node)
-                    else:
-                        # No next node (terminal or no match)
+                    selected_edges = [
+                        e for e in next_stage.evaluated_edges if e.status in ("matched", "matched_parallel")
+                    ]
+                    if not selected_edges:
                         break
-                else:
-                    # No outgoing edges (terminal node like embedder)
-                    break
 
-            # Get path name for this entry node
-            path_name = path_names.get(entry_node_id, entry_node_id)
-            all_paths.append(PathInfo(path_name=path_name, nodes=current_path))
+                    # Fan-out: branch to all selected nodes, keep walking the primary branch.
+                    if len(selected_edges) > 1:
+                        for edge_result in selected_edges[1:]:
+                            branched_path = current_path + [edge_result.to_node]
+                            branched_name = edge_result.path_name or edge_result.to_node
+                            stack.append((branched_path, edge_result.to_node, branched_name, False))
 
-            if is_primary:
-                primary_path = current_path
+                        first_edge = selected_edges[0]
+                        current_path.append(first_edge.to_node)
+                        current_path_name = first_edge.path_name or first_edge.to_node
+                        current_node = router.get_node(first_edge.to_node)
+                        continue
+
+                    # Single next node
+                    edge_result = selected_edges[0]
+                    current_path.append(edge_result.to_node)
+                    if edge_result.path_name is not None:
+                        current_path_name = edge_result.path_name
+                    current_node = router.get_node(edge_result.to_node)
+
+                all_paths.append(PathInfo(path_name=current_path_name, nodes=current_path))
+                if is_primary_path:
+                    primary_path = current_path
 
         total_duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -372,35 +401,22 @@ class PipelinePreviewService:
 
         # Step 3: Evaluate parallel catch-all edges (all fire if no exclusive matched)
         for edge in parallel_catchall:
-            if exclusive_matched:
-                evaluated_edges.append(
-                    EdgeEvaluationResult(
-                        from_node=edge.from_node,
-                        to_node=edge.to_node,
-                        predicate=None,
-                        matched=False,
-                        status="skipped",
-                        field_evaluations=None,
-                        is_parallel=True,
-                        path_name=edge.path_name,
-                    )
+            # Parallel catch-all always matches (and fires), even if an exclusive
+            # predicate matched. This mirrors PipelineRouter.get_entry_nodes().
+            selected_nodes.append(edge.to_node)
+            path_names[edge.to_node] = edge.path_name or edge.to_node
+            evaluated_edges.append(
+                EdgeEvaluationResult(
+                    from_node=edge.from_node,
+                    to_node=edge.to_node,
+                    predicate=None,
+                    matched=True,
+                    status="matched_parallel",
+                    field_evaluations=None,
+                    is_parallel=True,
+                    path_name=edge.path_name,
                 )
-            else:
-                # Parallel catch-all always matches (and fires)
-                selected_nodes.append(edge.to_node)
-                path_names[edge.to_node] = edge.path_name or edge.to_node
-                evaluated_edges.append(
-                    EdgeEvaluationResult(
-                        from_node=edge.from_node,
-                        to_node=edge.to_node,
-                        predicate=None,
-                        matched=True,
-                        status="matched_parallel",
-                        field_evaluations=None,
-                        is_parallel=True,
-                        path_name=edge.path_name,
-                    )
-                )
+            )
 
         # Step 4: Evaluate exclusive catch-all edges (first wins if no exclusive matched)
         for edge in exclusive_catchall:
@@ -456,9 +472,6 @@ class PipelinePreviewService:
     ) -> StageEvaluationResult | None:
         """Evaluate routing from current node to next node.
 
-        Note: Mid-pipeline parallel routing is not supported in preview.
-        Only the primary path is walked for subsequent stages.
-
         Args:
             dag: Pipeline DAG
             router: Pipeline router
@@ -474,23 +487,56 @@ class PipelinePreviewService:
         if not outgoing_edges:
             return None
 
-        # Separate predicate edges from catch-all edges
-        predicate_edges: list[PipelineEdge] = []
-        catchall_edges: list[PipelineEdge] = []
+        # Categorize edges by parallel flag and predicate presence
+        parallel_predicate: list[PipelineEdge] = []
+        parallel_catchall: list[PipelineEdge] = []
+        exclusive_predicate: list[PipelineEdge] = []
+        exclusive_catchall: list[PipelineEdge] = []
 
         for edge in outgoing_edges:
-            if edge.when is None or edge.when == {}:
-                catchall_edges.append(edge)
+            is_catchall = edge.when is None or edge.when == {}
+            if edge.parallel:
+                if is_catchall:
+                    parallel_catchall.append(edge)
+                else:
+                    parallel_predicate.append(edge)
             else:
-                predicate_edges.append(edge)
+                if is_catchall:
+                    exclusive_catchall.append(edge)
+                else:
+                    exclusive_predicate.append(edge)
 
         evaluated_edges: list[EdgeEvaluationResult] = []
-        selected_node: str | None = None
-        found_match = False
+        selected_nodes: list[str] = []
+        exclusive_matched = False
 
-        # Evaluate predicate edges first
-        for edge in predicate_edges:
-            if found_match:
+        # Step 1: Evaluate parallel predicate edges (all matching ones fire)
+        for edge in parallel_predicate:
+            field_evals = self._evaluate_predicate_fields(file_ref, edge.when)
+            matched = all(fe.matched for fe in field_evals)
+
+            if matched:
+                selected_nodes.append(edge.to_node)
+                status = "matched_parallel"
+            else:
+                status = "not_matched"
+
+            evaluated_edges.append(
+                EdgeEvaluationResult(
+                    from_node=edge.from_node,
+                    to_node=edge.to_node,
+                    predicate=edge.when,
+                    matched=matched,
+                    status=status,
+                    field_evaluations=field_evals,
+                    is_parallel=True,
+                    path_name=edge.path_name,
+                )
+            )
+
+        # Step 2: Evaluate exclusive predicate edges (first match wins)
+        for edge in exclusive_predicate:
+            if exclusive_matched:
                 evaluated_edges.append(
                     EdgeEvaluationResult(
                         from_node=edge.from_node,
@@ -499,37 +545,54 @@ class PipelinePreviewService:
                         matched=False,
                         status="skipped",
                         field_evaluations=None,
-                        is_parallel=edge.parallel,
+                        is_parallel=False,
                         path_name=edge.path_name,
                     )
                 )
+                continue
+
+            field_evals = self._evaluate_predicate_fields(file_ref, edge.when)
+            matched = all(fe.matched for fe in field_evals)
+
+            if matched:
+                selected_nodes.append(edge.to_node)
+                exclusive_matched = True
+                status = "matched"
             else:
-                field_evals = self._evaluate_predicate_fields(file_ref, edge.when)
-                matched = all(fe.matched for fe in field_evals)
+                status = "not_matched"
 
-                if matched:
-                    selected_node = edge.to_node
-                    found_match = True
-                    status = "matched"
-                else:
-                    status = "not_matched"
-
-                evaluated_edges.append(
-                    EdgeEvaluationResult(
-                        from_node=edge.from_node,
-                        to_node=edge.to_node,
-                        predicate=edge.when,
-                        matched=matched,
-                        status=status,
-                        field_evaluations=field_evals,
-                        is_parallel=edge.parallel,
-                        path_name=edge.path_name,
-                    )
+            evaluated_edges.append(
+                EdgeEvaluationResult(
+                    from_node=edge.from_node,
+                    to_node=edge.to_node,
+                    predicate=edge.when,
+                    matched=matched,
+                    status=status,
+                    field_evaluations=field_evals,
+                    is_parallel=False,
+                    path_name=edge.path_name,
                 )
+            )
 
-        # Evaluate catch-all edges
-        for edge in catchall_edges:
-            if found_match:
+        # Step 3: Evaluate parallel catch-all edges (all fire)
+        for edge in parallel_catchall:
+            selected_nodes.append(edge.to_node)
+            evaluated_edges.append(
+                EdgeEvaluationResult(
+                    from_node=edge.from_node,
+                    to_node=edge.to_node,
+                    predicate=None,
+                    matched=True,
+                    status="matched_parallel",
+                    field_evaluations=None,
+                    is_parallel=True,
+                    path_name=edge.path_name,
+                )
+            )
+
+        # Step 4: Evaluate exclusive catch-all edges (first wins if no exclusive predicate matched)
+        for edge in exclusive_catchall:
+            if exclusive_matched:
                 evaluated_edges.append(
                     EdgeEvaluationResult(
                         from_node=edge.from_node,
@@ -538,33 +601,35 @@ class PipelinePreviewService:
                         matched=False,
                         status="skipped",
                         field_evaluations=None,
-                        is_parallel=edge.parallel,
+                        is_parallel=False,
                         path_name=edge.path_name,
                     )
                 )
-            else:
-                selected_node = edge.to_node
-                found_match = True
-                evaluated_edges.append(
-                    EdgeEvaluationResult(
-                        from_node=edge.from_node,
-                        to_node=edge.to_node,
-                        predicate=None,
-                        matched=True,
-                        status="matched",
-                        field_evaluations=None,
-                        is_parallel=edge.parallel,
-                        path_name=edge.path_name,
-                    )
+                continue
+
+            selected_nodes.append(edge.to_node)
+            exclusive_matched = True
+            evaluated_edges.append(
+                EdgeEvaluationResult(
+                    from_node=edge.from_node,
+                    to_node=edge.to_node,
+                    predicate=None,
+                    matched=True,
+                    status="matched",
+                    field_evaluations=None,
+                    is_parallel=False,
+                    path_name=edge.path_name,
                 )
+            )
 
         stage_name = f"{current_node.type.value}_to_next"
+        selected_node = selected_nodes[0] if selected_nodes else None
         return StageEvaluationResult(
             stage=stage_name,
             from_node=current_node.id,
             evaluated_edges=evaluated_edges,
             selected_node=selected_node,
-            selected_nodes=None,  # Mid-pipeline parallel not supported in preview
+            selected_nodes=selected_nodes if len(selected_nodes) > 1 else None,
             metadata_snapshot=dict(file_ref.metadata),
         )
 

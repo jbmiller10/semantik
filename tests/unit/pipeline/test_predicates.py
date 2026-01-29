@@ -147,6 +147,18 @@ class TestMatchValue:
         assert match_value("!test", "test") is False
         assert match_value("!test", "other") is True
 
+    def test_string_boolean_patterns_match_boolean_values(self) -> None:
+        """Test that string 'true'/'false' patterns work against boolean values (including negation)."""
+        assert match_value("true", True) is True
+        assert match_value("true", False) is False
+        assert match_value("false", False) is True
+        assert match_value("false", True) is False
+
+        assert match_value("!true", True) is False
+        assert match_value("!true", False) is True
+        assert match_value("!false", False) is False
+        assert match_value("!false", True) is True
+
     def test_numeric_greater_than(self) -> None:
         """Test numeric > comparison."""
         assert match_value(">100", 150) is True

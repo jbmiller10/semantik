@@ -136,6 +136,16 @@ def match_value(pattern: Any, value: Any) -> bool:
             # Exact match
             return value == pattern
 
+        # Special-case: string boolean patterns against boolean values.
+        # This enables predicates like {"metadata.detected.is_code": "!true"} when
+        # UIs serialize negation by prefixing string values with '!'.
+        if isinstance(value, bool):
+            lowered = pattern.lower()
+            if lowered in ("true", "1", "yes"):
+                return value is True
+            if lowered in ("false", "0", "no"):
+                return value is False
+
         # Convert non-string value to string for comparison
         return str(value) == pattern
 

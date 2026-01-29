@@ -707,3 +707,104 @@ class TestParallelEdgeRouting:
         entry_stage = result.routing_stages[0]
         assert entry_stage.selected_node == "parser1"
         assert entry_stage.selected_nodes is None, "selected_nodes should be None for single path"
+
+    @pytest.mark.asyncio()
+    async def test_parallel_catchall_fires_even_with_exclusive_match(
+        self, preview_service: PipelinePreviewService
+    ) -> None:
+        """Test that parallel catch-all edges fire even when an exclusive predicate matches."""
+        dag = {
+            "id": "test-dag-parallel-catchall",
+            "version": "1.0",
+            "nodes": [
+                {"id": "parser_exclusive", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "parser_parallel", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "parser_fallback", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                # Exclusive predicate match
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_exclusive",
+                    "when": {"extension": ".txt"},
+                    "parallel": False,
+                    "path_name": "exclusive_path",
+                },
+                # Parallel catch-all should still fire
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_parallel",
+                    "when": None,
+                    "parallel": True,
+                    "path_name": "parallel_catchall_path",
+                },
+                # Exclusive catch-all should be skipped (exclusive predicate matched)
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_fallback",
+                    "when": None,
+                    "parallel": False,
+                    "path_name": "fallback_path",
+                },
+                {"from_node": "parser_exclusive", "to_node": "embedder1", "when": None},
+                {"from_node": "parser_parallel", "to_node": "embedder1", "when": None},
+                {"from_node": "parser_fallback", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+        content = b"Test content"
+        filename = "test.txt"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(content, filename, dag, include_parser_metadata=False)
+
+        entry_stage = result.routing_stages[0]
+        assert entry_stage.selected_nodes is not None
+        assert set(entry_stage.selected_nodes) == {"parser_exclusive", "parser_parallel"}
+
+        edges_by_target = {e.to_node: e for e in entry_stage.evaluated_edges}
+        assert edges_by_target["parser_exclusive"].status == "matched"
+        assert edges_by_target["parser_parallel"].status == "matched_parallel"
+        assert edges_by_target["parser_fallback"].status == "skipped"
+
+        assert result.paths is not None
+        assert {p.path_name for p in result.paths} == {"exclusive_path", "parallel_catchall_path"}
+
+    @pytest.mark.asyncio()
+    async def test_mid_pipeline_parallel_routing_creates_multiple_paths(
+        self, preview_service: PipelinePreviewService
+    ) -> None:
+        """Test that mid-pipeline parallel fan-out is reflected in preview paths and stage evaluation."""
+        dag = {
+            "id": "test-dag-mid-pipeline-parallel",
+            "version": "1.0",
+            "nodes": [
+                {"id": "parser1", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "chunker_a", "type": "chunker", "plugin_id": "recursive", "config": {}},
+                {"id": "chunker_b", "type": "chunker", "plugin_id": "recursive", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                {"from_node": "_source", "to_node": "parser1", "when": None},
+                {"from_node": "parser1", "to_node": "chunker_a", "when": None, "parallel": True, "path_name": "path_a"},
+                {"from_node": "parser1", "to_node": "chunker_b", "when": None, "parallel": True, "path_name": "path_b"},
+                {"from_node": "chunker_a", "to_node": "embedder1", "when": None},
+                {"from_node": "chunker_b", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+        content = b"Test content"
+        filename = "test.txt"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(content, filename, dag, include_parser_metadata=False)
+
+        # Mid-pipeline fan-out should create multiple paths even with a single entry node.
+        assert result.paths is not None
+        assert {p.path_name for p in result.paths} == {"path_a", "path_b"}
+
+        # The routing stage from the parser should reflect fan-out.
+        parser_stage = next(s for s in result.routing_stages if s.from_node == "parser1")
+        assert parser_stage.selected_nodes is not None
+        assert set(parser_stage.selected_nodes) == {"chunker_a", "chunker_b"}

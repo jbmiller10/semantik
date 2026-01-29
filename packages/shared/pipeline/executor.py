@@ -11,6 +11,7 @@ import logging
 import time
 import traceback
 import uuid
+from copy import deepcopy
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -406,11 +407,13 @@ class PipelineExecutor:
         all_chunks: list[dict[str, Any]] = []
         all_token_counts: list[int] = []
         all_sample_outputs: list[SampleOutput] = []
+        first_path_error: Exception | None = None
 
         for path_state in path_states:
             try:
                 await self._execute_path(
                     path_state=path_state,
+                    path_states=path_states,
                     file_ref=file_ref,
                     load_content=load_result.content,
                     doc_id=doc_id,
@@ -432,6 +435,8 @@ class PipelineExecutor:
                     )
             except Exception as e:
                 # Mark path as failed but continue with other paths
+                if first_path_error is None:
+                    first_path_error = e
                 path_state.error = e
                 path_state.completed = True
                 logger.error(
@@ -441,20 +446,21 @@ class PipelineExecutor:
                     e,
                     exc_info=True,
                 )
-                # Re-raise if all paths fail, otherwise continue
-                if all(ps.error is not None for ps in path_states if ps.completed):
-                    # Update document status to FAILED before re-raising
-                    if self.mode == ExecutionMode.FULL and doc_id:
-                        error_msg = str(e)[:500]
-                        await self._doc_repo.update_status(
-                            doc_id,
-                            DocumentStatus.FAILED,
-                            error_message=error_msg,
-                        )
-                        await self.session.commit()
-                    raise
+                continue
 
         # 8. Update document status if we created chunks
+        # If all paths failed, raise after every path had a chance to run.
+        if first_path_error is not None and all(ps.error is not None for ps in path_states):
+            if self.mode == ExecutionMode.FULL and doc_id:
+                error_msg = str(first_path_error)[:500]
+                await self._doc_repo.update_status(
+                    doc_id,
+                    DocumentStatus.FAILED,
+                    error_message=error_msg,
+                )
+                await self.session.commit()
+            raise first_path_error
+
         if self.mode == ExecutionMode.FULL and doc_id and all_chunks:
             # If any path failed, mark as FAILED
             failed_paths = [ps for ps in path_states if ps.error is not None]
@@ -498,6 +504,7 @@ class PipelineExecutor:
     async def _execute_path(
         self,
         path_state: PathState,
+        path_states: list[PathState],
         file_ref: FileReference,
         load_content: bytes,
         doc_id: str | None,
@@ -510,6 +517,7 @@ class PipelineExecutor:
 
         Args:
             path_state: State object for this execution path
+            path_states: Shared list of all path states for this file (used to append branched paths)
             file_ref: File reference being processed
             load_content: Raw file content bytes
             doc_id: Document ID for Qdrant payloads (None in DRY_RUN mode)
@@ -518,6 +526,7 @@ class PipelineExecutor:
         current_node = path_state.current_node
 
         while current_node is not None:
+            path_state.current_node = current_node
             stage_start = time.perf_counter()
 
             try:
@@ -590,10 +599,39 @@ class PipelineExecutor:
             )
 
             # Get next node for this path
-            # Note: We use the original single-node routing within a path
-            # Parallel fan-out only happens at entry points
-            next_nodes = self._router.get_next_nodes(current_node, file_ref)
-            current_node = next_nodes[0] if next_nodes else None
+            routed_next = self._router.get_next_nodes_with_paths(current_node, file_ref)
+            if not routed_next:
+                current_node = None
+                break
+
+            # No fan-out: continue on the same path_id for backward compatibility.
+            if len(routed_next) == 1:
+                current_node = routed_next[0][0]
+                continue
+
+            # Fan-out: create additional path states for remaining branches, and
+            # update the current path to follow the first branch.
+            for next_node, next_path_id in routed_next[1:]:
+                branched_state = PathState(
+                    path_id=next_path_id,
+                    current_node=next_node,
+                    parsed_text=path_state.parsed_text,
+                    parse_metadata=dict(path_state.parse_metadata),
+                    chunks=deepcopy(path_state.chunks),
+                    token_counts=list(path_state.token_counts),
+                )
+                if branched_state.chunks:
+                    for chunk in branched_state.chunks:
+                        chunk["path_id"] = next_path_id
+                path_states.append(branched_state)
+
+            # Follow the first branch in this path state
+            first_next_node, first_next_path_id = routed_next[0]
+            if path_state.chunks and path_state.path_id != first_next_path_id:
+                for chunk in path_state.chunks:
+                    chunk["path_id"] = first_next_path_id
+            path_state.path_id = first_next_path_id
+            current_node = first_next_node
 
         path_state.completed = True
 

@@ -766,3 +766,181 @@ class TestPipelineExecutorExecute:
         sniff_errors = sample_file_ref.metadata["errors"]["sniff"]
         assert isinstance(sniff_errors, list)
         assert any("Sniff operation failed" in err for err in sniff_errors)
+
+    @pytest.mark.asyncio()
+    async def test_process_file_mid_pipeline_parallel_fanout_executes_all_branches(
+        self,
+        mock_session: AsyncMock,
+        temp_file: Path,
+    ) -> None:
+        """Test that mid-pipeline parallel fan-out creates and executes multiple paths."""
+        dag = PipelineDAG(
+            id="test-mid-pipeline-fanout",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker_a", type=NodeType.CHUNKER, plugin_id="chunker_a"),
+                PipelineNode(id="chunker_b", type=NodeType.CHUNKER, plugin_id="chunker_b"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(from_node="_source", to_node="parser"),
+                PipelineEdge(from_node="parser", to_node="chunker_a", parallel=True, path_name="path_a"),
+                PipelineEdge(from_node="parser", to_node="chunker_b", parallel=True, path_name="path_b"),
+                PipelineEdge(from_node="chunker_a", to_node="embedder"),
+                PipelineEdge(from_node="chunker_b", to_node="embedder"),
+            ],
+        )
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        mock_parse_result = MagicMock()
+        mock_parse_result.text = "Parsed text content"
+        mock_parse_result.metadata = {}
+        mock_parser = MagicMock()
+        mock_parser.parse_bytes.return_value = mock_parse_result
+
+        def _mk_chunk(chunk_id: str, content: str) -> MagicMock:
+            chunk = MagicMock()
+            chunk.content = content
+            chunk.metadata = MagicMock()
+            chunk.metadata.chunk_id = chunk_id
+            chunk.metadata.chunk_index = 0
+            chunk.metadata.start_offset = 0
+            chunk.metadata.end_offset = 10
+            chunk.metadata.token_count = 5
+            chunk.metadata.hierarchy_level = 0
+            return chunk
+
+        strategy_a = MagicMock()
+        strategy_a.chunk.return_value = [_mk_chunk("a1", "A chunk")]
+
+        strategy_b = MagicMock()
+        strategy_b.chunk.return_value = [_mk_chunk("b1", "B chunk 1"), _mk_chunk("b2", "B chunk 2")]
+
+        def create_strategy_side_effect(plugin_id: str) -> MagicMock:
+            if plugin_id == "chunker_a":
+                return strategy_a
+            if plugin_id == "chunker_b":
+                return strategy_b
+            raise AssertionError(f"Unexpected chunker plugin_id: {plugin_id}")
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                side_effect=create_strategy_side_effect,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor._process_file(file_ref, progress_callback=None)
+
+        assert result["skipped"] is False
+        assert result["chunks_created"] == 3
+        assert "sample_outputs" in result, "expected multiple sample outputs for fan-out"
+        sample_outputs = result["sample_outputs"]
+        assert {o.path_id for o in sample_outputs} == {"path_a", "path_b"}
+        for output in sample_outputs:
+            assert all(chunk["path_id"] == output.path_id for chunk in output.chunks)
+
+        assert strategy_a.chunk.call_count == 1
+        assert strategy_b.chunk.call_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_process_file_does_not_abort_remaining_paths_on_first_failure(
+        self,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that one path failing doesn't prevent other paths for the same file from running."""
+        dag = PipelineDAG(
+            id="test-entry-parallel-path-failure",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser_fail", type=NodeType.PARSER, plugin_id="fail"),
+                PipelineNode(id="parser_ok", type=NodeType.PARSER, plugin_id="ok"),
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(
+                    from_node="_source",
+                    to_node="parser_fail",
+                    when={"extension": ".txt"},
+                    parallel=True,
+                    path_name="fail_path",
+                ),
+                PipelineEdge(from_node="_source", to_node="parser_ok", when=None, parallel=False, path_name="ok_path"),
+                PipelineEdge(from_node="parser_fail", to_node="chunker"),
+                PipelineEdge(from_node="parser_ok", to_node="chunker"),
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+            ],
+        )
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        failing_parser = MagicMock()
+        failing_parser.parse_bytes.side_effect = RuntimeError("Parse failed")
+
+        ok_parse_result = MagicMock()
+        ok_parse_result.text = "Parsed text content"
+        ok_parse_result.metadata = {}
+        ok_parser = MagicMock()
+        ok_parser.parse_bytes.return_value = ok_parse_result
+
+        def get_parser_side_effect(plugin_id: str, _config: dict) -> MagicMock:
+            if plugin_id == "fail":
+                return failing_parser
+            if plugin_id == "ok":
+                return ok_parser
+            raise AssertionError(f"Unexpected parser plugin_id: {plugin_id}")
+
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", side_effect=get_parser_side_effect),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor._process_file(file_ref, progress_callback=None)
+
+        assert result["skipped"] is False
+        assert result["chunks_created"] == len(mock_chunks)
+        assert result["failed_paths"] == [{"path_id": "fail_path", "error": "Parse failed"}]
+        assert "sample_output" in result
+        assert result["sample_output"].path_id == "ok_path"
+
+        assert failing_parser.parse_bytes.call_count == 1
+        assert ok_parser.parse_bytes.call_count == 1
