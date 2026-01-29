@@ -61,8 +61,8 @@ export function ConfigureStep({
 
       {/* Main content */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left: Pipeline Visualization + Route Preview (~60%) */}
-        <div className="flex-1 lg:flex-[3] border-b lg:border-b-0 lg:border-r border-[var(--border)] flex flex-col min-h-[300px] lg:min-h-0">
+        {/* Left: Pipeline Visualization + Route Preview (~70%) */}
+        <div className="flex-1 lg:flex-[7] border-b lg:border-b-0 lg:border-r border-[var(--border)] flex flex-col min-h-[300px] lg:min-h-0">
           {/* Visualization area */}
           <div className="flex-1 overflow-auto p-4">
             <PipelineVisualization
@@ -82,8 +82,8 @@ export function ConfigureStep({
           />
         </div>
 
-        {/* Right: Configuration Panel (~40%) */}
-        <div className="flex-1 lg:flex-[2] overflow-auto">
+        {/* Right: Configuration Panel (~30%) */}
+        <div className="flex-1 lg:flex-[3] overflow-auto">
           <ConfigurationPanel
             dag={dag}
             selection={selection}
