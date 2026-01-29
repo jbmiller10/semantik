@@ -15,12 +15,24 @@ interface EdgePredicateEditorProps {
   readOnly?: boolean;
 }
 
-// Common predicate fields for routing
+// Common predicate fields for routing, organized by category
 const PREDICATE_FIELDS = [
-  { value: 'mime_type', label: 'MIME Type', example: 'application/pdf' },
-  { value: 'extension', label: 'Extension', example: '.pdf, .docx' },
-  { value: 'source_type', label: 'Source Type', example: 'directory' },
-  { value: 'content_type', label: 'Content Type', example: 'file' },
+  // Source metadata (from connector)
+  { value: 'metadata.source.mime_type', label: 'MIME Type', example: 'application/pdf', category: 'source' },
+  { value: 'metadata.source.extension', label: 'Extension', example: '.pdf, .docx', category: 'source' },
+  { value: 'metadata.source.source_type', label: 'Source Type', example: 'directory', category: 'source' },
+  { value: 'metadata.source.content_type', label: 'Content Type', example: 'file', category: 'source' },
+  // Detected metadata (from pre-routing sniff)
+  { value: 'metadata.detected.is_scanned_pdf', label: 'Is Scanned PDF', example: 'true', category: 'detected' },
+  { value: 'metadata.detected.is_code', label: 'Is Code', example: 'true', category: 'detected' },
+  { value: 'metadata.detected.is_structured_data', label: 'Is Structured Data', example: 'true', category: 'detected' },
+  // Parsed metadata (from parser, for mid-pipeline routing)
+  { value: 'metadata.parsed.detected_language', label: 'Detected Language', example: 'en, zh', category: 'parsed' },
+  { value: 'metadata.parsed.approx_token_count', label: 'Token Count', example: '>10000', category: 'parsed' },
+  { value: 'metadata.parsed.has_tables', label: 'Has Tables', example: 'true', category: 'parsed' },
+  { value: 'metadata.parsed.has_images', label: 'Has Images', example: 'true', category: 'parsed' },
+  { value: 'metadata.parsed.has_code_blocks', label: 'Has Code Blocks', example: 'true', category: 'parsed' },
+  { value: 'metadata.parsed.page_count', label: 'Page Count', example: '>50', category: 'parsed' },
 ];
 
 /**
@@ -53,7 +65,7 @@ export function EdgePredicateEditor({
   // Extract current predicate field and value
   const { field, value } = useMemo(() => {
     if (!edge.when || Object.keys(edge.when).length === 0) {
-      return { field: 'mime_type', value: '' };
+      return { field: 'metadata.source.mime_type', value: '' };
     }
     const [f, v] = Object.entries(edge.when)[0];
     return { field: f, value: v };
@@ -65,7 +77,7 @@ export function EdgePredicateEditor({
       if (checked) {
         onChange({ ...edge, when: null });
       } else {
-        onChange({ ...edge, when: { mime_type: '' } });
+        onChange({ ...edge, when: { 'metadata.source.mime_type': '' } });
       }
     },
     [edge, onChange]
@@ -163,11 +175,27 @@ export function EdgePredicateEditor({
               disabled={readOnly}
               className="input-field w-full"
             >
-              {PREDICATE_FIELDS.map((f) => (
-                <option key={f.value} value={f.value}>
-                  {f.label}
-                </option>
-              ))}
+              <optgroup label="Source (from connector)">
+                {PREDICATE_FIELDS.filter((f) => f.category === 'source').map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Detected (pre-routing sniff)">
+                {PREDICATE_FIELDS.filter((f) => f.category === 'detected').map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Parsed (mid-pipeline routing)">
+                {PREDICATE_FIELDS.filter((f) => f.category === 'parsed').map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 

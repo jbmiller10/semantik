@@ -8,7 +8,7 @@ describe('EdgePredicateEditor', () => {
   const mockEdge: PipelineEdge = {
     from_node: '_source',
     to_node: 'parser1',
-    when: { mime_type: 'application/pdf' },
+    when: { 'metadata.source.mime_type': 'application/pdf' },
   };
 
   it('renders edge info', () => {
@@ -36,7 +36,7 @@ describe('EdgePredicateEditor', () => {
       />
     );
 
-    expect(screen.getByText(/mime_type/i)).toBeInTheDocument();
+    expect(screen.getByText(/MIME Type/i)).toBeInTheDocument();
   });
 
   it('renders predicate value', () => {
@@ -85,7 +85,7 @@ describe('EdgePredicateEditor', () => {
     );
 
     const fieldSelect = screen.getByLabelText(/field/i);
-    await user.selectOptions(fieldSelect, 'extension');
+    await user.selectOptions(fieldSelect, 'metadata.source.extension');
 
     expect(handleChange).toHaveBeenCalled();
   });
@@ -136,7 +136,7 @@ describe('EdgePredicateEditor', () => {
     const arrayEdge: PipelineEdge = {
       from_node: '_source',
       to_node: 'parser1',
-      when: { extension: ['.md', '.txt'] },
+      when: { 'metadata.source.extension': ['.md', '.txt'] },
     };
 
     render(
