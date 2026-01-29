@@ -147,9 +147,7 @@ class TestLegacyRegistryFallback:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    def test_run_parser_falls_back_to_legacy_registry(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_run_parser_falls_back_to_legacy_registry(self, preview_service: PipelinePreviewService) -> None:
         """Test that plugin registry returning None triggers legacy registry fallback."""
         from shared.pipeline.types import PipelineNode
 
@@ -176,9 +174,7 @@ class TestLegacyRegistryFallback:
             # Mock get_parser (legacy registry) to return a mock parser
             with patch("webui.services.pipeline_preview_service.get_parser") as mock_get_parser:
                 mock_parser = MagicMock()
-                mock_parser.parse_bytes.return_value = MagicMock(
-                    metadata={"parser": "text", "test_key": "test_value"}
-                )
+                mock_parser.parse_bytes.return_value = MagicMock(metadata={"parser": "text", "test_key": "test_value"})
                 mock_get_parser.return_value = mock_parser
 
                 result = preview_service._run_parser(node, content, file_ref)
@@ -196,9 +192,7 @@ class TestEnrichParsedMetadata:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    def test_enrich_parsed_metadata_filters_recognized_fields(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_enrich_parsed_metadata_filters_recognized_fields(self, preview_service: PipelinePreviewService) -> None:
         """Test that only recognized parsed fields are stored in file_ref.metadata."""
         file_ref = FileReference(
             uri="test://test.txt",
@@ -235,9 +229,7 @@ class TestEnrichParsedMetadata:
         assert "another_unknown" not in file_ref.metadata["parsed"]
         assert "parser" not in file_ref.metadata["parsed"]
 
-    def test_enrich_parsed_metadata_empty_dict_no_change(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_enrich_parsed_metadata_empty_dict_no_change(self, preview_service: PipelinePreviewService) -> None:
         """Test that empty parse_metadata doesn't modify file_ref."""
         file_ref = FileReference(
             uri="test://test.txt",
@@ -251,9 +243,7 @@ class TestEnrichParsedMetadata:
 
         assert "parsed" not in file_ref.metadata
 
-    def test_enrich_parsed_metadata_creates_parsed_namespace(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_enrich_parsed_metadata_creates_parsed_namespace(self, preview_service: PipelinePreviewService) -> None:
         """Test that parsed namespace is created if not present."""
         file_ref = FileReference(
             uri="test://test.txt",
@@ -324,9 +314,7 @@ class TestInvalidDAGHandling:
         return PipelinePreviewService()
 
     @pytest.mark.asyncio()
-    async def test_preview_route_invalid_dag_raises_value_error(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    async def test_preview_route_invalid_dag_raises_value_error(self, preview_service: PipelinePreviewService) -> None:
         """Test that malformed DAG dict raises ValueError."""
         content = b"Test content"
         filename = "test.txt"
@@ -406,9 +394,7 @@ class TestBuildFileReference:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    def test_build_file_reference_extracts_extension(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_build_file_reference_extracts_extension(self, preview_service: PipelinePreviewService) -> None:
         """Test that file reference correctly extracts extension."""
         content = b"Hello, world!"
         filename = "document.pdf"
@@ -420,9 +406,7 @@ class TestBuildFileReference:
         assert file_ref.mime_type == "application/pdf"
         assert file_ref.size_bytes == len(content)
 
-    def test_build_file_reference_no_extension(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_build_file_reference_no_extension(self, preview_service: PipelinePreviewService) -> None:
         """Test file reference with no extension."""
         content = b"Content"
         filename = "README"
@@ -432,9 +416,7 @@ class TestBuildFileReference:
         assert file_ref.extension is None
         assert file_ref.filename == "README"
 
-    def test_build_file_reference_content_hash(
-        self, preview_service: PipelinePreviewService
-    ) -> None:
+    def test_build_file_reference_content_hash(self, preview_service: PipelinePreviewService) -> None:
         """Test that content hash is computed correctly."""
         content = b"Test content for hashing"
         filename = "test.txt"
