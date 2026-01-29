@@ -38,6 +38,10 @@ class PointPayload(BaseModel):
     collection_id: str | None = None
     chunk_index: int | None = None
     total_chunks: int | None = None
+    path_id: str | None = Field(
+        None,
+        description="Pipeline path that produced this chunk (for parallel fan-out)",
+    )
 
 
 class UpsertPoint(BaseModel):

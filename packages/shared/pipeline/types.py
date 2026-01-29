@@ -303,11 +303,17 @@ class PipelineEdge:
         from_node: Source node ID (or "_source" for entry edges)
         to_node: Target node ID
         when: Optional predicate for conditional routing (None = catch-all)
+        parallel: If True, this edge can fire alongside other parallel edges
+            from the same node. If False (default), uses first-match-wins semantics.
+        path_name: Tag for chunk outputs from this path. Defaults to to_node if not set.
+            Used for search filtering when documents are processed through multiple paths.
     """
 
     from_node: str
     to_node: str
     when: dict[str, Any] | None = None
+    parallel: bool = False
+    path_name: str | None = None
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -318,13 +324,28 @@ class PipelineEdge:
         if self.from_node == self.to_node:
             raise ValueError("self-loops are not allowed")
 
+    def get_path_name(self) -> str:
+        """Return path name for chunk tagging.
+
+        Returns the explicit path_name if set, otherwise defaults to the
+        target node ID (to_node).
+        """
+        return self.path_name or self.to_node
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
-        return {
+        result: dict[str, Any] = {
             "from_node": self.from_node,
             "to_node": self.to_node,
             "when": self.when,
         }
+        # Only include parallel and path_name if they have non-default values
+        # for backward compatibility with existing DAG definitions
+        if self.parallel:
+            result["parallel"] = self.parallel
+        if self.path_name is not None:
+            result["path_name"] = self.path_name
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PipelineEdge:
@@ -333,6 +354,8 @@ class PipelineEdge:
             from_node=data["from_node"],
             to_node=data["to_node"],
             when=data.get("when"),
+            parallel=data.get("parallel", False),
+            path_name=data.get("path_name"),
         )
 
 

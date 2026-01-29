@@ -24,6 +24,7 @@ from shared.pipeline.executor_types import (
     ChunkStats,
     ExecutionMode,
     ExecutionResult,
+    PathState,
     ProgressEvent,
     SampleOutput,
     StageFailure,
@@ -335,6 +336,10 @@ class PipelineExecutor:
     ) -> dict[str, Any]:
         """Process a single file through the pipeline.
 
+        Supports parallel fan-out where a document can be processed through
+        multiple paths simultaneously (e.g., chunking + summarization).
+        Each path produces path-tagged chunks for search filtering.
+
         Args:
             file_ref: File reference to process
             progress_callback: Optional progress callback
@@ -378,76 +383,177 @@ class PipelineExecutor:
         if skip_reason:
             return {"skipped": True, "skip_reason": skip_reason}
 
-        # 4. Route to entry node
-        entry_node = self._router.get_entry_node(file_ref)
-        if entry_node is None:
+        # 4. Route to entry nodes (may be multiple for parallel fan-out)
+        entry_nodes = self._router.get_entry_nodes(file_ref)
+        if not entry_nodes:
             return {"skipped": True, "skip_reason": "no_matching_route"}
 
-        # 5. Execute pipeline stages
-        current_node: PipelineNode | None = entry_node
-        parsed_text: str = ""
-        parse_metadata: dict[str, Any] = {}
-        chunks: list[dict[str, Any]] = []
-        token_counts: list[int] = []
+        # 5. Initialize path states for each entry point
+        path_states: list[PathState] = []
+        for node, path_name in entry_nodes:
+            path_states.append(PathState(path_id=path_name, current_node=node))
+
+        # 6. Create single document record (shared across all paths)
+        doc_id: str | None = None
+        if self.mode == ExecutionMode.FULL:
+            doc_id = await self._create_document(file_ref, load_result.content_hash)
+
+        # 7. Execute each path sequentially (avoids GPU OOM; Celery parallelizes across docs)
+        all_chunks: list[dict[str, Any]] = []
+        all_token_counts: list[int] = []
+        all_sample_outputs: list[SampleOutput] = []
+
+        for path_state in path_states:
+            try:
+                await self._execute_path(
+                    path_state=path_state,
+                    file_ref=file_ref,
+                    load_content=load_result.content,
+                    doc_id=doc_id,
+                    progress_callback=progress_callback,
+                )
+                # Collect results from this path
+                all_chunks.extend(path_state.chunks)
+                all_token_counts.extend(path_state.token_counts)
+
+                # Collect sample output in DRY_RUN mode
+                if self.mode == ExecutionMode.DRY_RUN:
+                    all_sample_outputs.append(
+                        SampleOutput(
+                            file_ref=file_ref,
+                            chunks=path_state.chunks,
+                            parse_metadata=path_state.parse_metadata,
+                            path_id=path_state.path_id,
+                        )
+                    )
+            except Exception as e:
+                # Mark path as failed but continue with other paths
+                path_state.error = e
+                path_state.completed = True
+                logger.error(
+                    "Path %s failed for %s: %s",
+                    path_state.path_id,
+                    file_ref.uri,
+                    e,
+                    exc_info=True,
+                )
+                # Re-raise if all paths fail, otherwise continue
+                if all(ps.error is not None for ps in path_states if ps.completed):
+                    raise
+
+        # 8. Update document status if we created chunks
+        if self.mode == ExecutionMode.FULL and doc_id and all_chunks:
+            # If any path failed, mark as FAILED
+            failed_paths = [ps for ps in path_states if ps.error is not None]
+            if failed_paths:
+                error_msg = f"Paths failed: {', '.join(ps.path_id for ps in failed_paths)}"
+                await self._doc_repo.update_status(
+                    doc_id,
+                    DocumentStatus.FAILED,
+                    error_message=error_msg[:500],
+                )
+            else:
+                await self._doc_repo.update_status(
+                    doc_id,
+                    DocumentStatus.COMPLETED,
+                    chunk_count=len(all_chunks),
+                )
+            await self.session.commit()
+
+        # 9. Prepare result
+        result: dict[str, Any] = {
+            "skipped": False,
+            "chunks_created": len(all_chunks),
+            "token_counts": all_token_counts,
+        }
+
+        # Add sample output in DRY_RUN mode
+        if self.mode == ExecutionMode.DRY_RUN:
+            if len(all_sample_outputs) == 1:
+                result["sample_output"] = all_sample_outputs[0]
+            else:
+                result["sample_outputs"] = all_sample_outputs
+
+        return result
+
+    async def _execute_path(
+        self,
+        path_state: PathState,
+        file_ref: FileReference,
+        load_content: bytes,
+        doc_id: str | None,
+        progress_callback: ProgressCallback | None,
+    ) -> None:
+        """Execute a single path through the pipeline DAG.
+
+        Processes stages sequentially: parser -> chunker -> extractor -> embedder.
+        Results are accumulated in path_state.
+
+        Args:
+            path_state: State object for this execution path
+            file_ref: File reference being processed
+            load_content: Raw file content bytes
+            doc_id: Document ID for Qdrant payloads (None in DRY_RUN mode)
+            progress_callback: Optional progress callback
+        """
+        current_node = path_state.current_node
 
         while current_node is not None:
             stage_start = time.perf_counter()
 
             try:
                 if current_node.type == NodeType.PARSER:
-                    parsed_text, parse_metadata = self._execute_parser(
+                    path_state.parsed_text, path_state.parse_metadata = self._execute_parser(
                         current_node,
-                        load_result.content,
+                        load_content,
                         file_ref,
                     )
-                    self._record_timing(f"parser:{current_node.id}", stage_start)
+                    self._record_timing(f"parser:{current_node.id}:{path_state.path_id}", stage_start)
 
                     # Enrich file_ref with parsed metadata for mid-pipeline routing
-                    self._enrich_parsed_metadata(file_ref, parse_metadata)
+                    self._enrich_parsed_metadata(file_ref, path_state.parse_metadata)
 
                 elif current_node.type == NodeType.CHUNKER:
                     chunks, token_counts = self._execute_chunker(
                         current_node,
-                        parsed_text,
+                        path_state.parsed_text,
                     )
-                    self._record_timing(f"chunker:{current_node.id}", stage_start)
+                    # Tag chunks with path_id
+                    for chunk in chunks:
+                        chunk["path_id"] = path_state.path_id
+                    path_state.chunks = chunks
+                    path_state.token_counts = token_counts
+                    self._record_timing(f"chunker:{current_node.id}:{path_state.path_id}", stage_start)
 
                 elif current_node.type == NodeType.EXTRACTOR:
                     # Extractor is optional - skip if not implemented
-                    self._record_timing(f"extractor:{current_node.id}", stage_start)
+                    self._record_timing(f"extractor:{current_node.id}:{path_state.path_id}", stage_start)
 
                 elif current_node.type == NodeType.EMBEDDER:
-                    # Embedder stage - create document, embed chunks, and store in Qdrant
-                    if self.mode == ExecutionMode.FULL and chunks:
-                        # Create document record first (we need doc_id for chunk points)
-                        doc_id = await self._create_document(file_ref, load_result.content_hash)
-
-                        # Embed and store vectors - mark document FAILED on error
+                    # Embedder stage - embed chunks and store in Qdrant
+                    if self.mode == ExecutionMode.FULL and path_state.chunks and doc_id:
                         try:
                             await self._execute_embedder(
                                 node=current_node,
-                                chunks=chunks,
+                                chunks=path_state.chunks,
                                 file_ref=file_ref,
                                 doc_id=doc_id,
+                                path_id=path_state.path_id,
                             )
                         except Exception as embed_error:
-                            # Mark document as FAILED with actual error details
-                            error_msg = f"Embedding failed: {type(embed_error).__name__}: {embed_error}"
-                            await self._doc_repo.update_status(
-                                doc_id,
-                                DocumentStatus.FAILED,
-                                error_message=error_msg[:500],  # Truncate for DB field
-                            )
-                            await self.session.commit()
+                            # Mark path as failed
+                            path_state.error = embed_error
                             raise
 
-                    self._record_timing(f"embedder:{current_node.id}", stage_start)
+                    self._record_timing(f"embedder:{current_node.id}:{path_state.path_id}", stage_start)
+                    path_state.completed = True
                     break  # Embedder is terminal
 
             except Exception as e:
                 # Annotate error with stage info
                 e.stage_id = current_node.id  # type: ignore[attr-defined]
                 e.stage_type = current_node.type.value  # type: ignore[attr-defined]
+                e.path_id = path_state.path_id  # type: ignore[attr-defined]
                 raise
 
             # Emit stage completed event
@@ -457,31 +563,20 @@ class PipelineExecutor:
                     event_type="stage_completed",
                     file_uri=file_ref.uri,
                     stage_id=current_node.id,
-                    details={"node_type": current_node.type.value},
+                    details={
+                        "node_type": current_node.type.value,
+                        "path_id": path_state.path_id,
+                    },
                 ),
             )
 
-            # Get next node
+            # Get next node for this path
+            # Note: We use the original single-node routing within a path
+            # Parallel fan-out only happens at entry points
             next_nodes = self._router.get_next_nodes(current_node, file_ref)
             current_node = next_nodes[0] if next_nodes else None
 
-        # Prepare result (document creation is handled in embedder stage)
-        chunks_created = len(chunks)
-        result: dict[str, Any] = {
-            "skipped": False,
-            "chunks_created": chunks_created,
-            "token_counts": token_counts,
-        }
-
-        # Add sample output in DRY_RUN mode
-        if self.mode == ExecutionMode.DRY_RUN:
-            result["sample_output"] = SampleOutput(
-                file_ref=file_ref,
-                chunks=chunks,
-                parse_metadata=parse_metadata,
-            )
-
-        return result
+        path_state.completed = True
 
     async def _should_skip(self, file_ref: FileReference, content_hash: str) -> str | None:
         """Check if file should be skipped due to unchanged content.
@@ -652,6 +747,7 @@ class PipelineExecutor:
         chunks: list[dict[str, Any]],
         file_ref: FileReference,
         doc_id: str,
+        path_id: str = "default",
     ) -> None:
         """Execute embedder node - embed chunks and store in Qdrant.
 
@@ -660,6 +756,7 @@ class PipelineExecutor:
             chunks: List of chunk dicts from chunker
             file_ref: Original file reference
             doc_id: Document ID for the chunk payloads
+            path_id: Path identifier for parallel fan-out (default: "default")
         """
         if not self._vector_store_name:
             raise ValueError("vector_store_name required for embedding in FULL mode")
@@ -720,6 +817,8 @@ class PipelineExecutor:
         for i, chunk in enumerate(chunks):
             # chunk_id is at top level from _execute_chunker
             chunk_id = chunk.get("chunk_id") or str(uuid.uuid4())
+            # path_id from chunk takes precedence (set by _execute_path), fall back to parameter
+            chunk_path_id = chunk.get("path_id", path_id)
             point = {
                 "id": str(uuid.uuid4()),
                 "vector": embeddings[i],
@@ -732,6 +831,7 @@ class PipelineExecutor:
                     "metadata": chunk.get("metadata", {}),
                     "chunk_index": i,
                     "total_chunks": total_chunks,
+                    "path_id": chunk_path_id,
                 },
             }
             points.append(point)

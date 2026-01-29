@@ -4,6 +4,7 @@ import pytest
 
 from shared.pipeline.router import PipelineRouter
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineEdge, PipelineNode
+from shared.pipeline.validation import SOURCE_NODE
 
 
 class TestPipelineRouter:
@@ -390,3 +391,340 @@ class TestPipelineRouter:
         assert len(next_nodes) == 1
         assert next_nodes[0].id == "embedder"
         assert next_nodes[0].type == NodeType.EMBEDDER
+
+
+class TestParallelEdgeRouting:
+    """Tests for parallel edge fan-out routing."""
+
+    @pytest.fixture()
+    def parallel_fanout_dag(self) -> PipelineDAG:
+        """Create a DAG with parallel fan-out from source.
+
+        Structure:
+        _source --> chunker-semantic (parallel) --> embedder
+                --> chunker-summary (parallel)  --> embedder (shared)
+                --> parser-default (catch-all)  --> chunker-default --> embedder
+        """
+        return PipelineDAG(
+            id="parallel-fanout",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-semantic", type=NodeType.CHUNKER, plugin_id="semantic"),
+                PipelineNode(id="chunker-summary", type=NodeType.CHUNKER, plugin_id="summary"),
+                PipelineNode(id="parser-default", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker-default", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Parallel edges fire together
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-semantic",
+                    parallel=True,
+                    path_name="detailed",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-summary",
+                    parallel=True,
+                    path_name="summary",
+                ),
+                # Non-parallel catch-all for default path
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser-default"),
+                # Downstream edges
+                PipelineEdge(from_node="chunker-semantic", to_node="embedder"),
+                PipelineEdge(from_node="chunker-summary", to_node="embedder"),
+                PipelineEdge(from_node="parser-default", to_node="chunker-default"),
+                PipelineEdge(from_node="chunker-default", to_node="embedder"),
+            ],
+        )
+
+    @pytest.fixture()
+    def text_file(self) -> FileReference:
+        """Create a text file reference for testing."""
+        return FileReference(
+            uri="file:///doc.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=1024,
+        )
+
+    def test_get_entry_nodes_returns_parallel_and_exclusive(
+        self, parallel_fanout_dag: PipelineDAG, text_file: FileReference
+    ) -> None:
+        """Test that get_entry_nodes returns both parallel and exclusive catch-all edges."""
+        router = PipelineRouter(parallel_fanout_dag)
+
+        entry_nodes = router.get_entry_nodes(text_file)
+
+        # Should return: chunker-semantic, chunker-summary (parallel), and parser-default (catch-all)
+        assert len(entry_nodes) == 3
+        node_ids = {node.id for node, _ in entry_nodes}
+        assert node_ids == {"chunker-semantic", "chunker-summary", "parser-default"}
+
+    def test_get_entry_nodes_path_names(self, parallel_fanout_dag: PipelineDAG, text_file: FileReference) -> None:
+        """Test that get_entry_nodes returns correct path names."""
+        router = PipelineRouter(parallel_fanout_dag)
+
+        entry_nodes = router.get_entry_nodes(text_file)
+
+        path_names = {path_name for _, path_name in entry_nodes}
+        # chunker-semantic has path_name "detailed"
+        # chunker-summary has path_name "summary"
+        # parser-default defaults to to_node "parser-default"
+        assert "detailed" in path_names
+        assert "summary" in path_names
+        assert "parser-default" in path_names
+
+    def test_get_entry_node_backward_compat(self, parallel_fanout_dag: PipelineDAG, text_file: FileReference) -> None:
+        """Test that get_entry_node (singular) returns first entry node."""
+        router = PipelineRouter(parallel_fanout_dag)
+
+        entry_node = router.get_entry_node(text_file)
+
+        # Should return one of the entry nodes
+        assert entry_node is not None
+        assert entry_node.id in {"chunker-semantic", "chunker-summary", "parser-default"}
+
+    def test_parallel_predicate_edges_all_fire(self) -> None:
+        """Test that all matching parallel predicate edges fire."""
+        dag = PipelineDAG(
+            id="parallel-predicates",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two parallel edges with same predicate
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    when={"extension": ".txt"},
+                    parallel=True,
+                    path_name="path-a",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    when={"extension": ".txt"},
+                    parallel=True,
+                    path_name="path-b",
+                ),
+                # Catch-all
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        router = PipelineRouter(dag)
+        txt_file = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+        )
+
+        entry_nodes = router.get_entry_nodes(txt_file)
+
+        # Both parallel predicate edges match, plus catch-all
+        assert len(entry_nodes) == 3
+        node_ids = {node.id for node, _ in entry_nodes}
+        assert node_ids == {"chunker-a", "chunker-b", "parser"}
+
+    def test_exclusive_predicate_first_match_wins(self) -> None:
+        """Test that exclusive predicate edges use first-match-wins."""
+        dag = PipelineDAG(
+            id="exclusive-predicates",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-first", type=NodeType.CHUNKER, plugin_id="first"),
+                PipelineNode(id="chunker-second", type=NodeType.CHUNKER, plugin_id="second"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two exclusive (non-parallel) edges with same predicate
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-first",
+                    when={"extension": ".txt"},
+                    parallel=False,  # Exclusive
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-second",
+                    when={"extension": ".txt"},
+                    parallel=False,  # Exclusive
+                ),
+                # Catch-all
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-first", to_node="embedder"),
+                PipelineEdge(from_node="chunker-second", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        router = PipelineRouter(dag)
+        txt_file = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+        )
+
+        entry_nodes = router.get_entry_nodes(txt_file)
+
+        # First exclusive match wins, no catch-all since exclusive matched
+        assert len(entry_nodes) == 1
+        assert entry_nodes[0][0].id == "chunker-first"
+
+    def test_parallel_catchall_edges_all_fire(self) -> None:
+        """Test that parallel catch-all edges all fire."""
+        dag = PipelineDAG(
+            id="parallel-catchall",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two parallel catch-all edges
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    when=None,
+                    parallel=True,
+                    path_name="path-a",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    when=None,
+                    parallel=True,
+                    path_name="path-b",
+                ),
+                # Non-parallel catch-all
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        router = PipelineRouter(dag)
+        any_file = FileReference(
+            uri="file:///test.any",
+            source_type="directory",
+            content_type="document",
+            extension=".any",
+            size_bytes=100,
+        )
+
+        entry_nodes = router.get_entry_nodes(any_file)
+
+        # Both parallel catch-all + exclusive catch-all
+        assert len(entry_nodes) == 3
+        node_ids = {node.id for node, _ in entry_nodes}
+        assert node_ids == {"chunker-a", "chunker-b", "parser"}
+
+    def test_get_next_nodes_with_paths_parallel(self) -> None:
+        """Test get_next_nodes_with_paths returns parallel edges from mid-pipeline."""
+        dag = PipelineDAG(
+            id="mid-fanout",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                # Parallel fan-out after parser
+                PipelineEdge(
+                    from_node="parser",
+                    to_node="chunker-a",
+                    parallel=True,
+                    path_name="detailed",
+                ),
+                PipelineEdge(
+                    from_node="parser",
+                    to_node="chunker-b",
+                    parallel=True,
+                    path_name="summary",
+                ),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+            ],
+        )
+        router = PipelineRouter(dag)
+        parser_node = router._node_index["parser"]
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+        )
+
+        next_nodes = router.get_next_nodes_with_paths(parser_node, file_ref)
+
+        # Both parallel edges should fire
+        assert len(next_nodes) == 2
+        node_ids = {node.id for node, _ in next_nodes}
+        path_names = {path_name for _, path_name in next_nodes}
+        assert node_ids == {"chunker-a", "chunker-b"}
+        assert path_names == {"detailed", "summary"}
+
+    def test_mixed_parallel_and_exclusive_mid_pipeline(self) -> None:
+        """Test mix of parallel and exclusive edges mid-pipeline."""
+        dag = PipelineDAG(
+            id="mixed-mid",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker-parallel", type=NodeType.CHUNKER, plugin_id="parallel"),
+                PipelineNode(id="chunker-exclusive", type=NodeType.CHUNKER, plugin_id="exclusive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                # One parallel, one exclusive (catch-all)
+                PipelineEdge(
+                    from_node="parser",
+                    to_node="chunker-parallel",
+                    parallel=True,
+                    path_name="parallel-path",
+                ),
+                PipelineEdge(
+                    from_node="parser",
+                    to_node="chunker-exclusive",
+                    parallel=False,  # Exclusive catch-all
+                ),
+                PipelineEdge(from_node="chunker-parallel", to_node="embedder"),
+                PipelineEdge(from_node="chunker-exclusive", to_node="embedder"),
+            ],
+        )
+        router = PipelineRouter(dag)
+        parser_node = router._node_index["parser"]
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+        )
+
+        next_nodes = router.get_next_nodes_with_paths(parser_node, file_ref)
+
+        # Parallel fires, and exclusive catch-all also fires
+        assert len(next_nodes) == 2
+        node_ids = {node.id for node, _ in next_nodes}
+        assert node_ids == {"chunker-parallel", "chunker-exclusive"}

@@ -596,3 +596,245 @@ class TestSourceNodeConstant:
     def test_source_node_value(self) -> None:
         """Test SOURCE_NODE has expected value."""
         assert SOURCE_NODE == "_source"
+
+
+class TestRule9DuplicatePathNames:
+    """Tests for Rule 9: Parallel edges must have unique path_names."""
+
+    def test_duplicate_path_name_error(self) -> None:
+        """Test error when parallel edges have duplicate path_names."""
+        dag = PipelineDAG(
+            id="duplicate-path",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two parallel edges with same explicit path_name
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    parallel=True,
+                    path_name="same-path",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    parallel=True,
+                    path_name="same-path",  # Duplicate!
+                ),
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        dup_errors = [e for e in errors if e.rule == "duplicate_path_name"]
+        assert len(dup_errors) == 1
+        assert "same-path" in dup_errors[0].message
+
+    def test_duplicate_implicit_path_name_error(self) -> None:
+        """Test error when parallel edges have duplicate implicit path_names (to_node)."""
+        # This would require two parallel edges going to the same node,
+        # which would be weird but possible if someone creates it incorrectly.
+        # The path_name defaults to to_node, so two edges to same node = duplicate.
+        dag = PipelineDAG(
+            id="implicit-duplicate",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two parallel edges to same node (implicit path_name = "chunker")
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker",
+                    when={"extension": ".txt"},
+                    parallel=True,
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker",
+                    when={"extension": ".md"},
+                    parallel=True,
+                ),
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        dup_errors = [e for e in errors if e.rule == "duplicate_path_name"]
+        # Should flag duplicate "chunker" path_name
+        assert len(dup_errors) == 1
+        assert "chunker" in dup_errors[0].message
+
+    def test_unique_path_names_no_error(self) -> None:
+        """Test no error when parallel edges have unique path_names."""
+        dag = PipelineDAG(
+            id="unique-paths",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    parallel=True,
+                    path_name="detailed",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    parallel=True,
+                    path_name="summary",
+                ),
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        dup_errors = [e for e in errors if e.rule == "duplicate_path_name"]
+        assert len(dup_errors) == 0
+
+    def test_single_parallel_edge_no_error(self) -> None:
+        """Test no error when only one parallel edge from a node."""
+        dag = PipelineDAG(
+            id="single-parallel",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-parallel", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-parallel",
+                    parallel=True,
+                    path_name="parallel-path",
+                ),
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="chunker-parallel", to_node="embedder"),
+                PipelineEdge(from_node="parser", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        dup_errors = [e for e in errors if e.rule == "duplicate_path_name"]
+        assert len(dup_errors) == 0
+
+    def test_non_parallel_edges_not_checked(self) -> None:
+        """Test that non-parallel edges are not checked for path_name uniqueness."""
+        dag = PipelineDAG(
+            id="non-parallel",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Two non-parallel edges (exclusive) - path_name doesn't matter
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    when={"extension": ".txt"},
+                    parallel=False,
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    when={"extension": ".md"},
+                    parallel=False,
+                ),
+                PipelineEdge(from_node=SOURCE_NODE, to_node="chunker-a"),  # Catch-all
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        dup_errors = [e for e in errors if e.rule == "duplicate_path_name"]
+        # No duplicate_path_name errors because none are parallel
+        assert len(dup_errors) == 0
+
+
+class TestRule6SourceCatchallWithParallel:
+    """Tests for Rule 6: Catch-all requirements with parallel edges."""
+
+    def test_only_parallel_catchall_error(self) -> None:
+        """Test error when only parallel catch-all edges exist from _source."""
+        dag = PipelineDAG(
+            id="only-parallel-catchall",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-a", type=NodeType.CHUNKER, plugin_id="a"),
+                PipelineNode(id="chunker-b", type=NodeType.CHUNKER, plugin_id="b"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Both catch-all edges are parallel - no exclusive catch-all!
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-a",
+                    parallel=True,
+                    path_name="path-a",
+                ),
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-b",
+                    parallel=True,
+                    path_name="path-b",
+                ),
+                PipelineEdge(from_node="chunker-a", to_node="embedder"),
+                PipelineEdge(from_node="chunker-b", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        catchall_errors = [e for e in errors if e.rule == "no_source_catchall"]
+        # Should have error because there's no non-parallel catch-all
+        assert len(catchall_errors) == 1
+        assert "non-parallel" in catchall_errors[0].message
+
+    def test_parallel_with_exclusive_catchall_no_error(self) -> None:
+        """Test no error when parallel edges exist with exclusive catch-all."""
+        dag = PipelineDAG(
+            id="parallel-with-catchall",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="chunker-parallel", type=NodeType.CHUNKER, plugin_id="parallel"),
+                PipelineNode(id="parser-default", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                # Parallel edge
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="chunker-parallel",
+                    parallel=True,
+                    path_name="parallel-path",
+                ),
+                # Non-parallel catch-all
+                PipelineEdge(
+                    from_node=SOURCE_NODE,
+                    to_node="parser-default",
+                    parallel=False,
+                ),
+                PipelineEdge(from_node="chunker-parallel", to_node="embedder"),
+                PipelineEdge(from_node="parser-default", to_node="embedder"),
+            ],
+        )
+        errors = validate_dag(dag)
+        catchall_errors = [e for e in errors if e.rule == "no_source_catchall"]
+        assert len(catchall_errors) == 0

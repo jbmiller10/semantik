@@ -1,7 +1,8 @@
 """Pipeline routing for edge matching and DAG traversal.
 
 This module provides the PipelineRouter class that routes files through
-the DAG based on edge predicates.
+the DAG based on edge predicates. Supports both exclusive (first-match-wins)
+and parallel (all-matching) edge semantics.
 """
 
 from __future__ import annotations
@@ -13,6 +14,10 @@ from shared.pipeline.validation import SOURCE_NODE
 
 if TYPE_CHECKING:
     from shared.pipeline.types import FileReference, PipelineDAG, PipelineEdge, PipelineNode
+
+
+# Type alias for routing results: (node, path_name)
+RoutedNode = tuple["PipelineNode", str]
 
 
 class PipelineRouter:
@@ -59,6 +64,9 @@ class PipelineRouter:
     def get_entry_node(self, file_ref: FileReference) -> PipelineNode | None:
         """Find the entry node for a file based on _source edges.
 
+        This is a backward-compatible method that returns only the first entry node.
+        For parallel path support, use get_entry_nodes() instead.
+
         Examines edges from _source and returns the first matching node.
         Edges with predicates are checked first (in order), with catch-all
         edges (when=None) checked last.
@@ -69,31 +77,88 @@ class PipelineRouter:
         Returns:
             The entry node to start processing, or None if no match
         """
+        entry_nodes = self.get_entry_nodes(file_ref)
+        if entry_nodes:
+            return entry_nodes[0][0]  # Return just the node, not the path_name
+        return None
+
+    def get_entry_nodes(self, file_ref: FileReference) -> list[RoutedNode]:
+        """Find all entry nodes for a file based on _source edges.
+
+        Handles both parallel and exclusive edge semantics:
+        - Parallel edges (parallel=True): All matching parallel edges fire together
+        - Exclusive edges (parallel=False): First-match-wins, at most one fires
+
+        The evaluation order is:
+        1. Check all parallel predicate edges (all matches fire)
+        2. Check exclusive predicate edges (first match wins)
+        3. Check parallel catch-all edges (all fire)
+        4. Check exclusive catch-all edges (first match wins)
+
+        Args:
+            file_ref: The file reference to route
+
+        Returns:
+            List of (node, path_name) tuples for matched entry points
+        """
         source_edges = self._outgoing_edges.get(SOURCE_NODE, [])
 
         if not source_edges:
-            return None
+            return []
 
-        # Separate edges with predicates from catch-all edges
-        predicate_edges: list[PipelineEdge] = []
-        catchall_edges: list[PipelineEdge] = []
+        results: list[RoutedNode] = []
+
+        # Categorize edges by parallel flag and predicate presence
+        parallel_predicate: list[PipelineEdge] = []
+        parallel_catchall: list[PipelineEdge] = []
+        exclusive_predicate: list[PipelineEdge] = []
+        exclusive_catchall: list[PipelineEdge] = []
 
         for edge in source_edges:
-            if edge.when is None or edge.when == {}:
-                catchall_edges.append(edge)
+            is_catchall = edge.when is None or edge.when == {}
+            if edge.parallel:
+                if is_catchall:
+                    parallel_catchall.append(edge)
+                else:
+                    parallel_predicate.append(edge)
             else:
-                predicate_edges.append(edge)
+                if is_catchall:
+                    exclusive_catchall.append(edge)
+                else:
+                    exclusive_predicate.append(edge)
 
-        # Check predicate edges first (order matters - first match wins)
-        for edge in predicate_edges:
+        # 1. Evaluate parallel predicate edges (all matches fire)
+        for edge in parallel_predicate:
             if matches_predicate(file_ref, edge.when):
-                return self._node_index.get(edge.to_node)
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
 
-        # Fall back to catch-all edges
-        for edge in catchall_edges:
-            return self._node_index.get(edge.to_node)
+        # 2. Evaluate exclusive predicate edges (first match wins)
+        exclusive_matched = False
+        for edge in exclusive_predicate:
+            if matches_predicate(file_ref, edge.when):
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    exclusive_matched = True
+                    break
 
-        return None
+        # 3. Evaluate parallel catch-all edges (all fire)
+        for edge in parallel_catchall:
+            node = self._node_index.get(edge.to_node)
+            if node:
+                results.append((node, edge.get_path_name()))
+
+        # 4. Fall back to exclusive catch-all if no exclusive match yet
+        if not exclusive_matched:
+            for edge in exclusive_catchall:
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    break
+
+        return results
 
     def get_next_nodes(
         self,
@@ -102,55 +167,106 @@ class PipelineRouter:
     ) -> list[PipelineNode]:
         """Find the next node(s) to process after the current node completes.
 
-        Uses first-match-wins semantics: returns a single-element list with
-        the first matching node, or empty list at terminal nodes.
+        This is a backward-compatible method that returns only nodes without path names.
+        For parallel path support with path names, use get_next_nodes_with_paths() instead.
 
-        Predicate edges are evaluated in order, and the first matching edge
-        determines the next node. Catch-all edges (when=None) are checked
-        only if no predicate edges match.
-
-        Note:
-            Returns a list for API consistency, but always contains 0 or 1 nodes.
-            This allows callers to use iteration patterns even though only one
-            node is ever returned.
+        Uses first-match-wins semantics for exclusive edges: returns a single-element list
+        with the first matching node, or empty list at terminal nodes.
 
         Args:
             current: The node that just completed processing
             file_ref: The file being processed (used for predicate matching)
 
         Returns:
-            Single-element list with the first matching node, or empty list at
-            terminal nodes (embedder) or when no edges match.
+            List of nodes. For exclusive routing, contains 0 or 1 nodes.
+            For parallel routing, may contain multiple nodes.
+        """
+        routed = self.get_next_nodes_with_paths(current, file_ref)
+        return [node for node, _ in routed]
+
+    def get_next_nodes_with_paths(
+        self,
+        current: PipelineNode,
+        file_ref: FileReference,
+    ) -> list[RoutedNode]:
+        """Find the next node(s) to process after the current node completes.
+
+        Handles both parallel and exclusive edge semantics:
+        - Parallel edges (parallel=True): All matching parallel edges fire together
+        - Exclusive edges (parallel=False): First-match-wins, at most one fires
+
+        The evaluation order is:
+        1. Check all parallel predicate edges (all matches fire)
+        2. Check exclusive predicate edges (first match wins)
+        3. Check parallel catch-all edges (all fire)
+        4. Check exclusive catch-all edges (first match wins)
+
+        Args:
+            current: The node that just completed processing
+            file_ref: The file being processed (used for predicate matching)
+
+        Returns:
+            List of (node, path_name) tuples. For exclusive routing, contains 0 or 1.
+            For parallel routing, may contain multiple entries.
         """
         outgoing = self._outgoing_edges.get(current.id, [])
 
         if not outgoing:
             return []
 
-        # Separate edges with predicates from catch-all edges
-        predicate_edges: list[PipelineEdge] = []
-        catchall_edges: list[PipelineEdge] = []
+        results: list[RoutedNode] = []
+
+        # Categorize edges by parallel flag and predicate presence
+        parallel_predicate: list[PipelineEdge] = []
+        parallel_catchall: list[PipelineEdge] = []
+        exclusive_predicate: list[PipelineEdge] = []
+        exclusive_catchall: list[PipelineEdge] = []
 
         for edge in outgoing:
-            if edge.when is None or edge.when == {}:
-                catchall_edges.append(edge)
+            is_catchall = edge.when is None or edge.when == {}
+            if edge.parallel:
+                if is_catchall:
+                    parallel_catchall.append(edge)
+                else:
+                    parallel_predicate.append(edge)
             else:
-                predicate_edges.append(edge)
+                if is_catchall:
+                    exclusive_catchall.append(edge)
+                else:
+                    exclusive_predicate.append(edge)
 
-        # Check predicate edges first
-        for edge in predicate_edges:
+        # 1. Evaluate parallel predicate edges (all matches fire)
+        for edge in parallel_predicate:
             if matches_predicate(file_ref, edge.when):
                 node = self._node_index.get(edge.to_node)
                 if node:
-                    return [node]
+                    results.append((node, edge.get_path_name()))
 
-        # Fall back to catch-all edges
-        for edge in catchall_edges:
+        # 2. Evaluate exclusive predicate edges (first match wins)
+        exclusive_matched = False
+        for edge in exclusive_predicate:
+            if matches_predicate(file_ref, edge.when):
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    exclusive_matched = True
+                    break
+
+        # 3. Evaluate parallel catch-all edges (all fire)
+        for edge in parallel_catchall:
             node = self._node_index.get(edge.to_node)
             if node:
-                return [node]
+                results.append((node, edge.get_path_name()))
 
-        return []
+        # 4. Fall back to exclusive catch-all if no exclusive match yet
+        if not exclusive_matched:
+            for edge in exclusive_catchall:
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    break
+
+        return results
 
     def get_node(self, node_id: str) -> PipelineNode | None:
         """Get a node by ID.
@@ -217,4 +333,5 @@ class PipelineRouter:
 
 __all__ = [
     "PipelineRouter",
+    "RoutedNode",
 ]

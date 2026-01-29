@@ -636,6 +636,137 @@ class TestPipelineEdge:
         assert restored.to_node == original.to_node
         assert restored.when == original.when
 
+    def test_parallel_default_false(self) -> None:
+        """Test that parallel defaults to False."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+        )
+        assert edge.parallel is False
+
+    def test_parallel_explicit_true(self) -> None:
+        """Test setting parallel to True."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="chunker-1",
+            parallel=True,
+        )
+        assert edge.parallel is True
+
+    def test_path_name_default_none(self) -> None:
+        """Test that path_name defaults to None."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+        )
+        assert edge.path_name is None
+
+    def test_path_name_explicit(self) -> None:
+        """Test setting path_name explicitly."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="chunker-1",
+            parallel=True,
+            path_name="detailed-chunks",
+        )
+        assert edge.path_name == "detailed-chunks"
+
+    def test_get_path_name_explicit(self) -> None:
+        """Test get_path_name returns explicit path_name."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="chunker-1",
+            path_name="custom-path",
+        )
+        assert edge.get_path_name() == "custom-path"
+
+    def test_get_path_name_default_to_node(self) -> None:
+        """Test get_path_name returns to_node when path_name is None."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="chunker-semantic",
+        )
+        assert edge.get_path_name() == "chunker-semantic"
+
+    def test_to_dict_excludes_parallel_when_false(self) -> None:
+        """Test that to_dict excludes parallel when False (backward compat)."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+            parallel=False,
+        )
+        d = edge.to_dict()
+        assert "parallel" not in d
+
+    def test_to_dict_includes_parallel_when_true(self) -> None:
+        """Test that to_dict includes parallel when True."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+            parallel=True,
+        )
+        d = edge.to_dict()
+        assert d["parallel"] is True
+
+    def test_to_dict_excludes_path_name_when_none(self) -> None:
+        """Test that to_dict excludes path_name when None (backward compat)."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+        )
+        d = edge.to_dict()
+        assert "path_name" not in d
+
+    def test_to_dict_includes_path_name_when_set(self) -> None:
+        """Test that to_dict includes path_name when set."""
+        edge = PipelineEdge(
+            from_node="_source",
+            to_node="parser-1",
+            path_name="custom",
+        )
+        d = edge.to_dict()
+        assert d["path_name"] == "custom"
+
+    def test_from_dict_with_parallel_and_path_name(self) -> None:
+        """Test from_dict with parallel and path_name fields."""
+        d = {
+            "from_node": "_source",
+            "to_node": "chunker-1",
+            "when": None,
+            "parallel": True,
+            "path_name": "summary",
+        }
+        edge = PipelineEdge.from_dict(d)
+        assert edge.from_node == "_source"
+        assert edge.to_node == "chunker-1"
+        assert edge.parallel is True
+        assert edge.path_name == "summary"
+
+    def test_from_dict_without_parallel_defaults_false(self) -> None:
+        """Test from_dict defaults parallel to False when not present."""
+        d = {
+            "from_node": "_source",
+            "to_node": "chunker-1",
+        }
+        edge = PipelineEdge.from_dict(d)
+        assert edge.parallel is False
+
+    def test_roundtrip_with_parallel_fields(self) -> None:
+        """Test to_dict -> from_dict preserves parallel fields."""
+        original = PipelineEdge(
+            from_node="_source",
+            to_node="chunker-1",
+            when={"mime_type": "text/markdown"},
+            parallel=True,
+            path_name="markdown-chunks",
+        )
+        restored = PipelineEdge.from_dict(original.to_dict())
+        assert restored.from_node == original.from_node
+        assert restored.to_node == original.to_node
+        assert restored.when == original.when
+        assert restored.parallel == original.parallel
+        assert restored.path_name == original.path_name
+
 
 class TestDAGValidationError:
     """Tests for DAGValidationError dataclass."""
