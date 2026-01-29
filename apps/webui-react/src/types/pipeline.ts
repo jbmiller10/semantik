@@ -24,6 +24,8 @@ export interface PipelineEdge {
   from_node: string; // "_source" for entry edges
   to_node: string;
   when: Record<string, unknown> | null; // null = catch-all
+  parallel?: boolean; // If true, edge can fire alongside others (fan-out)
+  path_name?: string | null; // Path identifier for chunk tagging
 }
 
 export interface PipelineDAG {
