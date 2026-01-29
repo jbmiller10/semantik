@@ -416,4 +416,46 @@ describe('RoutePreviewResults', () => {
       expect(screen.getByTestId('edge-evaluation-tree')).toBeInTheDocument();
     });
   });
+
+  describe('parallel execution banner', () => {
+    it('shows prominent parallel execution banner when multiple paths exist', () => {
+      const parallelResult = createMockResult({
+        paths: [
+          { path_name: 'embedding', nodes: ['_source', 'parser', 'chunker', 'embedder'] },
+          { path_name: 'extraction', nodes: ['_source', 'parser', 'chunker', 'extractor'] },
+        ],
+      });
+
+      const { container } = render(<RoutePreviewResults result={parallelResult} dag={createMockDAG()} />);
+
+      // Should have prominent banner with blue styling
+      const banner = container.querySelector('.bg-blue-500\\/20');
+      expect(banner).toBeInTheDocument();
+
+      // Should show parallel execution text with path count in banner
+      expect(screen.getByText(/parallel execution.*2 paths/i)).toBeInTheDocument();
+    });
+
+    it('does not show parallel execution banner for single path', () => {
+      const singlePathResult = createMockResult({
+        paths: [
+          { path_name: 'default', nodes: ['_source', 'parser', 'chunker'] },
+        ],
+      });
+
+      render(<RoutePreviewResults result={singlePathResult} dag={createMockDAG()} />);
+
+      // Should NOT have parallel execution banner
+      expect(screen.queryByText(/parallel execution/i)).not.toBeInTheDocument();
+    });
+
+    it('does not show parallel execution banner when paths is undefined', () => {
+      const result = createMockResult({ paths: undefined });
+
+      render(<RoutePreviewResults result={result} dag={createMockDAG()} />);
+
+      // Should NOT have parallel execution banner
+      expect(screen.queryByText(/parallel execution/i)).not.toBeInTheDocument();
+    });
+  });
 });

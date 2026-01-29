@@ -132,6 +132,21 @@ export function RoutePreviewResults({ result, dag }: RoutePreviewResultsProps) {
         <span>Preview completed in {formatDuration(result.total_duration_ms)}</span>
       </div>
 
+      {/* Parallel Execution Banner */}
+      {result.paths && result.paths.length > 1 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
+          <Zap className="w-5 h-5 text-blue-400" />
+          <div>
+            <span className="text-sm font-semibold text-blue-400">
+              Parallel Execution: {result.paths.length} paths
+            </span>
+            <p className="text-xs text-blue-300/80 mt-0.5">
+              This file will be processed through multiple paths simultaneously
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Route Path (most important) */}
       <Section
         title="Routing Path"
