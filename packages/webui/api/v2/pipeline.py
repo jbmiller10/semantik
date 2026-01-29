@@ -131,11 +131,12 @@ async def preview_route(
 # =============================================================================
 
 # Source metadata fields (from connector, always available)
+# NOTE: These are top-level FileReference attributes, not nested under metadata.source
 SOURCE_FIELDS = [
-    PredicateField(value="metadata.source.mime_type", label="MIME Type", category="source"),
-    PredicateField(value="metadata.source.extension", label="Extension", category="source"),
-    PredicateField(value="metadata.source.source_type", label="Source Type", category="source"),
-    PredicateField(value="metadata.source.content_type", label="Content Type", category="source"),
+    PredicateField(value="mime_type", label="MIME Type", category="source"),
+    PredicateField(value="extension", label="Extension", category="source"),
+    PredicateField(value="source_type", label="Source Type", category="source"),
+    PredicateField(value="content_type", label="Content Type", category="source"),
 ]
 
 # Detected metadata fields (from pre-routing sniff, always available)

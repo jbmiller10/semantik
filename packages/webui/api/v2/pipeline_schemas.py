@@ -29,13 +29,15 @@ class EdgeEvaluationResult(BaseModel):
     to_node: str = Field(..., description="Target node ID")
     predicate: dict[str, Any] | None = Field(None, description="The 'when' clause predicate")
     matched: bool = Field(..., description="Whether the predicate matched")
-    status: Literal["matched", "not_matched", "skipped"] = Field(
+    status: Literal["matched", "matched_parallel", "not_matched", "skipped"] = Field(
         ...,
-        description="Status: 'matched' if this edge was selected, 'not_matched' if evaluated but didn't match, 'skipped' if not evaluated (earlier edge matched)",
+        description="Status: 'matched' if this edge was selected (exclusive), 'matched_parallel' if selected as part of parallel fan-out, 'not_matched' if evaluated but didn't match, 'skipped' if not evaluated (earlier exclusive edge matched)",
     )
     field_evaluations: list[FieldEvaluationResult] | None = Field(
         None, description="Detailed field-by-field evaluation results"
     )
+    is_parallel: bool = Field(False, description="Whether edge has parallel=True")
+    path_name: str | None = Field(None, description="Path name tag from edge")
 
 
 class StageEvaluationResult(BaseModel):
@@ -46,10 +48,20 @@ class StageEvaluationResult(BaseModel):
     evaluated_edges: list[EdgeEvaluationResult] = Field(
         default_factory=list, description="All edges that were evaluated at this stage"
     )
-    selected_node: str | None = Field(None, description="The node that was selected for this stage")
+    selected_node: str | None = Field(None, description="The node that was selected for this stage (first/primary)")
+    selected_nodes: list[str] | None = Field(
+        None, description="All selected nodes for parallel fan-out (None if single path)"
+    )
     metadata_snapshot: dict[str, Any] = Field(
         default_factory=dict, description="Metadata state at this point in routing"
     )
+
+
+class PathInfo(BaseModel):
+    """Information about a single execution path through the pipeline."""
+
+    path_name: str = Field(..., description="Path identifier (from edge path_name or auto-generated)")
+    nodes: list[str] = Field(..., description="Ordered list of node IDs in this path")
 
 
 class RoutePreviewResponse(BaseModel):
@@ -68,10 +80,15 @@ class RoutePreviewResponse(BaseModel):
         default_factory=list, description="Detailed evaluation results for each routing stage"
     )
 
-    # Final path
+    # Final path (primary path for backward compatibility)
     path: list[str] = Field(
         default_factory=list,
-        description="Ordered list of node IDs in the selected path (e.g., ['_source', 'pdf_parser', 'recursive_chunker', 'embedder'])",
+        description="Ordered list of node IDs in the primary path (e.g., ['_source', 'pdf_parser', 'recursive_chunker', 'embedder'])",
+    )
+
+    # All execution paths (for parallel fan-out)
+    paths: list[PathInfo] | None = Field(
+        None, description="All execution paths for parallel fan-out (None for single-path DAGs)"
     )
 
     # Parser metadata (if parser was run)
@@ -111,6 +128,7 @@ __all__ = [
     "FieldEvaluationResult",
     "EdgeEvaluationResult",
     "StageEvaluationResult",
+    "PathInfo",
     "RoutePreviewResponse",
     "AvailablePredicateFieldsRequest",
     "PredicateField",

@@ -48,12 +48,13 @@ function applyNegation(value: unknown, isNegated: boolean): unknown {
 }
 
 // Fallback predicate fields (used if API call fails)
+// NOTE: Source fields are top-level FileReference attributes, not nested under metadata.source
 const FALLBACK_FIELDS: PredicateField[] = [
-  // Source metadata (from connector)
-  { value: 'metadata.source.mime_type', label: 'MIME Type', category: 'source' },
-  { value: 'metadata.source.extension', label: 'Extension', category: 'source' },
-  { value: 'metadata.source.source_type', label: 'Source Type', category: 'source' },
-  { value: 'metadata.source.content_type', label: 'Content Type', category: 'source' },
+  // Source metadata (from connector) - top-level FileReference attributes
+  { value: 'mime_type', label: 'MIME Type', category: 'source' },
+  { value: 'extension', label: 'Extension', category: 'source' },
+  { value: 'source_type', label: 'Source Type', category: 'source' },
+  { value: 'content_type', label: 'Content Type', category: 'source' },
   // Detected metadata (from pre-routing sniff)
   { value: 'metadata.detected.is_scanned_pdf', label: 'Is Scanned PDF', category: 'detected' },
   { value: 'metadata.detected.is_code', label: 'Is Code', category: 'detected' },
@@ -119,7 +120,7 @@ export function EdgePredicateEditor({
   // Extract current predicate field and value
   const { field, value } = useMemo(() => {
     if (!edge.when || Object.keys(edge.when).length === 0) {
-      return { field: 'metadata.source.mime_type', value: '' };
+      return { field: 'mime_type', value: '' };
     }
     const [f, v] = Object.entries(edge.when)[0];
     return { field: f, value: v };
@@ -140,7 +141,7 @@ export function EdgePredicateEditor({
       if (checked) {
         onChange({ ...edge, when: null });
       } else {
-        onChange({ ...edge, when: { 'metadata.source.mime_type': '' } });
+        onChange({ ...edge, when: { 'mime_type': '' } });
       }
     },
     [edge, onChange]

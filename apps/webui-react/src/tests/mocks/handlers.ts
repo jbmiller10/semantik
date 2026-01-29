@@ -1846,13 +1846,14 @@ export const handlers = [
 
   http.post('*/api/v2/pipeline/available-predicate-fields', async () => {
     // Return mock predicate fields based on source/detected/parsed categories
+    // NOTE: Source fields are top-level FileReference attributes
     return HttpResponse.json({
       fields: [
-        // Source metadata (from connector)
-        { value: 'metadata.source.mime_type', label: 'MIME Type', category: 'source' },
-        { value: 'metadata.source.extension', label: 'Extension', category: 'source' },
-        { value: 'metadata.source.source_type', label: 'Source Type', category: 'source' },
-        { value: 'metadata.source.content_type', label: 'Content Type', category: 'source' },
+        // Source metadata (from connector) - top-level FileReference attributes
+        { value: 'mime_type', label: 'MIME Type', category: 'source' },
+        { value: 'extension', label: 'Extension', category: 'source' },
+        { value: 'source_type', label: 'Source Type', category: 'source' },
+        { value: 'content_type', label: 'Content Type', category: 'source' },
         // Detected metadata (from pre-routing sniff)
         { value: 'metadata.detected.is_scanned_pdf', label: 'Is Scanned PDF', category: 'detected' },
         { value: 'metadata.detected.is_code', label: 'Is Code', category: 'detected' },

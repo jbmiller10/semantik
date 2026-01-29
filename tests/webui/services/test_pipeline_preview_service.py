@@ -426,3 +426,250 @@ class TestBuildFileReference:
         # Verify change_hint is a valid SHA-256 hex digest
         assert len(file_ref.change_hint) == 64  # SHA-256 produces 64 hex chars
         assert all(c in "0123456789abcdef" for c in file_ref.change_hint)
+
+
+class TestParallelEdgeRouting:
+    """Tests for parallel edge routing behavior."""
+
+    @pytest.fixture()
+    def preview_service(self) -> PipelinePreviewService:
+        """Create a preview service instance."""
+        return PipelinePreviewService()
+
+    @pytest.fixture()
+    def dag_with_parallel_edges(self) -> dict:
+        """Create a DAG with two parallel edges from _source."""
+        return {
+            "id": "test-dag-parallel",
+            "version": "1.0",
+            "nodes": [
+                {"id": "pdf_parser", "type": "parser", "plugin_id": "pdf", "config": {}},
+                {"id": "text_parser", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                # Two parallel predicate edges - both should fire if conditions match
+                {
+                    "from_node": "_source",
+                    "to_node": "pdf_parser",
+                    "when": {"mime_type": "application/pdf"},
+                    "parallel": True,
+                    "path_name": "pdf_path",
+                },
+                {
+                    "from_node": "_source",
+                    "to_node": "text_parser",
+                    "when": {"extension": ".pdf"},  # Also matches PDF files
+                    "parallel": True,
+                    "path_name": "text_path",
+                },
+                {"from_node": "pdf_parser", "to_node": "embedder1", "when": None},
+                {"from_node": "text_parser", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+    @pytest.fixture()
+    def dag_with_mixed_edges(self) -> dict:
+        """Create a DAG with parallel and exclusive edges."""
+        return {
+            "id": "test-dag-mixed",
+            "version": "1.0",
+            "nodes": [
+                {"id": "parser_a", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "parser_b", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "parser_c", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                # Parallel predicate edge
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_a",
+                    "when": {"extension": ".txt"},
+                    "parallel": True,
+                    "path_name": "path_a",
+                },
+                # Exclusive predicate edge (first-match-wins)
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_b",
+                    "when": {"extension": ".txt"},
+                    "parallel": False,
+                    "path_name": "path_b",
+                },
+                # Exclusive catch-all
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_c",
+                    "when": None,
+                    "parallel": False,
+                    "path_name": "path_c",
+                },
+                {"from_node": "parser_a", "to_node": "embedder1", "when": None},
+                {"from_node": "parser_b", "to_node": "embedder1", "when": None},
+                {"from_node": "parser_c", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+    @pytest.mark.asyncio()
+    async def test_parallel_edges_both_fire(
+        self, preview_service: PipelinePreviewService, dag_with_parallel_edges: dict
+    ) -> None:
+        """Test that two parallel edges matching the same file both fire."""
+        content = b"%PDF-1.4 fake pdf content"
+        filename = "document.pdf"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(
+                content,
+                filename,
+                dag_with_parallel_edges,
+                include_parser_metadata=False,
+            )
+
+        # Verify both paths were selected
+        entry_stage = result.routing_stages[0]
+        assert entry_stage.selected_nodes is not None, "selected_nodes should be populated for parallel"
+        selected_nodes = entry_stage.selected_nodes  # Type narrowing
+        assert len(selected_nodes) == 2, "Both parallel edges should have matched"
+        assert "pdf_parser" in selected_nodes
+        assert "text_parser" in selected_nodes
+
+        # Verify paths field contains both paths
+        assert result.paths is not None, "paths should be populated for parallel fan-out"
+        assert len(result.paths) == 2, "Should have two paths"
+        path_names = {p.path_name for p in result.paths}
+        assert "pdf_path" in path_names
+        assert "text_path" in path_names
+
+        # Primary path should still be set
+        assert result.path[0] == "_source"
+        assert result.path[1] in ("pdf_parser", "text_parser")
+
+    @pytest.mark.asyncio()
+    async def test_edge_status_matched_parallel(
+        self, preview_service: PipelinePreviewService, dag_with_parallel_edges: dict
+    ) -> None:
+        """Test that parallel edges get status='matched_parallel'."""
+        content = b"%PDF-1.4 fake pdf content"
+        filename = "document.pdf"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(
+                content,
+                filename,
+                dag_with_parallel_edges,
+                include_parser_metadata=False,
+            )
+
+        entry_stage = result.routing_stages[0]
+        matched_edges = [e for e in entry_stage.evaluated_edges if e.matched]
+
+        # All matched edges should have status "matched_parallel"
+        for edge in matched_edges:
+            assert edge.status == "matched_parallel", f"Expected matched_parallel, got {edge.status}"
+            assert edge.is_parallel is True, "Edge should be marked as parallel"
+
+    @pytest.mark.asyncio()
+    async def test_exclusive_edge_blocks_later_exclusive(
+        self, preview_service: PipelinePreviewService, dag_with_mixed_edges: dict
+    ) -> None:
+        """Test that an exclusive match blocks later exclusive edges (catch-all)."""
+        content = b"Test content"
+        filename = "test.txt"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(
+                content,
+                filename,
+                dag_with_mixed_edges,
+                include_parser_metadata=False,
+            )
+
+        entry_stage = result.routing_stages[0]
+
+        # Find edges by to_node
+        edges_by_target = {e.to_node: e for e in entry_stage.evaluated_edges}
+
+        # Parallel predicate edge should match
+        assert edges_by_target["parser_a"].status == "matched_parallel"
+        assert edges_by_target["parser_a"].is_parallel is True
+
+        # Exclusive predicate edge should also match (first exclusive match)
+        assert edges_by_target["parser_b"].status == "matched"
+        assert edges_by_target["parser_b"].is_parallel is False
+
+        # Exclusive catch-all should be skipped (exclusive already matched)
+        assert edges_by_target["parser_c"].status == "skipped"
+
+    @pytest.mark.asyncio()
+    async def test_non_matching_uses_catchall(
+        self, preview_service: PipelinePreviewService, dag_with_mixed_edges: dict
+    ) -> None:
+        """Test that non-matching predicates fall back to catch-all."""
+        content = b"Binary content"
+        filename = "data.bin"  # Won't match .txt predicate
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(
+                content,
+                filename,
+                dag_with_mixed_edges,
+                include_parser_metadata=False,
+            )
+
+        entry_stage = result.routing_stages[0]
+
+        # Find edges by to_node
+        edges_by_target = {e.to_node: e for e in entry_stage.evaluated_edges}
+
+        # Parallel predicate edge should not match
+        assert edges_by_target["parser_a"].status == "not_matched"
+
+        # Exclusive predicate edge should not match
+        assert edges_by_target["parser_b"].status == "not_matched"
+
+        # Exclusive catch-all should match
+        assert edges_by_target["parser_c"].status == "matched"
+
+        # Should only have single path (catch-all)
+        assert result.paths is None, "paths should be None for single-path result"
+        assert "parser_c" in result.path
+
+    @pytest.mark.asyncio()
+    async def test_non_parallel_dag_unchanged(
+        self, preview_service: PipelinePreviewService
+    ) -> None:
+        """Test that DAGs without parallel edges work unchanged (backward compat)."""
+        dag = {
+            "id": "test-dag-simple",
+            "version": "1.0",
+            "nodes": [
+                {"id": "parser1", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                {"from_node": "_source", "to_node": "parser1", "when": None},  # No parallel field
+                {"from_node": "parser1", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+        content = b"Test content"
+        filename = "test.txt"
+
+        with patch.object(preview_service, "_run_parser", return_value={}):
+            result = await preview_service.preview_route(
+                content,
+                filename,
+                dag,
+                include_parser_metadata=False,
+            )
+
+        # Verify backward compatibility
+        assert result.path == ["_source", "parser1", "embedder1"]
+        assert result.paths is None, "paths should be None for non-parallel DAG"
+
+        # Entry stage should have selected_nodes as None (single path)
+        entry_stage = result.routing_stages[0]
+        assert entry_stage.selected_node == "parser1"
+        assert entry_stage.selected_nodes is None, "selected_nodes should be None for single path"

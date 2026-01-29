@@ -17,7 +17,7 @@ describe('EdgePredicateEditor', () => {
   const mockEdge: PipelineEdge = {
     from_node: '_source',
     to_node: 'parser1',
-    when: { 'metadata.source.mime_type': 'application/pdf' },
+    when: { 'mime_type': 'application/pdf' },
   };
 
   it('renders edge info', () => {
@@ -107,7 +107,7 @@ describe('EdgePredicateEditor', () => {
       expect(el).toBeTruthy();
       return el as HTMLSelectElement;
     });
-    await user.selectOptions(fieldSelect, 'metadata.source.extension');
+    await user.selectOptions(fieldSelect, 'extension');
 
     expect(handleChange).toHaveBeenCalled();
   });
@@ -160,7 +160,7 @@ describe('EdgePredicateEditor', () => {
     const arrayEdge: PipelineEdge = {
       from_node: '_source',
       to_node: 'parser1',
-      when: { 'metadata.source.extension': ['.md', '.txt'] },
+      when: { 'extension': ['.md', '.txt'] },
     };
 
     render(
@@ -291,7 +291,7 @@ describe('EdgePredicateEditor', () => {
       const negatedEdge: PipelineEdge = {
         from_node: '_source',
         to_node: 'parser1',
-        when: { 'metadata.source.mime_type': '!application/pdf' },
+        when: { 'mime_type': '!application/pdf' },
       };
 
       render(
@@ -329,7 +329,7 @@ describe('EdgePredicateEditor', () => {
 
       expect(handleChange).toHaveBeenCalledWith({
         ...mockEdge,
-        when: { 'metadata.source.mime_type': '!application/pdf' },
+        when: { 'mime_type': '!application/pdf' },
       });
     });
 
@@ -337,7 +337,7 @@ describe('EdgePredicateEditor', () => {
       const negatedEdge: PipelineEdge = {
         from_node: '_source',
         to_node: 'parser1',
-        when: { 'metadata.source.mime_type': '!application/pdf' },
+        when: { 'mime_type': '!application/pdf' },
       };
 
       render(

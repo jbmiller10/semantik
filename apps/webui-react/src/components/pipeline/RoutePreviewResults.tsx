@@ -139,14 +139,18 @@ export function RoutePreviewResults({ result, dag }: RoutePreviewResultsProps) {
         defaultExpanded={true}
         badge={
           routeFound ? (
-            <span className="text-xs text-green-400">{result.path.length} nodes</span>
+            result.paths && result.paths.length > 1 ? (
+              <span className="text-xs text-blue-400">{result.paths.length} paths (parallel)</span>
+            ) : (
+              <span className="text-xs text-green-400">{result.path.length} nodes</span>
+            )
           ) : (
             <span className="text-xs text-red-400">No route</span>
           )
         }
       >
         {routeFound ? (
-          <PathVisualization path={result.path} dag={dag} />
+          <PathVisualization path={result.path} paths={result.paths} dag={dag} />
         ) : (
           <p className="text-sm text-[var(--text-muted)] italic">
             No matching route found for this file

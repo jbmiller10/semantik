@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Check, X, SkipForward } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, X, SkipForward, GitFork } from 'lucide-react';
 import type { StageEvaluationResult, EdgeEvaluationResult, FieldEvaluationResult } from '@/types/routePreview';
 import type { PipelineDAG, PipelineNode as PipelineNodeType } from '@/types/pipeline';
 
@@ -18,7 +18,7 @@ interface EdgeEvaluationTreeProps {
 /**
  * Get status icon and color for an edge evaluation.
  */
-function getStatusDisplay(status: 'matched' | 'not_matched' | 'skipped') {
+function getStatusDisplay(status: 'matched' | 'matched_parallel' | 'not_matched' | 'skipped') {
   switch (status) {
     case 'matched':
       return {
@@ -27,6 +27,14 @@ function getStatusDisplay(status: 'matched' | 'not_matched' | 'skipped') {
         bgColor: 'bg-green-500/10',
         borderColor: 'border-green-500/30',
         label: 'Matched',
+      };
+    case 'matched_parallel':
+      return {
+        icon: <GitFork className="w-4 h-4" />,
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-500/10',
+        borderColor: 'border-blue-500/30',
+        label: 'Matched (Parallel)',
       };
     case 'not_matched':
       return {
