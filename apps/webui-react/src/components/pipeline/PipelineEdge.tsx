@@ -14,56 +14,35 @@ interface PipelineEdgeComponentProps {
   onClick?: (fromNode: string, toNode: string) => void;
   /** Whether this is a newly created edge (for draw-in animation) */
   isNew?: boolean;
+  /** Whether this edge is in the highlighted route preview path */
+  isHighlighted?: boolean;
+  /** Custom highlight color (defaults to green) */
+  highlightColor?: string;
+  /** Priority index (1-based) for edges from the same source node */
+  priority?: number;
+  /** Total number of edges from the same source node */
+  totalFromSource?: number;
 }
 
 /**
- * Format a predicate clause for display.
- * Extracts the most relevant info from the when clause.
+ * Format full predicate for tooltip display.
+ * Shows complete information about the condition.
  */
-function formatPredicate(when: Record<string, unknown>): string {
-  // Handle mime_type
-  if ('mime_type' in when) {
-    const mime = when.mime_type;
-    if (Array.isArray(mime)) {
-      return mime.map(m => extractMimeShortName(String(m))).join(', ');
-    }
-    return extractMimeShortName(String(mime));
-  }
+function formatTooltipPredicate(when: Record<string, unknown>): string {
+  const entries = Object.entries(when);
+  if (entries.length === 0) return 'Empty condition';
 
-  // Handle extension
-  if ('extension' in when) {
-    const ext = when.extension;
-    if (Array.isArray(ext)) {
-      return ext.join(', ');
-    }
-    return String(ext);
-  }
+  return entries.map(([key, value]) => {
+    const label = key.replace(/_/g, ' ').replace(/\./g, ' > ');
+    const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
 
-  // Generic: show first key
-  const firstKey = Object.keys(when)[0];
-  if (firstKey) {
-    const value = when[firstKey];
     if (Array.isArray(value)) {
-      return `${firstKey}: [...]`;
+      return `${capitalizedLabel}: ${value.join(', ')}`;
     }
-    return `${firstKey}: ${value}`;
-  }
-
-  return '?';
+    return `${capitalizedLabel}: ${String(value)}`;
+  }).join('\n');
 }
 
-/**
- * Extract short name from MIME type.
- * "application/pdf" -> "pdf"
- * "application/vnd.*" -> "office"
- */
-function extractMimeShortName(mime: string): string {
-  if (mime.includes('pdf')) return 'pdf';
-  if (mime.includes('vnd.')) return 'office';
-  if (mime.startsWith('text/')) return mime.replace('text/', '');
-  if (mime.startsWith('image/')) return 'image';
-  return mime.split('/').pop() || mime;
-}
 
 export function PipelineEdgeComponent({
   edge,
@@ -73,6 +52,10 @@ export function PipelineEdgeComponent({
   showCatchAll = false,
   onClick,
   isNew = false,
+  isHighlighted = false,
+  highlightColor,
+  priority,
+  totalFromSource,
 }: PipelineEdgeComponentProps) {
   // Vertical layout: edges go from bottom of source to top of target
   const from = getNodeBottomCenter(fromPosition);
@@ -89,11 +72,8 @@ export function PipelineEdgeComponent({
 
   const edgeId = `${edge.from_node}-${edge.to_node}`;
   const hasCondition = edge.when !== null;
-  const labelText = hasCondition
-    ? formatPredicate(edge.when!)
-    : (showCatchAll ? '*' : null);
 
-  // Label position: beside the edge midpoint (offset to the right to avoid overlap)
+  // Indicator position: beside the edge midpoint (offset to the right to avoid overlap)
   const labelX = (from.x + to.x) / 2 + 40;
   const labelY = midY;
 
@@ -107,34 +87,82 @@ export function PipelineEdgeComponent({
       <path
         d={verticalPath}
         fill="none"
-        stroke={selected ? 'var(--text-primary)' : 'var(--text-muted)'}
-        strokeWidth={selected ? 2 : 1}
-        markerEnd="url(#arrowhead)"
-        className={isNew ? 'pipeline-edge-new' : ''}
+        stroke={
+          isHighlighted
+            ? (highlightColor || 'rgb(34, 197, 94)')
+            : selected
+              ? 'var(--text-primary)'
+              : 'var(--text-muted)'
+        }
+        strokeWidth={isHighlighted || selected ? 2 : 1.5}
+        strokeDasharray={!hasCondition && showCatchAll ? '4 2' : undefined}
+        markerEnd={isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)'}
+        className={`${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`}
       />
 
-      {/* Predicate label */}
-      {labelText && (
-        <g>
-          {/* Background for readability */}
-          <rect
-            x={labelX - 30}
-            y={labelY - 10}
-            width={60}
-            height={16}
-            rx={4}
-            fill="var(--bg-primary)"
-            opacity={0.9}
+      {/* Priority badge (shown when multiple edges from same source) */}
+      {priority !== undefined && totalFromSource !== undefined && totalFromSource > 1 && (
+        <g className="priority-badge">
+          <circle
+            cx={labelX - 45}
+            cy={labelY}
+            r={10}
+            fill="var(--bg-secondary)"
+            stroke="var(--border)"
+            strokeWidth={1}
           />
           <text
-            x={labelX}
-            y={labelY}
+            x={labelX - 45}
+            y={labelY + 4}
             textAnchor="middle"
-            fill={hasCondition ? 'var(--text-secondary)' : 'var(--text-muted)'}
-            fontSize={11}
-            fontFamily="monospace"
+            fill="var(--text-secondary)"
+            fontSize={10}
+            fontWeight={500}
           >
-            {labelText}
+            {priority}
+          </text>
+          <title>Evaluated #{priority} of {totalFromSource} edges from {edge.from_node === '_source' ? 'Source' : edge.from_node}</title>
+        </g>
+      )}
+
+      {/* Indicator dot for conditional edges */}
+      {hasCondition && (
+        <g>
+          <circle
+            className="edge-indicator"
+            cx={labelX}
+            cy={labelY}
+            r={6}
+            fill="rgb(59, 130, 246)"
+            opacity={0.9}
+          >
+            <title>{formatTooltipPredicate(edge.when!)}</title>
+          </circle>
+        </g>
+      )}
+
+      {/* Catch-all indicator (asterisk in small circle) */}
+      {!hasCondition && showCatchAll && (
+        <g>
+          <circle
+            className="edge-indicator edge-indicator-catchall"
+            cx={labelX}
+            cy={labelY}
+            r={6}
+            fill="var(--text-muted)"
+            opacity={0.5}
+          >
+            <title>Catch-all route (matches everything)</title>
+          </circle>
+          <text
+            x={labelX}
+            y={labelY + 3}
+            textAnchor="middle"
+            fill="var(--bg-primary)"
+            fontSize={8}
+            fontWeight={700}
+          >
+            *
           </text>
         </g>
       )}

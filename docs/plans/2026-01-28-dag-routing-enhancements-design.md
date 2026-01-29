@@ -201,39 +201,381 @@ This architecture is deliberate—sparse indexing (especially BM25) is stateful 
 
 ## Implementation Plan
 
-### Phase 1: Metadata Architecture Refactor
+### Phase 1: Metadata Architecture Refactor ✅ COMPLETE
 
-1. **Rename `source_metadata` → `metadata`** on FileReference
-2. **Restructure existing data** under `metadata.source.*`
-3. **Update predicates.py** to handle new structure (backward compatible with old field name during migration)
-4. **Update existing DAGs** to use new predicate paths
+**Status:** Implemented
 
-### Phase 2: Pre-Routing Sniff Implementation
+1. ✅ **Rename `source_metadata` → `metadata`** on FileReference (`types.py:64`)
+2. ✅ **Restructure existing data** under `metadata.source.*`
+3. ✅ **Update predicates.py** - `_translate_legacy_path()` handles backward compatibility
+4. ✅ **Connectors updated** - LocalFile, Git, IMAP all use new structure
+5. ✅ **Serialization** - `to_dict()`/`from_dict()` handle both formats
 
-1. **Create sniff module** in `packages/shared/pipeline/sniff.py`
-2. **Implement minimal detectors:**
-   - `is_scanned_pdf`: Check PDF text layer presence
-   - `is_code`: Heuristics (shebang, syntax patterns, known extensions)
-   - `is_structured_data`: Try parse first N bytes as JSON/CSV/XML/YAML
-3. **Integrate into routing** - sniff runs before `get_entry_node()`
-4. **Handle sniff failures gracefully** - missing detected fields don't break routing
+### Phase 2: Pre-Routing Sniff Implementation ✅ COMPLETE
 
-### Phase 3: Parser Metadata Emission
+**Status:** Implemented
 
-1. **Define `parsed.*` field conventions** for each parser type
-2. **Update parser plugins** to emit metadata during parsing:
-   - PDF parser: `page_count`, `has_tables`, `has_images`
-   - Text parser: `detected_language`, `approx_token_count`
-   - Markdown parser: `has_code_blocks`
-3. **Enable mid-pipeline routing** - predicates can use `parsed.*` fields
-4. **Document emitted fields** per parser plugin
+1. ✅ **Create sniff module** in `packages/shared/pipeline/sniff.py` (535 lines)
+2. ✅ **Implement minimal detectors:**
+   - `is_scanned_pdf`: pypdf text layer check (~30ms)
+   - `is_code`: Extension + shebang + syntax patterns (~10ms)
+   - `is_structured_data`: JSON/CSV/XML/YAML detection (~5ms)
+3. ✅ **Integrate into routing** - executor calls `_sniffer.sniff()` before `get_entry_node()`
+4. ✅ **Handle sniff failures gracefully** - logged as warnings, processing continues
+5. ✅ **Tests** - `tests/unit/pipeline/test_sniff.py` (937+ lines)
 
-### Phase 4: Route Preview UI
+### Phase 3: Parser Metadata Emission ✅ COMPLETE
+
+**Status:** Implemented 2026-01-28
+
+1. ✅ **Define `parsed.*` field conventions** - Added `ParsedMetadata` TypedDict in `parser.py`
+2. ✅ **Update parser plugins** to emit metadata during parsing:
+   - TextParserPlugin: emits `detected_language`, `approx_token_count`, `line_count`, `has_code_blocks`
+   - UnstructuredParserPlugin: emits `page_count`, `has_tables`, `has_images`, `element_types`, `approx_token_count`
+3. ✅ **Enable mid-pipeline routing** - executor wires metadata to `file_ref.metadata["parsed"]` via `_enrich_parsed_metadata()`
+4. ✅ **Document emitted fields** - See `ParsedMetadata` schema and routing examples below
+
+#### Implementation Details
+
+**Metadata Flow:**
+1. Parser computes metadata during `parse_bytes()`
+2. Returns metadata in `ParserOutput.metadata`
+3. Executor copies recognized fields to `file_ref.metadata["parsed"]` via `_enrich_parsed_metadata()`
+4. Subsequent routing uses `metadata.parsed.*` predicates
+
+**Emitted Fields by Parser:**
+
+| Field | TextParser | UnstructuredParser | Description |
+|-------|------------|-------------------|-------------|
+| `detected_language` | ✓ | - | ISO 639-1 code via langdetect (optional dependency) |
+| `approx_token_count` | ✓ | ✓ | Word count approximation |
+| `line_count` | ✓ | - | Number of text lines |
+| `has_code_blocks` | ✓ | - | Markdown code fences detected via regex |
+| `page_count` | - | ✓ | Maximum page number found in elements |
+| `has_tables` | - | ✓ | True if any element has category="Table" |
+| `has_images` | - | ✓ | True if any element has category="Image" |
+| `element_types` | - | ✓ | Sorted list of unique element categories |
+
+**Mid-Pipeline Routing Examples:**
+
+```yaml
+# Route Chinese documents to multilingual embedder
+edges:
+  - from_node: parser
+    to_node: multilingual_embedder
+    when:
+      metadata.parsed.detected_language: zh
+
+# Route large documents to semantic chunker
+edges:
+  - from_node: parser
+    to_node: semantic_chunker
+    when:
+      metadata.parsed.approx_token_count: ">10000"
+
+# Route documents with tables to table-aware chunker
+edges:
+  - from_node: parser
+    to_node: table_chunker
+    when:
+      metadata.parsed.has_tables: true
+
+# Route code-heavy documents to code chunker
+edges:
+  - from_node: parser
+    to_node: code_chunker
+    when:
+      metadata.parsed.has_code_blocks: true
+```
+
+**Testing:**
+- Unit tests: `tests/unit/plugins/test_parser_plugins.py` (14 tests for metadata emission)
+- Integration tests: `tests/integration/pipeline/test_parsed_metadata_routing.py` (7 tests for routing)
+
+**Dependencies:**
+- `langdetect` added as optional dependency in `pyproject.toml` for language detection
+
+### Phase 4: Route Preview UI ✅ COMPLETE
 
 1. **Add file upload/select** in DAG editor
 2. **Create preview endpoint** that runs sniff + evaluates predicates
 3. **Display results** with matched/not-matched visualization
 4. **Show final path** through DAG
+
+### Phase 5: Dynamic Field Discovery (Plugin Contract)
+
+**Problem:** The edge predicate editor currently shows all possible metadata fields, but:
+- Not all parsers emit all fields (TextParser vs UnstructuredParser emit different fields)
+- Future plugins may emit custom fields
+- Showing unavailable fields creates a confusing UX
+
+**Solution:** Parsers declare which fields they emit. UI dynamically shows available fields based on context.
+
+#### Backend Changes
+
+1. **Add `EMITTED_FIELDS` to parser plugin base class:**
+
+```python
+# packages/shared/plugins/types/parser.py
+class ParserPlugin(SemanticPlugin, ABC):
+    PLUGIN_TYPE = "parser"
+
+    # Parsers declare which parsed.* fields they emit
+    EMITTED_FIELDS: ClassVar[list[str]] = []
+
+    @abstractmethod
+    async def parse_bytes(self, ...) -> ParserOutput:
+        ...
+```
+
+2. **Update existing parsers to declare their fields:**
+
+```python
+# packages/shared/plugins/builtins/text_parser.py
+class TextParserPlugin(ParserPlugin):
+    EMITTED_FIELDS = [
+        "detected_language",
+        "approx_token_count",
+        "line_count",
+        "has_code_blocks",
+    ]
+
+# packages/shared/plugins/builtins/unstructured_parser.py
+class UnstructuredParserPlugin(ParserPlugin):
+    EMITTED_FIELDS = [
+        "page_count",
+        "has_tables",
+        "has_images",
+        "element_types",
+        "approx_token_count",
+    ]
+```
+
+3. **Add endpoint to query available fields for an edge:**
+
+```
+POST /api/v2/pipeline/available-predicate-fields
+Body: { dag: PipelineDAG, from_node: string }
+
+Response: {
+  fields: [
+    { value: "metadata.source.mime_type", label: "MIME Type", category: "source" },
+    { value: "metadata.detected.is_scanned_pdf", label: "Is Scanned PDF", category: "detected" },
+    { value: "metadata.parsed.has_tables", label: "Has Tables", category: "parsed" },
+    ...
+  ]
+}
+```
+
+**Logic:**
+- Always include `source.*` fields (from connector)
+- Always include `detected.*` fields (from sniff step)
+- For edges from `_source`: No `parsed.*` fields (parser hasn't run yet)
+- For edges from parser nodes: Include `parsed.*` fields from that parser's `EMITTED_FIELDS`
+
+4. **Add field discovery to plugin registry:**
+
+```python
+# packages/shared/plugins/registry.py
+def get_parser_emitted_fields(plugin_id: str) -> list[str]:
+    """Get the parsed.* fields emitted by a parser plugin."""
+    plugin_cls = self.find_by_id(plugin_id)
+    if hasattr(plugin_cls, 'EMITTED_FIELDS'):
+        return plugin_cls.EMITTED_FIELDS
+    return []
+```
+
+#### Frontend Changes
+
+1. **Update EdgePredicateEditor to fetch available fields:**
+
+```typescript
+// Fetch fields when edge is selected
+const { data: availableFields, isLoading } = useQuery({
+  queryKey: ['predicate-fields', edge.from_node, dagHash],
+  queryFn: () => pipelineApi.getAvailablePredicateFields(dag, edge.from_node),
+});
+```
+
+2. **Show loading state while fetching**
+
+3. **Fall back to all fields if fetch fails** (graceful degradation)
+
+4. **Add "Custom field" option** for advanced users to type arbitrary paths
+
+#### Plugin Documentation
+
+Update plugin development docs to include:
+
+```markdown
+## Parser Plugins
+
+### Declaring Emitted Fields
+
+Parser plugins should declare which `parsed.*` metadata fields they emit.
+This enables the UI to show relevant routing options.
+
+class MyCustomParser(ParserPlugin):
+    PLUGIN_ID = "my-custom-parser"
+    EMITTED_FIELDS = [
+        "custom_field_1",
+        "custom_field_2",
+    ]
+
+    async def parse_bytes(self, content, file_ref, config):
+        # ... parsing logic ...
+        return ParserOutput(
+            content=text,
+            metadata={
+                "custom_field_1": value1,
+                "custom_field_2": value2,
+            }
+        )
+
+Fields in EMITTED_FIELDS should match the keys returned in metadata.
+```
+
+#### Migration
+
+- Existing parsers updated to declare `EMITTED_FIELDS`
+- No breaking changes - field declaration is additive
+- Plugins without `EMITTED_FIELDS` show all fields (backward compatible)
+
+#### Testing
+
+- Unit test: Parser plugins have `EMITTED_FIELDS` matching actual emitted keys
+- Integration test: Endpoint returns correct fields based on DAG structure
+- Frontend test: EdgePredicateEditor shows dynamic fields
+
+### Phase 6: UI Polish & Validation
+
+Several UX improvements to make routing more intuitive:
+
+#### 1. Context-Aware Field Filtering
+
+Don't show `parsed.*` fields for edges from `_source` (parser hasn't run yet).
+
+- Ties into Phase 5 dynamic field discovery
+- Endpoint already knows `from_node`, just filter appropriately
+- Prevents users from creating impossible predicates
+
+#### 2. Boolean Field Toggle
+
+Fields like `is_scanned_pdf`, `has_tables` should use a toggle instead of text input.
+
+```typescript
+// Detect boolean fields and render toggle
+const isBooleanField = field.includes('is_') || field.includes('has_');
+
+{isBooleanField ? (
+  <Toggle checked={value === true} onChange={...} />
+) : (
+  <TextInput value={value} onChange={...} />
+)}
+```
+
+#### 3. Negation Checkbox
+
+Add a "NOT" checkbox next to the value input for easy negation.
+
+```
+Field: [Is Scanned PDF ▼]  ☐ NOT  Value: [true]
+```
+
+When checked, the predicate becomes `{"metadata.detected.is_scanned_pdf": "!true"}` or uses explicit negation syntax.
+
+#### 4. Edge Priority Display
+
+Show evaluation order so users understand first-match-wins:
+
+- Display "Priority 1", "Priority 2" labels on edges in the visualization
+- Tooltip: "Evaluated before other edges from this node"
+- Consider drag-to-reorder in future iteration
+
+#### 5. Sniff Result Caching
+
+Cache sniff results based on content hash to avoid re-sniffing on reindex:
+
+```python
+# In executor or sniff module
+cache_key = f"sniff:{content_hash}"
+if cached := await cache.get(cache_key):
+    return SniffResult.from_dict(cached)
+
+result = await self._sniffer.sniff(content, file_ref)
+await cache.set(cache_key, result.to_dict(), ttl=86400 * 7)  # 7 days
+```
+
+Storage options:
+- Redis (if already available)
+- SQLite sidecar
+- In-memory LRU for single-session optimization
+
+### Phase 7: Parallel Fan-out
+
+**Use case:** Document goes down multiple paths intentionally.
+
+Example: Parse a document, then both:
+1. Chunk and embed (detailed retrieval)
+2. Summarize with LLM and embed summary (high-level retrieval)
+
+```
+Document → Parser → Chunker → Embedder (chunks)
+                 ↘
+                   LLM Summarizer → Embedder (summary)
+```
+
+#### Design Sketch
+
+**Edge-level `parallel` flag:**
+
+```python
+@dataclass
+class PipelineEdge:
+    from_node: str
+    to_node: str
+    when: dict[str, Any] | None = None
+    parallel: bool = False  # NEW: if True, can match alongside other edges
+```
+
+**Execution semantics:**
+
+1. Evaluate all edges from current node
+2. Exclusive edges (parallel=False): first-match-wins, return single path
+3. Parallel edges (parallel=True): all matching edges fire
+4. Document can have multiple active paths
+
+**Output handling:**
+
+- Each path produces its own chunks/embeddings
+- Tag outputs with `path_id` for filtering at search time
+- No merge semantics needed - paths stay independent
+
+**Search integration:**
+
+```python
+# Search chunks only
+results = search(collection, query, filter={"path": "chunks"})
+
+# Search summaries only
+results = search(collection, query, filter={"path": "summary"})
+
+# Search both and combine (RRF or similar)
+results = hybrid_search(collection, query, paths=["chunks", "summary"])
+```
+
+**UI considerations:**
+
+- Visual indicator for parallel edges (different color/style)
+- Warning if parallel paths could produce duplicate embeddings
+- Path selector in search UI
+
+**Complexity:**
+
+- Moderate execution changes (track multiple paths per document)
+- Progress tracking needs path awareness
+- Storage unchanged (just metadata tagging)
+- Search needs path filtering
 
 ## Extensibility
 

@@ -55,12 +55,7 @@ def _emit_deprecation_warning() -> None:
 
 
 from .base import BaseParser, ParsedElement, ParseResult  # noqa: E402
-from .exceptions import (  # noqa: E402
-    ExtractionFailedError,
-    ParserConfigError,
-    ParserError,
-    UnsupportedFormatError,
-)
+from .exceptions import ExtractionFailedError, ParserConfigError, ParserError, UnsupportedFormatError  # noqa: E402
 from .normalization import (  # noqa: E402
     PROTECTED_METADATA_KEYS,
     build_parser_metadata,

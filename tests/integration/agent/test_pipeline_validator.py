@@ -21,11 +21,7 @@ from webui.services.agent.subagents.pipeline_validator import (
     PipelineValidator,
     ValidationReport,
 )
-from webui.services.agent.tools.subagent_tools.validation import (
-    GetFailureDetailsTool,
-    InspectChunksTool,
-    RunDryRunTool,
-)
+from webui.services.agent.tools.subagent_tools.validation import GetFailureDetailsTool, InspectChunksTool, RunDryRunTool
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +48,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".txt",
             mime_type="text/plain",
             size_bytes=1000,
-            source_metadata={"local_path": "/test/doc1.txt"},
+            metadata={"source": {"local_path": "/test/doc1.txt"}},
         ),
         FileReference(
             uri="file:///test/doc2.md",
@@ -62,7 +58,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".md",
             mime_type="text/markdown",
             size_bytes=2000,
-            source_metadata={"local_path": "/test/doc2.md"},
+            metadata={"source": {"local_path": "/test/doc2.md"}},
         ),
         FileReference(
             uri="file:///test/doc3.pdf",
@@ -72,7 +68,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".pdf",
             mime_type="application/pdf",
             size_bytes=50000,
-            source_metadata={"local_path": "/test/doc3.pdf"},
+            metadata={"source": {"local_path": "/test/doc3.pdf"}},
         ),
     ]
 

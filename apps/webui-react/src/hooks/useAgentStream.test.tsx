@@ -15,8 +15,9 @@ function createStreamingFetch(chunks: Array<string | Uint8Array>) {
   return vi.fn(async () => {
     const reader = {
       idx: 0,
+      cancelled: false,
       read: async () => {
-        if (reader.idx >= chunks.length) {
+        if (reader.cancelled || reader.idx >= chunks.length) {
           return { done: true as const, value: undefined };
         }
         const chunk = chunks[reader.idx++];
@@ -24,6 +25,9 @@ function createStreamingFetch(chunks: Array<string | Uint8Array>) {
           done: false as const,
           value: typeof chunk === 'string' ? encodeUtf8(chunk) : chunk,
         };
+      },
+      cancel: async () => {
+        reader.cancelled = true;
       },
     };
 

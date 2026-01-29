@@ -6,11 +6,7 @@ import pytest
 
 from shared.pipeline.templates.types import PipelineTemplate, TunableParameter
 from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
-from webui.services.agent.tools.pipeline import (
-    ApplyPipelineTool,
-    BuildPipelineTool,
-    GetPipelineStateTool,
-)
+from webui.services.agent.tools.pipeline import ApplyPipelineTool, BuildPipelineTool, GetPipelineStateTool
 
 
 @pytest.fixture()

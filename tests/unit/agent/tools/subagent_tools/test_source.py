@@ -35,7 +35,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="application/pdf",
             size_bytes=100000,
             change_hint="mtime:1234567890,size:100000",
-            source_metadata={"local_path": "/docs/paper1.pdf"},
+            metadata={"source": {"local_path": "/docs/paper1.pdf"}},
         ),
         FileReference(
             uri="file:///docs/paper2.pdf",
@@ -46,7 +46,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="application/pdf",
             size_bytes=200000,
             change_hint="mtime:1234567891,size:200000",
-            source_metadata={"local_path": "/docs/paper2.pdf"},
+            metadata={"source": {"local_path": "/docs/paper2.pdf"}},
         ),
         FileReference(
             uri="file:///docs/notes.md",
@@ -57,7 +57,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="text/markdown",
             size_bytes=5000,
             change_hint="mtime:1234567892,size:5000",
-            source_metadata={"local_path": "/docs/notes.md"},
+            metadata={"source": {"local_path": "/docs/notes.md"}},
         ),
         FileReference(
             uri="file:///docs/code.py",
@@ -68,7 +68,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="text/x-python",
             size_bytes=2000,
             change_hint="mtime:1234567893,size:2000",
-            source_metadata={"local_path": "/docs/code.py"},
+            metadata={"source": {"local_path": "/docs/code.py"}},
         ),
     ]
 

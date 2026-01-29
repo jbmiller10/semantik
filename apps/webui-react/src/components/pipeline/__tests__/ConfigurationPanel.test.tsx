@@ -96,7 +96,9 @@ describe('ConfigurationPanel', () => {
       />
     );
 
-    expect(screen.getByText(/edge routing/i)).toBeInTheDocument();
+    // Edge editor shows sticky header with from/to and catch-all toggle
+    expect(screen.getByText('Source')).toBeInTheDocument();
+    expect(screen.getByText(/catch-all/i)).toBeInTheDocument();
   });
 
   it('shows source node info when source is selected', () => {
@@ -147,7 +149,9 @@ describe('ConfigurationPanel', () => {
       />
     );
 
-    expect(screen.getByText(/edge routing/i)).toBeInTheDocument();
+    // Edge editor shows sticky header with from/to nodes
+    expect(screen.getByText('Source')).toBeInTheDocument();
+    expect(screen.getByText(/catch-all/i)).toBeInTheDocument();
   });
 
   it('passes readOnly to child editors', () => {

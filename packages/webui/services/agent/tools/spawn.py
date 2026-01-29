@@ -119,9 +119,7 @@ class SpawnSourceAnalyzerTool(BaseTool):
 
             if source_id is not None:
                 # Using existing source - fetch from database
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 
                 source_repo = CollectionSourceRepository(session)
                 source = await source_repo.get_by_id(source_id)
@@ -474,9 +472,7 @@ class SpawnPipelineValidatorTool(BaseTool):
                     source_id = candidate if isinstance(candidate, int) else None
 
                 if source_id:
-                    from shared.database.repositories.collection_source_repository import (
-                        CollectionSourceRepository,
-                    )
+                    from shared.database.repositories.collection_source_repository import CollectionSourceRepository
                     from webui.services.connector_factory import ConnectorFactory
 
                     source_repo = CollectionSourceRepository(session)

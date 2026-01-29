@@ -13,7 +13,7 @@ import type { PipelineDAG, DAGLayout, NodePosition, NodeType } from '@/types/pip
 // Layout constants - exported for use by other components
 export const NODE_WIDTH = 160;
 export const NODE_HEIGHT = 80;
-export const TIER_GAP = 100; // Vertical spacing between tiers
+export const TIER_GAP = 120; // Vertical spacing between tiers (was 100)
 export const NODE_GAP = 40; // Horizontal spacing within a tier
 export const PADDING = 40;
 

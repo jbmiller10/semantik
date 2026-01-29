@@ -64,6 +64,7 @@ from .api.v2 import (
     model_manager as v2_model_manager,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
+    pipeline as v2_pipeline,
     plugins as v2_plugins,
     projections as v2_projections,
     rerankers as v2_rerankers,
@@ -370,6 +371,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_user_preferences.router)
     app.include_router(v2_benchmark_datasets.router)
     app.include_router(v2_benchmarks.router)
+    app.include_router(v2_pipeline.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution

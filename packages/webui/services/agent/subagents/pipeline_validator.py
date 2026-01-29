@@ -20,12 +20,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from webui.services.agent.subagents.base import (
-    Message,
-    SubAgent,
-    SubAgentResult,
-    Uncertainty,
-)
+from webui.services.agent.subagents.base import Message, SubAgent, SubAgentResult, Uncertainty
 from webui.services.agent.tools.subagent_tools.validation import (
     CompareParserOutputTool,
     GetFailureDetailsTool,

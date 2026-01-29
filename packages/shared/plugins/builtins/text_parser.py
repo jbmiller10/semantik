@@ -76,6 +76,43 @@ def _is_binary_content(content: bytes) -> bool:
     return (non_printable / len(sample)) > 0.30
 
 
+def _detect_language(text: str) -> str | None:
+    """Detect dominant language in text sample.
+
+    Returns ISO 639-1 code (en, zh, es, etc.) or None if detection fails.
+    Uses first 5000 chars to balance accuracy and performance.
+    """
+    if len(text) < 50:
+        return None
+
+    try:
+        from langdetect import detect
+        from langdetect.lang_detect_exception import LangDetectException
+    except ImportError:
+        logger.debug("langdetect not installed, language detection disabled")
+        return None
+
+    try:
+        result = detect(text[:5000])
+        return str(result) if result else None
+    except LangDetectException:
+        # Expected: text too short or no features detected
+        return None
+    except Exception as e:
+        logger.warning("Language detection unexpected error: %s: %s", type(e).__name__, e)
+        return None
+
+
+def _has_code_blocks(text: str) -> bool:
+    """Check if text contains markdown code fences (```).
+
+    Detects both standalone fences and language-tagged fences.
+    """
+    import re
+
+    return bool(re.search(r"```[\s\S]*?```", text))
+
+
 class TextParserPlugin(ParserPlugin):
     """Lightweight parser for plain text files.
 
@@ -95,6 +132,14 @@ class TextParserPlugin(ParserPlugin):
     PLUGIN_ID: ClassVar[str] = "text"
     PLUGIN_TYPE: ClassVar[str] = "parser"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
+
+    # Parsed metadata fields emitted by this parser for routing predicates
+    EMITTED_FIELDS: ClassVar[list[str]] = [
+        "detected_language",
+        "approx_token_count",
+        "line_count",
+        "has_code_blocks",
+    ]
 
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Text Parser",
@@ -301,6 +346,12 @@ class TextParserPlugin(ParserPlugin):
             mime_type=mime_type,
             caller_metadata=metadata,
         )
+
+        # Enrich with parsed metadata for routing
+        base_metadata["detected_language"] = _detect_language(text)
+        base_metadata["approx_token_count"] = len(text.split())
+        base_metadata["line_count"] = text.count("\n") + 1
+        base_metadata["has_code_blocks"] = _has_code_blocks(text)
 
         return ParserOutput(
             text=text,

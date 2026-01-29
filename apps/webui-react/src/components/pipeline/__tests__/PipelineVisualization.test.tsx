@@ -38,11 +38,12 @@ describe('PipelineVisualization', () => {
     expect(screen.getByText('Source')).toBeInTheDocument();
   });
 
-  it('renders edges with predicates', () => {
-    render(<PipelineVisualization dag={mockDAG} />);
+  it('renders edges with indicator dots for predicates', () => {
+    const { container } = render(<PipelineVisualization dag={mockDAG} />);
 
-    // PDF predicate should be visible
-    expect(screen.getByText('pdf')).toBeInTheDocument();
+    // Conditional edge should have indicator dot instead of text label
+    const indicatorDot = container.querySelector('circle.edge-indicator');
+    expect(indicatorDot).toBeInTheDocument();
   });
 
   it('calls onSelectionChange when node is clicked', async () => {
@@ -118,5 +119,79 @@ describe('PipelineVisualization', () => {
 
     const container = document.querySelector('.custom-class');
     expect(container).toBeInTheDocument();
+  });
+
+  describe('multiple path highlighting', () => {
+    const dagWithParallelPaths: PipelineDAG = {
+      id: 'parallel-dag',
+      version: '1',
+      nodes: [
+        { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
+        { id: 'chunker1', type: 'chunker', plugin_id: 'recursive', config: {} },
+        { id: 'embedder1', type: 'embedder', plugin_id: 'dense', config: {} },
+        { id: 'extractor1', type: 'extractor', plugin_id: 'keyword', config: {} },
+      ],
+      edges: [
+        { from_node: '_source', to_node: 'parser1', when: null },
+        { from_node: 'parser1', to_node: 'chunker1', when: null },
+        { from_node: 'chunker1', to_node: 'embedder1', when: null },
+        { from_node: 'chunker1', to_node: 'extractor1', when: null },
+      ],
+    };
+
+    it('highlights all edges in multiple parallel paths', () => {
+      const parallelPaths = [
+        ['_source', 'parser1', 'chunker1', 'embedder1'],
+        ['_source', 'parser1', 'chunker1', 'extractor1'],
+      ];
+
+      const { container } = render(
+        <PipelineVisualization
+          dag={dagWithParallelPaths}
+          highlightedPaths={parallelPaths}
+        />
+      );
+
+      // Both embedder and extractor edges should be highlighted
+      const highlightedEdges = container.querySelectorAll('.pipeline-edge-highlighted');
+      expect(highlightedEdges.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('uses different colors for primary vs secondary paths', () => {
+      const parallelPaths = [
+        ['_source', 'parser1', 'chunker1', 'embedder1'],
+        ['_source', 'parser1', 'chunker1', 'extractor1'],
+      ];
+
+      const { container } = render(
+        <PipelineVisualization
+          dag={dagWithParallelPaths}
+          highlightedPaths={parallelPaths}
+        />
+      );
+
+      // Primary path edges should be green
+      const greenEdges = container.querySelectorAll('path[stroke="rgb(34, 197, 94)"]');
+      expect(greenEdges.length).toBeGreaterThan(0);
+
+      // Secondary path edges should be blue
+      const blueEdges = container.querySelectorAll('path[stroke="rgb(59, 130, 246)"]');
+      expect(blueEdges.length).toBeGreaterThan(0);
+    });
+
+    it('supports backward-compatible single highlightedPath', () => {
+      const singlePath = ['_source', 'parser1', 'chunker1', 'embedder1'];
+
+      const { container } = render(
+        <PipelineVisualization
+          dag={dagWithParallelPaths}
+          highlightedPath={singlePath}
+        />
+      );
+
+      // Edges should be highlighted with default green
+      const greenEdges = container.querySelectorAll('path[stroke="rgb(34, 197, 94)"]');
+      expect(greenEdges.length).toBeGreaterThanOrEqual(3);
+    });
   });
 });

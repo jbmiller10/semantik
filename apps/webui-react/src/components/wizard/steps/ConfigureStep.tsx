@@ -1,6 +1,6 @@
 // apps/webui-react/src/components/wizard/steps/ConfigureStep.tsx
 import { useState, useCallback } from 'react';
-import { PipelineVisualization, ConfigurationPanel } from '../../pipeline';
+import { PipelineVisualization, ConfigurationPanel, RoutePreviewPanel } from '../../pipeline';
 import type { PipelineDAG, DAGSelection, PipelineNode, PipelineEdge } from '../../../types/pipeline';
 import type { SourceAnalysis } from '../../../types/agent';
 
@@ -18,6 +18,7 @@ export function ConfigureStep({
   onSwitchToAssisted,
 }: ConfigureStepProps) {
   const [selection, setSelection] = useState<DAGSelection>({ type: 'none' });
+  const [highlightedPaths, setHighlightedPaths] = useState<string[][] | null>(null);
 
   const handleNodeChange = useCallback((updatedNode: PipelineNode) => {
     onDagChange({
@@ -36,6 +37,10 @@ export function ConfigureStep({
       ),
     });
   }, [dag, onDagChange]);
+
+  const handlePathsHighlight = useCallback((paths: string[][] | null) => {
+    setHighlightedPaths(paths);
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -56,18 +61,29 @@ export function ConfigureStep({
 
       {/* Main content */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left: Pipeline Visualization (~60%) */}
-        <div className="flex-1 lg:flex-[3] border-b lg:border-b-0 lg:border-r border-[var(--border)] overflow-auto p-4 min-h-[300px] lg:min-h-0">
-          <PipelineVisualization
+        {/* Left: Pipeline Visualization + Route Preview (~70%) */}
+        <div className="flex-1 lg:flex-[7] border-b lg:border-b-0 lg:border-r border-[var(--border)] flex flex-col min-h-[300px] lg:min-h-0">
+          {/* Visualization area */}
+          <div className="flex-1 overflow-auto p-4">
+            <PipelineVisualization
+              dag={dag}
+              selection={selection}
+              onSelectionChange={setSelection}
+              onDagChange={onDagChange}
+              highlightedPaths={highlightedPaths}
+            />
+          </div>
+
+          {/* Route Preview Panel (collapsible) */}
+          <RoutePreviewPanel
             dag={dag}
-            selection={selection}
-            onSelectionChange={setSelection}
-            onDagChange={onDagChange}
+            onPathsHighlight={handlePathsHighlight}
+            defaultCollapsed={true}
           />
         </div>
 
-        {/* Right: Configuration Panel (~40%) */}
-        <div className="flex-1 lg:flex-[2] overflow-auto">
+        {/* Right: Configuration Panel (~30%) */}
+        <div className="flex-1 lg:flex-[3] overflow-auto">
           <ConfigurationPanel
             dag={dag}
             selection={selection}

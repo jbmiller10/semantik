@@ -310,6 +310,13 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
                 # Defensive: skip malformed points rather than crashing.
                 continue
 
+            # Apply path_id filter if specified
+            # Chunks without path_id are treated as "default" for backward compatibility
+            if request.path_id is not None:
+                chunk_path_id = payload.get("path_id", "default")
+                if chunk_path_id != request.path_id:
+                    continue
+
             results.append(
                 SearchResult(
                     path=payload.get("path", ""),
@@ -323,6 +330,7 @@ async def perform_search(request: SearchRequest, runtime: VecpipeRuntime | None 
                     operation_uuid=None,
                     chunk_index=payload.get("chunk_index"),
                     total_chunks=payload.get("total_chunks"),
+                    path_id=payload.get("path_id"),
                 )
             )
 
@@ -462,6 +470,7 @@ async def perform_batch_search(
                         operation_uuid=None,
                         chunk_index=payload.get("chunk_index"),
                         total_chunks=payload.get("total_chunks"),
+                        path_id=payload.get("path_id"),
                     )
                 )
 
@@ -623,6 +632,7 @@ async def upsert_points(request: UpsertRequest, runtime: VecpipeRuntime | None =
                         **({"collection_id": p.payload.collection_id} if p.payload.collection_id is not None else {}),
                         **({"chunk_index": p.payload.chunk_index} if p.payload.chunk_index is not None else {}),
                         **({"total_chunks": p.payload.total_chunks} if p.payload.total_chunks is not None else {}),
+                        **({"path_id": p.payload.path_id} if p.payload.path_id is not None else {}),
                     },
                 }
                 for p in request.points

@@ -110,6 +110,8 @@ export function PipelineVisualization({
   onDagChange,
   readOnly = false,
   className = '',
+  highlightedPath = null,
+  highlightedPaths = null,
 }: PipelineVisualizationProps) {
   // SVG ref for coordinate conversion
   const svgRef = useRef<SVGSVGElement>(null);
@@ -623,6 +625,70 @@ export function PipelineVisualization({
     selection.fromNode === fromNode &&
     selection.toNode === toNode;
 
+  // Check if node is in any highlighted path
+  const isNodeInPath = (nodeId: string) => {
+    // Check new highlightedPaths first
+    if (highlightedPaths && highlightedPaths.length > 0) {
+      return highlightedPaths.some(path => path.includes(nodeId));
+    }
+    // Fall back to single highlightedPath for backward compatibility
+    return highlightedPath?.includes(nodeId) ?? false;
+  };
+
+  // Check if edge is in any highlighted path and get its path index
+  // Returns null if not in any path, or the path index (0 = primary, 1+ = secondary)
+  const getEdgePathIndex = (fromNode: string, toNode: string): number | null => {
+    // Check new highlightedPaths first
+    if (highlightedPaths && highlightedPaths.length > 0) {
+      for (let pathIdx = 0; pathIdx < highlightedPaths.length; pathIdx++) {
+        const path = highlightedPaths[pathIdx];
+        for (let i = 0; i < path.length - 1; i++) {
+          if (path[i] === fromNode && path[i + 1] === toNode) {
+            return pathIdx;
+          }
+        }
+      }
+      return null;
+    }
+
+    // Fall back to single highlightedPath for backward compatibility
+    if (highlightedPath && highlightedPath.length >= 2) {
+      for (let i = 0; i < highlightedPath.length - 1; i++) {
+        if (highlightedPath[i] === fromNode && highlightedPath[i + 1] === toNode) {
+          return 0;
+        }
+      }
+    }
+    return null;
+  };
+
+
+  // Compute edge priority for edges from the same source node
+  // Priority is based on array order (1-indexed)
+  const edgePriorityData = useMemo(() => {
+    const priorityMap = new Map<string, number>();
+    const totalFromSourceMap = new Map<string, number>();
+
+    // Count edges per source node
+    const sourceEdgeCounts = new Map<string, number>();
+    for (const edge of dag.edges) {
+      const count = sourceEdgeCounts.get(edge.from_node) ?? 0;
+      sourceEdgeCounts.set(edge.from_node, count + 1);
+    }
+
+    // Assign priorities (1-indexed, based on array order)
+    const currentPriorityBySource = new Map<string, number>();
+    for (const edge of dag.edges) {
+      const edgeKey = `${edge.from_node}-${edge.to_node}`;
+      const currentPriority = (currentPriorityBySource.get(edge.from_node) ?? 0) + 1;
+      currentPriorityBySource.set(edge.from_node, currentPriority);
+      priorityMap.set(edgeKey, currentPriority);
+      totalFromSourceMap.set(edgeKey, sourceEdgeCounts.get(edge.from_node) ?? 1);
+    }
+
+    return { priorityMap, totalFromSourceMap };
+  }, [dag.edges]);
+
   // Get valid target tiers for current drag
   const validTargetTiers = useMemo(() => {
     if (!dragState.isDragging) return [];
@@ -735,6 +801,16 @@ export function PipelineVisualization({
           >
             <polygon points="0 0, 10 3.5, 0 7" fill="var(--text-primary)" />
           </marker>
+          <marker
+            id="arrowhead-highlighted"
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(34, 197, 94)" />
+          </marker>
         </defs>
 
         {/* Render tier drop zones (during drag only) */}
@@ -769,6 +845,11 @@ export function PipelineVisualization({
             // Show catch-all (*) only for source edges
             const showCatchAll = edge.from_node === '_source' && edge.when === null;
 
+            const pathIndex = getEdgePathIndex(edge.from_node, edge.to_node);
+            const isHighlighted = pathIndex !== null;
+            // Primary path (index 0) = green, secondary paths = blue
+            const highlightColor = pathIndex === 0 ? 'rgb(34, 197, 94)' : 'rgb(59, 130, 246)';
+
             return (
               <PipelineEdgeComponent
                 key={`${edgeKey}-${index}`}
@@ -779,6 +860,10 @@ export function PipelineVisualization({
                 showCatchAll={showCatchAll}
                 onClick={readOnly ? undefined : handleEdgeClick}
                 isNew={newEdgeKeys.has(edgeKey)}
+                isHighlighted={isHighlighted}
+                highlightColor={isHighlighted ? highlightColor : undefined}
+                priority={edgePriorityData.priorityMap.get(edgeKey)}
+                totalFromSource={edgePriorityData.totalFromSourceMap.get(edgeKey)}
               />
             );
           })}
@@ -794,6 +879,7 @@ export function PipelineVisualization({
             onClick={readOnly ? undefined : handleNodeClick}
             onStartDrag={readOnly || isTouch ? undefined : handleStartDrag}
             showPorts={!isTouch && dragState.isDragging}
+            isInPath={isNodeInPath('_source')}
           />
         )}
 
@@ -814,6 +900,7 @@ export function PipelineVisualization({
                 showPorts={!isTouch && dragState.isDragging}
                 isValidDropTarget={!isTouch && isValidDropTarget(node.id)}
                 isNew={newNodeIds.has(node.id)}
+                isInPath={isNodeInPath(node.id)}
               />
             );
           })}

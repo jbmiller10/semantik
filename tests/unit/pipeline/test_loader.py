@@ -46,7 +46,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=13,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         result = await loader.load(file_ref)
@@ -85,7 +85,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=0,
-            source_metadata={"local_path": "/nonexistent/path/file.txt"},
+            metadata={"source": {"local_path": "/nonexistent/path/file.txt"}},
         )
 
         with pytest.raises(LoadError) as exc_info:
@@ -103,7 +103,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=0,
-            source_metadata={"local_path": str(tmp_path)},
+            metadata={"source": {"local_path": str(tmp_path)}},
         )
 
         with pytest.raises(LoadError) as exc_info:
@@ -158,7 +158,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=len(content),
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         result = await loader.load(file_ref)
@@ -178,7 +178,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=0,
-            source_metadata={"local_path": str(empty_file)},
+            metadata={"source": {"local_path": str(empty_file)}},
         )
 
         result = await loader.load(file_ref)
@@ -200,7 +200,7 @@ class TestPipelineLoader:
             source_type="directory",
             content_type="document",
             size_bytes=256,
-            source_metadata={"local_path": str(binary_file)},
+            metadata={"source": {"local_path": str(binary_file)}},
         )
 
         result = await loader.load(file_ref)
@@ -231,7 +231,7 @@ class TestPipelineLoader:
                 source_type="directory",
                 content_type="document",
                 size_bytes=14,
-                source_metadata={"local_path": str(restricted_file)},
+                metadata={"source": {"local_path": str(restricted_file)}},
             )
 
             with pytest.raises(LoadError) as exc_info:

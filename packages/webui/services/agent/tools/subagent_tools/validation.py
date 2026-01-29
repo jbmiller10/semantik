@@ -398,12 +398,7 @@ class TryAlternativeConfigTool(BaseTool):
         try:
             from shared.pipeline.executor import PipelineExecutor
             from shared.pipeline.executor_types import ExecutionMode
-            from shared.pipeline.types import (
-                NodeType,
-                PipelineDAG,
-                PipelineEdge,
-                PipelineNode,
-            )
+            from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
             # Get context
             session = self.context.get("session")

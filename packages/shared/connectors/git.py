@@ -721,12 +721,14 @@ class GitConnector(BaseConnector):
                         mime_type=mime_type,
                         size_bytes=stat.st_size,
                         change_hint=blob_sha,
-                        source_metadata={
-                            "local_path": str(file_path),
-                            "relative_path": rel_path,
-                            "commit_sha": self._commit_sha,
-                            "ref": self.ref,
-                            "repo_url": self.repo_url,
+                        metadata={
+                            "source": {
+                                "local_path": str(file_path),
+                                "relative_path": rel_path,
+                                "commit_sha": self._commit_sha,
+                                "ref": self.ref,
+                                "repo_url": self.repo_url,
+                            }
                         },
                     )
                 except OSError as e:
@@ -737,18 +739,18 @@ class GitConnector(BaseConnector):
         """Load raw content bytes from a cloned repository file.
 
         Args:
-            file_ref: File reference with local_path in source_metadata
+            file_ref: File reference with local_path in metadata.source
 
         Returns:
             Raw content bytes
 
         Raises:
-            ValueError: If local_path is missing from source_metadata
+            ValueError: If local_path is missing from metadata.source
             OSError: If file cannot be read
         """
-        local_path = file_ref.source_metadata.get("local_path")
+        local_path = file_ref.metadata.get("source", {}).get("local_path")
         if not local_path:
-            raise ValueError(f"Missing local_path in source_metadata for {file_ref.uri}")
+            raise ValueError(f"Missing local_path in metadata.source for {file_ref.uri}")
 
         path = Path(local_path)
 

@@ -136,19 +136,11 @@ def _load_all() -> dict[str, PipelineTemplate]:
     if _templates_cache is not None:
         return _templates_cache
 
-    from shared.pipeline.templates.academic_papers import (
-        TEMPLATE as ACADEMIC_PAPERS_TEMPLATE,
-    )
+    from shared.pipeline.templates.academic_papers import TEMPLATE as ACADEMIC_PAPERS_TEMPLATE
     from shared.pipeline.templates.codebase import TEMPLATE as CODEBASE_TEMPLATE
-    from shared.pipeline.templates.documentation import (
-        TEMPLATE as DOCUMENTATION_TEMPLATE,
-    )
-    from shared.pipeline.templates.email_archive import (
-        TEMPLATE as EMAIL_ARCHIVE_TEMPLATE,
-    )
-    from shared.pipeline.templates.mixed_documents import (
-        TEMPLATE as MIXED_DOCUMENTS_TEMPLATE,
-    )
+    from shared.pipeline.templates.documentation import TEMPLATE as DOCUMENTATION_TEMPLATE
+    from shared.pipeline.templates.email_archive import TEMPLATE as EMAIL_ARCHIVE_TEMPLATE
+    from shared.pipeline.templates.mixed_documents import TEMPLATE as MIXED_DOCUMENTS_TEMPLATE
 
     templates = [
         ACADEMIC_PAPERS_TEMPLATE,

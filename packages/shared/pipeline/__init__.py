@@ -90,6 +90,7 @@ from shared.pipeline.failure_tracker import ConsecutiveFailureTracker, FailureRe
 from shared.pipeline.loader import LoadError, PipelineLoader
 from shared.pipeline.predicates import get_nested_value, match_value, matches_predicate
 from shared.pipeline.router import PipelineRouter
+from shared.pipeline.sniff import ContentSniffer, SniffConfig, SniffResult
 from shared.pipeline.types import (
     DAGValidationError,
     FileReference,
@@ -127,6 +128,10 @@ __all__ = [
     "PipelineRouter",
     "ConsecutiveFailureTracker",
     "FailureRecord",
+    # Sniffing
+    "ContentSniffer",
+    "SniffConfig",
+    "SniffResult",
     # Predicates
     "matches_predicate",
     "match_value",

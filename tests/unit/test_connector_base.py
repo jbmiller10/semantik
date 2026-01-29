@@ -85,7 +85,7 @@ class TestBaseConnector:
             mime_type="text/plain",
             size_bytes=100,
             change_hint="mtime:1234567890,size:100",
-            source_metadata={"key": "value"},
+            metadata={"source": {"key": "value"}},
         )
         connector = MockConnector({"file_refs": [ref]})
 
@@ -120,7 +120,7 @@ class TestBaseConnector:
                     mime_type="text/plain",
                     size_bytes=100 + i,
                     change_hint=f"mtime:123456789{i},size:{100 + i}",
-                    source_metadata={"index": i},
+                    metadata={"source": {"index": i}},
                 )
             )
         connector = MockConnector({"file_refs": refs_input})

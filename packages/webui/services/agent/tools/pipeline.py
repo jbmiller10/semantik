@@ -10,12 +10,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from shared.pipeline.types import (
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 from shared.plugins.registry import plugin_registry
 from webui.services.agent.tools.base import BaseTool
 
@@ -594,12 +589,8 @@ class ApplyPipelineTool(BaseTool):
             # If conversation has inline source config, create the source now
             source_id: int | None = conversation.source_id
             if conversation.inline_source_config and not conversation.source_id:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
-                from shared.database.repositories.connector_secret_repository import (
-                    ConnectorSecretRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+                from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
 
                 inline_config = conversation.inline_source_config
                 source_type = inline_config.get("source_type", "")
@@ -624,11 +615,7 @@ class ApplyPipelineTool(BaseTool):
                 # Store secrets encrypted if any
                 # Note: secrets may already be encrypted (as base64 strings) from agent.py
                 if pending_secrets:
-                    from shared.utils.encryption import (
-                        DecryptionError,
-                        EncryptionNotConfiguredError,
-                        decrypt_secret,
-                    )
+                    from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, decrypt_secret
 
                     secret_repo = ConnectorSecretRepository(session)
                     for secret_key, value in pending_secrets.items():
@@ -643,10 +630,15 @@ class ApplyPipelineTool(BaseTool):
                                 logger.warning(
                                     f"Encryption not configured - using raw secret for source {new_source_id}"
                                 )
+                                # Raw value is acceptable - it was never encrypted
                             except DecryptionError as e:
                                 logger.error(f"Failed to decrypt secret '{secret_key}' for source {new_source_id}: {e}")
+                                # Skip storing this secret - it's corrupted/invalid
+                                continue
                             except ValueError as e:
                                 logger.error(f"Invalid secret format for '{secret_key}' on source {new_source_id}: {e}")
+                                # Skip storing this secret - invalid format
+                                continue
 
                             await secret_repo.set_secret(
                                 source_id=new_source_id,

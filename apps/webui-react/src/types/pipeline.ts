@@ -24,6 +24,8 @@ export interface PipelineEdge {
   from_node: string; // "_source" for entry edges
   to_node: string;
   when: Record<string, unknown> | null; // null = catch-all
+  parallel?: boolean; // If true, edge can fire alongside others (fan-out)
+  path_name?: string | null; // Path identifier for chunk tagging
 }
 
 export interface PipelineDAG {
@@ -100,4 +102,8 @@ export interface PipelineVisualizationProps {
   readOnly?: boolean;
   /** Optional CSS class name */
   className?: string;
+  /** @deprecated Use highlightedPaths instead */
+  highlightedPath?: string[] | null;
+  /** Highlighted paths for route preview (list of path arrays for parallel support) */
+  highlightedPaths?: string[][] | null;
 }

@@ -11,13 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.pipeline.executor_types import (
-    ChunkStats,
-    ExecutionMode,
-    ExecutionResult,
-    SampleOutput,
-    StageFailure,
-)
+from shared.pipeline.executor_types import ChunkStats, ExecutionMode, ExecutionResult, SampleOutput, StageFailure
 
 # StageFailure is used in tests directly for creating test data
 from shared.pipeline.types import FileReference
@@ -43,7 +37,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".pdf",
             mime_type="application/pdf",
             size_bytes=100000,
-            source_metadata={"local_path": "/docs/paper1.pdf"},
+            metadata={"source": {"local_path": "/docs/paper1.pdf"}},
         ),
         FileReference(
             uri="file:///docs/notes.md",
@@ -53,7 +47,7 @@ def sample_file_refs() -> list[FileReference]:
             extension=".md",
             mime_type="text/markdown",
             size_bytes=5000,
-            source_metadata={"local_path": "/docs/notes.md"},
+            metadata={"source": {"local_path": "/docs/notes.md"}},
         ),
     ]
 

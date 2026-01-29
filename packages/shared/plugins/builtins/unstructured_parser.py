@@ -57,6 +57,15 @@ class UnstructuredParserPlugin(ParserPlugin):
     PLUGIN_TYPE: ClassVar[str] = "parser"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
 
+    # Parsed metadata fields emitted by this parser for routing predicates
+    EMITTED_FIELDS: ClassVar[list[str]] = [
+        "page_count",
+        "has_tables",
+        "has_images",
+        "element_types",
+        "approx_token_count",
+    ]
+
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Unstructured Parser",
         "description": "Full-featured parser for PDF, DOCX, PPTX, HTML, and email files.",
@@ -266,6 +275,12 @@ class UnstructuredParserPlugin(ParserPlugin):
             caller_metadata=metadata,
         )
 
+        # Track element statistics for parsed metadata
+        element_types: set[str] = set()
+        max_page = 1
+        has_tables = False
+        has_images = False
+
         for element in elements:
             text = str(element)
             if not text.strip():
@@ -279,17 +294,34 @@ class UnstructuredParserPlugin(ParserPlugin):
                 if hasattr(elem_meta, "page_number") and elem_meta.page_number:
                     elem_metadata["page_number"] = elem_meta.page_number
                     current_page = elem_meta.page_number
+                    max_page = max(max_page, elem_meta.page_number)
                 else:
                     elem_metadata["page_number"] = current_page
 
                 if hasattr(elem_meta, "category"):
-                    elem_metadata["element_type"] = str(elem_meta.category)
+                    category = str(elem_meta.category)
+                    elem_metadata["element_type"] = category
+
+                    # Track element types and detect tables/images
+                    element_types.add(category)
+                    if category == "Table":
+                        has_tables = True
+                    elif category == "Image":
+                        has_images = True
 
             if include_elements:
                 parsed_elements.append(ParsedElement(text=text, metadata=elem_metadata))
 
+        # Enrich with parsed metadata for routing
+        full_text = "\n\n".join(text_parts)
+        base_metadata["page_count"] = max_page
+        base_metadata["has_tables"] = has_tables
+        base_metadata["has_images"] = has_images
+        base_metadata["element_types"] = sorted(element_types)
+        base_metadata["approx_token_count"] = len(full_text.split())
+
         return ParserOutput(
-            text="\n\n".join(text_parts),
+            text=full_text,
             elements=parsed_elements,
             metadata=base_metadata,
         )

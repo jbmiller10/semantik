@@ -21,12 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from webui.services.agent.subagents.base import (
-    Message,
-    SubAgent,
-    SubAgentResult,
-    Uncertainty,
-)
+from webui.services.agent.subagents.base import Message, SubAgent, SubAgentResult, Uncertainty
 from webui.services.agent.tools.subagent_tools.source import (
     DetectLanguageTool,
     EnumerateFilesTool,

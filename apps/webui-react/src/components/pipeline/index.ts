@@ -17,3 +17,10 @@ export type { BuilderMode, PipelineBuilderHeaderProps } from './PipelineBuilderH
 export { PipelineBuilderFooter } from './PipelineBuilderFooter';
 export type { PipelineBuilderFooterProps } from './PipelineBuilderFooter';
 export type { PipelineVisualizationProps } from '@/types/pipeline';
+
+// Route preview components
+export { RoutePreviewPanel } from './RoutePreviewPanel';
+export { SampleFileSelector } from './SampleFileSelector';
+export { RoutePreviewResults } from './RoutePreviewResults';
+export { PathVisualization } from './PathVisualization';
+export { EdgeEvaluationTree } from './EdgeEvaluationTree';

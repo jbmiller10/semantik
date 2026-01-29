@@ -10,10 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from shared.pipeline.types import FileReference
-from webui.services.agent.tools.spawn import (
-    SpawnPipelineValidatorTool,
-    SpawnSourceAnalyzerTool,
-)
+from webui.services.agent.tools.spawn import SpawnPipelineValidatorTool, SpawnSourceAnalyzerTool
 
 
 @asynccontextmanager

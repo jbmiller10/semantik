@@ -138,6 +138,8 @@ export function useAgentStream(
     setCurrentContent('');
     setToolCalls([]);
     setSubagents([]);
+    setUncertainties([]);
+    setPipeline(null);
     setStatus(null);
     setActivities([]);
     setPendingQuestions([]);
@@ -239,6 +241,8 @@ export function useAgentStream(
                 const errorMsg = `Stream corrupted: ${totalParseFailures} parse failures - please refresh and try again`;
                 setError(errorMsg);
                 callbacks.onError?.(errorMsg);
+                reader.cancel();
+                return; // Stop processing - stream is corrupted
               }
               continue;
             }

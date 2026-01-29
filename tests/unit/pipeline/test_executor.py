@@ -206,7 +206,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(5)
         ]
@@ -253,7 +253,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -297,7 +297,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -342,7 +342,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -393,7 +393,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -435,7 +435,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(20)
         ]
@@ -497,7 +497,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(3)
         ]
@@ -559,7 +559,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -614,7 +614,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=11,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         # Write "Hello World" to temp file to match the hash
@@ -660,7 +660,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -697,3 +697,72 @@ class TestPipelineExecutorExecute:
         assert result.files_failed == 0
         # Callback should have been called multiple times (events still emitted)
         assert callback_call_count > 0
+
+    @pytest.mark.asyncio()
+    async def test_sniff_failure_records_error_in_metadata(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_parser: MagicMock,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that sniff failures are recorded in file_ref.metadata['errors']."""
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            yield file_ref
+
+        # Create a mock sniffer that raises an exception on sniff
+        # but uses the real enrich_file_ref so errors propagate to metadata
+        from shared.pipeline.sniff import ContentSniffer
+
+        mock_sniffer = MagicMock()
+        mock_sniffer.sniff = AsyncMock(side_effect=RuntimeError("Sniff operation failed"))
+        mock_sniffer.enrich_file_ref = ContentSniffer().enrich_file_ref
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+            patch(
+                "shared.pipeline.executor.ContentSniffer",
+                return_value=mock_sniffer,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor.execute(file_iterator())
+
+        # Processing should still succeed (sniff is non-fatal)
+        assert result.files_processed == 1
+        assert result.files_succeeded == 1
+        assert result.files_failed == 0
+
+        # Check that the sample output has the error recorded in metadata
+        assert result.sample_outputs is not None
+        assert len(result.sample_outputs) == 1
+        sample_file_ref = result.sample_outputs[0].file_ref
+        assert "errors" in sample_file_ref.metadata
+        assert "sniff" in sample_file_ref.metadata["errors"]
+        # Error is now a list from SniffResult.errors
+        sniff_errors = sample_file_ref.metadata["errors"]["sniff"]
+        assert isinstance(sniff_errors, list)
+        assert any("Sniff operation failed" in err for err in sniff_errors)
