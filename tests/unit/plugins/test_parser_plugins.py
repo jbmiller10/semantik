@@ -792,7 +792,7 @@ class TestParserEmittedFields:
         from shared.plugins.types.parser import ParserPlugin
 
         assert hasattr(ParserPlugin, "EMITTED_FIELDS")
-        assert ParserPlugin.EMITTED_FIELDS == []
+        assert [] == ParserPlugin.EMITTED_FIELDS
 
     def test_text_parser_declares_emitted_fields(self) -> None:
         """Verify TextParserPlugin declares its emitted fields."""

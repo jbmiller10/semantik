@@ -787,9 +787,7 @@ class TestYAMLEdgeCases:
         assert result.structured_format is None
 
     @pytest.mark.asyncio()
-    async def test_yaml_requires_two_indicators(
-        self, sniffer: ContentSniffer, generic_file_ref: FileReference
-    ) -> None:
+    async def test_yaml_requires_two_indicators(self, sniffer: ContentSniffer, generic_file_ref: FileReference) -> None:
         """Test that YAML detection requires at least 2 indicators."""
         # Content that parses as YAML but has only one indicator pattern
         # A simple "key: value" at start of line counts as one indicator
