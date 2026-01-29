@@ -223,27 +223,24 @@ export function EdgePredicateEditor({
   }, [field]);
 
   return (
-    <div className="p-4 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <Filter className="w-5 h-5 text-[var(--text-muted)]" />
-        <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-          Edge Routing
-        </h3>
+    <div className="relative">
+      {/* Sticky Header */}
+      <div className="edge-header-sticky sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-[var(--text-muted)]" />
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {fromNodeLabel}
+          </span>
+          <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {toNodeLabel}
+          </span>
+        </div>
       </div>
 
-      {/* Edge flow visualization */}
-      <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
-        <span className="text-sm font-medium text-[var(--text-primary)]">
-          {fromNodeLabel}
-        </span>
-        <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
-        <span className="text-sm font-medium text-[var(--text-primary)]">
-          {toNodeLabel}
-        </span>
-      </div>
-
-      {/* Catch-all toggle */}
+      {/* Content */}
+      <div className="p-3 space-y-4">
+        {/* Catch-all toggle */}
       <div className="flex items-center gap-3">
         <input
           type="checkbox"
@@ -397,6 +394,7 @@ export function EdgePredicateEditor({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

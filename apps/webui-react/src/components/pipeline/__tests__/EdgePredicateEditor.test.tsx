@@ -386,4 +386,23 @@ describe('EdgePredicateEditor', () => {
       });
     });
   });
+
+  describe('sticky header', () => {
+    it('renders sticky header showing edge flow', () => {
+      render(
+        <EdgePredicateEditor
+          edge={mockEdge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="parser1"
+          onChange={vi.fn()}
+        />
+      );
+
+      const stickyHeader = document.querySelector('.edge-header-sticky');
+      expect(stickyHeader).toBeInTheDocument();
+      expect(stickyHeader).toHaveClass('sticky');
+      expect(stickyHeader).toHaveClass('top-0');
+    });
+  });
 });
