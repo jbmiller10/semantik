@@ -583,3 +583,197 @@ class TestUnstructuredParserMetadataEmission:
         # Should have page_count (at least 1)
         assert "page_count" in result.metadata
         assert result.metadata["page_count"] >= 1
+
+
+# ============================================================================
+# UnstructuredParser Import Failure Tests
+# ============================================================================
+
+
+class TestUnstructuredParserImportFailure:
+    """Tests for UnstructuredParserPlugin when unstructured library is missing."""
+
+    def test_parse_bytes_raises_extraction_failed_when_unstructured_missing(self) -> None:
+        """Test that parse_bytes raises ExtractionFailedError when unstructured import fails.
+
+        This tests the lazy import error handling in parse_bytes. The unstructured
+        library is imported inside parse_bytes, and if it's not installed,
+        ExtractionFailedError should be raised (not UnsupportedFormatError).
+        """
+        import sys
+        from unittest.mock import patch
+
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        parser = UnstructuredParserPlugin()
+
+        # Remove unstructured from sys.modules to force fresh import
+        modules_to_remove = [k for k in list(sys.modules.keys()) if "unstructured" in k]
+        saved_modules = {k: sys.modules.pop(k) for k in modules_to_remove}
+
+        # Create a fake module that raises on attribute access
+        class FailingModule:
+            def __getattr__(self, name: str) -> None:
+                raise ModuleNotFoundError("No module named 'unstructured'")
+
+        try:
+            # Patch sys.modules so the import inside parse_bytes fails
+            with patch.dict(
+                sys.modules,
+                {
+                    "unstructured": FailingModule(),
+                    "unstructured.partition": FailingModule(),
+                    "unstructured.partition.auto": FailingModule(),
+                },
+            ):
+                with pytest.raises(ExtractionFailedError, match="unstructured is not installed"):
+                    parser.parse_bytes(b"test content", mime_type="text/plain")
+        finally:
+            # Restore original modules
+            sys.modules.update(saved_modules)
+
+
+# ============================================================================
+# UnstructuredParser Element Tracking Tests
+# ============================================================================
+
+
+class TestUnstructuredParserElementTracking:
+    """Tests for UnstructuredParserPlugin element type and page tracking."""
+
+    def test_element_types_tracked_correctly(self) -> None:
+        """Test that element categories are properly collected in element_types."""
+        from unittest.mock import MagicMock, patch
+
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        parser = UnstructuredParserPlugin()
+
+        # Create mock elements with different categories
+        mock_element1 = MagicMock()
+        mock_element1.__str__ = MagicMock(return_value="Title text")
+        mock_element1.metadata = MagicMock()
+        mock_element1.metadata.page_number = 1
+        mock_element1.metadata.category = "Title"
+
+        mock_element2 = MagicMock()
+        mock_element2.__str__ = MagicMock(return_value="Paragraph text")
+        mock_element2.metadata = MagicMock()
+        mock_element2.metadata.page_number = 1
+        mock_element2.metadata.category = "NarrativeText"
+
+        mock_element3 = MagicMock()
+        mock_element3.__str__ = MagicMock(return_value="| col1 | col2 |")
+        mock_element3.metadata = MagicMock()
+        mock_element3.metadata.page_number = 2
+        mock_element3.metadata.category = "Table"
+
+        mock_element4 = MagicMock()
+        mock_element4.__str__ = MagicMock(return_value="[image]")
+        mock_element4.metadata = MagicMock()
+        mock_element4.metadata.page_number = 2
+        mock_element4.metadata.category = "Image"
+
+        mock_elements = [mock_element1, mock_element2, mock_element3, mock_element4]
+
+        # Mock the partition function at the import location
+        with patch(
+            "shared.plugins.builtins.unstructured_parser.partition",
+            return_value=mock_elements,
+            create=True,
+        ):
+            # Need to patch where partition is used - it's imported lazily
+            # So we need to patch the actual import
+            import sys
+
+            mock_partition_module = MagicMock()
+            mock_partition_module.partition = MagicMock(return_value=mock_elements)
+
+            with patch.dict(sys.modules, {"unstructured.partition.auto": mock_partition_module}):
+                result = parser.parse_bytes(b"content", mime_type="text/plain")
+
+        # Check element_types contains all categories
+        assert "element_types" in result.metadata
+        element_types = result.metadata["element_types"]
+        assert "Title" in element_types
+        assert "NarrativeText" in element_types
+        assert "Table" in element_types
+        assert "Image" in element_types
+
+        # Check has_tables and has_images flags
+        assert result.metadata["has_tables"] is True
+        assert result.metadata["has_images"] is True
+
+    def test_page_count_tracks_max_page_number(self) -> None:
+        """Test that page_count equals the max page_number across all elements.
+
+        Elements with page_numbers [1, 3, 2, 5] should result in page_count == 5.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        parser = UnstructuredParserPlugin()
+
+        # Create mock elements with non-sequential page numbers
+        def make_element(text: str, page: int) -> MagicMock:
+            element = MagicMock()
+            element.__str__ = MagicMock(return_value=text)
+            element.metadata = MagicMock()
+            element.metadata.page_number = page
+            element.metadata.category = "NarrativeText"
+            return element
+
+        mock_elements = [
+            make_element("Page 1 content", 1),
+            make_element("Page 3 content", 3),  # Skip page 2
+            make_element("Page 2 content", 2),  # Out of order
+            make_element("Page 5 content", 5),  # Max page
+        ]
+
+        import sys
+
+        mock_partition_module = MagicMock()
+        mock_partition_module.partition = MagicMock(return_value=mock_elements)
+
+        with patch.dict(sys.modules, {"unstructured.partition.auto": mock_partition_module}):
+            result = parser.parse_bytes(b"content", mime_type="text/plain")
+
+        # page_count should be the maximum page number encountered
+        assert result.metadata["page_count"] == 5
+
+    def test_elements_without_page_number_use_current_page(self) -> None:
+        """Test that elements without page_number metadata use the current page."""
+        from unittest.mock import MagicMock, patch
+
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        parser = UnstructuredParserPlugin()
+
+        # First element has page 3, second has no page_number
+        mock_element1 = MagicMock()
+        mock_element1.__str__ = MagicMock(return_value="Text on page 3")
+        mock_element1.metadata = MagicMock()
+        mock_element1.metadata.page_number = 3
+        mock_element1.metadata.category = "NarrativeText"
+
+        mock_element2 = MagicMock()
+        mock_element2.__str__ = MagicMock(return_value="Text without page")
+        mock_element2.metadata = MagicMock()
+        mock_element2.metadata.page_number = None  # No page number
+        mock_element2.metadata.category = "NarrativeText"
+
+        mock_elements = [mock_element1, mock_element2]
+
+        import sys
+
+        mock_partition_module = MagicMock()
+        mock_partition_module.partition = MagicMock(return_value=mock_elements)
+
+        with patch.dict(sys.modules, {"unstructured.partition.auto": mock_partition_module}):
+            result = parser.parse_bytes(b"content", mime_type="text/plain", include_elements=True)
+
+        # Second element should have inherited page 3 from first
+        assert len(result.elements) == 2
+        assert result.elements[0].metadata.get("page_number") == 3
+        assert result.elements[1].metadata.get("page_number") == 3

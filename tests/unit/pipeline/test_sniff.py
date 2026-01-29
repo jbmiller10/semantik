@@ -749,3 +749,189 @@ class TestPredicateIntegration:
 
         assert matches_predicate(file_ref, {"metadata.detected.is_structured_data": True})
         assert matches_predicate(file_ref, {"metadata.detected.structured_format": "json"})
+
+
+class TestYAMLEdgeCases:
+    """Edge case tests for YAML detection."""
+
+    @pytest.fixture()
+    def sniffer(self) -> ContentSniffer:
+        """Create content sniffer."""
+        return ContentSniffer()
+
+    @pytest.fixture()
+    def generic_file_ref(self) -> FileReference:
+        """Create a generic file reference without specific extension."""
+        return FileReference(
+            uri="file:///data/file",
+            source_type="directory",
+            content_type="document",
+            extension="",
+        )
+
+    @pytest.mark.asyncio()
+    async def test_yaml_single_indicator_not_detected(
+        self, sniffer: ContentSniffer, generic_file_ref: FileReference
+    ) -> None:
+        """Test that plain text with only one YAML-like pattern is not detected as YAML.
+
+        The YAML detector requires at least 2 YAML indicators to avoid false positives
+        on plain text that happens to have a colon.
+        """
+        # Content with only one YAML-like pattern (single key: value)
+        content = b"This is just text: nothing special here\nMore plain text"
+        result = await sniffer.sniff(content, generic_file_ref)
+
+        # Should NOT be detected as structured data since there's only one indicator
+        assert result.is_structured_data is False
+        assert result.structured_format is None
+
+    @pytest.mark.asyncio()
+    async def test_yaml_requires_two_indicators(
+        self, sniffer: ContentSniffer, generic_file_ref: FileReference
+    ) -> None:
+        """Test that YAML detection requires at least 2 indicators."""
+        # Content that parses as YAML but has only one indicator pattern
+        # A simple "key: value" at start of line counts as one indicator
+        content = b"author: John Smith"
+        result = await sniffer.sniff(content, generic_file_ref)
+
+        # Single key-value should not be enough
+        assert result.is_structured_data is False
+
+
+class TestCSVEdgeCases:
+    """Edge case tests for CSV detection."""
+
+    @pytest.fixture()
+    def sniffer(self) -> ContentSniffer:
+        """Create content sniffer."""
+        return ContentSniffer()
+
+    @pytest.fixture()
+    def generic_file_ref(self) -> FileReference:
+        """Create a generic file reference without specific extension."""
+        return FileReference(
+            uri="file:///data/file",
+            source_type="directory",
+            content_type="document",
+            extension="",
+        )
+
+    @pytest.mark.asyncio()
+    async def test_csv_inconsistent_columns_not_detected(
+        self, sniffer: ContentSniffer, generic_file_ref: FileReference
+    ) -> None:
+        """Test CSV with varying column counts (<80% consistency) is not detected.
+
+        The CSV detector requires at least 80% of rows to have the same column count.
+        """
+        # Create CSV with wildly inconsistent column counts
+        # Row 1: 3 columns, Row 2: 5 columns, Row 3: 2 columns, Row 4: 7 columns, Row 5: 1 column
+        # None of these match >80%
+        content = b"a,b,c\n1,2,3,4,5\nx,y\n1,2,3,4,5,6,7\nz"
+        result = await sniffer.sniff(content, generic_file_ref)
+
+        # Should NOT be detected as CSV due to inconsistent column counts
+        assert result.structured_format != "csv"
+
+    @pytest.mark.asyncio()
+    async def test_csv_single_column_not_detected(
+        self, sniffer: ContentSniffer, generic_file_ref: FileReference
+    ) -> None:
+        """Test that single-column data is not detected as CSV.
+
+        CSV detection requires at least 2 columns.
+        """
+        content = b"item1\nitem2\nitem3\nitem4"
+        result = await sniffer.sniff(content, generic_file_ref)
+
+        # Single column shouldn't be detected as CSV
+        assert result.structured_format != "csv"
+
+
+class TestPDFExtractionEdgeCases:
+    """Edge case tests for PDF extraction failure handling."""
+
+    @pytest.fixture()
+    def sniffer(self) -> ContentSniffer:
+        """Create content sniffer."""
+        return ContentSniffer()
+
+    @pytest.fixture()
+    def pdf_file_ref(self) -> FileReference:
+        """Create a PDF file reference."""
+        return FileReference(
+            uri="file:///docs/report.pdf",
+            source_type="directory",
+            content_type="document",
+            filename="report.pdf",
+            extension=".pdf",
+            mime_type="application/pdf",
+        )
+
+    @pytest.mark.asyncio()
+    async def test_all_pdf_pages_fail_extraction_error(
+        self, sniffer: ContentSniffer, pdf_file_ref: FileReference
+    ) -> None:
+        """Test that all pages failing extraction results in error with page details."""
+        from unittest.mock import MagicMock, patch
+
+        try:
+            from pypdf import PdfReader  # noqa: F401
+        except ImportError:
+            pytest.skip("pypdf not available")
+
+        # Create a mock reader where all page extractions fail with unique errors
+        mock_reader = MagicMock()
+        mock_page0 = MagicMock()
+        mock_page0.extract_text.side_effect = Exception("Encrypted content on page 0")
+        mock_page1 = MagicMock()
+        mock_page1.extract_text.side_effect = Exception("Invalid stream on page 1")
+        mock_page2 = MagicMock()
+        mock_page2.extract_text.side_effect = Exception("Missing font on page 2")
+        mock_reader.pages = [mock_page0, mock_page1, mock_page2]
+
+        with patch("pypdf.PdfReader", return_value=mock_reader):
+            result = await sniffer.sniff(b"fake pdf content", pdf_file_ref)
+
+        # Should have an error indicating all pages failed
+        assert len(result.errors) > 0
+        # The error should be from the PDF detection failure
+        error_text = " ".join(result.errors).lower()
+        assert "page" in error_text or "pdf" in error_text
+
+    @pytest.mark.asyncio()
+    async def test_pdf_with_some_pages_failing_uses_successful_ones(
+        self, sniffer: ContentSniffer, pdf_file_ref: FileReference
+    ) -> None:
+        """Test PDF with some pages failing calculates average from successful pages only."""
+        from unittest.mock import MagicMock, patch
+
+        try:
+            from pypdf import PdfReader  # noqa: F401
+        except ImportError:
+            pytest.skip("pypdf not available")
+
+        # Create mock where page 0 fails but pages 1 and 2 succeed with lots of text
+        mock_reader = MagicMock()
+
+        mock_page0 = MagicMock()
+        mock_page0.extract_text.side_effect = Exception("Corrupted page")
+
+        mock_page1 = MagicMock()
+        mock_page1.extract_text.return_value = "x" * 200  # Plenty of text
+
+        mock_page2 = MagicMock()
+        mock_page2.extract_text.return_value = "y" * 300  # More text
+
+        mock_reader.pages = [mock_page0, mock_page1, mock_page2]
+
+        with patch("pypdf.PdfReader", return_value=mock_reader):
+            result = await sniffer.sniff(b"fake pdf content", pdf_file_ref)
+
+        # Should complete successfully (is_scanned_pdf is not None)
+        # Average from successful pages: (200 + 300) / 2 = 250 chars/page
+        # This is above the threshold of 50 chars/page, so NOT scanned
+        assert result.is_scanned_pdf is False
+        # Should have no critical errors (one page failing is recoverable)
