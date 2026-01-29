@@ -300,9 +300,14 @@ class TestAvailablePredicateFieldsAuthentication:
     """Tests for authentication requirements."""
 
     @pytest.mark.asyncio()
-    async def test_requires_authentication(self, api_client: AsyncClient) -> None:
+    async def test_requires_authentication(
+        self, api_client_unauthenticated: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Verify that the endpoint requires authentication."""
-        response = await api_client.post(
+        # Disable the auth bypass that's enabled in the test environment
+        monkeypatch.setattr("webui.auth.settings.DISABLE_AUTH", False)
+
+        response = await api_client_unauthenticated.post(
             "/api/v2/pipeline/available-predicate-fields",
             json={
                 "dag": {"id": "test", "version": "1.0", "nodes": [], "edges": []},
