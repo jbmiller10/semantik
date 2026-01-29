@@ -447,6 +447,138 @@ Fields in EMITTED_FIELDS should match the keys returned in metadata.
 - Integration test: Endpoint returns correct fields based on DAG structure
 - Frontend test: EdgePredicateEditor shows dynamic fields
 
+### Phase 6: UI Polish & Validation
+
+Several UX improvements to make routing more intuitive:
+
+#### 1. Context-Aware Field Filtering
+
+Don't show `parsed.*` fields for edges from `_source` (parser hasn't run yet).
+
+- Ties into Phase 5 dynamic field discovery
+- Endpoint already knows `from_node`, just filter appropriately
+- Prevents users from creating impossible predicates
+
+#### 2. Boolean Field Toggle
+
+Fields like `is_scanned_pdf`, `has_tables` should use a toggle instead of text input.
+
+```typescript
+// Detect boolean fields and render toggle
+const isBooleanField = field.includes('is_') || field.includes('has_');
+
+{isBooleanField ? (
+  <Toggle checked={value === true} onChange={...} />
+) : (
+  <TextInput value={value} onChange={...} />
+)}
+```
+
+#### 3. Negation Checkbox
+
+Add a "NOT" checkbox next to the value input for easy negation.
+
+```
+Field: [Is Scanned PDF ▼]  ☐ NOT  Value: [true]
+```
+
+When checked, the predicate becomes `{"metadata.detected.is_scanned_pdf": "!true"}` or uses explicit negation syntax.
+
+#### 4. Edge Priority Display
+
+Show evaluation order so users understand first-match-wins:
+
+- Display "Priority 1", "Priority 2" labels on edges in the visualization
+- Tooltip: "Evaluated before other edges from this node"
+- Consider drag-to-reorder in future iteration
+
+#### 5. Sniff Result Caching
+
+Cache sniff results based on content hash to avoid re-sniffing on reindex:
+
+```python
+# In executor or sniff module
+cache_key = f"sniff:{content_hash}"
+if cached := await cache.get(cache_key):
+    return SniffResult.from_dict(cached)
+
+result = await self._sniffer.sniff(content, file_ref)
+await cache.set(cache_key, result.to_dict(), ttl=86400 * 7)  # 7 days
+```
+
+Storage options:
+- Redis (if already available)
+- SQLite sidecar
+- In-memory LRU for single-session optimization
+
+### Phase 7: Parallel Fan-out (Future)
+
+**Use case:** Document goes down multiple paths intentionally.
+
+Example: Parse a document, then both:
+1. Chunk and embed (detailed retrieval)
+2. Summarize with LLM and embed summary (high-level retrieval)
+
+```
+Document → Parser → Chunker → Embedder (chunks)
+                 ↘
+                   LLM Summarizer → Embedder (summary)
+```
+
+#### Design Sketch
+
+**Edge-level `parallel` flag:**
+
+```python
+@dataclass
+class PipelineEdge:
+    from_node: str
+    to_node: str
+    when: dict[str, Any] | None = None
+    parallel: bool = False  # NEW: if True, can match alongside other edges
+```
+
+**Execution semantics:**
+
+1. Evaluate all edges from current node
+2. Exclusive edges (parallel=False): first-match-wins, return single path
+3. Parallel edges (parallel=True): all matching edges fire
+4. Document can have multiple active paths
+
+**Output handling:**
+
+- Each path produces its own chunks/embeddings
+- Tag outputs with `path_id` for filtering at search time
+- No merge semantics needed - paths stay independent
+
+**Search integration:**
+
+```python
+# Search chunks only
+results = search(collection, query, filter={"path": "chunks"})
+
+# Search summaries only
+results = search(collection, query, filter={"path": "summary"})
+
+# Search both and combine (RRF or similar)
+results = hybrid_search(collection, query, paths=["chunks", "summary"])
+```
+
+**UI considerations:**
+
+- Visual indicator for parallel edges (different color/style)
+- Warning if parallel paths could produce duplicate embeddings
+- Path selector in search UI
+
+**Complexity:**
+
+- Moderate execution changes (track multiple paths per document)
+- Progress tracking needs path awareness
+- Storage unchanged (just metadata tagging)
+- Search needs path filtering
+
+**Defer until:** Concrete demand for multi-path processing beyond hybrid search.
+
 ## Extensibility
 
 The metadata system is designed for future extension at both layers:
