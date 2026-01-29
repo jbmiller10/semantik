@@ -91,6 +91,110 @@ class PipelineRouter:
                 self._outgoing_edges[edge.from_node] = []
             self._outgoing_edges[edge.from_node].append(edge)
 
+    def _evaluate_edges(
+        self,
+        edges: list[PipelineEdge],
+        file_ref: FileReference,
+    ) -> list[RoutedNode]:
+        """Evaluate a list of edges and return matching nodes.
+
+        Handles both parallel and exclusive edge semantics with proper
+        evaluation order:
+        1. Parallel predicate edges (all matches fire)
+        2. Exclusive predicate edges (first match wins)
+        3. Parallel catch-all edges (all fire)
+        4. Exclusive catch-all edges (first match wins as fallback)
+
+        Args:
+            edges: List of edges to evaluate
+            file_ref: File reference for predicate matching
+
+        Returns:
+            List of (node, path_name) tuples for matched edges
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if not edges:
+            return []
+
+        results: list[RoutedNode] = []
+
+        # Categorize edges by parallel flag and predicate presence
+        parallel_predicate: list[PipelineEdge] = []
+        parallel_catchall: list[PipelineEdge] = []
+        exclusive_predicate: list[PipelineEdge] = []
+        exclusive_catchall: list[PipelineEdge] = []
+
+        for edge in edges:
+            is_catchall = edge.when is None or edge.when == {}
+            if edge.parallel:
+                if is_catchall:
+                    parallel_catchall.append(edge)
+                else:
+                    parallel_predicate.append(edge)
+            else:
+                if is_catchall:
+                    exclusive_catchall.append(edge)
+                else:
+                    exclusive_predicate.append(edge)
+
+        # 1. Evaluate parallel predicate edges (all matches fire)
+        for edge in parallel_predicate:
+            if matches_predicate(file_ref, edge.when):
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                else:
+                    logger.warning(
+                        "Edge references non-existent node '%s' (from '%s')",
+                        edge.to_node,
+                        edge.from_node,
+                    )
+
+        # 2. Evaluate exclusive predicate edges (first match wins)
+        exclusive_matched = False
+        for edge in exclusive_predicate:
+            if matches_predicate(file_ref, edge.when):
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    exclusive_matched = True
+                    break
+                logger.warning(
+                    "Edge references non-existent node '%s' (from '%s')",
+                    edge.to_node,
+                    edge.from_node,
+                )
+
+        # 3. Evaluate parallel catch-all edges (all fire)
+        for edge in parallel_catchall:
+            node = self._node_index.get(edge.to_node)
+            if node:
+                results.append((node, edge.get_path_name()))
+            else:
+                logger.warning(
+                    "Edge references non-existent node '%s' (from '%s')",
+                    edge.to_node,
+                    edge.from_node,
+                )
+
+        # 4. Fall back to exclusive catch-all if no exclusive match yet
+        if not exclusive_matched:
+            for edge in exclusive_catchall:
+                node = self._node_index.get(edge.to_node)
+                if node:
+                    results.append((node, edge.get_path_name()))
+                    break
+                logger.warning(
+                    "Edge references non-existent node '%s' (from '%s')",
+                    edge.to_node,
+                    edge.from_node,
+                )
+
+        return results
+
     def get_entry_node(self, file_ref: FileReference) -> PipelineNode | None:
         """Find the entry node for a file based on _source edges.
 
@@ -132,63 +236,7 @@ class PipelineRouter:
             List of (node, path_name) tuples for matched entry points
         """
         source_edges = self._outgoing_edges.get(SOURCE_NODE, [])
-
-        if not source_edges:
-            return []
-
-        results: list[RoutedNode] = []
-
-        # Categorize edges by parallel flag and predicate presence
-        parallel_predicate: list[PipelineEdge] = []
-        parallel_catchall: list[PipelineEdge] = []
-        exclusive_predicate: list[PipelineEdge] = []
-        exclusive_catchall: list[PipelineEdge] = []
-
-        for edge in source_edges:
-            is_catchall = edge.when is None or edge.when == {}
-            if edge.parallel:
-                if is_catchall:
-                    parallel_catchall.append(edge)
-                else:
-                    parallel_predicate.append(edge)
-            else:
-                if is_catchall:
-                    exclusive_catchall.append(edge)
-                else:
-                    exclusive_predicate.append(edge)
-
-        # 1. Evaluate parallel predicate edges (all matches fire)
-        for edge in parallel_predicate:
-            if matches_predicate(file_ref, edge.when):
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-
-        # 2. Evaluate exclusive predicate edges (first match wins)
-        exclusive_matched = False
-        for edge in exclusive_predicate:
-            if matches_predicate(file_ref, edge.when):
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-                    exclusive_matched = True
-                    break
-
-        # 3. Evaluate parallel catch-all edges (all fire)
-        for edge in parallel_catchall:
-            node = self._node_index.get(edge.to_node)
-            if node:
-                results.append((node, edge.get_path_name()))
-
-        # 4. Fall back to exclusive catch-all if no exclusive match yet
-        if not exclusive_matched:
-            for edge in exclusive_catchall:
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-                    break
-
-        return results
+        return self._evaluate_edges(source_edges, file_ref)
 
     def get_next_nodes(
         self,
@@ -240,63 +288,7 @@ class PipelineRouter:
             For parallel routing, may contain multiple entries.
         """
         outgoing = self._outgoing_edges.get(current.id, [])
-
-        if not outgoing:
-            return []
-
-        results: list[RoutedNode] = []
-
-        # Categorize edges by parallel flag and predicate presence
-        parallel_predicate: list[PipelineEdge] = []
-        parallel_catchall: list[PipelineEdge] = []
-        exclusive_predicate: list[PipelineEdge] = []
-        exclusive_catchall: list[PipelineEdge] = []
-
-        for edge in outgoing:
-            is_catchall = edge.when is None or edge.when == {}
-            if edge.parallel:
-                if is_catchall:
-                    parallel_catchall.append(edge)
-                else:
-                    parallel_predicate.append(edge)
-            else:
-                if is_catchall:
-                    exclusive_catchall.append(edge)
-                else:
-                    exclusive_predicate.append(edge)
-
-        # 1. Evaluate parallel predicate edges (all matches fire)
-        for edge in parallel_predicate:
-            if matches_predicate(file_ref, edge.when):
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-
-        # 2. Evaluate exclusive predicate edges (first match wins)
-        exclusive_matched = False
-        for edge in exclusive_predicate:
-            if matches_predicate(file_ref, edge.when):
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-                    exclusive_matched = True
-                    break
-
-        # 3. Evaluate parallel catch-all edges (all fire)
-        for edge in parallel_catchall:
-            node = self._node_index.get(edge.to_node)
-            if node:
-                results.append((node, edge.get_path_name()))
-
-        # 4. Fall back to exclusive catch-all if no exclusive match yet
-        if not exclusive_matched:
-            for edge in exclusive_catchall:
-                node = self._node_index.get(edge.to_node)
-                if node:
-                    results.append((node, edge.get_path_name()))
-                    break
-
-        return results
+        return self._evaluate_edges(outgoing, file_ref)
 
     def get_node(self, node_id: str) -> PipelineNode | None:
         """Get a node by ID.
@@ -313,7 +305,7 @@ class PipelineRouter:
         """Get all possible processing paths for a file.
 
         This is useful for validation and debugging to see which nodes
-        a file would be routed through.
+        a file would be routed through. Handles parallel entry points.
 
         Args:
             file_ref: The file reference to route
@@ -322,13 +314,14 @@ class PipelineRouter:
             List of paths, where each path is a list of nodes from entry to embedder
         """
         paths: list[list[PipelineNode]] = []
-        entry = self.get_entry_node(file_ref)
+        entry_nodes = self.get_entry_nodes(file_ref)
 
-        if entry is None:
+        if not entry_nodes:
             return paths
 
-        # Use DFS to find all paths
-        self._find_paths(entry, file_ref, [entry], paths)
+        # Use DFS to find all paths from each entry point
+        for entry, _path_name in entry_nodes:
+            self._find_paths(entry, file_ref, [entry], paths)
         return paths
 
     def _find_paths(

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class FieldEvaluationResult(BaseModel):
@@ -38,6 +38,23 @@ class EdgeEvaluationResult(BaseModel):
     )
     is_parallel: bool = Field(False, description="Whether edge has parallel=True")
     path_name: str | None = Field(None, description="Path name tag from edge")
+
+    @model_validator(mode="after")
+    def validate_matched_status_consistency(self) -> EdgeEvaluationResult:
+        """Ensure matched and status fields are consistent."""
+        # matched should be True for matched/matched_parallel, False otherwise
+        expected_matched = self.status in ("matched", "matched_parallel")
+        if self.matched != expected_matched:
+            # Log warning but don't fail - prefer status as source of truth
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "EdgeEvaluationResult inconsistency: matched=%s but status=%s",
+                self.matched,
+                self.status,
+            )
+        return self
 
 
 class StageEvaluationResult(BaseModel):

@@ -61,13 +61,29 @@ export function useRoutePreview(): UseRoutePreviewReturn {
           result,
         }));
       } catch (err) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : typeof err === 'object' && err !== null && 'response' in err
-              ? ((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
-                'Preview failed')
-              : 'Preview failed';
+        // Log full error for debugging
+        console.error('Route preview failed:', err);
+
+        // Extract user-friendly error message with fallback chain
+        let errorMessage = 'Preview failed';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        } else if (typeof err === 'object' && err !== null) {
+          // Handle axios error structure
+          const axiosErr = err as {
+            response?: { data?: { detail?: string; message?: string }; status?: number };
+            message?: string;
+          };
+          if (axiosErr.response?.data?.detail) {
+            errorMessage = axiosErr.response.data.detail;
+          } else if (axiosErr.response?.data?.message) {
+            errorMessage = axiosErr.response.data.message;
+          } else if (axiosErr.response?.status) {
+            errorMessage = `Request failed with status ${axiosErr.response.status}`;
+          } else if (axiosErr.message) {
+            errorMessage = axiosErr.message;
+          }
+        }
 
         setState((prev) => ({
           ...prev,

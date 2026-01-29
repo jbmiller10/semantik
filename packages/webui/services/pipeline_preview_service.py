@@ -334,15 +334,27 @@ class PipelinePreviewService:
         path_names: dict[str, str] = {}  # node_id -> path_name
         exclusive_matched = False
 
+        # Build a set of valid node IDs for existence validation
+        valid_node_ids = {node.id for node in dag.nodes}
+
         # Step 1: Evaluate parallel predicate edges (all matching ones fire)
         for edge in parallel_predicate:
             field_evals = self._evaluate_predicate_fields(file_ref, edge.when)
             matched = all(fe.matched for fe in field_evals)
 
-            if matched:
+            # Only select nodes that actually exist in the DAG
+            if matched and edge.to_node in valid_node_ids:
                 selected_nodes.append(edge.to_node)
                 path_names[edge.to_node] = edge.path_name or edge.to_node
                 status = "matched_parallel"
+            elif matched:
+                # Edge matched but target node doesn't exist
+                logger.warning(
+                    "Edge references non-existent node '%s' (from '%s')",
+                    edge.to_node,
+                    edge.from_node,
+                )
+                status = "matched_parallel"  # Still show it matched for preview accuracy
             else:
                 status = "not_matched"
 
@@ -378,10 +390,17 @@ class PipelinePreviewService:
                 field_evals = self._evaluate_predicate_fields(file_ref, edge.when)
                 matched = all(fe.matched for fe in field_evals)
 
-                if matched:
+                if matched and edge.to_node in valid_node_ids:
                     selected_nodes.append(edge.to_node)
                     path_names[edge.to_node] = edge.path_name or edge.to_node
                     exclusive_matched = True
+                    status = "matched"
+                elif matched:
+                    logger.warning(
+                        "Edge references non-existent node '%s' (from '%s')",
+                        edge.to_node,
+                        edge.from_node,
+                    )
                     status = "matched"
                 else:
                     status = "not_matched"
@@ -403,8 +422,16 @@ class PipelinePreviewService:
         for edge in parallel_catchall:
             # Parallel catch-all always matches (and fires), even if an exclusive
             # predicate matched. This mirrors PipelineRouter.get_entry_nodes().
-            selected_nodes.append(edge.to_node)
-            path_names[edge.to_node] = edge.path_name or edge.to_node
+            # Only add to selected_nodes if the target node exists
+            if edge.to_node in valid_node_ids:
+                selected_nodes.append(edge.to_node)
+                path_names[edge.to_node] = edge.path_name or edge.to_node
+            else:
+                logger.warning(
+                    "Edge references non-existent node '%s' (from '%s')",
+                    edge.to_node,
+                    edge.from_node,
+                )
             evaluated_edges.append(
                 EdgeEvaluationResult(
                     from_node=edge.from_node,
@@ -434,10 +461,17 @@ class PipelinePreviewService:
                     )
                 )
             else:
-                # Exclusive catch-all: first one wins
-                selected_nodes.append(edge.to_node)
-                path_names[edge.to_node] = edge.path_name or edge.to_node
-                exclusive_matched = True
+                # Exclusive catch-all: first one wins (only if node exists)
+                if edge.to_node in valid_node_ids:
+                    selected_nodes.append(edge.to_node)
+                    path_names[edge.to_node] = edge.path_name or edge.to_node
+                    exclusive_matched = True
+                else:
+                    logger.warning(
+                        "Edge references non-existent node '%s' (from '%s')",
+                        edge.to_node,
+                        edge.from_node,
+                    )
                 evaluated_edges.append(
                     EdgeEvaluationResult(
                         from_node=edge.from_node,

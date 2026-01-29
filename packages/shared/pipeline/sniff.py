@@ -603,6 +603,9 @@ class ContentSniffer:
 
         return False, None
 
+    # Maximum size (50MB) for full JSON validation to prevent memory exhaustion
+    _MAX_JSON_VALIDATION_SIZE = 50 * 1024 * 1024
+
     def _is_json(self, sample: str, full_content: bytes) -> bool:
         """Check if content is JSON.
 
@@ -612,11 +615,28 @@ class ContentSniffer:
 
         Returns:
             True if valid JSON
+
+        Note:
+            For files larger than 50MB, only the sample is validated to
+            prevent memory exhaustion from parsing very large JSON files.
         """
         # Quick heuristic: starts with { or [
         first_char = sample.lstrip()[:1]
         if first_char not in ("{", "["):
             return False
+
+        # For very large files, validate sample only to prevent memory exhaustion
+        if len(full_content) > self._MAX_JSON_VALIDATION_SIZE:
+            # Try to parse sample as partial JSON - if it starts with valid
+            # JSON structure, it's likely JSON content
+            try:
+                # Check if sample is a valid JSON prefix (may be truncated)
+                json.loads(sample)
+                return True
+            except json.JSONDecodeError:
+                # Sample may be truncated mid-value, but starts with JSON structure
+                # Consider it JSON if it starts correctly
+                return first_char in ("{", "[")
 
         # Try to parse full content as JSON
         try:

@@ -11,8 +11,9 @@ import logging
 import time
 import traceback
 import uuid
-from copy import deepcopy
+from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -348,6 +349,9 @@ class PipelineExecutor:
         Returns:
             Dict with processing results
         """
+        # Reset per-file timing accumulator to avoid cross-file contamination
+        self._stage_timings.clear()
+
         # 1. Load content
         stage_start = time.perf_counter()
         try:
@@ -393,10 +397,12 @@ class PipelineExecutor:
         if not entry_nodes:
             return {"skipped": True, "skip_reason": "no_matching_route"}
 
-        # 5. Initialize path states for each entry point
-        path_states: list[PathState] = []
+        # 5. Initialize path states for each entry point using a deque for work queue pattern
+        # Using deque allows mid-pipeline fan-out branches to be added and executed
+        path_queue: deque[PathState] = deque()
+        completed_paths: list[PathState] = []
         for node, path_name in entry_nodes:
-            path_states.append(PathState(path_id=path_name, current_node=node))
+            path_queue.append(PathState(path_id=path_name, current_node=node))
 
         # 6. Create single document record (shared across all paths)
         doc_id: str | None = None
@@ -404,16 +410,18 @@ class PipelineExecutor:
             doc_id = await self._create_document(file_ref, load_result.content_hash)
 
         # 7. Execute each path sequentially (avoids GPU OOM; Celery parallelizes across docs)
+        # The deque allows branched paths to be added and executed during iteration
         all_chunks: list[dict[str, Any]] = []
         all_token_counts: list[int] = []
         all_sample_outputs: list[SampleOutput] = []
         first_path_error: Exception | None = None
 
-        for path_state in path_states:
+        while path_queue:
+            path_state = path_queue.popleft()
             try:
                 await self._execute_path(
                     path_state=path_state,
-                    path_states=path_states,
+                    path_queue=path_queue,
                     file_ref=file_ref,
                     load_content=load_result.content,
                     doc_id=doc_id,
@@ -446,11 +454,13 @@ class PipelineExecutor:
                     e,
                     exc_info=True,
                 )
-                continue
+
+            # Track completed paths (both successful and failed)
+            completed_paths.append(path_state)
 
         # 8. Update document status if we created chunks
         # If all paths failed, raise after every path had a chance to run.
-        if first_path_error is not None and all(ps.error is not None for ps in path_states):
+        if first_path_error is not None and all(ps.error is not None for ps in completed_paths):
             if self.mode == ExecutionMode.FULL and doc_id:
                 error_msg = str(first_path_error)[:500]
                 await self._doc_repo.update_status(
@@ -461,28 +471,50 @@ class PipelineExecutor:
                 await self.session.commit()
             raise first_path_error
 
-        if self.mode == ExecutionMode.FULL and doc_id and all_chunks:
-            # If any path failed, mark as FAILED
-            failed_paths = [ps for ps in path_states if ps.error is not None]
-            if failed_paths:
-                error_msg = f"Paths failed: {', '.join(ps.path_id for ps in failed_paths)}"
+        if self.mode == ExecutionMode.FULL and doc_id:
+            failed_paths = [ps for ps in completed_paths if ps.error is not None]
+
+            if all_chunks:
+                # We have chunks - mark status based on whether any paths failed
+                if failed_paths:
+                    # Include exception type and message for debugging
+                    error_details = [f"{ps.path_id}: {type(ps.error).__name__}: {ps.error}" for ps in failed_paths]
+                    error_msg = "Paths failed: " + "; ".join(error_details)
+                    await self._doc_repo.update_status(
+                        doc_id,
+                        DocumentStatus.FAILED,
+                        error_message=error_msg[:500],
+                    )
+                else:
+                    await self._doc_repo.update_status(
+                        doc_id,
+                        DocumentStatus.COMPLETED,
+                        chunk_count=len(all_chunks),
+                    )
+            elif failed_paths:
+                # No chunks but some paths failed - mark as failed
+                # Include exception type and message for debugging
+                error_details = [f"{ps.path_id}: {type(ps.error).__name__}: {ps.error}" for ps in failed_paths]
+                error_msg = "Paths failed: " + "; ".join(error_details)
                 await self._doc_repo.update_status(
                     doc_id,
                     DocumentStatus.FAILED,
                     error_message=error_msg[:500],
                 )
             else:
+                # No chunks and no failures - document produced no output (e.g., empty file)
+                # Mark as completed with 0 chunks
                 await self._doc_repo.update_status(
                     doc_id,
                     DocumentStatus.COMPLETED,
-                    chunk_count=len(all_chunks),
+                    chunk_count=0,
                 )
             await self.session.commit()
 
         # 9. Prepare result
         # Collect failed path information for visibility
         failed_path_info = [
-            {"path_id": ps.path_id, "error": str(ps.error)} for ps in path_states if ps.error is not None
+            {"path_id": ps.path_id, "error": str(ps.error)} for ps in completed_paths if ps.error is not None
         ]
 
         result: dict[str, Any] = {
@@ -504,7 +536,7 @@ class PipelineExecutor:
     async def _execute_path(
         self,
         path_state: PathState,
-        path_states: list[PathState],
+        path_queue: deque[PathState],
         file_ref: FileReference,
         load_content: bytes,
         doc_id: str | None,
@@ -517,7 +549,7 @@ class PipelineExecutor:
 
         Args:
             path_state: State object for this execution path
-            path_states: Shared list of all path states for this file (used to append branched paths)
+            path_queue: Work queue for path states (used to append branched paths for execution)
             file_ref: File reference being processed
             load_content: Raw file content bytes
             doc_id: Document ID for Qdrant payloads (None in DRY_RUN mode)
@@ -623,7 +655,7 @@ class PipelineExecutor:
                 if branched_state.chunks:
                     for chunk in branched_state.chunks:
                         chunk["path_id"] = next_path_id
-                path_states.append(branched_state)
+                path_queue.append(branched_state)
 
             # Follow the first branch in this path state
             first_next_node, first_next_path_id = routed_next[0]
@@ -915,13 +947,8 @@ class PipelineExecutor:
                         f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
                     )
 
-        # Update document status to COMPLETED with chunk count
-        await self._doc_repo.update_status(
-            doc_id,
-            DocumentStatus.COMPLETED,
-            chunk_count=len(chunks),
-        )
-        await self.session.commit()
+        # Note: Document status update is handled by _process_file after all paths complete.
+        # This ensures proper status accounting when multiple paths fan out from a single document.
 
         logger.info(
             "Embedded and stored %d chunks for %s in %s",

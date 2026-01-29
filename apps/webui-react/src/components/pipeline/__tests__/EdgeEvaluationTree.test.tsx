@@ -15,28 +15,43 @@ describe('EdgeEvaluationTree', () => {
   });
 
   const createMockEdge = (
-    status: 'matched' | 'not_matched' | 'skipped',
+    status: 'matched' | 'matched_parallel' | 'not_matched' | 'skipped',
     toNode: string,
     predicate?: Record<string, unknown>,
-    fieldEvaluations?: EdgeEvaluationResult['field_evaluations']
+    fieldEvaluations?: EdgeEvaluationResult['field_evaluations'],
+    isParallel: boolean = false,
+    pathName: string | null = null
   ): EdgeEvaluationResult => ({
     from_node: '_source',
     to_node: toNode,
     status,
     predicate: predicate ?? null,
-    field_evaluations: fieldEvaluations,
+    field_evaluations: fieldEvaluations ?? null,
+    matched: status === 'matched' || status === 'matched_parallel',
+    is_parallel: isParallel,
+    path_name: pathName,
   });
 
   const createMockStage = (
     fromNode: string,
     edges: EdgeEvaluationResult[],
     stage: number = 0
-  ): StageEvaluationResult => ({
-    stage,
-    from_node: fromNode,
-    evaluated_edges: edges,
-    matched_node: edges.find((e) => e.status === 'matched')?.to_node ?? null,
-  });
+  ): StageEvaluationResult => {
+    const matchedEdges = edges.filter(
+      (e) => e.status === 'matched' || e.status === 'matched_parallel'
+    );
+    const selectedNode = matchedEdges[0]?.to_node ?? null;
+    const selectedNodes =
+      matchedEdges.length > 0 ? matchedEdges.map((e) => e.to_node) : null;
+    return {
+      stage: String(stage),
+      from_node: fromNode,
+      evaluated_edges: edges,
+      selected_node: selectedNode,
+      selected_nodes: selectedNodes,
+      metadata_snapshot: {},
+    };
+  };
 
   describe('empty state', () => {
     it('renders empty state when stages is empty', () => {

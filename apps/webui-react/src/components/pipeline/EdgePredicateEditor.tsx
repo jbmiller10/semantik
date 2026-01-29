@@ -7,7 +7,7 @@ import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { PipelineEdge, PipelineDAG } from '@/types/pipeline';
 import { pipelineApi, type PredicateField } from '@/services/api/v2/pipeline';
-import { ArrowRight, Filter, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Filter, Loader2 } from 'lucide-react';
 
 interface EdgePredicateEditorProps {
   edge: PipelineEdge;
@@ -107,7 +107,11 @@ export function EdgePredicateEditor({
 
   // Fetch available predicate fields dynamically
   const dagHash = getDagHash(dag);
-  const { data: availableFieldsData, isLoading: isLoadingFields } = useQuery({
+  const {
+    data: availableFieldsData,
+    isLoading: isLoadingFields,
+    error: fieldsError,
+  } = useQuery({
     queryKey: ['predicate-fields', edge.from_node, dagHash],
     queryFn: () => pipelineApi.getAvailablePredicateFields(dag, edge.from_node),
     staleTime: 30000, // Cache for 30 seconds
@@ -116,6 +120,7 @@ export function EdgePredicateEditor({
 
   // Use fetched fields or fall back to static fields
   const predicateFields = availableFieldsData?.fields ?? FALLBACK_FIELDS;
+  const usingFallbackFields = !availableFieldsData && fieldsError;
 
   // Extract current predicate field and value
   const { field, value } = useMemo(() => {
@@ -240,6 +245,16 @@ export function EdgePredicateEditor({
 
       {/* Content */}
       <div className="p-3 space-y-4">
+        {/* Warning if using fallback fields due to API error */}
+        {usingFallbackFields && (
+          <div className="flex items-start gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-400">
+              Using default field list. Some parser-specific fields may not be shown.
+            </p>
+          </div>
+        )}
+
         {/* Catch-all toggle */}
       <div className="flex items-center gap-3">
         <input

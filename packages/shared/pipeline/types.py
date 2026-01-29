@@ -454,6 +454,33 @@ class PipelineDAG:
         )
 
     @classmethod
+    def from_dict_validated(
+        cls,
+        data: dict[str, Any],
+        known_plugins: set[str] | None = None,
+    ) -> PipelineDAG:
+        """Create a PipelineDAG from a dictionary with validation.
+
+        Factory method that creates a DAG from dict and validates it immediately,
+        raising an exception if validation fails.
+
+        Args:
+            data: Dictionary representation of the DAG
+            known_plugins: Optional set of registered plugin IDs for validation
+
+        Returns:
+            A validated PipelineDAG instance
+
+        Raises:
+            DAGValidationFailedError: If the DAG fails validation
+        """
+        dag = cls.from_dict(data)
+        errors = dag.validate(known_plugins)
+        if errors:
+            raise DAGValidationFailedError(errors)
+        return dag
+
+    @classmethod
     def create_validated(
         cls,
         id: str,
