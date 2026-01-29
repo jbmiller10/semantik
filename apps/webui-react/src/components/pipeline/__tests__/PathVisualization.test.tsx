@@ -200,4 +200,87 @@ describe('PathVisualization', () => {
       expect(nodeElement).toBeInTheDocument();
     });
   });
+
+  describe('parallel paths tree structure', () => {
+    it('renders visual branch indicators for parallel paths', () => {
+      const dag = createMockDAG([
+        { id: 'parser', type: 'parser', plugin_id: 'text' },
+        { id: 'chunker', type: 'chunker', plugin_id: 'recursive' },
+        { id: 'embedder', type: 'embedder', plugin_id: 'dense' },
+        { id: 'extractor', type: 'extractor', plugin_id: 'keyword' },
+      ]);
+
+      const parallelPaths = [
+        { path_name: 'embedding', nodes: ['_source', 'parser', 'chunker', 'embedder'] },
+        { path_name: 'extraction', nodes: ['_source', 'parser', 'chunker', 'extractor'] },
+      ];
+
+      const { container } = render(
+        <PathVisualization
+          path={parallelPaths[0].nodes}
+          paths={parallelPaths}
+          dag={dag}
+        />
+      );
+
+      // Should show divergence indicator (path-divergence class)
+      const divergenceContainer = container.querySelector('.path-divergence');
+      expect(divergenceContainer).toBeInTheDocument();
+
+      // Should show both path names
+      expect(screen.getByText('embedding')).toBeInTheDocument();
+      expect(screen.getByText('extraction')).toBeInTheDocument();
+    });
+
+    it('shows common prefix before divergence point', () => {
+      const dag = createMockDAG([
+        { id: 'parser', type: 'parser', plugin_id: 'text' },
+        { id: 'chunker', type: 'chunker', plugin_id: 'recursive' },
+        { id: 'embedder', type: 'embedder', plugin_id: 'dense' },
+        { id: 'extractor', type: 'extractor', plugin_id: 'keyword' },
+      ]);
+
+      const parallelPaths = [
+        { path_name: 'embedding', nodes: ['_source', 'parser', 'chunker', 'embedder'] },
+        { path_name: 'extraction', nodes: ['_source', 'parser', 'chunker', 'extractor'] },
+      ];
+
+      render(
+        <PathVisualization
+          path={parallelPaths[0].nodes}
+          paths={parallelPaths}
+          dag={dag}
+        />
+      );
+
+      // Common prefix: Source > text > recursive
+      // These should appear with gray styling (common prefix)
+      expect(screen.getByText('Source')).toBeInTheDocument();
+      expect(screen.getByText('text')).toBeInTheDocument();
+      expect(screen.getByText('recursive')).toBeInTheDocument();
+    });
+
+    it('marks primary path with badge', () => {
+      const dag = createMockDAG([
+        { id: 'embedder', type: 'embedder', plugin_id: 'dense' },
+        { id: 'extractor', type: 'extractor', plugin_id: 'keyword' },
+      ]);
+
+      const parallelPaths = [
+        { path_name: 'embedding', nodes: ['_source', 'embedder'] },
+        { path_name: 'extraction', nodes: ['_source', 'extractor'] },
+      ];
+
+      render(
+        <PathVisualization
+          path={parallelPaths[0].nodes}
+          paths={parallelPaths}
+          dag={dag}
+        />
+      );
+
+      // Primary path should have a badge
+      expect(screen.getByText('primary')).toBeInTheDocument();
+    });
+  });
 });

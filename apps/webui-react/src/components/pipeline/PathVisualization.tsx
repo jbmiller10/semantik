@@ -105,31 +105,92 @@ export function PathVisualization({ path, paths, dag }: PathVisualizationProps) 
     );
   }
 
-  // Multiple paths (parallel fan-out)
+  // Multiple paths (parallel fan-out) - show tree structure
   if (paths && paths.length > 1) {
+    // Find common prefix (nodes that appear in all paths at the same position)
+    const findCommonPrefix = (): string[] => {
+      const prefix: string[] = [];
+      const minLength = Math.min(...paths.map(p => p.nodes.length));
+
+      for (let i = 0; i < minLength; i++) {
+        const nodeAtPosition = paths[0].nodes[i];
+        if (paths.every(p => p.nodes[i] === nodeAtPosition)) {
+          prefix.push(nodeAtPosition);
+        } else {
+          break;
+        }
+      }
+      return prefix;
+    };
+
+    const commonPrefix = findCommonPrefix();
+    const divergencePoint = commonPrefix.length;
+
     return (
       <div className="space-y-3">
-        {paths.map((p, idx) => {
-          const isPrimary = idx === 0;
-          const colorClass = isPrimary
-            ? 'bg-green-500/10 border-green-500/30 text-green-400'
-            : 'bg-blue-500/10 border-blue-500/30 text-blue-400';
+        {/* Common prefix (shared path) */}
+        {commonPrefix.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {commonPrefix.map((nodeId, index) => {
+              const type = getNodeType(nodeId, dag.nodes);
+              const displayName = getNodeDisplayName(nodeId, dag.nodes);
+              const isLast = index === commonPrefix.length - 1;
 
-          return (
-            <div key={p.path_name} className="space-y-1">
-              <div className="flex items-center gap-2">
-                <GitFork className="w-4 h-4 text-blue-400" />
-                <span className="text-xs text-[var(--text-secondary)] font-medium">
-                  {p.path_name}
-                </span>
-                {isPrimary && (
-                  <span className="text-xs text-green-400">(primary)</span>
+              return (
+                <div key={nodeId} className="flex items-center gap-1">
+                  <div
+                    className="flex items-center gap-1.5 px-2 py-1 rounded border bg-gray-500/10 border-gray-500/30 text-gray-400"
+                    title={`${type || 'node'}: ${nodeId}`}
+                  >
+                    {getNodeIcon(nodeId, type)}
+                    <span className="text-sm font-medium">{displayName}</span>
+                  </div>
+                  {!isLast && (
+                    <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
+                  )}
+                </div>
+              );
+            })}
+            {/* Divergence indicator */}
+            <div className="flex items-center gap-1">
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
+              <GitFork className="w-5 h-5 text-blue-400" />
+            </div>
+          </div>
+        )}
+
+        {/* Divergent paths */}
+        <div className="path-divergence ml-4 pl-4 border-l-2 border-blue-500/30 space-y-2">
+          {paths.map((p, idx) => {
+            const isPrimary = idx === 0;
+            const colorClass = isPrimary
+              ? 'bg-green-500/10 border-green-500/30 text-green-400'
+              : 'bg-blue-500/10 border-blue-500/30 text-blue-400';
+
+            // Get nodes after divergence point
+            const divergentNodes = p.nodes.slice(divergencePoint);
+
+            return (
+              <div key={p.path_name} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-medium ${isPrimary ? 'text-green-400' : 'text-blue-400'}`}>
+                    {p.path_name}
+                  </span>
+                  {isPrimary && (
+                    <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">
+                      primary
+                    </span>
+                  )}
+                </div>
+                {divergentNodes.length > 0 ? (
+                  <SinglePathRow pathNodes={divergentNodes} dag={dag} colorClass={colorClass} />
+                ) : (
+                  <span className="text-xs text-[var(--text-muted)] italic">No additional nodes</span>
                 )}
               </div>
-              <SinglePathRow pathNodes={p.nodes} dag={dag} colorClass={colorClass} />
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   }
