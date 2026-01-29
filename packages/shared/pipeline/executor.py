@@ -243,9 +243,12 @@ class PipelineExecutor:
                     chunks_created += result.get("chunks_created", 0)
                     all_token_counts.extend(result.get("token_counts", []))
 
-                    # Collect sample output in DRY_RUN mode
-                    if sample_outputs is not None and "sample_output" in result:
-                        sample_outputs.append(result["sample_output"])
+                    # Collect sample output(s) in DRY_RUN mode
+                    if sample_outputs is not None:
+                        if "sample_output" in result:
+                            sample_outputs.append(result["sample_output"])
+                        elif "sample_outputs" in result:
+                            sample_outputs.extend(result["sample_outputs"])
 
                     await self._emit_progress(
                         progress_callback,
