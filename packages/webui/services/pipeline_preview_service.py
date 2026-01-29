@@ -213,26 +213,30 @@ class PipelinePreviewService:
         Returns:
             FileReference with metadata
         """
-        # Extract extension
-        path = Path(filename)
+        # Sanitize filename to prevent path traversal attacks
+        # Path.name extracts only the basename, stripping any directory components
+        safe_filename = Path(filename).name
+
+        # Extract extension from sanitized filename
+        path = Path(safe_filename)
         extension = path.suffix.lower() if path.suffix else None
 
-        # Guess MIME type
-        mime_type, _ = mimetypes.guess_type(filename)
+        # Guess MIME type from sanitized filename
+        mime_type, _ = mimetypes.guess_type(safe_filename)
 
         # Compute content hash
         content_hash = hashlib.sha256(content).hexdigest()
 
         return FileReference(
-            uri=f"preview://{filename}",
+            uri=f"preview://{safe_filename}",
             source_type="preview",
             content_type="document",
-            filename=filename,
+            filename=safe_filename,
             extension=extension,
             mime_type=mime_type,
             size_bytes=len(content),
             change_hint=content_hash,
-            metadata={"source": {"filename": filename, "preview": True}},
+            metadata={"source": {"filename": safe_filename, "preview": True}},
         )
 
     def _build_file_info(self, file_ref: FileReference) -> dict[str, Any]:

@@ -731,7 +731,11 @@ class ContentSniffer:
             matching = sum(1 for c in col_counts if c == common_count)
             return common_count >= 2 and matching / len(col_counts) >= 0.8
 
-        except (csv.Error, Exception):
+        except csv.Error:
+            # Expected: not valid CSV format
+            return False
+        except Exception as e:
+            logger.debug("Unexpected error in CSV detection: %s: %s", type(e).__name__, e)
             return False
 
 

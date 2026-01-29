@@ -474,10 +474,16 @@ class PipelineExecutor:
             await self.session.commit()
 
         # 9. Prepare result
+        # Collect failed path information for visibility
+        failed_path_info = [
+            {"path_id": ps.path_id, "error": str(ps.error)} for ps in path_states if ps.error is not None
+        ]
+
         result: dict[str, Any] = {
             "skipped": False,
             "chunks_created": len(all_chunks),
             "token_counts": all_token_counts,
+            "failed_paths": failed_path_info,  # Empty list if all succeeded
         }
 
         # Add sample output in DRY_RUN mode

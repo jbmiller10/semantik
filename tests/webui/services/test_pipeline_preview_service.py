@@ -406,6 +406,42 @@ class TestBuildFileReference:
         assert file_ref.mime_type == "application/pdf"
         assert file_ref.size_bytes == len(content)
 
+    def test_build_file_reference_sanitizes_path_traversal(self, preview_service: PipelinePreviewService) -> None:
+        """Test that path traversal attempts are sanitized."""
+        content = b"Malicious content"
+        # Classic path traversal attack
+        filename = "../../../etc/passwd"
+
+        file_ref = preview_service._build_file_reference(content, filename)
+
+        # Should only keep the basename
+        assert file_ref.filename == "passwd"
+        assert file_ref.uri == "preview://passwd"
+        assert file_ref.metadata["source"]["filename"] == "passwd"
+
+    def test_build_file_reference_sanitizes_nested_path(self, preview_service: PipelinePreviewService) -> None:
+        """Test that nested directory paths are sanitized to basename only."""
+        content = b"Some content"
+        filename = "foo/bar/baz.txt"
+
+        file_ref = preview_service._build_file_reference(content, filename)
+
+        # Should only keep the final filename
+        assert file_ref.filename == "baz.txt"
+        assert file_ref.uri == "preview://baz.txt"
+        assert file_ref.extension == ".txt"
+
+    def test_build_file_reference_normal_filename_unchanged(self, preview_service: PipelinePreviewService) -> None:
+        """Test that normal filenames without path components work correctly."""
+        content = b"Normal content"
+        filename = "document.pdf"
+
+        file_ref = preview_service._build_file_reference(content, filename)
+
+        assert file_ref.filename == "document.pdf"
+        assert file_ref.uri == "preview://document.pdf"
+        assert file_ref.extension == ".pdf"
+
     def test_build_file_reference_no_extension(self, preview_service: PipelinePreviewService) -> None:
         """Test file reference with no extension."""
         content = b"Content"
