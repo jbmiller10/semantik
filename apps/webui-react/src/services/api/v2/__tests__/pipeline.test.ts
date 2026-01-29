@@ -66,7 +66,7 @@ describe('pipelineApi', () => {
       await pipelineApi.previewRoute(file, mockDAG);
 
       expect(apiClient.post).toHaveBeenCalledTimes(1);
-      const [url, formData, config] = vi.mocked(apiClient.post).mock.calls[0];
+      const [url, formData] = vi.mocked(apiClient.post).mock.calls[0];
 
       expect(url).toBe('/api/v2/pipeline/preview-route');
       expect(formData).toBeInstanceOf(FormData);

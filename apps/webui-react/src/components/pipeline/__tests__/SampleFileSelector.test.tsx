@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/tests/utils/test-utils';
+import { render, screen, fireEvent } from '@/tests/utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import { SampleFileSelector } from '../SampleFileSelector';
 

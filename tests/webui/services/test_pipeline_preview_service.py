@@ -24,12 +24,12 @@ from webui.services.pipeline_preview_service import PipelinePreviewService  # no
 class TestPipelinePreviewServiceBasics:
     """Basic tests for PipelinePreviewService."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    @pytest.fixture
+    @pytest.fixture()
     def simple_dag_dict(self) -> dict:
         """Create a simple valid DAG dictionary."""
         return {
@@ -47,7 +47,7 @@ class TestPipelinePreviewServiceBasics:
             ],
         }
 
-    @pytest.fixture
+    @pytest.fixture()
     def dag_with_parser(self) -> dict:
         """Create a DAG with a parser node for testing parser execution."""
         return {
@@ -63,7 +63,7 @@ class TestPipelinePreviewServiceBasics:
             ],
         }
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_basic_flow(
         self, preview_service: PipelinePreviewService, simple_dag_dict: dict
     ) -> None:
@@ -89,12 +89,12 @@ class TestPipelinePreviewServiceBasics:
 class TestParserFailureHandling:
     """Tests for parser failure handling."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    @pytest.fixture
+    @pytest.fixture()
     def dag_with_parser(self) -> dict:
         """Create a DAG with a parser node."""
         return {
@@ -110,7 +110,7 @@ class TestParserFailureHandling:
             ],
         }
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_with_parser_failure_adds_warning(
         self, preview_service: PipelinePreviewService, dag_with_parser: dict
     ) -> None:
@@ -142,7 +142,7 @@ class TestParserFailureHandling:
 class TestLegacyRegistryFallback:
     """Tests for fallback to legacy parser registry."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
@@ -191,7 +191,7 @@ class TestLegacyRegistryFallback:
 class TestEnrichParsedMetadata:
     """Tests for _enrich_parsed_metadata filtering."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
@@ -274,12 +274,12 @@ class TestEnrichParsedMetadata:
 class TestDAGValidationErrors:
     """Tests for DAG validation error handling."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_dag_validation_errors_in_warnings(
         self, preview_service: PipelinePreviewService
     ) -> None:
@@ -318,12 +318,12 @@ class TestDAGValidationErrors:
 class TestInvalidDAGHandling:
     """Tests for invalid DAG dictionary handling."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_invalid_dag_raises_value_error(
         self, preview_service: PipelinePreviewService
     ) -> None:
@@ -345,7 +345,7 @@ class TestInvalidDAGHandling:
                 include_parser_metadata=False,
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_invalid_node_type_raises_value_error(
         self, preview_service: PipelinePreviewService
     ) -> None:
@@ -371,7 +371,7 @@ class TestInvalidDAGHandling:
                 include_parser_metadata=False,
             )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_preview_route_missing_required_fields_raises_value_error(
         self, preview_service: PipelinePreviewService
     ) -> None:
@@ -401,7 +401,7 @@ class TestInvalidDAGHandling:
 class TestBuildFileReference:
     """Tests for _build_file_reference method."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def preview_service(self) -> PipelinePreviewService:
         """Create a preview service instance."""
         return PipelinePreviewService()
