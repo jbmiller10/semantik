@@ -57,6 +57,15 @@ class UnstructuredParserPlugin(ParserPlugin):
     PLUGIN_TYPE: ClassVar[str] = "parser"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
 
+    # Parsed metadata fields emitted by this parser for routing predicates
+    EMITTED_FIELDS: ClassVar[list[str]] = [
+        "page_count",
+        "has_tables",
+        "has_images",
+        "element_types",
+        "approx_token_count",
+    ]
+
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Unstructured Parser",
         "description": "Full-featured parser for PDF, DOCX, PPTX, HTML, and email files.",

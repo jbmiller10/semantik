@@ -12,7 +12,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from webui.api.v2.pipeline_schemas import RoutePreviewResponse
+from shared.plugins import load_plugins
+from shared.plugins.registry import plugin_registry
+from webui.api.v2.pipeline_schemas import (
+    AvailablePredicateFieldsRequest,
+    AvailablePredicateFieldsResponse,
+    PredicateField,
+    RoutePreviewResponse,
+)
 from webui.auth import get_current_user
 from webui.services.pipeline_preview_service import PipelinePreviewService
 
@@ -119,7 +126,112 @@ async def preview_route(
         ) from e
 
 
+# =============================================================================
+# Static field definitions for source and detected categories
+# =============================================================================
+
+# Source metadata fields (from connector, always available)
+SOURCE_FIELDS = [
+    PredicateField(value="metadata.source.mime_type", label="MIME Type", category="source"),
+    PredicateField(value="metadata.source.extension", label="Extension", category="source"),
+    PredicateField(value="metadata.source.source_type", label="Source Type", category="source"),
+    PredicateField(value="metadata.source.content_type", label="Content Type", category="source"),
+]
+
+# Detected metadata fields (from pre-routing sniff, always available)
+DETECTED_FIELDS = [
+    PredicateField(value="metadata.detected.is_scanned_pdf", label="Is Scanned PDF", category="detected"),
+    PredicateField(value="metadata.detected.is_code", label="Is Code", category="detected"),
+    PredicateField(value="metadata.detected.is_structured_data", label="Is Structured Data", category="detected"),
+]
+
+# Human-readable labels for parsed fields
+PARSED_FIELD_LABELS = {
+    "detected_language": "Detected Language",
+    "approx_token_count": "Token Count",
+    "line_count": "Line Count",
+    "has_code_blocks": "Has Code Blocks",
+    "page_count": "Page Count",
+    "has_tables": "Has Tables",
+    "has_images": "Has Images",
+    "element_types": "Element Types",
+}
+
+
+def _get_parser_plugin_id_for_node(dag: dict[str, Any], node_id: str) -> str | None:
+    """Get the parser plugin_id for a node in the DAG.
+
+    Returns the plugin_id if the node is a parser, None otherwise.
+    """
+    if node_id == "_source":
+        return None
+
+    nodes = dag.get("nodes", [])
+    for node in nodes:
+        if node.get("id") == node_id and node.get("type") == "parser":
+            plugin_id = node.get("plugin_id")
+            return str(plugin_id) if plugin_id else None
+    return None
+
+
+@router.post(
+    "/available-predicate-fields",
+    response_model=AvailablePredicateFieldsResponse,
+    summary="Get available predicate fields for an edge",
+    responses={
+        400: {"description": "Invalid DAG or node"},
+    },
+)
+async def get_available_predicate_fields(
+    request: AvailablePredicateFieldsRequest,
+    _current_user: dict[str, Any] = Depends(get_current_user),
+) -> AvailablePredicateFieldsResponse:
+    """Get available predicate fields for an edge based on its source node.
+
+    Returns fields that can be used in edge predicates for routing decisions.
+    The available parsed.* fields depend on which parser is the source node:
+    - From _source: No parsed.* fields (parser hasn't run yet)
+    - From parser node: Only fields that parser emits
+
+    Source and detected fields are always available regardless of source node.
+
+    Args:
+        request: Contains DAG and from_node identifier
+        _current_user: Authenticated user (for auth)
+
+    Returns:
+        AvailablePredicateFieldsResponse with available fields
+    """
+    fields: list[PredicateField] = []
+
+    # Always include source and detected fields
+    fields.extend(SOURCE_FIELDS)
+    fields.extend(DETECTED_FIELDS)
+
+    # Check if from_node is a parser - if so, include its emitted fields
+    parser_plugin_id = _get_parser_plugin_id_for_node(request.dag, request.from_node)
+    if parser_plugin_id:
+        # Ensure parser plugins are loaded
+        if not plugin_registry.is_loaded(["parser"]):
+            load_plugins(plugin_types=["parser"])
+
+        # Get emitted fields for this parser
+        emitted_fields = plugin_registry.get_parser_emitted_fields(parser_plugin_id)
+        for field_name in emitted_fields:
+            label = PARSED_FIELD_LABELS.get(field_name, field_name.replace("_", " ").title())
+            fields.append(
+                PredicateField(
+                    value=f"metadata.parsed.{field_name}",
+                    label=label,
+                    category="parsed",
+                )
+            )
+
+    return AvailablePredicateFieldsResponse(fields=fields)
+
+
 __all__ = [
     "router",
     "get_pipeline_preview_service",
+    "get_available_predicate_fields",
 ]

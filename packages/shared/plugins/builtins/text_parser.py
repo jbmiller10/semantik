@@ -125,6 +125,14 @@ class TextParserPlugin(ParserPlugin):
     PLUGIN_TYPE: ClassVar[str] = "parser"
     PLUGIN_VERSION: ClassVar[str] = "1.0.0"
 
+    # Parsed metadata fields emitted by this parser for routing predicates
+    EMITTED_FIELDS: ClassVar[list[str]] = [
+        "detected_language",
+        "approx_token_count",
+        "line_count",
+        "has_code_blocks",
+    ]
+
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Text Parser",
         "description": "Lightweight parser for plain text, markdown, and code files.",

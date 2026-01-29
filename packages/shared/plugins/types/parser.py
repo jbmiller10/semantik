@@ -316,6 +316,10 @@ class ParserPlugin(SemanticPlugin):
     # Optional AgentHints for agent-driven selection
     AGENT_HINTS: ClassVar[AgentHints | None] = None
 
+    # Parsers declare which parsed.* fields they emit for UI field discovery.
+    # Used by the pipeline editor to show only relevant fields for routing predicates.
+    EMITTED_FIELDS: ClassVar[list[str]] = []
+
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         """Initialize parser with configuration.
 

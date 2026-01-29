@@ -777,3 +777,141 @@ class TestUnstructuredParserElementTracking:
         assert len(result.elements) == 2
         assert result.elements[0].metadata.get("page_number") == 3
         assert result.elements[1].metadata.get("page_number") == 3
+
+
+# ============================================================================
+# EMITTED_FIELDS Tests (Phase 5)
+# ============================================================================
+
+
+class TestParserEmittedFields:
+    """Tests for EMITTED_FIELDS class variable on parser plugins."""
+
+    def test_parser_base_class_has_empty_emitted_fields(self) -> None:
+        """Verify ParserPlugin base class defaults to empty EMITTED_FIELDS."""
+        from shared.plugins.types.parser import ParserPlugin
+
+        assert hasattr(ParserPlugin, "EMITTED_FIELDS")
+        assert ParserPlugin.EMITTED_FIELDS == []
+
+    def test_text_parser_declares_emitted_fields(self) -> None:
+        """Verify TextParserPlugin declares its emitted fields."""
+        from shared.plugins.builtins.text_parser import TextParserPlugin
+
+        assert hasattr(TextParserPlugin, "EMITTED_FIELDS")
+        assert len(TextParserPlugin.EMITTED_FIELDS) > 0
+
+        # Verify expected fields are declared
+        expected_fields = {"detected_language", "approx_token_count", "line_count", "has_code_blocks"}
+        declared_fields = set(TextParserPlugin.EMITTED_FIELDS)
+        assert expected_fields == declared_fields
+
+    def test_text_parser_emitted_fields_matches_output(self) -> None:
+        """Verify TextParserPlugin EMITTED_FIELDS matches fields actually emitted.
+
+        Each field in EMITTED_FIELDS should be present in the parser output metadata.
+        """
+        from shared.plugins.builtins.text_parser import TextParserPlugin
+
+        parser = TextParserPlugin()
+        # Use content that exercises all metadata fields
+        content = b"# Title\n```python\ncode\n```\nSome text here with enough words for detection"
+        result = parser.parse_bytes(content)
+
+        # Every declared field should be in the output
+        for field_name in TextParserPlugin.EMITTED_FIELDS:
+            assert field_name in result.metadata, f"Field '{field_name}' declared in EMITTED_FIELDS but not in output"
+
+    def test_unstructured_parser_declares_emitted_fields(self) -> None:
+        """Verify UnstructuredParserPlugin declares its emitted fields."""
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        assert hasattr(UnstructuredParserPlugin, "EMITTED_FIELDS")
+        assert len(UnstructuredParserPlugin.EMITTED_FIELDS) > 0
+
+        # Verify expected fields are declared
+        expected_fields = {"page_count", "has_tables", "has_images", "element_types", "approx_token_count"}
+        declared_fields = set(UnstructuredParserPlugin.EMITTED_FIELDS)
+        assert expected_fields == declared_fields
+
+    def test_unstructured_parser_emitted_fields_matches_output(self) -> None:
+        """Verify UnstructuredParserPlugin EMITTED_FIELDS matches fields actually emitted.
+
+        Uses mocking to avoid requiring unstructured library.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+
+        parser = UnstructuredParserPlugin()
+
+        # Create mock element
+        mock_element = MagicMock()
+        mock_element.__str__ = MagicMock(return_value="Test content")
+        mock_element.metadata = MagicMock()
+        mock_element.metadata.page_number = 1
+        mock_element.metadata.category = "NarrativeText"
+
+        import sys
+
+        mock_partition_module = MagicMock()
+        mock_partition_module.partition = MagicMock(return_value=[mock_element])
+
+        with patch.dict(sys.modules, {"unstructured.partition.auto": mock_partition_module}):
+            result = parser.parse_bytes(b"content", mime_type="text/plain")
+
+        # Every declared field should be in the output
+        for field_name in UnstructuredParserPlugin.EMITTED_FIELDS:
+            assert field_name in result.metadata, f"Field '{field_name}' declared in EMITTED_FIELDS but not in output"
+
+
+class TestPluginRegistryEmittedFields:
+    """Tests for PluginRegistry.get_parser_emitted_fields method."""
+
+    def test_get_parser_emitted_fields_returns_text_parser_fields(self) -> None:
+        """Verify registry returns emitted fields for text parser."""
+        from shared.plugins import load_plugins
+        from shared.plugins.builtins.text_parser import TextParserPlugin
+        from shared.plugins.registry import plugin_registry
+
+        # Ensure parser plugins are loaded
+        load_plugins(plugin_types=["parser"])
+
+        fields = plugin_registry.get_parser_emitted_fields("text")
+        assert fields == list(TextParserPlugin.EMITTED_FIELDS)
+
+    def test_get_parser_emitted_fields_returns_unstructured_parser_fields(self) -> None:
+        """Verify registry returns emitted fields for unstructured parser."""
+        from shared.plugins import load_plugins
+        from shared.plugins.builtins.unstructured_parser import UnstructuredParserPlugin
+        from shared.plugins.registry import plugin_registry
+
+        # Ensure parser plugins are loaded
+        load_plugins(plugin_types=["parser"])
+
+        fields = plugin_registry.get_parser_emitted_fields("unstructured")
+        assert fields == list(UnstructuredParserPlugin.EMITTED_FIELDS)
+
+    def test_get_parser_emitted_fields_returns_empty_for_unknown_parser(self) -> None:
+        """Verify registry returns empty list for unknown parser."""
+        from shared.plugins.registry import plugin_registry
+
+        fields = plugin_registry.get_parser_emitted_fields("nonexistent_parser")
+        assert fields == []
+
+    def test_get_parser_emitted_fields_returns_copy_not_original(self) -> None:
+        """Verify registry returns a copy, not the original list."""
+        from shared.plugins import load_plugins
+        from shared.plugins.builtins.text_parser import TextParserPlugin
+        from shared.plugins.registry import plugin_registry
+
+        # Ensure parser plugins are loaded
+        load_plugins(plugin_types=["parser"])
+
+        fields = plugin_registry.get_parser_emitted_fields("text")
+        original = TextParserPlugin.EMITTED_FIELDS
+
+        # Should be equal but not the same object
+        assert fields == list(original)
+        fields.append("test_field")
+        assert "test_field" not in original

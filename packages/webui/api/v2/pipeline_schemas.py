@@ -86,9 +86,37 @@ class RoutePreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Any warnings encountered during preview")
 
 
+class AvailablePredicateFieldsRequest(BaseModel):
+    """Request for available predicate fields based on DAG and source node."""
+
+    dag: dict[str, Any] = Field(..., description="The pipeline DAG configuration")
+    from_node: str = Field(..., description="The source node ID for the edge (e.g., '_source', 'text_parser')")
+
+
+class PredicateField(BaseModel):
+    """A single predicate field available for routing."""
+
+    value: str = Field(..., description="Full field path (e.g., 'metadata.parsed.has_tables')")
+    label: str = Field(..., description="Human-readable label (e.g., 'Has Tables')")
+    category: Literal["source", "detected", "parsed"] = Field(
+        ..., description="Field category for UI grouping"
+    )
+
+
+class AvailablePredicateFieldsResponse(BaseModel):
+    """Response containing available predicate fields for an edge."""
+
+    fields: list[PredicateField] = Field(
+        default_factory=list, description="List of available predicate fields"
+    )
+
+
 __all__ = [
     "FieldEvaluationResult",
     "EdgeEvaluationResult",
     "StageEvaluationResult",
     "RoutePreviewResponse",
+    "AvailablePredicateFieldsRequest",
+    "PredicateField",
+    "AvailablePredicateFieldsResponse",
 ]
