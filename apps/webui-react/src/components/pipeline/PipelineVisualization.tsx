@@ -662,10 +662,6 @@ export function PipelineVisualization({
     return null;
   };
 
-  // Legacy helper for backward compatibility
-  const isEdgeInPath = (fromNode: string, toNode: string) => {
-    return getEdgePathIndex(fromNode, toNode) !== null;
-  };
 
   // Compute edge priority for edges from the same source node
   // Priority is based on array order (1-indexed)
