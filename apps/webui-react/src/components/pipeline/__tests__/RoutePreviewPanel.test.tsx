@@ -339,4 +339,21 @@ describe('RoutePreviewPanel', () => {
       expect(screen.getByText('myfile.txt')).toBeInTheDocument();
     });
   });
+
+  describe('max-height constraint', () => {
+    it('applies max-height constraint to expanded content', async () => {
+      const user = userEvent.setup();
+      render(<RoutePreviewPanel dag={mockDAG} />);
+
+      // Click to expand
+      const header = screen.getByText('Test Route');
+      await user.click(header);
+
+      // Find the content container
+      const content = document.querySelector('.route-preview-content');
+      expect(content).toBeInTheDocument();
+      expect(content).toHaveClass('max-h-[40vh]');
+      expect(content).toHaveClass('overflow-y-auto');
+    });
+  });
 });

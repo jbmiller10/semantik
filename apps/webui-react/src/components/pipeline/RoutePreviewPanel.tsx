@@ -80,7 +80,7 @@ export function RoutePreviewPanel({
 
       {/* Content */}
       {!isCollapsed && (
-        <div className="px-4 pb-4 space-y-4">
+        <div className="route-preview-content px-4 pb-4 space-y-4 max-h-[40vh] overflow-y-auto">
           {/* File selector */}
           <SampleFileSelector
             onFileSelect={handleFileSelect}
