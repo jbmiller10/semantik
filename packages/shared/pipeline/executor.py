@@ -32,7 +32,7 @@ from shared.pipeline.executor_types import (
 from shared.pipeline.failure_tracker import ConsecutiveFailureTracker
 from shared.pipeline.loader import LoadError, PipelineLoader
 from shared.pipeline.router import PipelineRouter
-from shared.pipeline.sniff import ContentSniffer, SniffCache, SniffConfig
+from shared.pipeline.sniff import ContentSniffer, SniffCache, SniffConfig, SniffResult
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineNode
 from shared.text_processing.parsers.registry import get_parser
 
@@ -368,14 +368,13 @@ class PipelineExecutor:
                 file_ref,
                 content_hash=load_result.content_hash,
             )
-            self._sniffer.enrich_file_ref(file_ref, sniff_result)
         except Exception as e:
-            # Sniff failures are non-fatal - log and continue
+            # Sniff failures are non-fatal - log and continue with partial result
             logger.warning("Sniff failed for %s: %s", file_ref.uri, e, exc_info=True)
-            # Record sniff error in metadata for visibility
-            if "errors" not in file_ref.metadata:
-                file_ref.metadata["errors"] = {}
-            file_ref.metadata["errors"]["sniff"] = str(e)
+            sniff_result = SniffResult(errors=[f"Sniff failed: {e}"])
+
+        # Always enrich with whatever results we have (may include errors)
+        self._sniffer.enrich_file_ref(file_ref, sniff_result)
         self._record_timing("sniff", stage_start)
 
         # 3. Change detection

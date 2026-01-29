@@ -68,7 +68,14 @@ class SniffCache:
         Args:
             maxsize: Maximum number of items to store
             ttl: Time-to-live in seconds for cached items
+
+        Raises:
+            ValueError: If maxsize < 1 or ttl < 0
         """
+        if maxsize < 1:
+            raise ValueError(f"maxsize must be at least 1, got {maxsize}")
+        if ttl < 0:
+            raise ValueError(f"ttl cannot be negative, got {ttl}")
         self._maxsize = maxsize
         self._ttl = ttl
         self._cache: OrderedDict[str, tuple[SniffResult, float]] = OrderedDict()
@@ -155,6 +162,25 @@ class SniffConfig:
     pdf_sample_pages: int = 3
     structured_sample_bytes: int = 4096
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        """Validate configuration parameters.
+
+        Raises:
+            ValueError: If any parameter is invalid
+        """
+        if self.timeout_seconds <= 0:
+            raise ValueError(
+                f"timeout_seconds must be positive, got {self.timeout_seconds}"
+            )
+        if self.pdf_sample_pages < 1:
+            raise ValueError(
+                f"pdf_sample_pages must be at least 1, got {self.pdf_sample_pages}"
+            )
+        if self.structured_sample_bytes < 1:
+            raise ValueError(
+                f"structured_sample_bytes must be at least 1, got {self.structured_sample_bytes}"
+            )
 
 
 @dataclass
@@ -390,7 +416,8 @@ class ContentSniffer:
     def enrich_file_ref(self, file_ref: FileReference, sniff_result: SniffResult) -> None:
         """Enrich a FileReference with sniff results.
 
-        Populates file_ref.metadata["detected"] with sniff results.
+        Populates file_ref.metadata["detected"] with sniff results and
+        file_ref.metadata["errors"]["sniff"] with any errors.
 
         Args:
             file_ref: FileReference to enrich (modified in place)
@@ -402,6 +429,12 @@ class ContentSniffer:
                 file_ref.metadata["detected"] = {}
             file_ref.metadata["detected"].update(detected_metadata)
 
+        # Also record any errors for visibility
+        if sniff_result.errors:
+            if "errors" not in file_ref.metadata:
+                file_ref.metadata["errors"] = {}
+            file_ref.metadata["errors"]["sniff"] = sniff_result.errors
+
     def _is_pdf(self, mime_type: str, extension: str) -> bool:
         """Check if file is a PDF.
 
@@ -412,7 +445,7 @@ class ContentSniffer:
         Returns:
             True if file appears to be a PDF
         """
-        return mime_type == "application/pdf" or extension == ".pdf"
+        return mime_type == "application/pdf" or extension.lower() == ".pdf"
 
     def _detect_scanned_pdf(self, content: bytes) -> bool:
         """Detect if a PDF is scanned (lacks text layer).
@@ -598,8 +631,12 @@ class ContentSniffer:
             True if appears to be YAML
         """
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            logger.debug("PyYAML not installed, YAML detection disabled")
+            return False
 
+        try:
             # Try to parse as YAML
             # Use safe_load to avoid security issues
             result = yaml.safe_load(sample)
@@ -614,14 +651,18 @@ class ContentSniffer:
                 for line in lines[:20]:  # Check first 20 lines
                     stripped = line.strip()
                     # Check for YAML patterns
-                    if stripped.startswith(("---", "- ")) or re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*", stripped):
+                    if stripped.startswith(("---", "- ")) or re.match(
+                        r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*", stripped
+                    ):
                         yaml_indicators += 1
 
                 # Require at least 2 YAML indicators
                 return yaml_indicators >= 2
-
-        except Exception:
-            pass
+        except yaml.YAMLError:
+            return False
+        except Exception as e:
+            logger.debug("Unexpected error in YAML detection: %s", type(e).__name__)
+            return False
 
         return False
 

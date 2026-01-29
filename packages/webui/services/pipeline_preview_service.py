@@ -135,8 +135,20 @@ class PipelinePreviewService:
                     # Enrich file_ref with parsed metadata for mid-pipeline routing
                     self._enrich_parsed_metadata(file_ref, parsed_metadata)
                 except Exception as e:
-                    warnings.append(f"Parser error: {e}")
-                    logger.warning("Parser failed during preview: %s", e, exc_info=True)
+                    parser_id = current_node.plugin_id
+                    filename = file_ref.filename or file_ref.uri
+                    error_type = type(e).__name__
+
+                    warnings.append(
+                        f"Parser '{parser_id}' failed on '{filename}': {error_type}: {e}"
+                    )
+                    logger.warning(
+                        "Parser %s failed during preview for %s: %s",
+                        parser_id,
+                        filename,
+                        e,
+                        exc_info=True,
+                    )
 
             # Evaluate next routing stage
             next_stage = self._evaluate_next_routing(dag_obj, router, current_node, file_ref)

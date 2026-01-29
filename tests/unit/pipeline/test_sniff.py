@@ -91,6 +91,40 @@ class TestSniffConfig:
         assert config.enabled is False
 
 
+class TestSniffConfigValidation:
+    """Test SniffConfig validation."""
+
+    def test_valid_config(self) -> None:
+        """Valid configuration should be accepted."""
+        config = SniffConfig(
+            timeout_seconds=10.0,
+            pdf_sample_pages=5,
+            structured_sample_bytes=8192,
+        )
+        assert config.timeout_seconds == 10.0
+        assert config.pdf_sample_pages == 5
+
+    def test_negative_timeout_rejected(self) -> None:
+        """Negative timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
+            SniffConfig(timeout_seconds=-1.0)
+
+    def test_zero_timeout_rejected(self) -> None:
+        """Zero timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
+            SniffConfig(timeout_seconds=0)
+
+    def test_zero_pdf_pages_rejected(self) -> None:
+        """Zero pdf_sample_pages should raise ValueError."""
+        with pytest.raises(ValueError, match="pdf_sample_pages must be at least 1"):
+            SniffConfig(pdf_sample_pages=0)
+
+    def test_negative_sample_bytes_rejected(self) -> None:
+        """Negative structured_sample_bytes should raise ValueError."""
+        with pytest.raises(ValueError, match="structured_sample_bytes must be at least 1"):
+            SniffConfig(structured_sample_bytes=-100)
+
+
 class TestContentSnifferBasics:
     """Basic tests for ContentSniffer."""
 
@@ -195,9 +229,10 @@ class TestPDFDetection:
         return ContentSniffer()
 
     def test_is_pdf_by_extension(self, sniffer: ContentSniffer) -> None:
-        """Test PDF detection by extension."""
+        """Test PDF detection by extension (case-insensitive)."""
         assert sniffer._is_pdf("", ".pdf") is True
-        assert sniffer._is_pdf("", ".PDF") is False  # Case sensitive extension check
+        assert sniffer._is_pdf("", ".PDF") is True
+        assert sniffer._is_pdf("", ".Pdf") is True
         assert sniffer._is_pdf("", ".txt") is False
 
     def test_is_pdf_by_mime_type(self, sniffer: ContentSniffer) -> None:
@@ -1037,6 +1072,36 @@ class TestSniffCache:
         assert stats["hits"] == 0
         assert stats["misses"] == 2  # Two misses from the get calls above
         assert stats["size"] == 0
+
+
+class TestSniffCacheValidation:
+    """Test SniffCache validation."""
+
+    def test_valid_cache_config(self) -> None:
+        """Valid configuration should be accepted."""
+        cache = SniffCache(maxsize=100, ttl=60)
+        assert cache._maxsize == 100
+        assert cache._ttl == 60
+
+    def test_zero_maxsize_rejected(self) -> None:
+        """Zero maxsize should raise ValueError."""
+        with pytest.raises(ValueError, match="maxsize must be at least 1"):
+            SniffCache(maxsize=0)
+
+    def test_negative_maxsize_rejected(self) -> None:
+        """Negative maxsize should raise ValueError."""
+        with pytest.raises(ValueError, match="maxsize must be at least 1"):
+            SniffCache(maxsize=-1)
+
+    def test_negative_ttl_rejected(self) -> None:
+        """Negative TTL should raise ValueError."""
+        with pytest.raises(ValueError, match="ttl cannot be negative"):
+            SniffCache(ttl=-1)
+
+    def test_zero_ttl_allowed(self) -> None:
+        """Zero TTL should be allowed (immediate expiration)."""
+        cache = SniffCache(ttl=0)
+        assert cache._ttl == 0
 
 
 class TestContentSnifferWithCache:

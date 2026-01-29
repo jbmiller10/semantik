@@ -131,8 +131,8 @@ class TestParserFailureHandling:
                 include_parser_metadata=True,
             )
 
-        # Verify warning was added
-        assert any("Parser error" in w for w in result.warnings)
+        # Verify warning was added (new format includes parser_id and filename)
+        assert any("Parser 'text' failed on 'test.txt'" in w for w in result.warnings)
         # Verify preview still completed
         assert len(result.path) > 1
         # Verify parsed_metadata is None due to failure

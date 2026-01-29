@@ -722,9 +722,13 @@ class TestPipelineExecutorExecute:
         async def file_iterator() -> AsyncIterator[FileReference]:
             yield file_ref
 
-        # Create a mock sniffer that raises an exception
+        # Create a mock sniffer that raises an exception on sniff
+        # but uses the real enrich_file_ref so errors propagate to metadata
+        from shared.pipeline.sniff import ContentSniffer
+
         mock_sniffer = MagicMock()
         mock_sniffer.sniff = AsyncMock(side_effect=RuntimeError("Sniff operation failed"))
+        mock_sniffer.enrich_file_ref = ContentSniffer().enrich_file_ref
 
         with (
             patch("shared.plugins.plugin_registry.get", return_value=None),
@@ -758,4 +762,7 @@ class TestPipelineExecutorExecute:
         sample_file_ref = result.sample_outputs[0].file_ref
         assert "errors" in sample_file_ref.metadata
         assert "sniff" in sample_file_ref.metadata["errors"]
-        assert "Sniff operation failed" in sample_file_ref.metadata["errors"]["sniff"]
+        # Error is now a list from SniffResult.errors
+        sniff_errors = sample_file_ref.metadata["errors"]["sniff"]
+        assert isinstance(sniff_errors, list)
+        assert any("Sniff operation failed" in err for err in sniff_errors)

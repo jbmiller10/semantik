@@ -87,11 +87,19 @@ def _detect_language(text: str) -> str | None:
 
     try:
         from langdetect import detect
+    except ImportError:
+        logger.debug("langdetect not installed, language detection disabled")
+        return None
 
+    try:
         result = detect(text[:5000])
         return str(result) if result else None
-    except Exception:
-        # langdetect not installed or detection failed
+    except Exception as e:
+        error_name = type(e).__name__
+        if error_name == "LangDetectException":
+            # Expected: text too short or no features detected
+            return None
+        logger.debug("Language detection failed: %s: %s", error_name, e)
         return None
 
 
