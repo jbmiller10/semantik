@@ -102,6 +102,8 @@ export interface PipelineVisualizationProps {
   readOnly?: boolean;
   /** Optional CSS class name */
   className?: string;
-  /** Highlighted path for route preview (list of node IDs) */
+  /** @deprecated Use highlightedPaths instead */
   highlightedPath?: string[] | null;
+  /** Highlighted paths for route preview (list of path arrays for parallel support) */
+  highlightedPaths?: string[][] | null;
 }

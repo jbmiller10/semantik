@@ -111,6 +111,7 @@ export function PipelineVisualization({
   readOnly = false,
   className = '',
   highlightedPath = null,
+  highlightedPaths = null,
 }: PipelineVisualizationProps) {
   // SVG ref for coordinate conversion
   const svgRef = useRef<SVGSVGElement>(null);
@@ -624,19 +625,46 @@ export function PipelineVisualization({
     selection.fromNode === fromNode &&
     selection.toNode === toNode;
 
-  // Check if node is in highlighted path
-  const isNodeInPath = (nodeId: string) =>
-    highlightedPath?.includes(nodeId) ?? false;
+  // Check if node is in any highlighted path
+  const isNodeInPath = (nodeId: string) => {
+    // Check new highlightedPaths first
+    if (highlightedPaths && highlightedPaths.length > 0) {
+      return highlightedPaths.some(path => path.includes(nodeId));
+    }
+    // Fall back to single highlightedPath for backward compatibility
+    return highlightedPath?.includes(nodeId) ?? false;
+  };
 
-  // Check if edge is in highlighted path (both from and to nodes must be in path and consecutive)
-  const isEdgeInPath = (fromNode: string, toNode: string) => {
-    if (!highlightedPath || highlightedPath.length < 2) return false;
-    for (let i = 0; i < highlightedPath.length - 1; i++) {
-      if (highlightedPath[i] === fromNode && highlightedPath[i + 1] === toNode) {
-        return true;
+  // Check if edge is in any highlighted path and get its path index
+  // Returns null if not in any path, or the path index (0 = primary, 1+ = secondary)
+  const getEdgePathIndex = (fromNode: string, toNode: string): number | null => {
+    // Check new highlightedPaths first
+    if (highlightedPaths && highlightedPaths.length > 0) {
+      for (let pathIdx = 0; pathIdx < highlightedPaths.length; pathIdx++) {
+        const path = highlightedPaths[pathIdx];
+        for (let i = 0; i < path.length - 1; i++) {
+          if (path[i] === fromNode && path[i + 1] === toNode) {
+            return pathIdx;
+          }
+        }
+      }
+      return null;
+    }
+
+    // Fall back to single highlightedPath for backward compatibility
+    if (highlightedPath && highlightedPath.length >= 2) {
+      for (let i = 0; i < highlightedPath.length - 1; i++) {
+        if (highlightedPath[i] === fromNode && highlightedPath[i + 1] === toNode) {
+          return 0;
+        }
       }
     }
-    return false;
+    return null;
+  };
+
+  // Legacy helper for backward compatibility
+  const isEdgeInPath = (fromNode: string, toNode: string) => {
+    return getEdgePathIndex(fromNode, toNode) !== null;
   };
 
   // Compute edge priority for edges from the same source node
@@ -821,6 +849,11 @@ export function PipelineVisualization({
             // Show catch-all (*) only for source edges
             const showCatchAll = edge.from_node === '_source' && edge.when === null;
 
+            const pathIndex = getEdgePathIndex(edge.from_node, edge.to_node);
+            const isHighlighted = pathIndex !== null;
+            // Primary path (index 0) = green, secondary paths = blue
+            const highlightColor = pathIndex === 0 ? 'rgb(34, 197, 94)' : 'rgb(59, 130, 246)';
+
             return (
               <PipelineEdgeComponent
                 key={`${edgeKey}-${index}`}
@@ -831,7 +864,8 @@ export function PipelineVisualization({
                 showCatchAll={showCatchAll}
                 onClick={readOnly ? undefined : handleEdgeClick}
                 isNew={newEdgeKeys.has(edgeKey)}
-                isHighlighted={isEdgeInPath(edge.from_node, edge.to_node)}
+                isHighlighted={isHighlighted}
+                highlightColor={isHighlighted ? highlightColor : undefined}
                 priority={edgePriorityData.priorityMap.get(edgeKey)}
                 totalFromSource={edgePriorityData.totalFromSourceMap.get(edgeKey)}
               />

@@ -16,6 +16,8 @@ interface PipelineEdgeComponentProps {
   isNew?: boolean;
   /** Whether this edge is in the highlighted route preview path */
   isHighlighted?: boolean;
+  /** Custom highlight color (defaults to green) */
+  highlightColor?: string;
   /** Priority index (1-based) for edges from the same source node */
   priority?: number;
   /** Total number of edges from the same source node */
@@ -51,6 +53,7 @@ export function PipelineEdgeComponent({
   onClick,
   isNew = false,
   isHighlighted = false,
+  highlightColor,
   priority,
   totalFromSource,
 }: PipelineEdgeComponentProps) {
@@ -86,7 +89,7 @@ export function PipelineEdgeComponent({
         fill="none"
         stroke={
           isHighlighted
-            ? 'rgb(34, 197, 94)'
+            ? (highlightColor || 'rgb(34, 197, 94)')
             : selected
               ? 'var(--text-primary)'
               : 'var(--text-muted)'
