@@ -511,7 +511,7 @@ Storage options:
 - SQLite sidecar
 - In-memory LRU for single-session optimization
 
-### Phase 7: Parallel Fan-out (Future)
+### Phase 7: Parallel Fan-out
 
 **Use case:** Document goes down multiple paths intentionally.
 
@@ -576,8 +576,6 @@ results = hybrid_search(collection, query, paths=["chunks", "summary"])
 - Progress tracking needs path awareness
 - Storage unchanged (just metadata tagging)
 - Search needs path filtering
-
-**Defer until:** Concrete demand for multi-path processing beyond hybrid search.
 
 ## Extensibility
 
