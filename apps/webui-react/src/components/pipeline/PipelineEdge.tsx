@@ -23,53 +23,24 @@ interface PipelineEdgeComponentProps {
 }
 
 /**
- * Format a predicate clause for display.
- * Extracts the most relevant info from the when clause.
+ * Format full predicate for tooltip display.
+ * Shows complete information about the condition.
  */
-function formatPredicate(when: Record<string, unknown>): string {
-  // Handle mime_type
-  if ('mime_type' in when) {
-    const mime = when.mime_type;
-    if (Array.isArray(mime)) {
-      return mime.map(m => extractMimeShortName(String(m))).join(', ');
-    }
-    return extractMimeShortName(String(mime));
-  }
+function formatTooltipPredicate(when: Record<string, unknown>): string {
+  const entries = Object.entries(when);
+  if (entries.length === 0) return 'Empty condition';
 
-  // Handle extension
-  if ('extension' in when) {
-    const ext = when.extension;
-    if (Array.isArray(ext)) {
-      return ext.join(', ');
-    }
-    return String(ext);
-  }
+  return entries.map(([key, value]) => {
+    const label = key.replace(/_/g, ' ').replace(/\./g, ' > ');
+    const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
 
-  // Generic: show first key
-  const firstKey = Object.keys(when)[0];
-  if (firstKey) {
-    const value = when[firstKey];
     if (Array.isArray(value)) {
-      return `${firstKey}: [...]`;
+      return `${capitalizedLabel}: ${value.join(', ')}`;
     }
-    return `${firstKey}: ${value}`;
-  }
-
-  return '?';
+    return `${capitalizedLabel}: ${String(value)}`;
+  }).join('\n');
 }
 
-/**
- * Extract short name from MIME type.
- * "application/pdf" -> "pdf"
- * "application/vnd.*" -> "office"
- */
-function extractMimeShortName(mime: string): string {
-  if (mime.includes('pdf')) return 'pdf';
-  if (mime.includes('vnd.')) return 'office';
-  if (mime.startsWith('text/')) return mime.replace('text/', '');
-  if (mime.startsWith('image/')) return 'image';
-  return mime.split('/').pop() || mime;
-}
 
 export function PipelineEdgeComponent({
   edge,
@@ -98,11 +69,8 @@ export function PipelineEdgeComponent({
 
   const edgeId = `${edge.from_node}-${edge.to_node}`;
   const hasCondition = edge.when !== null;
-  const labelText = hasCondition
-    ? formatPredicate(edge.when!)
-    : (showCatchAll ? '*' : null);
 
-  // Label position: beside the edge midpoint (offset to the right to avoid overlap)
+  // Indicator position: beside the edge midpoint (offset to the right to avoid overlap)
   const labelX = (from.x + to.x) / 2 + 40;
   const labelY = midY;
 
@@ -123,7 +91,8 @@ export function PipelineEdgeComponent({
               ? 'var(--text-primary)'
               : 'var(--text-muted)'
         }
-        strokeWidth={isHighlighted || selected ? 2 : 1}
+        strokeWidth={isHighlighted || selected ? 2 : 1.5}
+        strokeDasharray={!hasCondition && showCatchAll ? '4 2' : undefined}
         markerEnd={isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)'}
         className={`${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`}
       />
@@ -153,28 +122,44 @@ export function PipelineEdgeComponent({
         </g>
       )}
 
-      {/* Predicate label */}
-      {labelText && (
+      {/* Indicator dot for conditional edges */}
+      {hasCondition && (
         <g>
-          {/* Background for readability */}
-          <rect
-            x={labelX - 30}
-            y={labelY - 10}
-            width={60}
-            height={16}
-            rx={4}
-            fill="var(--bg-primary)"
+          <circle
+            className="edge-indicator"
+            cx={labelX}
+            cy={labelY}
+            r={6}
+            fill="rgb(59, 130, 246)"
             opacity={0.9}
-          />
+          >
+            <title>{formatTooltipPredicate(edge.when!)}</title>
+          </circle>
+        </g>
+      )}
+
+      {/* Catch-all indicator (asterisk in small circle) */}
+      {!hasCondition && showCatchAll && (
+        <g>
+          <circle
+            className="edge-indicator edge-indicator-catchall"
+            cx={labelX}
+            cy={labelY}
+            r={6}
+            fill="var(--text-muted)"
+            opacity={0.5}
+          >
+            <title>Catch-all route (matches everything)</title>
+          </circle>
           <text
             x={labelX}
-            y={labelY}
+            y={labelY + 3}
             textAnchor="middle"
-            fill={hasCondition ? 'var(--text-secondary)' : 'var(--text-muted)'}
-            fontSize={11}
-            fontFamily="monospace"
+            fill="var(--bg-primary)"
+            fontSize={8}
+            fontWeight={700}
           >
-            {labelText}
+            *
           </text>
         </g>
       )}
