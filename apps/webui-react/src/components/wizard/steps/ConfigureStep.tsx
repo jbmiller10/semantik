@@ -18,7 +18,7 @@ export function ConfigureStep({
   onSwitchToAssisted,
 }: ConfigureStepProps) {
   const [selection, setSelection] = useState<DAGSelection>({ type: 'none' });
-  const [highlightedPath, setHighlightedPath] = useState<string[] | null>(null);
+  const [highlightedPaths, setHighlightedPaths] = useState<string[][] | null>(null);
 
   const handleNodeChange = useCallback((updatedNode: PipelineNode) => {
     onDagChange({
@@ -38,8 +38,8 @@ export function ConfigureStep({
     });
   }, [dag, onDagChange]);
 
-  const handlePathHighlight = useCallback((path: string[] | null) => {
-    setHighlightedPath(path);
+  const handlePathsHighlight = useCallback((paths: string[][] | null) => {
+    setHighlightedPaths(paths);
   }, []);
 
   return (
@@ -70,14 +70,14 @@ export function ConfigureStep({
               selection={selection}
               onSelectionChange={setSelection}
               onDagChange={onDagChange}
-              highlightedPath={highlightedPath}
+              highlightedPaths={highlightedPaths}
             />
           </div>
 
           {/* Route Preview Panel (collapsible) */}
           <RoutePreviewPanel
             dag={dag}
-            onPathHighlight={handlePathHighlight}
+            onPathsHighlight={handlePathsHighlight}
             defaultCollapsed={true}
           />
         </div>

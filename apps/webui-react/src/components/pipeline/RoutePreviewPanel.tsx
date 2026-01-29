@@ -13,8 +13,10 @@ import { RoutePreviewResults } from './RoutePreviewResults';
 interface RoutePreviewPanelProps {
   /** The pipeline DAG to test routing against */
   dag: PipelineDAG;
-  /** Callback when a path is computed (for highlighting in visualization) */
+  /** @deprecated Use onPathsHighlight instead */
   onPathHighlight?: (path: string[] | null) => void;
+  /** Callback when paths are computed (for highlighting in visualization) */
+  onPathsHighlight?: (paths: string[][] | null) => void;
   /** Whether the panel should be initially collapsed */
   defaultCollapsed?: boolean;
 }
@@ -22,6 +24,7 @@ interface RoutePreviewPanelProps {
 export function RoutePreviewPanel({
   dag,
   onPathHighlight,
+  onPathsHighlight,
   defaultCollapsed = true,
 }: RoutePreviewPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
@@ -39,16 +42,30 @@ export function RoutePreviewPanel({
   const handleClear = useCallback(() => {
     clearPreview();
     onPathHighlight?.(null);
-  }, [clearPreview, onPathHighlight]);
+    onPathsHighlight?.(null);
+  }, [clearPreview, onPathHighlight, onPathsHighlight]);
 
   // Update path highlight when result changes
   useEffect(() => {
-    if (result && result.path.length > 0) {
-      onPathHighlight?.(result.path);
+    if (result) {
+      if (result.paths && result.paths.length > 1) {
+        // Multiple parallel paths
+        onPathsHighlight?.(result.paths.map(p => p.nodes));
+        // Also call legacy callback with primary path
+        onPathHighlight?.(result.path);
+      } else if (result.path.length > 0) {
+        // Single path
+        onPathsHighlight?.([result.path]);
+        onPathHighlight?.(result.path);
+      } else {
+        onPathsHighlight?.(null);
+        onPathHighlight?.(null);
+      }
     } else {
+      onPathsHighlight?.(null);
       onPathHighlight?.(null);
     }
-  }, [result, onPathHighlight]);
+  }, [result, onPathHighlight, onPathsHighlight]);
 
   // Auto-expand when loading starts
   useEffect(() => {
