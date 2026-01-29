@@ -369,7 +369,12 @@ class PipelineExecutor:
                 content_hash=load_result.content_hash,
             )
         except Exception as e:
-            # Sniff failures are non-fatal - log and continue with partial result
+            # Sniff failures are non-fatal: we log the error and continue processing.
+            # Rationale: It's better to process a document with default routing (via
+            # catch-all edges) than to fail the entire document due to a detection
+            # issue. The sniff step is an optimization for smarter routing, not a
+            # required gate. Errors are recorded in sniff_result.errors for visibility
+            # in debugging and monitoring, but don't block the pipeline.
             logger.warning("Sniff failed for %s: %s", file_ref.uri, e, exc_info=True)
             sniff_result = SniffResult(errors=[f"Sniff failed: {e}"])
 

@@ -252,6 +252,29 @@ def test_parser_emits_metadata():
 
 All metadata computation happens during parsing with minimal overhead.
 
+## Maintenance Notes
+
+When adding a new parsed metadata field, you must update **two locations** to ensure the field is available for routing predicates:
+
+1. **`PipelineExecutor._enrich_parsed_metadata()`** in `packages/shared/pipeline/executor.py`
+2. **`PipelinePreviewService._enrich_parsed_metadata()`** in `packages/webui/services/pipeline_preview_service.py`
+
+Both methods maintain an identical `parsed_fields` allowlist set. The allowlist pattern exists to:
+
+- **Prevent arbitrary metadata pollution**: Only recognized fields from the `ParsedMetadata` schema are copied to the routing namespace
+- **Enable controlled evolution**: New fields must be explicitly added, ensuring documentation and tests are updated
+- **Maintain consistency**: Both executor (production) and preview service (UI validation) use the same fields
+
+**Checklist for adding a new field:**
+
+1. Add field to `ParsedMetadata` TypedDict in `shared/plugins/types/parser.py`
+2. Add field name to `parsed_fields` set in `executor.py`
+3. Add field name to `parsed_fields` set in `pipeline_preview_service.py`
+4. Emit field in parser plugin's `ParserOutput.metadata`
+5. Document field in this guide (Standard Fields table)
+6. Add unit tests for field emission
+7. Add integration tests for routing with the field
+
 ## See Also
 
 - **Design Document**: `docs/plans/2026-01-28-dag-routing-enhancements-design.md`

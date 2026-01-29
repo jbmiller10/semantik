@@ -300,7 +300,14 @@ class ContentSniffer:
         re.compile(rb"^#include\s*[<\"]", re.MULTILINE),  # C/C++ include
     ]
 
-    # Minimum chars per page threshold for native PDF detection
+    # Minimum chars per page threshold for native PDF detection.
+    # Rationale: 50 chars/page distinguishes native PDFs (with extractable text)
+    # from scanned PDFs (image-only, no text layer). Native PDFs typically have
+    # hundreds to thousands of chars per page. Scanned PDFs have 0-10 chars from
+    # OCR artifacts or watermarks. The 50 threshold provides a comfortable margin
+    # to catch PDFs with sparse text layers (e.g., forms with few fields filled).
+    # If false positives occur (native PDFs misclassified as scanned), increase
+    # this value. If false negatives occur (scanned PDFs not detected), decrease it.
     PDF_MIN_CHARS_PER_PAGE = 50
 
     def __init__(
@@ -325,6 +332,10 @@ class ContentSniffer:
     ) -> SniffResult:
         """Sniff content to detect file characteristics.
 
+        Runs content detection algorithms to identify characteristics like
+        scanned PDFs, source code, or structured data (JSON, CSV, etc.).
+        Results are used to enrich FileReference metadata for routing decisions.
+
         Args:
             content: Raw file content bytes
             file_ref: File reference with metadata
@@ -332,6 +343,29 @@ class ContentSniffer:
 
         Returns:
             SniffResult with detected characteristics
+
+        Error Handling:
+            - **Timeout**: If sniffing exceeds ``config.timeout_seconds``, returns
+              a partial SniffResult with the timeout recorded in ``errors``.
+            - **Individual detector failures**: If a specific detector (PDF, code,
+              structured data) fails, that detection is skipped and the error is
+              recorded in ``errors``. Other detectors continue normally.
+            - Sniff failures are non-fatal to the pipeline; routing proceeds with
+              whatever metadata was successfully detected.
+
+        Caching:
+            Results are cached by ``content_hash`` when provided. Cache hits
+            return immediately without re-running detection. Results with errors
+            are NOT cached to allow retry on transient failures. Use caching
+            during reindexing operations to avoid redundant detection.
+
+        Example:
+            >>> sniffer = ContentSniffer(SniffConfig(timeout_seconds=3.0))
+            >>> result = await sniffer.sniff(pdf_bytes, file_ref, content_hash="abc...")
+            >>> if result.is_scanned_pdf:
+            ...     print("PDF needs OCR processing")
+            >>> if result.errors:
+            ...     print(f"Detection warnings: {result.errors}")
         """
         if not self.config.enabled:
             return SniffResult()

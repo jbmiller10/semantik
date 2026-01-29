@@ -112,7 +112,8 @@ def validate_dag(dag: PipelineDAG, known_plugins: set[str] | None = None) -> lis
                 )
             )
 
-    # Rule 4: Every node has a path to the embedder
+    # Rule 4: Every node has a path to a valid terminal node (embedder or extractor)
+    # The primary pipeline MUST reach an embedder, but parallel paths may terminate at extractors
     if embedder_nodes:
         embedder_id = embedder_nodes[0].id
         # Build reverse adjacency for backward traversal
@@ -123,12 +124,24 @@ def validate_dag(dag: PipelineDAG, known_plugins: set[str] | None = None) -> lis
         # Find all nodes that can reach the embedder
         can_reach_embedder = _find_reachable_nodes(embedder_id, reverse_adjacency)
 
+        # Find extractor nodes (valid sinks for parallel paths)
+        extractor_nodes = [n for n in dag.nodes if n.type == NodeType.EXTRACTOR]
+
+        # Find all nodes that can reach any extractor
+        can_reach_extractor: set[str] = set()
+        for extractor in extractor_nodes:
+            can_reach_extractor.update(_find_reachable_nodes(extractor.id, reverse_adjacency))
+            can_reach_extractor.add(extractor.id)  # Extractor itself is valid
+
+        # A node is valid if it reaches embedder OR reaches an extractor
+        valid_terminal_nodes = can_reach_embedder | can_reach_extractor
+
         for node in dag.nodes:
-            if node.id != embedder_id and node.id not in can_reach_embedder:
+            if node.id != embedder_id and node.id not in valid_terminal_nodes:
                 errors.append(
                     DAGValidationError(
-                        rule="no_path_to_embedder",
-                        message=f"Node has no path to embedder: {node.id}",
+                        rule="no_path_to_terminal",
+                        message=f"Node has no path to embedder or extractor: {node.id}",
                         node_id=node.id,
                     )
                 )

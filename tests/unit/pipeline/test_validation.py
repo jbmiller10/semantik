@@ -237,32 +237,55 @@ class TestRule3UnreachableNodes:
         assert not any(e.rule == "unreachable_node" for e in errors)
 
 
-class TestRule4NoPathToEmbedder:
-    """Tests for Rule 4: Every node has path to embedder."""
+class TestRule4NoPathToTerminal:
+    """Tests for Rule 4: Every node has path to a valid terminal (embedder or extractor)."""
 
-    def test_no_path_to_embedder_error(self) -> None:
-        """Test error when node has no path to embedder."""
+    def test_no_path_to_terminal_error(self) -> None:
+        """Test error when node has no path to embedder or extractor."""
         dag = PipelineDAG(
             id="dead-end",
             version="1.0",
             nodes=[
                 PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="pdf"),
                 PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
-                PipelineNode(id="dead-end", type=NodeType.EXTRACTOR, plugin_id="meta"),
+                PipelineNode(id="dead-end", type=NodeType.CHUNKER, plugin_id="orphan"),  # Chunker is NOT a valid terminal
                 PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
             ],
             edges=[
                 PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
                 PipelineEdge(from_node="parser", to_node="chunker"),
-                PipelineEdge(from_node="parser", to_node="dead-end"),  # Branch to dead-end
+                PipelineEdge(from_node="parser", to_node="dead-end"),  # Branch to dead-end chunker
                 PipelineEdge(from_node="chunker", to_node="embedder"),
-                # dead-end has no outgoing edge to embedder
+                # dead-end chunker has no outgoing edge - invalid because chunkers aren't terminals
             ],
         )
         errors = validate_dag(dag)
-        no_path = [e for e in errors if e.rule == "no_path_to_embedder"]
+        no_path = [e for e in errors if e.rule == "no_path_to_terminal"]
         assert len(no_path) == 1
         assert no_path[0].node_id == "dead-end"
+
+    def test_extractor_is_valid_terminal(self) -> None:
+        """Test that extractor nodes are valid terminals (no error for paths ending at extractor)."""
+        dag = PipelineDAG(
+            id="extractor-terminal",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="pdf"),
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="extractor", type=NodeType.EXTRACTOR, plugin_id="meta"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense"),
+            ],
+            edges=[
+                PipelineEdge(from_node=SOURCE_NODE, to_node="parser"),
+                PipelineEdge(from_node="parser", to_node="chunker"),
+                PipelineEdge(from_node="parser", to_node="extractor", parallel=True),  # Parallel path to extractor
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+                # extractor has no outgoing edge - valid because extractors ARE terminals
+            ],
+        )
+        errors = validate_dag(dag)
+        no_path = [e for e in errors if e.rule == "no_path_to_terminal"]
+        assert len(no_path) == 0  # No error - extractor is a valid terminal
 
     def test_all_nodes_reach_embedder(self) -> None:
         """Test no error when all nodes can reach embedder."""
@@ -283,7 +306,7 @@ class TestRule4NoPathToEmbedder:
             ],
         )
         errors = validate_dag(dag)
-        assert not any(e.rule == "no_path_to_embedder" for e in errors)
+        assert not any(e.rule == "no_path_to_terminal" for e in errors)
 
 
 class TestRule5NoCycles:

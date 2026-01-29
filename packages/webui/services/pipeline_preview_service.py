@@ -229,7 +229,7 @@ class PipelinePreviewService:
     def _evaluate_entry_routing(
         self,
         dag: PipelineDAG,
-        router: PipelineRouter,  # noqa: ARG002 - kept for API consistency
+        router: PipelineRouter,  # noqa: ARG002 - matches _evaluate_next_routing signature
         file_ref: FileReference,
     ) -> StageEvaluationResult:
         """Evaluate routing from _source to entry node.
@@ -335,7 +335,7 @@ class PipelinePreviewService:
     def _evaluate_next_routing(
         self,
         dag: PipelineDAG,
-        router: PipelineRouter,  # noqa: ARG002 - kept for API consistency
+        router: PipelineRouter,  # noqa: ARG002 - matches _evaluate_entry_routing signature
         current_node: PipelineNode,
         file_ref: FileReference,
     ) -> StageEvaluationResult | None:

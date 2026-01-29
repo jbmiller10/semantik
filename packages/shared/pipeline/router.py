@@ -3,6 +3,36 @@
 This module provides the PipelineRouter class that routes files through
 the DAG based on edge predicates. Supports both exclusive (first-match-wins)
 and parallel (all-matching) edge semantics.
+
+Edge Semantics
+--------------
+- **Exclusive edges** (``parallel=False``): First-match-wins. Only one exclusive
+  edge fires per routing stage. Use for mutually exclusive routes like
+  PDF-vs-text or language-specific parsing.
+
+- **Parallel edges** (``parallel=True``): All matching parallel edges fire
+  together, creating multiple execution paths. Use for fan-out scenarios
+  like sending a document to both chunking and summarization pipelines.
+
+Evaluation Order
+----------------
+At each routing stage, edges are evaluated in this order:
+
+1. Parallel predicate edges - all matches fire
+2. Exclusive predicate edges - first match wins
+3. Parallel catch-all edges - all fire
+4. Exclusive catch-all edges - first match wins (fallback)
+
+This ordering ensures predicate edges take priority over catch-all edges,
+and parallel edges can fire alongside exclusive edges.
+
+Example
+-------
+>>> from shared.pipeline.router import PipelineRouter
+>>> router = PipelineRouter(dag)
+>>> entry_nodes = router.get_entry_nodes(file_ref)
+>>> for node, path_name in entry_nodes:
+...     print(f"File enters via {node.id} on path '{path_name}'")
 """
 
 from __future__ import annotations
