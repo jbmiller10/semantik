@@ -113,7 +113,6 @@ dmypy.json
 # Claude / AI assistants
 .claude/
 .claude-trace/
-CLAUDE.md
 GEMINI.md
 
 # Planning and roadmap docs (not for version control)
