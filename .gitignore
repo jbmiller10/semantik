@@ -114,6 +114,7 @@ dmypy.json
 .claude/
 .claude-trace/
 GEMINI.md
+/CLAUDE.md
 
 # Planning and roadmap docs (not for version control)
 archive/
