@@ -201,22 +201,28 @@ This architecture is deliberate—sparse indexing (especially BM25) is stateful 
 
 ## Implementation Plan
 
-### Phase 1: Metadata Architecture Refactor
+### Phase 1: Metadata Architecture Refactor ✅ COMPLETE
 
-1. **Rename `source_metadata` → `metadata`** on FileReference
-2. **Restructure existing data** under `metadata.source.*`
-3. **Update predicates.py** to handle new structure (backward compatible with old field name during migration)
-4. **Update existing DAGs** to use new predicate paths
+**Status:** Implemented
 
-### Phase 2: Pre-Routing Sniff Implementation
+1. ✅ **Rename `source_metadata` → `metadata`** on FileReference (`types.py:64`)
+2. ✅ **Restructure existing data** under `metadata.source.*`
+3. ✅ **Update predicates.py** - `_translate_legacy_path()` handles backward compatibility
+4. ✅ **Connectors updated** - LocalFile, Git, IMAP all use new structure
+5. ✅ **Serialization** - `to_dict()`/`from_dict()` handle both formats
 
-1. **Create sniff module** in `packages/shared/pipeline/sniff.py`
-2. **Implement minimal detectors:**
-   - `is_scanned_pdf`: Check PDF text layer presence
-   - `is_code`: Heuristics (shebang, syntax patterns, known extensions)
-   - `is_structured_data`: Try parse first N bytes as JSON/CSV/XML/YAML
-3. **Integrate into routing** - sniff runs before `get_entry_node()`
-4. **Handle sniff failures gracefully** - missing detected fields don't break routing
+### Phase 2: Pre-Routing Sniff Implementation ✅ COMPLETE
+
+**Status:** Implemented
+
+1. ✅ **Create sniff module** in `packages/shared/pipeline/sniff.py` (535 lines)
+2. ✅ **Implement minimal detectors:**
+   - `is_scanned_pdf`: pypdf text layer check (~30ms)
+   - `is_code`: Extension + shebang + syntax patterns (~10ms)
+   - `is_structured_data`: JSON/CSV/XML/YAML detection (~5ms)
+3. ✅ **Integrate into routing** - executor calls `_sniffer.sniff()` before `get_entry_node()`
+4. ✅ **Handle sniff failures gracefully** - logged as warnings, processing continues
+5. ✅ **Tests** - `tests/unit/pipeline/test_sniff.py` (937+ lines)
 
 ### Phase 3: Parser Metadata Emission ✅ COMPLETE
 
