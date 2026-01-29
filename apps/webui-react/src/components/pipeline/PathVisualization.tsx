@@ -113,7 +113,7 @@ export function PathVisualization({ path, paths, dag }: PathVisualizationProps) 
       const minLength = Math.min(...paths.map(p => p.nodes.length));
 
       for (let i = 0; i < minLength; i++) {
-        const nodeAtPosition = paths[0].nodes[i];
+        const nodeAtPosition: string = paths[0].nodes[i];
         if (paths.every(p => p.nodes[i] === nodeAtPosition)) {
           prefix.push(nodeAtPosition);
         } else {
