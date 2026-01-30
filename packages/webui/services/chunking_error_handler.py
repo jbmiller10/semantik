@@ -306,7 +306,7 @@ class ChunkingErrorHandler:
         # Update collection status (this would use actual repository)
         await self.update_collection_status(
             operation_id,
-            CollectionStatus.DEGRADED,
+            CollectionStatus.READY,
             f"Partial failure: {len(failed_documents)} documents failed",
         )
 
