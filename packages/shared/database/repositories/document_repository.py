@@ -1236,3 +1236,42 @@ class DocumentRepository:
         except Exception as e:
             logger.error("Failed to get failed document count: %s", e, exc_info=True)
             raise DatabaseOperationError("get_failed_document_count", "documents", str(e)) from e
+
+    async def count_failed_by_collection(self, collection_id: str) -> int:
+        """Count documents with FAILED status for a collection.
+
+        Args:
+            collection_id: Collection UUID
+
+        Returns:
+            Count of failed documents
+        """
+        result = await self.session.execute(
+            select(func.count(Document.id)).where(
+                Document.collection_id == collection_id,
+                Document.status == DocumentStatus.FAILED,
+            )
+        )
+        return result.scalar() or 0
+
+    async def count_failed_by_collections(self, collection_ids: list[str]) -> dict[str, int]:
+        """Count documents with FAILED status for multiple collections.
+
+        Args:
+            collection_ids: List of collection UUIDs
+
+        Returns:
+            Dict mapping collection_id to failed count
+        """
+        if not collection_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(Document.collection_id, func.count(Document.id))
+            .where(
+                Document.collection_id.in_(collection_ids),
+                Document.status == DocumentStatus.FAILED,
+            )
+            .group_by(Document.collection_id)
+        )
+        return {row[0]: row[1] for row in result.all()}
