@@ -194,6 +194,8 @@ async def _process_with_pipeline_executor(
         "files_skipped": result.files_skipped,
         "chunks_created": result.chunks_created,
         "documents_added": result.files_succeeded,
+        "warnings": result.warnings,
+        "callback_failures": result.callback_failures,
     }
 
 
@@ -450,6 +452,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
                     collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
 
+                    # Store warnings in operation metadata (if any)
+                    if result.get("warnings"):
+                        await operation_repo.update_meta(operation_id, {"warnings": result["warnings"]})
+
                     await operation_repo.update_status(operation_id, OperationStatus.COMPLETED)
 
                     old_status = collection.get("status", CollectionStatus.PENDING)
@@ -463,7 +469,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         try:
                             runs, _ = await projection_repo.list_for_collection(collection["id"], limit=1)
                         except Exception as e:  # pragma: no cover - defensive path
-                            logger.debug(
+                            logger.warning(
                                 "Failed to list projections for collection %s: %s",
                                 collection["id"],
                                 e,
@@ -684,7 +690,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             try:
                 parse_result = extract_fn(_get(doc, "file_path", ""))
                 parse_result = await await_if_awaitable(parse_result)
-            except Exception:
+            except Exception as parse_exc:
+                logger.warning(
+                    "Parse failed for document %s (%s): %s",
+                    doc_id,
+                    doc_path,
+                    parse_exc,
+                    exc_info=True,
+                )
                 parse_result = None
 
             text = parse_result.text if parse_result else ""
@@ -1350,7 +1363,12 @@ async def _process_append_operation_impl(
                 current_vector_count,
             )
         except Exception as stats_exc:
-            logger.warning(f"Failed to update collection stats: {stats_exc}")
+            logger.warning(
+                "Failed to update collection stats for collection %s: %s",
+                collection["id"],
+                stats_exc,
+                exc_info=True,
+            )
 
         # Update source sync status
         try:
@@ -1364,7 +1382,12 @@ async def _process_append_operation_impl(
             )
             await session.commit()
         except Exception as sync_exc:
-            logger.warning(f"Failed to update sync status for source {source_id}: {sync_exc}")
+            logger.warning(
+                "Failed to update sync status for source %s: %s",
+                source_id,
+                sync_exc,
+                exc_info=True,
+            )
         return result
 
     # Legacy flow for collections without pipeline_config

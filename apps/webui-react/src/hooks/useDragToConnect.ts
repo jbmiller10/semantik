@@ -29,7 +29,9 @@ interface UseDragToConnectResult {
 
 /**
  * Get valid downstream tiers that a node can connect to.
- * Follows the pipeline tier order: source -> parser -> chunker -> extractor/embedder -> embedder
+ * Follows the pipeline tier order:
+ *   source -> parser -> chunker -> (extractor -> embedder) OR (embedder directly)
+ * Embedder is terminal and cannot connect to anything further.
  */
 export function getValidTargetTiers(sourceNodeId: string, dag: PipelineDAG): NodeType[] {
   if (sourceNodeId === '_source') {

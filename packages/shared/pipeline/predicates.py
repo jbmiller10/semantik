@@ -10,7 +10,8 @@ Predicate Expression Language:
     - Negation: {"mime_type": "!image/*"}
     - Numeric comparison: {"size_bytes": ">10000000"}
     - Array (OR): {"extension": [".md", ".txt"]}
-    - Nested field: {"source_metadata.language": "zh"}
+    - Nested field: {"metadata.source.language": "zh"}
+    - Legacy nested: {"source_metadata.language": "zh"} (auto-translated)
     - Catch-all: None or {}
 
 Multiple fields in a predicate are AND'd together.
@@ -29,6 +30,34 @@ if TYPE_CHECKING:
 
 # Pattern for numeric comparisons: operator followed by number
 _NUMERIC_PATTERN = re.compile(r"^(>=|<=|>|<|==|!=)\s*(-?\d+(?:\.\d+)?)$")
+
+
+def _translate_legacy_path(path: str) -> str:
+    """Translate legacy source_metadata paths to new metadata.source paths.
+
+    This provides backward compatibility for predicates using the old
+    source_metadata.X path format, translating them to the new
+    metadata.source.X format.
+
+    Args:
+        path: The field path to potentially translate
+
+    Returns:
+        The translated path (or original if no translation needed)
+
+    Examples:
+        >>> _translate_legacy_path("source_metadata.language")
+        "metadata.source.language"
+        >>> _translate_legacy_path("source_metadata")
+        "metadata.source"
+        >>> _translate_legacy_path("mime_type")
+        "mime_type"
+    """
+    if path.startswith("source_metadata."):
+        return path.replace("source_metadata.", "metadata.source.", 1)
+    if path == "source_metadata":
+        return "metadata.source"
+    return path
 
 
 def get_nested_value(obj: Any, path: str) -> Any:
@@ -106,6 +135,16 @@ def match_value(pattern: Any, value: Any) -> bool:
                 return fnmatch.fnmatch(value, pattern)
             # Exact match
             return value == pattern
+
+        # Special-case: string boolean patterns against boolean values.
+        # This enables predicates like {"metadata.detected.is_code": "!true"} when
+        # UIs serialize negation by prefixing string values with '!'.
+        if isinstance(value, bool):
+            lowered = pattern.lower()
+            if lowered in ("true", "1", "yes"):
+                return value is True
+            if lowered in ("false", "0", "no"):
+                return value is False
 
         # Convert non-string value to string for comparison
         return str(value) == pattern
@@ -192,9 +231,13 @@ def matches_predicate(file_ref: FileReference, predicate: dict[str, Any] | None)
         >>> matches_predicate(file_ref, {"extension": [".md", ".txt"]})
         True  # if file_ref.extension is ".md" OR ".txt"
 
-        # Nested field
+        # Nested field (new format)
+        >>> matches_predicate(file_ref, {"metadata.source.language": "zh"})
+        True  # if file_ref.metadata["source"]["language"] == "zh"
+
+        # Nested field (legacy format - auto-translated)
         >>> matches_predicate(file_ref, {"source_metadata.language": "zh"})
-        True  # if file_ref.source_metadata["language"] == "zh"
+        True  # Translated to metadata.source.language
 
         # Multiple fields (AND)
         >>> matches_predicate(file_ref, {"mime_type": "text/*", "size_bytes": "<100000"})
@@ -206,7 +249,9 @@ def matches_predicate(file_ref: FileReference, predicate: dict[str, Any] | None)
 
     # All fields in predicate must match (AND logic)
     for field, pattern in predicate.items():
-        value = get_nested_value(file_ref, field)
+        # Translate legacy source_metadata.X paths to metadata.source.X
+        translated_field = _translate_legacy_path(field)
+        value = get_nested_value(file_ref, translated_field)
         if not match_value(pattern, value):
             return False
 

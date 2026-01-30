@@ -168,6 +168,7 @@ export function ConfigurationPanel({
           <div className="flex-1 overflow-y-auto">
             <EdgePredicateEditor
               edge={selectedEdge}
+              dag={dag}
               fromNodeLabel={getNodeLabel(dag, selectedEdge.from_node)}
               toNodeLabel={getNodeLabel(dag, selectedEdge.to_node)}
               onChange={handleEdgeChange}

@@ -72,6 +72,9 @@
     <router path="api/v2/system.py">System info, GPU status, resource usage</router>
     <router path="api/v2/benchmarks.py">Benchmark CRUD, start/cancel, results endpoints</router>
     <router path="api/v2/benchmark_datasets.py">Dataset upload, list, mapping, delete endpoints</router>
+    <router path="api/v2/agent.py">AI agent conversations for pipeline configuration (SSE streaming)</router>
+    <router path="api/v2/pipeline.py">Pipeline preview, route testing, available predicate fields</router>
+    <router path="api/v2/templates.py">Pipeline template listing and details</router>
   </v2-routers>
 </api-structure>
 
@@ -184,6 +187,46 @@
       from webui.services.factory import get_collection_service
       service = Depends(get_collection_service)
     </usage>
+  </service>
+
+  <service name="AgentOrchestrator" path="services/agent/">
+    <responsibility>AI-powered pipeline configuration assistant using conversational interface</responsibility>
+    <location>services/agent/orchestrator.py</location>
+    <architecture>
+      Hierarchical orchestrator-subagent pattern with tool-based capabilities:
+      - AgentOrchestrator: Central coordinator managing LLM conversations
+      - MessageStore: Redis-based ephemeral message storage (24h TTL)
+      - AgentConversationRepository: PostgreSQL persistence for conversation state
+      - Subagents: Specialized agents with independent context windows
+    </architecture>
+    <subagents path="services/agent/subagents/">
+      - SourceAnalyzer: Investigates data sources (enumerate files, sample, detect language)
+      - PipelineValidator: Validates pipeline configs against sample files (dry runs, chunk inspection)
+    </subagents>
+    <tools path="services/agent/tools/">
+      - list_plugins / get_plugin_details: Discover available plugins
+      - list_templates / get_template_details: Explore pipeline templates
+      - get_pipeline_state / build_pipeline: View/create pipeline configurations
+      - apply_pipeline: Create collection from configured pipeline
+      - spawn_source_analyzer / spawn_pipeline_validator: Launch subagents
+    </tools>
+    <key-features>
+      - SSE streaming for real-time conversation updates
+      - Tool call parsing from LLM responses (regex-based)
+      - Conversation locking for concurrent access control
+      - 20-turn limit to prevent infinite loops
+      - Uncertainty tracking (blocking, notable, info)
+    </key-features>
+  </service>
+
+  <service name="PipelinePreviewService">
+    <responsibility>Pipeline route preview and field discovery for UI</responsibility>
+    <location>services/pipeline_preview_service.py</location>
+    <critical-methods>
+      - preview_route: Test file routing through a DAG, returns matched paths
+      - get_available_predicate_fields: Discover fields available for routing predicates
+      - get_field_values_for_sample: Get actual values for a sample file
+    </critical-methods>
   </service>
 </services>
 

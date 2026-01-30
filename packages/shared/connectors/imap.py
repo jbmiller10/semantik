@@ -498,17 +498,19 @@ class ImapConnector(BaseConnector):
                     mime_type="message/rfc822",
                     size_bytes=message_size,
                     change_hint=str(uid),  # UID is stable within UIDVALIDITY
-                    source_metadata={
-                        "uid": uid,
-                        "mailbox": mailbox,
-                        "message_id": message_id,
-                        "subject": subject,
-                        "from": from_addr,
-                        "to": to_addr,
-                        "date": email_date,
-                        "host": self.host,
-                        "username": self.username,
-                        "uidvalidity": uidvalidity,
+                    metadata={
+                        "source": {
+                            "uid": uid,
+                            "mailbox": mailbox,
+                            "message_id": message_id,
+                            "subject": subject,
+                            "from": from_addr,
+                            "to": to_addr,
+                            "date": email_date,
+                            "host": self.host,
+                            "username": self.username,
+                            "uidvalidity": uidvalidity,
+                        }
                     },
                 )
 
@@ -533,7 +535,7 @@ class ImapConnector(BaseConnector):
         Fetches the full RFC822 message content from the IMAP server.
 
         Args:
-            file_ref: File reference with uid and mailbox in source_metadata
+            file_ref: File reference with uid and mailbox in metadata.source
 
         Returns:
             Raw RFC822 email content bytes
@@ -541,11 +543,12 @@ class ImapConnector(BaseConnector):
         Raises:
             ValueError: If required metadata is missing or fetch fails
         """
-        uid = file_ref.source_metadata.get("uid")
-        mailbox = file_ref.source_metadata.get("mailbox")
+        source = file_ref.metadata.get("source", {})
+        uid = source.get("uid")
+        mailbox = source.get("mailbox")
 
         if uid is None or not mailbox:
-            raise ValueError(f"Missing uid or mailbox in source_metadata for {file_ref.uri}")
+            raise ValueError(f"Missing uid or mailbox in metadata.source for {file_ref.uri}")
 
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")

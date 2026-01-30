@@ -12,6 +12,7 @@ from webui.api.v2.embedding import router as embedding_router
 from webui.api.v2.llm_settings import router as llm_settings_router
 from webui.api.v2.model_manager import router as model_manager_router
 from webui.api.v2.operations import router as operations_router
+from webui.api.v2.pipeline import router as pipeline_router
 from webui.api.v2.plugins import router as plugins_router
 from webui.api.v2.projections import router as projections_router
 from webui.api.v2.search import router as search_router
@@ -26,6 +27,7 @@ __all__ = [
     "llm_settings_router",
     "model_manager_router",
     "operations_router",
+    "pipeline_router",
     "plugins_router",
     "projections_router",
     "search_router",

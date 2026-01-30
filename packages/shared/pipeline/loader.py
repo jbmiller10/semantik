@@ -91,7 +91,7 @@ class PipelineLoader:
                 content=content,
                 content_hash=content_hash,
                 retention="ephemeral",
-                local_path=file_ref.source_metadata.get("local_path"),
+                local_path=file_ref.metadata.get("source", {}).get("local_path"),
             )
 
         except LoadError:
@@ -112,8 +112,8 @@ class PipelineLoader:
         Raises:
             LoadError: If content cannot be loaded
         """
-        # Check for local_path in source_metadata (set by connectors)
-        local_path = file_ref.source_metadata.get("local_path")
+        # Check for local_path in metadata.source (set by connectors)
+        local_path = file_ref.metadata.get("source", {}).get("local_path")
         if local_path:
             return self._load_from_path(local_path, file_ref.uri)
 

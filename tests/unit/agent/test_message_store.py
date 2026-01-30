@@ -6,10 +6,7 @@ from uuid import uuid4
 import pytest
 
 from webui.services.agent.exceptions import MessageStoreError
-from webui.services.agent.message_store import (
-    ConversationMessage,
-    MessageStore,
-)
+from webui.services.agent.message_store import ConversationMessage, MessageStore
 
 
 @pytest.fixture()

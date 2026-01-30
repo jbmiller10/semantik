@@ -55,7 +55,7 @@ describe('PipelineEdgeComponent', () => {
     expect(d).toMatch(/180 230$/); // Ends at top center of target
   });
 
-  it('renders predicate label when edge has when clause', () => {
+  it('renders indicator dot for edge with when clause', () => {
     const edgeWithPredicate: PipelineEdge = {
       from_node: '_source',
       to_node: 'parser1',
@@ -73,7 +73,8 @@ describe('PipelineEdgeComponent', () => {
       </svg>
     );
 
-    expect(screen.getByText(/pdf/i)).toBeInTheDocument();
+    const indicator = document.querySelector('circle.edge-indicator');
+    expect(indicator).toBeInTheDocument();
   });
 
   it('shows catch-all indicator for null when clause', () => {
@@ -144,5 +145,100 @@ describe('PipelineEdgeComponent', () => {
 
     const path = document.querySelector('path');
     expect(path).toHaveAttribute('marker-end');
+  });
+
+  describe('indicator dots and tooltips', () => {
+    it('renders indicator dot instead of text label for conditional edge', () => {
+      const edgeWithPredicate: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: { mime_type: 'application/pdf' },
+      };
+
+      render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edgeWithPredicate}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      // Should have indicator dot (circle with class 'edge-indicator')
+      const indicator = document.querySelector('circle.edge-indicator');
+      expect(indicator).toBeInTheDocument();
+
+      // Should NOT have the old text label rect
+      const labelRect = document.querySelector('rect');
+      expect(labelRect).not.toBeInTheDocument();
+    });
+
+    it('renders tooltip title with formatted predicate on indicator', () => {
+      const edgeWithPredicate: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: { mime_type: ['application/pdf', 'application/vnd.*'] },
+      };
+
+      render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edgeWithPredicate}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      // Should have title element with formatted text
+      const title = document.querySelector('circle.edge-indicator title');
+      expect(title).toBeInTheDocument();
+      expect(title?.textContent).toContain('Mime type');
+      expect(title?.textContent).toContain('pdf');
+    });
+
+    it('renders dashed edge styling for catch-all routes', () => {
+      const catchAllEdge: PipelineEdge = {
+        from_node: 'parser1',
+        to_node: 'chunker1',
+        when: null,
+      };
+
+      render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={catchAllEdge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+            showCatchAll={true}
+          />
+        </svg>
+      );
+
+      const path = document.querySelector('path');
+      expect(path).toHaveAttribute('stroke-dasharray');
+    });
+
+    it('shows catch-all indicator with asterisk for null when clause', () => {
+      render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={mockEdge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+            showCatchAll={true}
+          />
+        </svg>
+      );
+
+      const indicator = document.querySelector('circle.edge-indicator-catchall');
+      expect(indicator).toBeInTheDocument();
+      expect(screen.getByText('*')).toBeInTheDocument();
+    });
   });
 });

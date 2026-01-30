@@ -211,5 +211,25 @@ class PluginRegistry:
             self._loaded_types.clear()
             self._disabled_ids.clear()
 
+    def get_parser_emitted_fields(self, plugin_id: str) -> list[str]:
+        """Get the parsed.* fields emitted by a parser plugin.
+
+        Used by the pipeline editor to determine which predicate fields
+        are available for routing based on the source parser node.
+
+        Args:
+            plugin_id: The parser plugin ID (e.g., "text", "unstructured")
+
+        Returns:
+            List of field names (e.g., ["detected_language", "approx_token_count"])
+            without the "metadata.parsed." prefix.
+            Returns empty list if plugin not found or has no EMITTED_FIELDS.
+        """
+        with self._lock:
+            record = self._plugins.get("parser", {}).get(plugin_id)
+            if record and hasattr(record.plugin_class, "EMITTED_FIELDS"):
+                return list(record.plugin_class.EMITTED_FIELDS)
+            return []
+
 
 plugin_registry = PluginRegistry()

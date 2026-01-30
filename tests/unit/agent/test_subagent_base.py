@@ -6,14 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from shared.llm.exceptions import LLMRateLimitError, LLMTimeoutError
-from webui.services.agent.subagents.base import (
-    Message,
-    SubAgent,
-    SubAgentResult,
-    ToolCall,
-    ToolResult,
-    Uncertainty,
-)
+from webui.services.agent.subagents.base import Message, SubAgent, SubAgentResult, ToolCall, ToolResult, Uncertainty
 from webui.services.agent.tools.base import BaseTool
 
 

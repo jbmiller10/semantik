@@ -11,9 +11,7 @@ from typing import Any
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
-from shared.chunking.unified.hierarchical_strategy import (
-    HierarchicalChunkingStrategy as UnifiedHierarchicalStrategy,
-)
+from shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy as UnifiedHierarchicalStrategy
 
 
 class HierarchicalChunkingStrategy(DomainStrategyAdapter):

@@ -11,7 +11,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from shared.pipeline.types import FileReference
+    from shared.pipeline.types import FileReference, PipelineNode
 
 
 class ExecutionMode(str, Enum):
@@ -111,6 +111,36 @@ class ChunkStats:
 
 
 @dataclass
+class PathState:
+    """State for a single execution path through the pipeline DAG.
+
+    When a document is processed through multiple parallel paths (e.g., chunking
+    path AND summarization path), each path maintains its own state. This allows
+    different processing strategies to produce path-specific outputs that are
+    tagged for search filtering.
+
+    Attributes:
+        path_id: Unique identifier for this path (from edge path_name or node id)
+        current_node: The node currently being or to be processed (None when complete)
+        parsed_text: Text content after parsing (may be shared across paths)
+        parse_metadata: Parser-extracted metadata (may be shared across paths)
+        chunks: Chunks produced by this path's chunker
+        token_counts: Token counts for each chunk
+        completed: Whether this path has finished processing
+        error: Exception if this path encountered an error
+    """
+
+    path_id: str
+    current_node: PipelineNode | None = None
+    parsed_text: str = ""
+    parse_metadata: dict[str, Any] = field(default_factory=dict)
+    chunks: list[dict[str, Any]] = field(default_factory=list)
+    token_counts: list[int] = field(default_factory=list)
+    completed: bool = False
+    error: Exception | None = None
+
+
+@dataclass
 class SampleOutput:
     """Sample output from DRY_RUN mode for preview/validation.
 
@@ -118,11 +148,13 @@ class SampleOutput:
         file_ref: The file reference that was processed
         chunks: List of chunk data (text, metadata, etc.)
         parse_metadata: Metadata from the parser
+        path_id: Path identifier for parallel fan-out (default: "default")
     """
 
     file_ref: FileReference
     chunks: list[dict[str, Any]]
     parse_metadata: dict[str, Any]
+    path_id: str = "default"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
@@ -130,6 +162,7 @@ class SampleOutput:
             "file_ref": self.file_ref.to_dict(),
             "chunks": list(self.chunks),
             "parse_metadata": dict(self.parse_metadata),
+            "path_id": self.path_id,
         }
 
 
@@ -187,6 +220,7 @@ class ExecutionResult:
         halted: Whether execution was halted due to consecutive failures
         halt_reason: Reason for halt (if halted)
         callback_failures: Number of times progress callbacks failed
+        warnings: Non-fatal issues encountered (e.g., sniff failures, skipped files)
     """
 
     mode: ExecutionMode
@@ -203,6 +237,7 @@ class ExecutionResult:
     halted: bool = False
     halt_reason: str | None = None
     callback_failures: int = 0
+    warnings: list[str] | None = None
 
     def __post_init__(self) -> None:
         """Validate invariants after initialization."""
@@ -229,6 +264,7 @@ class ExecutionResult:
             "halted": self.halted,
             "halt_reason": self.halt_reason,
             "callback_failures": self.callback_failures,
+            "warnings": self.warnings,
         }
 
 
@@ -236,6 +272,7 @@ __all__ = [
     "ExecutionMode",
     "ProgressEvent",
     "ChunkStats",
+    "PathState",
     "SampleOutput",
     "StageFailure",
     "ExecutionResult",

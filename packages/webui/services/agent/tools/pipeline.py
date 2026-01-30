@@ -10,12 +10,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from shared.pipeline.types import (
-    NodeType,
-    PipelineDAG,
-    PipelineEdge,
-    PipelineNode,
-)
+from shared.pipeline.types import NodeType, PipelineDAG, PipelineEdge, PipelineNode
 from shared.plugins.registry import plugin_registry
 from webui.services.agent.tools.base import BaseTool
 
@@ -593,13 +588,10 @@ class ApplyPipelineTool(BaseTool):
 
             # If conversation has inline source config, create the source now
             source_id: int | None = conversation.source_id
+            failed_secrets: list[str] = []  # Track secrets that failed to store
             if conversation.inline_source_config and not conversation.source_id:
-                from shared.database.repositories.collection_source_repository import (
-                    CollectionSourceRepository,
-                )
-                from shared.database.repositories.connector_secret_repository import (
-                    ConnectorSecretRepository,
-                )
+                from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+                from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
 
                 inline_config = conversation.inline_source_config
                 source_type = inline_config.get("source_type", "")
@@ -623,12 +615,9 @@ class ApplyPipelineTool(BaseTool):
 
                 # Store secrets encrypted if any
                 # Note: secrets may already be encrypted (as base64 strings) from agent.py
+                failed_secrets: list[str] = []
                 if pending_secrets:
-                    from shared.utils.encryption import (
-                        DecryptionError,
-                        EncryptionNotConfiguredError,
-                        decrypt_secret,
-                    )
+                    from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, decrypt_secret
 
                     secret_repo = ConnectorSecretRepository(session)
                     for secret_key, value in pending_secrets.items():
@@ -643,16 +632,26 @@ class ApplyPipelineTool(BaseTool):
                                 logger.warning(
                                     f"Encryption not configured - using raw secret for source {new_source_id}"
                                 )
+                                # Raw value is acceptable - it was never encrypted
                             except DecryptionError as e:
                                 logger.error(f"Failed to decrypt secret '{secret_key}' for source {new_source_id}: {e}")
+                                # Track failed secret for user notification
+                                failed_secrets.append(secret_key)
+                                continue
                             except ValueError as e:
                                 logger.error(f"Invalid secret format for '{secret_key}' on source {new_source_id}: {e}")
+                                # Track failed secret for user notification
+                                failed_secrets.append(secret_key)
+                                continue
 
                             await secret_repo.set_secret(
                                 source_id=new_source_id,
                                 secret_type=secret_type,
                                 plaintext=plaintext_value,
                             )
+                        else:
+                            # Unknown secret key - track as failed
+                            failed_secrets.append(secret_key)
 
                 # Update conversation with the new source ID and clear pending secrets
                 await repo.set_source_id(
@@ -665,7 +664,7 @@ class ApplyPipelineTool(BaseTool):
 
             # Note: The orchestrator's _persist_state_changes() handles the commit
 
-            return {
+            result: dict[str, Any] = {
                 "success": True,
                 "collection_id": collection_id,
                 "collection_name": collection_result["name"],
@@ -674,6 +673,15 @@ class ApplyPipelineTool(BaseTool):
                 "status": "indexing" if start_indexing else "created",
                 "message": f"Collection '{collection_name}' created successfully",
             }
+
+            # Surface warnings for failed secrets
+            if failed_secrets:
+                result["warnings"] = [
+                    f"Failed to store secrets: {', '.join(failed_secrets)}. "
+                    "You may need to reconfigure these credentials."
+                ]
+
+            return result
 
         except Exception as e:
             logger.error(f"Failed to apply pipeline: {e}", exc_info=True)

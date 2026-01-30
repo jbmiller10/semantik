@@ -206,7 +206,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(5)
         ]
@@ -253,7 +253,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -280,6 +280,57 @@ class TestPipelineExecutorExecute:
         assert result.stage_timings["loader"] > 0
 
     @pytest.mark.asyncio()
+    async def test_execute_aggregates_stage_timings_across_files(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_parser: MagicMock,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that stage timings aggregate across multi-file runs (not last-file only)."""
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        files = [
+            FileReference(
+                uri=f"file:///test{i}.txt",
+                source_type="directory",
+                content_type="document",
+                size_bytes=100,
+                metadata={"source": {"local_path": str(temp_file)}},
+            )
+            for i in range(2)
+        ]
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            for f in files:
+                yield f
+
+        def fake_record_timing(self: PipelineExecutor, stage_key: str, start_time: float) -> None:  # noqa: ARG001
+            self._stage_timings[stage_key] = self._stage_timings.get(stage_key, 0.0) + 1.0
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+            patch.object(PipelineExecutor, "_record_timing", new=fake_record_timing),
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor.execute(file_iterator())
+
+        assert result.stage_timings["loader"] == 2.0
+
+    @pytest.mark.asyncio()
     async def test_execute_dry_run_returns_samples(
         self,
         valid_dag: PipelineDAG,
@@ -297,7 +348,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -342,7 +393,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -393,7 +444,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -435,7 +486,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(20)
         ]
@@ -497,7 +548,7 @@ class TestPipelineExecutorExecute:
                 source_type="directory",
                 content_type="document",
                 size_bytes=100,
-                source_metadata={"local_path": str(temp_file)},
+                metadata={"source": {"local_path": str(temp_file)}},
             )
             for i in range(3)
         ]
@@ -559,7 +610,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -614,7 +665,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=11,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         # Write "Hello World" to temp file to match the hash
@@ -660,7 +711,7 @@ class TestPipelineExecutorExecute:
             source_type="directory",
             content_type="document",
             size_bytes=100,
-            source_metadata={"local_path": str(temp_file)},
+            metadata={"source": {"local_path": str(temp_file)}},
         )
 
         async def file_iterator() -> AsyncIterator[FileReference]:
@@ -697,3 +748,354 @@ class TestPipelineExecutorExecute:
         assert result.files_failed == 0
         # Callback should have been called multiple times (events still emitted)
         assert callback_call_count > 0
+
+    @pytest.mark.asyncio()
+    async def test_sniff_failure_records_error_in_metadata(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_parser: MagicMock,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that sniff failures are recorded in file_ref.metadata['errors']."""
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            yield file_ref
+
+        # Create a mock sniffer that raises an exception on sniff
+        # but uses the real enrich_file_ref so errors propagate to metadata
+        from shared.pipeline.sniff import ContentSniffer
+
+        mock_sniffer = MagicMock()
+        mock_sniffer.sniff = AsyncMock(side_effect=RuntimeError("Sniff operation failed"))
+        mock_sniffer.enrich_file_ref = ContentSniffer().enrich_file_ref
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+            patch(
+                "shared.pipeline.executor.ContentSniffer",
+                return_value=mock_sniffer,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor.execute(file_iterator())
+
+        # Processing should still succeed (sniff is non-fatal)
+        assert result.files_processed == 1
+        assert result.files_succeeded == 1
+        assert result.files_failed == 0
+
+        # Check that the sample output has the error recorded in metadata
+        assert result.sample_outputs is not None
+        assert len(result.sample_outputs) == 1
+        sample_file_ref = result.sample_outputs[0].file_ref
+        assert "errors" in sample_file_ref.metadata
+        assert "sniff" in sample_file_ref.metadata["errors"]
+        # Error is now a list from SniffResult.errors
+        sniff_errors = sample_file_ref.metadata["errors"]["sniff"]
+        assert isinstance(sniff_errors, list)
+        assert any("Sniff operation failed" in err for err in sniff_errors)
+
+    @pytest.mark.asyncio()
+    async def test_process_file_mid_pipeline_parallel_fanout_executes_all_branches(
+        self,
+        mock_session: AsyncMock,
+        temp_file: Path,
+    ) -> None:
+        """Test that mid-pipeline parallel fan-out creates and executes multiple paths."""
+        dag = PipelineDAG(
+            id="test-mid-pipeline-fanout",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker_a", type=NodeType.CHUNKER, plugin_id="chunker_a"),
+                PipelineNode(id="chunker_b", type=NodeType.CHUNKER, plugin_id="chunker_b"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(from_node="_source", to_node="parser"),
+                PipelineEdge(from_node="parser", to_node="chunker_a", parallel=True, path_name="path_a"),
+                PipelineEdge(from_node="parser", to_node="chunker_b", parallel=True, path_name="path_b"),
+                PipelineEdge(from_node="chunker_a", to_node="embedder"),
+                PipelineEdge(from_node="chunker_b", to_node="embedder"),
+            ],
+        )
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        mock_parse_result = MagicMock()
+        mock_parse_result.text = "Parsed text content"
+        mock_parse_result.metadata = {}
+        mock_parser = MagicMock()
+        mock_parser.parse_bytes.return_value = mock_parse_result
+
+        def _mk_chunk(chunk_id: str, content: str) -> MagicMock:
+            chunk = MagicMock()
+            chunk.content = content
+            chunk.metadata = MagicMock()
+            chunk.metadata.chunk_id = chunk_id
+            chunk.metadata.chunk_index = 0
+            chunk.metadata.start_offset = 0
+            chunk.metadata.end_offset = 10
+            chunk.metadata.token_count = 5
+            chunk.metadata.hierarchy_level = 0
+            return chunk
+
+        strategy_a = MagicMock()
+        strategy_a.chunk.return_value = [_mk_chunk("a1", "A chunk")]
+
+        strategy_b = MagicMock()
+        strategy_b.chunk.return_value = [_mk_chunk("b1", "B chunk 1"), _mk_chunk("b2", "B chunk 2")]
+
+        def create_strategy_side_effect(plugin_id: str) -> MagicMock:
+            if plugin_id == "chunker_a":
+                return strategy_a
+            if plugin_id == "chunker_b":
+                return strategy_b
+            raise AssertionError(f"Unexpected chunker plugin_id: {plugin_id}")
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                side_effect=create_strategy_side_effect,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor._process_file(file_ref, progress_callback=None)
+
+        assert result["skipped"] is False
+        assert result["chunks_created"] == 3
+        assert "sample_outputs" in result, "expected multiple sample outputs for fan-out"
+        sample_outputs = result["sample_outputs"]
+        assert {o.path_id for o in sample_outputs} == {"path_a", "path_b"}
+        for output in sample_outputs:
+            assert all(chunk["path_id"] == output.path_id for chunk in output.chunks)
+
+        assert strategy_a.chunk.call_count == 1
+        assert strategy_b.chunk.call_count == 1
+
+    @pytest.mark.asyncio()
+    async def test_process_file_does_not_abort_remaining_paths_on_first_failure(
+        self,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that one path failing doesn't prevent other paths for the same file from running."""
+        dag = PipelineDAG(
+            id="test-entry-parallel-path-failure",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser_fail", type=NodeType.PARSER, plugin_id="fail"),
+                PipelineNode(id="parser_ok", type=NodeType.PARSER, plugin_id="ok"),
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(
+                    from_node="_source",
+                    to_node="parser_fail",
+                    when={"extension": ".txt"},
+                    parallel=True,
+                    path_name="fail_path",
+                ),
+                PipelineEdge(from_node="_source", to_node="parser_ok", when=None, parallel=False, path_name="ok_path"),
+                PipelineEdge(from_node="parser_fail", to_node="chunker"),
+                PipelineEdge(from_node="parser_ok", to_node="chunker"),
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+            ],
+        )
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            extension=".txt",
+            size_bytes=100,
+            metadata={"source": {"local_path": str(temp_file)}},
+        )
+
+        failing_parser = MagicMock()
+        failing_parser.parse_bytes.side_effect = RuntimeError("Parse failed")
+
+        ok_parse_result = MagicMock()
+        ok_parse_result.text = "Parsed text content"
+        ok_parse_result.metadata = {}
+        ok_parser = MagicMock()
+        ok_parser.parse_bytes.return_value = ok_parse_result
+
+        def get_parser_side_effect(plugin_id: str, _config: dict) -> MagicMock:
+            if plugin_id == "fail":
+                return failing_parser
+            if plugin_id == "ok":
+                return ok_parser
+            raise AssertionError(f"Unexpected parser plugin_id: {plugin_id}")
+
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", side_effect=get_parser_side_effect),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+        ):
+            executor = PipelineExecutor(
+                dag=dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor._process_file(file_ref, progress_callback=None)
+
+        assert result["skipped"] is False
+        assert result["chunks_created"] == len(mock_chunks)
+        assert result["failed_paths"] == [{"path_id": "fail_path", "error": "Parse failed"}]
+        assert "sample_output" in result
+        assert result["sample_output"].path_id == "ok_path"
+
+        assert failing_parser.parse_bytes.call_count == 1
+        assert ok_parser.parse_bytes.call_count == 1
+
+
+class TestDatabaseErrorHandling:
+    """Tests for database error handling in executor methods."""
+
+    @pytest.fixture()
+    def valid_dag(self) -> PipelineDAG:
+        """Create a valid minimal DAG."""
+        return PipelineDAG(
+            id="test",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(from_node="_source", to_node="parser"),
+                PipelineEdge(from_node="parser", to_node="chunker"),
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+            ],
+        )
+
+    @pytest.fixture()
+    def mock_session(self) -> AsyncMock:
+        """Create a mock database session."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio()
+    async def test_should_skip_database_error_annotated(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test database errors in _should_skip include stage metadata."""
+        executor = PipelineExecutor(
+            dag=valid_dag,
+            collection_id="test-collection",
+            session=mock_session,
+            mode=ExecutionMode.FULL,
+        )
+
+        # Mock doc_repo to raise an exception
+        mock_doc_repo = AsyncMock()
+        db_error = Exception("Database connection failed")
+        mock_doc_repo.get_by_uri.side_effect = db_error
+        executor._doc_repo = mock_doc_repo
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={},
+        )
+
+        with pytest.raises(Exception, match="Database connection failed") as exc_info:
+            await executor._should_skip(file_ref, "abc123hash")
+
+        # Verify exception has stage context attributes
+        assert hasattr(exc_info.value, "stage_id")
+        assert exc_info.value.stage_id == "skip_check"  # type: ignore[attr-defined]
+        assert hasattr(exc_info.value, "stage_type")
+        assert exc_info.value.stage_type == "database"  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio()
+    async def test_create_document_database_error_logged(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test database errors in _create_document are logged and re-raised."""
+        executor = PipelineExecutor(
+            dag=valid_dag,
+            collection_id="test-collection",
+            session=mock_session,
+            mode=ExecutionMode.FULL,
+        )
+
+        # Mock doc_repo to raise an exception
+        mock_doc_repo = AsyncMock()
+        db_error = Exception("Database insert failed")
+        mock_doc_repo.create.side_effect = db_error
+        executor._doc_repo = mock_doc_repo
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": "/test.txt"}},
+        )
+
+        with (
+            patch("shared.pipeline.executor.logger") as mock_logger,
+            pytest.raises(Exception, match="Database insert failed"),
+        ):
+            await executor._create_document(file_ref, "abc123hash")
+
+        # Verify error was logged with file URI
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args
+        assert "test.txt" in str(call_args)
+        assert "Database insert failed" in str(call_args)

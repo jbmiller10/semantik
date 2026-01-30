@@ -31,6 +31,8 @@ interface PipelineNodeComponentProps {
   isValidDropTarget?: boolean;
   /** Whether this is a newly created node (for entrance animation) */
   isNew?: boolean;
+  /** Whether this node is in the highlighted route preview path */
+  isInPath?: boolean;
 }
 
 // Port styling constants
@@ -47,6 +49,7 @@ export function PipelineNodeComponent({
   showPorts = false,
   isValidDropTarget = false,
   isNew = false,
+  isInPath = false,
 }: PipelineNodeComponentProps) {
   const colors = isSource ? SOURCE_COLOR : NODE_COLORS[node.type];
   const borderRadius = 8;
@@ -79,16 +82,18 @@ export function PipelineNodeComponent({
         height={position.height}
         rx={borderRadius}
         ry={borderRadius}
-        fill={colors.bg}
+        fill={isInPath ? 'rgba(34, 197, 94, 0.1)' : colors.bg}
         stroke={
-          isValidDropTarget
-            ? 'var(--text-primary)'
-            : selected
+          isInPath
+            ? 'rgb(34, 197, 94)'
+            : isValidDropTarget
               ? 'var(--text-primary)'
-              : colors.border
+              : selected
+                ? 'var(--text-primary)'
+                : colors.border
         }
-        strokeWidth={selected || isValidDropTarget ? 2 : 1}
-        className={`transition-all duration-150 ${isValidDropTarget ? 'pipeline-node-drop-target' : ''}`}
+        strokeWidth={selected || isValidDropTarget || isInPath ? 2 : 1}
+        className={`transition-all duration-150 ${isValidDropTarget ? 'pipeline-node-drop-target' : ''} ${isInPath ? 'pipeline-node-in-path' : ''}`}
       />
 
       {/* Type label (top) */}

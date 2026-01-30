@@ -45,7 +45,12 @@ class FileReference:
         mime_type: MIME type if known (e.g., "application/pdf")
         size_bytes: File size in bytes (must be >= 0)
         change_hint: Optional hint for change detection (mtime, etag, hash)
-        source_metadata: Additional source-specific metadata
+        metadata: Namespaced metadata dict with the following structure:
+            - metadata["source"]: Source-specific metadata (local_path, relative_path, etc.)
+            - metadata["detected"]: Auto-detected content metadata from sniffing (is_code,
+              is_scanned_pdf, is_structured_data, structured_format, sniff_duration_ms)
+            - metadata["parsed"]: Parser-extracted metadata (title, author, page_count, etc.)
+            - metadata["errors"]: Processing errors by stage (sniff, load, parse)
     """
 
     uri: str
@@ -56,7 +61,7 @@ class FileReference:
     mime_type: str | None = None
     size_bytes: int = 0
     change_hint: str | None = None
-    source_metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -76,8 +81,28 @@ class FileReference:
                 ext = f".{ext}"
             self.extension = ext
 
+    @property
+    def source_metadata(self) -> dict[str, Any]:
+        """DEPRECATED: Use metadata['source'] instead.
+
+        Returns the source-specific metadata from the namespaced metadata dict.
+        This property exists for backward compatibility during migration.
+        """
+        import warnings
+
+        warnings.warn(
+            "source_metadata is deprecated, use metadata['source'] instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.metadata.get("source", {})
+
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """Return a JSON-serializable representation.
+
+        Emits both 'metadata' (new format) and 'source_metadata' (legacy format)
+        for backward compatibility during migration.
+        """
         return {
             "uri": self.uri,
             "source_type": self.source_type,
@@ -87,12 +112,28 @@ class FileReference:
             "mime_type": self.mime_type,
             "size_bytes": self.size_bytes,
             "change_hint": self.change_hint,
-            "source_metadata": dict(self.source_metadata),
+            "metadata": dict(self.metadata),
+            # Legacy key for backward compatibility
+            "source_metadata": self.metadata.get("source", {}),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileReference:
-        """Create a FileReference from a dictionary."""
+        """Create a FileReference from a dictionary.
+
+        Accepts both new 'metadata' format and legacy 'source_metadata' format.
+        If 'metadata' is present, it is used directly. Otherwise, 'source_metadata'
+        is normalized to 'metadata.source'.
+        """
+        # Handle metadata format migration
+        if "metadata" in data:
+            metadata = dict(data["metadata"])
+        elif "source_metadata" in data:
+            # Legacy format: convert to new namespaced structure
+            metadata = {"source": dict(data["source_metadata"])}
+        else:
+            metadata = {}
+
         return cls(
             uri=data["uri"],
             source_type=data["source_type"],
@@ -102,7 +143,7 @@ class FileReference:
             mime_type=data.get("mime_type"),
             size_bytes=data.get("size_bytes", 0),
             change_hint=data.get("change_hint"),
-            source_metadata=data.get("source_metadata", {}),
+            metadata=metadata,
         )
 
 
@@ -262,11 +303,17 @@ class PipelineEdge:
         from_node: Source node ID (or "_source" for entry edges)
         to_node: Target node ID
         when: Optional predicate for conditional routing (None = catch-all)
+        parallel: If True, this edge can fire alongside other parallel edges
+            from the same node. If False (default), uses first-match-wins semantics.
+        path_name: Tag for chunk outputs from this path. Defaults to to_node if not set.
+            Used for search filtering when documents are processed through multiple paths.
     """
 
     from_node: str
     to_node: str
     when: dict[str, Any] | None = None
+    parallel: bool = False
+    path_name: str | None = None
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -277,13 +324,28 @@ class PipelineEdge:
         if self.from_node == self.to_node:
             raise ValueError("self-loops are not allowed")
 
+    def get_path_name(self) -> str:
+        """Return path name for chunk tagging.
+
+        Returns the explicit path_name if set, otherwise defaults to the
+        target node ID (to_node).
+        """
+        return self.path_name or self.to_node
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
-        return {
+        result: dict[str, Any] = {
             "from_node": self.from_node,
             "to_node": self.to_node,
             "when": self.when,
         }
+        # Only include parallel and path_name if they have non-default values
+        # for backward compatibility with existing DAG definitions
+        if self.parallel:
+            result["parallel"] = self.parallel
+        if self.path_name is not None:
+            result["path_name"] = self.path_name
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PipelineEdge:
@@ -292,6 +354,8 @@ class PipelineEdge:
             from_node=data["from_node"],
             to_node=data["to_node"],
             when=data.get("when"),
+            parallel=data.get("parallel", False),
+            path_name=data.get("path_name"),
         )
 
 
@@ -354,9 +418,10 @@ class PipelineDAG:
         3. Every node is reachable from _source
         4. Every node has a path to the embedder
         5. No cycles
-        6. At least one catch-all edge from _source
+        6. At least one catch-all edge from _source (non-parallel)
         7. Node IDs are unique
         8. Plugin IDs are registered (if known_plugins provided)
+        9. Parallel edges from same node must have unique path_names
 
         Args:
             known_plugins: Optional set of registered plugin IDs for validation
@@ -388,6 +453,33 @@ class PipelineDAG:
             nodes=[PipelineNode.from_dict(n) for n in data.get("nodes", [])],
             edges=[PipelineEdge.from_dict(e) for e in data.get("edges", [])],
         )
+
+    @classmethod
+    def from_dict_validated(
+        cls,
+        data: dict[str, Any],
+        known_plugins: set[str] | None = None,
+    ) -> PipelineDAG:
+        """Create a PipelineDAG from a dictionary with validation.
+
+        Factory method that creates a DAG from dict and validates it immediately,
+        raising an exception if validation fails.
+
+        Args:
+            data: Dictionary representation of the DAG
+            known_plugins: Optional set of registered plugin IDs for validation
+
+        Returns:
+            A validated PipelineDAG instance
+
+        Raises:
+            DAGValidationFailedError: If the DAG fails validation
+        """
+        dag = cls.from_dict(data)
+        errors = dag.validate(known_plugins)
+        if errors:
+            raise DAGValidationFailedError(errors)
+        return dag
 
     @classmethod
     def create_validated(

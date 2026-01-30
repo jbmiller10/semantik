@@ -482,11 +482,12 @@ class TestImapConnectorEnumerate:
             assert ref.extension == ".eml"
             assert ref.mime_type == "message/rfc822"
             assert ref.change_hint == "100"  # UID as change_hint
-            assert ref.source_metadata["uid"] == 100
-            assert ref.source_metadata["mailbox"] == "INBOX"
-            assert ref.source_metadata["subject"] == "Test Email"
-            assert ref.source_metadata["from"] == "sender@example.com"
-            assert ref.source_metadata["to"] == "user@example.com"
+            source = ref.metadata.get("source", {})
+            assert source.get("uid") == 100
+            assert source.get("mailbox") == "INBOX"
+            assert source.get("subject") == "Test Email"
+            assert source.get("from") == "sender@example.com"
+            assert source.get("to") == "user@example.com"
 
     @pytest.mark.asyncio()
     async def test_enumerate_max_messages_limit(self):

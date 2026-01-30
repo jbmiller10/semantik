@@ -26,6 +26,8 @@ export function AnalysisStep({
   const [selection, setSelection] = useState<DAGSelection>({ type: 'none' });
   const [hasAutoStarted, setHasAutoStarted] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
+  const [customResponseInput, setCustomResponseInput] = useState('');
+  const [userMessageInput, setUserMessageInput] = useState('');
 
   // Memoize callbacks to avoid re-creating on every render
   const streamCallbacks = useMemo(() => ({
@@ -292,11 +294,14 @@ export function AnalysisStep({
                   {question.allowCustom && (
                     <input
                       type="text"
+                      value={customResponseInput}
+                      onChange={(e) => setCustomResponseInput(e.target.value)}
                       placeholder="Or type a custom response..."
                       className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]"
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleAnswer(question.id, undefined, (e.target as HTMLInputElement).value);
+                        if (e.key === 'Enter' && customResponseInput.trim()) {
+                          handleAnswer(question.id, undefined, customResponseInput);
+                          setCustomResponseInput('');
                         }
                       }}
                     />
@@ -312,21 +317,22 @@ export function AnalysisStep({
               <div className="flex gap-2">
                 <input
                   type="text"
+                  value={userMessageInput}
+                  onChange={(e) => setUserMessageInput(e.target.value)}
                   placeholder="Ask the agent something..."
                   className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      sendMessage((e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
+                    if (e.key === 'Enter' && userMessageInput.trim()) {
+                      sendMessage(userMessageInput);
+                      setUserMessageInput('');
                     }
                   }}
                 />
                 <button
                   onClick={() => {
-                    const input = document.querySelector('input[placeholder="Ask the agent something..."]') as HTMLInputElement;
-                    if (input?.value) {
-                      sendMessage(input.value);
-                      input.value = '';
+                    if (userMessageInput.trim()) {
+                      sendMessage(userMessageInput);
+                      setUserMessageInput('');
                     }
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-white text-gray-900 font-medium"

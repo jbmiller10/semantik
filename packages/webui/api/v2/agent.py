@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
 from fastapi.responses import StreamingResponse
 
 from shared.database import get_db
@@ -43,11 +44,7 @@ from webui.api.v2.agent_schemas import (
     UncertaintyResponse,
 )
 from webui.auth import get_current_user
-from webui.services.agent.exceptions import (
-    AgentBusyError,
-    AgentError,
-    ConversationNotActiveError,
-)
+from webui.services.agent.exceptions import AgentBusyError, AgentError, ConversationNotActiveError
 from webui.services.agent.message_store import MessageStore
 from webui.services.agent.models import ConversationStatus
 from webui.services.agent.orchestrator import AgentOrchestrator
@@ -422,10 +419,12 @@ async def send_message_stream(
                     logger.warning(f"DB connection closed during SSE stream for conversation {conversation_id}: {e}")
                     with contextlib.suppress(Exception):
                         await llm_session.rollback()
-                    error_data = json.dumps({
-                        "message": "Connection timeout during processing. Results may be incomplete.",
-                        "recoverable": True,
-                    })
+                    error_data = json.dumps(
+                        {
+                            "message": "Connection timeout during processing. Results may be incomplete.",
+                            "recoverable": True,
+                        }
+                    )
                     yield f"event: error\ndata: {error_data}\n\n"
                     return
                 except Exception as e:

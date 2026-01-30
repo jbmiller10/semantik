@@ -840,3 +840,187 @@ class TestPipelineExecutorFullModeWithMockedVecPipe:
         mock_doc_repo.update_status.assert_called()
         update_call = mock_doc_repo.update_status.call_args
         assert update_call.args[1] == DocumentStatus.FAILED
+
+    @pytest.mark.asyncio()
+    async def test_embedding_count_mismatch_handled(
+        self,
+        full_mode_dag: PipelineDAG,
+        temp_docs_dir: Path,
+        mock_session_for_full_mode: AsyncMock,
+        mock_doc_repo: AsyncMock,
+    ) -> None:
+        """Test executor handles embedding response with wrong count.
+
+        When VecPipe returns fewer embeddings than chunks requested,
+        the executor should detect this and fail gracefully.
+        """
+        from unittest.mock import patch
+
+        # Create a larger file that will produce multiple chunks
+        large_text = " ".join([f"Paragraph {i}. " * 20 for i in range(10)])
+        (temp_docs_dir / "multi_chunk.txt").write_text(large_text)
+
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "include_patterns": ["multi_chunk.txt"],
+            }
+        )
+        await connector.authenticate()
+
+        file_refs: list[FileReference] = []
+        async for ref in connector.enumerate():
+            file_refs.append(ref)
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            for ref in file_refs:
+                yield ref
+
+        # Mock httpx.AsyncClient to return mismatched embedding count
+        class MockAsyncClientMismatch:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def post(self, url: str, json: dict, headers: dict):
+                mock_response = MagicMock()
+                if "/embed" in url:
+                    # Always return exactly 1 embedding regardless of how many texts requested
+                    # This ensures a mismatch when multiple texts are sent
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"embeddings": [[0.1] * 384]}
+                elif "/upsert" in url:
+                    num_points = len(json.get("points", []))
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"upserted": num_points}
+                return mock_response
+
+        with (
+            patch("httpx.AsyncClient", MockAsyncClientMismatch),
+            patch("shared.pipeline.executor._get_internal_api_key", return_value="test-api-key"),
+            patch("shared.config.settings.SEARCH_API_URL", "http://test-vecpipe:8000"),
+        ):
+            executor = PipelineExecutor(
+                dag=full_mode_dag,
+                collection_id="test-collection-uuid",
+                session=mock_session_for_full_mode,
+                connector=connector,
+                mode=ExecutionMode.FULL,
+                vector_store_name="test_qdrant_collection",
+                embedding_model="test-model",
+            )
+            executor._doc_repo = mock_doc_repo
+
+            result = await executor.execute(file_iterator())
+
+        # The file should fail due to embedding count mismatch
+        assert result.files_failed == 1
+        assert result.files_succeeded == 0
+
+        # Document should be marked as FAILED
+        mock_doc_repo.update_status.assert_called()
+        update_call = mock_doc_repo.update_status.call_args
+        assert update_call.args[1] == DocumentStatus.FAILED
+
+    @pytest.mark.asyncio()
+    async def test_partial_upsert_batch_failure(
+        self,
+        full_mode_dag: PipelineDAG,
+        temp_docs_dir: Path,
+        mock_session_for_full_mode: AsyncMock,
+        mock_doc_repo: AsyncMock,
+    ) -> None:
+        """Test executor handles batch failure during upsert when processing multiple files.
+
+        This test processes two files:
+        - First file's upsert succeeds
+        - Second file's upsert fails
+
+        The executor should correctly mark each document based on its own
+        upsert outcome.
+        """
+        from unittest.mock import patch
+
+        # Create two files
+        (temp_docs_dir / "file1.txt").write_text("First document content for testing.")
+        (temp_docs_dir / "file2.txt").write_text("Second document content for testing.")
+
+        connector = LocalFileConnector(
+            {
+                "path": str(temp_docs_dir),
+                "include_patterns": ["file1.txt", "file2.txt"],
+            }
+        )
+        await connector.authenticate()
+
+        file_refs: list[FileReference] = []
+        async for ref in connector.enumerate():
+            file_refs.append(ref)
+        # Sort to ensure consistent ordering
+        file_refs.sort(key=lambda r: r.uri)
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            for ref in file_refs:
+                yield ref
+
+        # Track upsert calls to fail on second file
+        upsert_call_count = [0]
+
+        class MockAsyncClientPartialFail:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def post(self, url: str, json: dict, headers: dict):
+                mock_response = MagicMock()
+                if "/embed" in url:
+                    num_texts = len(json.get("texts", []))
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"embeddings": [[0.1] * 384 for _ in range(num_texts)]}
+                elif "/upsert" in url:
+                    upsert_call_count[0] += 1
+                    if upsert_call_count[0] > 1:
+                        # Fail on second file's upsert
+                        mock_response.status_code = 503
+                        mock_response.text = "Qdrant unavailable"
+                    else:
+                        num_points = len(json.get("points", []))
+                        mock_response.status_code = 200
+                        mock_response.json.return_value = {"upserted": num_points}
+                return mock_response
+
+        with (
+            patch("httpx.AsyncClient", MockAsyncClientPartialFail),
+            patch("shared.pipeline.executor._get_internal_api_key", return_value="test-api-key"),
+            patch("shared.config.settings.SEARCH_API_URL", "http://test-vecpipe:8000"),
+        ):
+            executor = PipelineExecutor(
+                dag=full_mode_dag,
+                collection_id="test-collection-uuid",
+                session=mock_session_for_full_mode,
+                connector=connector,
+                mode=ExecutionMode.FULL,
+                vector_store_name="test_qdrant_collection",
+                embedding_model="test-model",
+            )
+            executor._doc_repo = mock_doc_repo
+
+            result = await executor.execute(file_iterator())
+
+        # One file should succeed, one should fail
+        assert result.files_processed == 2
+        assert result.files_failed == 1
+        assert result.files_succeeded == 1
+
+        # Document should be marked as FAILED for the second file
+        assert mock_doc_repo.update_status.call_count >= 2

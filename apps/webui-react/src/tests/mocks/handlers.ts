@@ -1839,4 +1839,90 @@ export const handlers = [
       created_at: now,
     })
   }),
+
+  // =============================================================================
+  // Pipeline Preview (v2)
+  // =============================================================================
+
+  http.post('*/api/v2/pipeline/available-predicate-fields', async () => {
+    // Return mock predicate fields based on source/detected/parsed categories
+    // NOTE: Source fields are top-level FileReference attributes
+    return HttpResponse.json({
+      fields: [
+        // Source metadata (from connector) - top-level FileReference attributes
+        { value: 'mime_type', label: 'MIME Type', category: 'source' },
+        { value: 'extension', label: 'Extension', category: 'source' },
+        { value: 'source_type', label: 'Source Type', category: 'source' },
+        { value: 'content_type', label: 'Content Type', category: 'source' },
+        // Detected metadata (from pre-routing sniff)
+        { value: 'metadata.detected.is_scanned_pdf', label: 'Is Scanned PDF', category: 'detected' },
+        { value: 'metadata.detected.is_code', label: 'Is Code', category: 'detected' },
+        { value: 'metadata.detected.is_structured_data', label: 'Is Structured Data', category: 'detected' },
+        // Parsed metadata (for mid-pipeline routing)
+        { value: 'metadata.parsed.detected_language', label: 'Detected Language', category: 'parsed' },
+        { value: 'metadata.parsed.approx_token_count', label: 'Token Count', category: 'parsed' },
+        { value: 'metadata.parsed.has_tables', label: 'Has Tables', category: 'parsed' },
+        { value: 'metadata.parsed.has_images', label: 'Has Images', category: 'parsed' },
+        { value: 'metadata.parsed.has_code_blocks', label: 'Has Code Blocks', category: 'parsed' },
+        { value: 'metadata.parsed.page_count', label: 'Page Count', category: 'parsed' },
+      ],
+    })
+  }),
+
+  http.post('*/api/v2/pipeline/preview-route', async ({ request }) => {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const dagString = formData.get('dag') as string | null
+    const includeParserMetadata = formData.get('include_parser_metadata') === 'true'
+
+    if (!file || !dagString) {
+      return HttpResponse.json(
+        { detail: 'file and dag are required' },
+        { status: 422 }
+      )
+    }
+
+    // Parse the DAG to get nodes for path computation
+    let dag: { nodes?: Array<{ id: string }> }
+    try {
+      dag = JSON.parse(dagString)
+    } catch {
+      return HttpResponse.json(
+        { detail: 'Invalid DAG JSON' },
+        { status: 422 }
+      )
+    }
+
+    // Build a basic path from _source through the nodes
+    const path = ['_source', ...(dag.nodes?.map(n => n.id) ?? [])]
+
+    return HttpResponse.json({
+      file_info: {
+        filename: file.name,
+        extension: file.name.includes('.') ? '.' + file.name.split('.').pop() : null,
+        mime_type: file.type || 'application/octet-stream',
+        size_bytes: file.size,
+        uri: `file:///${file.name}`,
+      },
+      sniff_result: {
+        is_code: false,
+        is_structured_data: false,
+        structured_format: null,
+        is_scanned_pdf: null,
+      },
+      routing_stages: [
+        {
+          stage: 'entry',
+          from_node: '_source',
+          evaluated_edges: [],
+          selected_node: path[1] ?? null,
+          metadata_snapshot: {},
+        },
+      ],
+      path,
+      parsed_metadata: includeParserMetadata ? { mock_field: 'mock_value' } : null,
+      total_duration_ms: Math.floor(Math.random() * 100) + 50,
+      warnings: [],
+    })
+  }),
 ]

@@ -13,10 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.pipeline.types import FileReference
-from webui.services.agent.subagents.base import (
-    Message,
-    Uncertainty,
-)
+from webui.services.agent.subagents.base import Message, Uncertainty
 from webui.services.agent.subagents.source_analyzer import (
     ContentCharacteristics,
     FileTypeStats,
@@ -40,7 +37,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="application/pdf",
             size_bytes=100000,
             change_hint="mtime:1234567890,size:100000",
-            source_metadata={"local_path": "/docs/paper1.pdf"},
+            metadata={"source": {"local_path": "/docs/paper1.pdf"}},
         ),
         FileReference(
             uri="file:///docs/notes.md",
@@ -51,7 +48,7 @@ def sample_file_refs() -> list[FileReference]:
             mime_type="text/markdown",
             size_bytes=5000,
             change_hint="mtime:1234567892,size:5000",
-            source_metadata={"local_path": "/docs/notes.md"},
+            metadata={"source": {"local_path": "/docs/notes.md"}},
         ),
     ]
 
