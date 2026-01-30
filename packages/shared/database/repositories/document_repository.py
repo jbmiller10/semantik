@@ -1255,14 +1255,26 @@ class DocumentRepository:
 
         Returns:
             Count of failed documents
+
+        Raises:
+            DatabaseOperationError: If the count query fails
         """
-        result = await self.session.execute(
-            select(func.count(Document.id)).where(
-                Document.collection_id == collection_id,
-                Document.status == DocumentStatus.FAILED,
+        try:
+            result = await self.session.execute(
+                select(func.count(Document.id)).where(
+                    Document.collection_id == collection_id,
+                    Document.status == DocumentStatus.FAILED,
+                )
             )
-        )
-        return result.scalar() or 0
+            return result.scalar() or 0
+        except Exception as e:
+            logger.error(
+                "Failed to count failed documents for collection %s: %s",
+                collection_id,
+                e,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("count_failed", "documents", str(e)) from e
 
     async def count_failed_by_collections(self, collection_ids: list[str]) -> dict[str, int]:
         """Count documents with FAILED status for multiple collections.
@@ -1272,16 +1284,28 @@ class DocumentRepository:
 
         Returns:
             Dict mapping collection_id to failed count
+
+        Raises:
+            DatabaseOperationError: If the count query fails
         """
         if not collection_ids:
             return {}
 
-        result = await self.session.execute(
-            select(Document.collection_id, func.count(Document.id))
-            .where(
-                Document.collection_id.in_(collection_ids),
-                Document.status == DocumentStatus.FAILED,
+        try:
+            result = await self.session.execute(
+                select(Document.collection_id, func.count(Document.id))
+                .where(
+                    Document.collection_id.in_(collection_ids),
+                    Document.status == DocumentStatus.FAILED,
+                )
+                .group_by(Document.collection_id)
             )
-            .group_by(Document.collection_id)
-        )
-        return {row[0]: row[1] for row in result.all()}
+            return {row[0]: row[1] for row in result.all()}
+        except Exception as e:
+            logger.error(
+                "Failed to count failed documents for %d collections: %s",
+                len(collection_ids),
+                e,
+                exc_info=True,
+            )
+            raise DatabaseOperationError("count_failed_batch", "documents", str(e)) from e

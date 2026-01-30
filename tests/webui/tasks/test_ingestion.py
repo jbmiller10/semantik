@@ -12,15 +12,17 @@ This test suite covers:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from shared.dtos.ingestion import IngestedDocument
 from webui.tasks import ingestion as ingestion_module
+from webui.tasks.utils import CeleryTaskWithOperationUpdates
 
 # Valid 64-character hex hash for test documents
 _VALID_HASH = "a" * 64
@@ -37,8 +39,6 @@ def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDoc
     )
 
 
-if TYPE_CHECKING:
-    from collections.abc import Generator
 
 # ---------------------------------------------------------------------------
 # Test Fixtures and Helpers
@@ -96,29 +96,35 @@ def make_mock_collection(
     return mock_col
 
 
-class MockUpdater:
-    """Mock CeleryTaskWithOperationUpdates for testing."""
+class MockUpdater(CeleryTaskWithOperationUpdates):
+    """Mock CeleryTaskWithOperationUpdates for testing.
+
+    Overrides Redis-dependent methods to avoid external dependencies in tests.
+    """
 
     def __init__(self, operation_id: str = "op-123"):
+        # Don't call super().__init__ to avoid settings dependency
         self.operation_id = operation_id
         self.updates: list[tuple[str, dict]] = []
         self.user_id: int | None = None
+        self.collection_id: str | None = None
+        self._redis_client = None
 
-    def set_user_id(self, user_id: int) -> None:
-        self.user_id = user_id
+    async def send_update(self, update_type: str, data: dict) -> None:
+        self.updates.append((update_type, data))
 
-    async def send_update(self, event_type: str, data: dict) -> None:
-        self.updates.append((event_type, data))
-
-    async def __aenter__(self):
+    async def __aenter__(self) -> "MockUpdater":
         return self
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: Any) -> None:
+        pass
+
+    def close(self) -> None:
         pass
 
 
 @asynccontextmanager
-async def mock_session_context(mock_session) -> Generator[Any, None, None]:
+async def mock_session_context(mock_session) -> AsyncGenerator[Any, None]:
     """Create an async context manager for mock session."""
     yield mock_session
 
@@ -1432,8 +1438,8 @@ class TestProcessAppendOperationImplAdditional:
 
         # Create async generator for load_documents
         async def empty_async_gen():
-            return
-            yield  # Make it an async generator
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
@@ -1487,8 +1493,8 @@ class TestProcessAppendOperationImplAdditional:
 
         # Create async generator that yields nothing
         async def empty_async_gen():
-            return
-            yield  # Make it an async generator
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
@@ -2078,6 +2084,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify fallback was used
+                assert captured_collection is not None
                 assert captured_collection["vector_store_name"] == "fallback_qdrant_id"
 
         finally:
@@ -2431,8 +2438,8 @@ class TestAppendTransactionHandling:
         mock_connector.authenticate = AsyncMock(return_value=True)
 
         async def empty_load_documents():
-            return
-            yield  # Make it an async generator that yields nothing
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector.load_documents = empty_load_documents
 
@@ -2602,8 +2609,8 @@ class TestAppendTransactionHandling:
         mock_connector.authenticate = AsyncMock(return_value=True)
 
         async def empty_gen():
-            return
-            yield
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector.load_documents = empty_gen
 
@@ -2836,6 +2843,7 @@ class TestSparseIndexingHelpers:
             )
 
         upsert.assert_awaited_once()
+        assert upsert.await_args is not None
         _args = upsert.await_args.args
         assert _args[0] == "dense_sparse_bm25"
         qdrant_vectors = _args[1]
@@ -2843,6 +2851,7 @@ class TestSparseIndexingHelpers:
         assert {v["metadata"]["original_chunk_id"] for v in qdrant_vectors} == {"orig-1_0", "orig-2_0"}
 
         store.assert_awaited_once()
+        assert store.await_args is not None
         stored_cfg = store.await_args.args[2]
         assert stored_cfg["document_count"] == 7
         assert stored_cfg["last_indexed_at"] is not None
