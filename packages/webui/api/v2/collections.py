@@ -19,8 +19,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models import Collection
+from shared.database.repositories.document_repository import DocumentRepository
 from webui.api.schemas import (
     AddSourceRequest,
     CollectionCreate,
@@ -39,7 +41,7 @@ from webui.api.schemas import (
     SyncRunListResponse,
 )
 from webui.auth import get_current_user
-from webui.dependencies import get_collection_for_user
+from webui.dependencies import get_collection_for_user, get_db
 from webui.rate_limiter import limiter
 from webui.services.collection_service import CollectionService
 from webui.services.factory import get_collection_service
@@ -177,8 +179,15 @@ async def list_collections(
         include_public=include_public,
     )
 
+    # Get error counts for all collections
+    collection_ids = [c.id for c in collections]
+    error_counts = await service.document_repo.count_failed_by_collections(collection_ids)
+
     # Convert ORM objects to response models
-    collection_responses = [CollectionResponse.from_collection(col) for col in collections]
+    collection_responses = [
+        CollectionResponse.from_collection(col, error_count=error_counts.get(col.id, 0))
+        for col in collections
+    ]
 
     return CollectionListResponse(
         collections=collection_responses,
@@ -198,12 +207,15 @@ async def list_collections(
 )
 async def get_collection(
     collection: Collection = Depends(get_collection_for_user),
+    db: AsyncSession = Depends(get_db),
 ) -> CollectionResponse:
     """Get detailed information about a specific collection.
 
     Returns full details about a collection including its configuration and statistics.
     """
-    return CollectionResponse.from_collection(collection)
+    doc_repo = DocumentRepository(db)
+    error_count = await doc_repo.count_failed_by_collection(collection.id)
+    return CollectionResponse.from_collection(collection, error_count=error_count)
 
 
 @router.put(
