@@ -810,7 +810,9 @@ class TestParallelEdgeRouting:
         assert set(parser_stage.selected_nodes) == {"chunker_a", "chunker_b"}
 
     @pytest.mark.asyncio()
-    async def test_preview_route_multi_entry_parsers_use_path_local_metadata(self, preview_service: PipelinePreviewService) -> None:
+    async def test_preview_route_multi_entry_parsers_use_path_local_metadata(
+        self, preview_service: PipelinePreviewService
+    ) -> None:
         """Ensure per-path parser metadata is used for routing in multi-entry DAGs."""
         dag = {
             "id": "test-dag-multi-entry-multi-parser",
@@ -823,8 +825,20 @@ class TestParallelEdgeRouting:
                 {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
             ],
             "edges": [
-                {"from_node": "_source", "to_node": "parser_a", "when": {"extension": ".txt"}, "parallel": True, "path_name": "path_a"},
-                {"from_node": "_source", "to_node": "parser_b", "when": {"extension": ".txt"}, "parallel": True, "path_name": "path_b"},
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_a",
+                    "when": {"extension": ".txt"},
+                    "parallel": True,
+                    "path_name": "path_a",
+                },
+                {
+                    "from_node": "_source",
+                    "to_node": "parser_b",
+                    "when": {"extension": ".txt"},
+                    "parallel": True,
+                    "path_name": "path_b",
+                },
                 {"from_node": "parser_a", "to_node": "chunker_a", "when": {"metadata.parsed.detected_language": "a"}},
                 {"from_node": "parser_b", "to_node": "chunker_b", "when": {"metadata.parsed.detected_language": "b"}},
                 {"from_node": "chunker_a", "to_node": "embedder1", "when": None},

@@ -221,7 +221,9 @@ class PipelinePreviewService:
                         for edge_result in selected_edges[1:]:
                             branched_path = current_path + [edge_result.to_node]
                             branched_name = edge_result.path_name or edge_result.to_node
-                            stack.append((branched_path, edge_result.to_node, branched_name, False, deepcopy(path_file_ref)))
+                            stack.append(
+                                (branched_path, edge_result.to_node, branched_name, False, deepcopy(path_file_ref))
+                            )
 
                         first_edge = selected_edges[0]
                         current_path.append(first_edge.to_node)

@@ -890,13 +890,10 @@ class TestPipelineExecutorFullModeWithMockedVecPipe:
             async def post(self, url: str, json: dict, headers: dict):
                 mock_response = MagicMock()
                 if "/embed" in url:
-                    num_texts = len(json.get("texts", []))
-                    # Always return exactly 1 embedding regardless of how many requested
-                    # This ensures a mismatch when num_texts > 1
+                    # Always return exactly 1 embedding regardless of how many texts requested
+                    # This ensures a mismatch when multiple texts are sent
                     mock_response.status_code = 200
-                    mock_response.json.return_value = {
-                        "embeddings": [[0.1] * 384]
-                    }
+                    mock_response.json.return_value = {"embeddings": [[0.1] * 384]}
                 elif "/upsert" in url:
                     num_points = len(json.get("points", []))
                     mock_response.status_code = 200
@@ -989,9 +986,7 @@ class TestPipelineExecutorFullModeWithMockedVecPipe:
                 if "/embed" in url:
                     num_texts = len(json.get("texts", []))
                     mock_response.status_code = 200
-                    mock_response.json.return_value = {
-                        "embeddings": [[0.1] * 384 for _ in range(num_texts)]
-                    }
+                    mock_response.json.return_value = {"embeddings": [[0.1] * 384 for _ in range(num_texts)]}
                 elif "/upsert" in url:
                     upsert_call_count[0] += 1
                     if upsert_call_count[0] > 1:
