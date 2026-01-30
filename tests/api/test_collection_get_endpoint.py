@@ -64,9 +64,7 @@ class TestCollectionGetEndpoint:
         mock_doc_repo.count_failed_by_collection = AsyncMock(return_value=0)
 
         try:
-            with patch(
-                "webui.api.v2.collections.DocumentRepository", return_value=mock_doc_repo
-            ):
+            with patch("webui.api.v2.collections.DocumentRepository", return_value=mock_doc_repo):
                 response = test_client.get(f"/api/v2/collections/{collection_uuid}")
                 assert response.status_code == status.HTTP_200_OK
                 payload = response.json()
