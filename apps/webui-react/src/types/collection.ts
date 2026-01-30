@@ -2,8 +2,7 @@ export type CollectionStatus =
   | 'pending'
   | 'ready'
   | 'processing'
-  | 'error'
-  | 'degraded';
+  | 'error';
 
 export type SyncMode = 'one_time' | 'continuous';
 
@@ -39,6 +38,7 @@ export interface Collection {
   is_public: boolean;
   status: CollectionStatus;
   status_message?: string;
+  error_count: number;  // Count of documents with failed status
   metadata?: Record<string, unknown>;
   document_count: number;
   vector_count: number;
