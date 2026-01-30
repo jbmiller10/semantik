@@ -105,6 +105,10 @@ async def create_collection(
     if create_request.sparse_index_config is not None:
         cfg["sparse_index_config"] = create_request.sparse_index_config.model_dump()
 
+    # Custom pipeline configuration (DAG)
+    if create_request.pipeline_config is not None:
+        cfg["pipeline_config"] = create_request.pipeline_config
+
     collection, operation = await service.create_collection(
         user_id=int(current_user["id"]),
         name=create_request.name,
@@ -179,9 +183,13 @@ async def list_collections(
         include_public=include_public,
     )
 
-    # Get error counts for all collections
+    # Get error counts for all collections (graceful degradation if query fails)
     collection_ids = [c.id for c in collections]
-    error_counts = await service.document_repo.count_failed_by_collections(collection_ids)
+    try:
+        error_counts = await service.document_repo.count_failed_by_collections(collection_ids)
+    except Exception as e:
+        logger.warning("Failed to fetch error counts for collections: %s", e)
+        error_counts = {}
 
     # Convert ORM objects to response models
     collection_responses = [
@@ -213,7 +221,11 @@ async def get_collection(
     Returns full details about a collection including its configuration and statistics.
     """
     doc_repo = DocumentRepository(db)
-    error_count = await doc_repo.count_failed_by_collection(collection.id)
+    try:
+        error_count = await doc_repo.count_failed_by_collection(collection.id)
+    except Exception as e:
+        logger.warning("Failed to fetch error count for collection %s: %s", collection.id, e)
+        error_count = 0
     return CollectionResponse.from_collection(collection, error_count=error_count)
 
 
@@ -265,7 +277,14 @@ async def update_collection(
         updates=updates,
     )
 
-    return CollectionResponse.from_collection(updated_collection)
+    # Fetch error_count with graceful degradation
+    try:
+        error_count = await service.document_repo.count_failed_by_collection(updated_collection.id)
+    except Exception as e:
+        logger.warning("Failed to fetch error count for collection %s: %s", updated_collection.id, e)
+        error_count = 0
+
+    return CollectionResponse.from_collection(updated_collection, error_count=error_count)
 
 
 @router.delete(
@@ -630,7 +649,14 @@ async def pause_collection_sync(
         user_id=int(current_user["id"]),
     )
 
-    return CollectionResponse.from_collection(collection)
+    # Fetch error_count with graceful degradation
+    try:
+        error_count = await service.document_repo.count_failed_by_collection(collection.id)
+    except Exception as e:
+        logger.warning("Failed to fetch error count for collection %s: %s", collection.id, e)
+        error_count = 0
+
+    return CollectionResponse.from_collection(collection, error_count=error_count)
 
 
 @router.post(
@@ -657,7 +683,14 @@ async def resume_collection_sync(
         user_id=int(current_user["id"]),
     )
 
-    return CollectionResponse.from_collection(collection)
+    # Fetch error_count with graceful degradation
+    try:
+        error_count = await service.document_repo.count_failed_by_collection(collection.id)
+    except Exception as e:
+        logger.warning("Failed to fetch error count for collection %s: %s", collection.id, e)
+        error_count = 0
+
+    return CollectionResponse.from_collection(collection, error_count=error_count)
 
 
 @router.get(

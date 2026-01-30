@@ -712,7 +712,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -744,7 +744,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = len(chunks)
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -757,7 +757,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -777,7 +777,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             try:
                 doc.status = DocumentStatus.FAILED
             except Exception as status_exc:
-                logger.warning(
+                logger.error(
                     "Failed to mark document %s (%s) as failed: %s",
                     doc_id,
                     doc_path,

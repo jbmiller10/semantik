@@ -225,6 +225,8 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
         chunking_config: (chunkerNode?.config || {}) as Record<string, string | number | boolean>,
         sync_mode: syncMode,
         sync_interval_minutes: syncMode === 'continuous' ? syncIntervalMinutes : undefined,
+        // Pass full pipeline DAG for custom routing configuration
+        pipeline_config: dag as unknown as Record<string, unknown>,
       });
 
       // Add source if configured

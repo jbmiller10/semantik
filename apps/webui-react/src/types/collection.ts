@@ -108,6 +108,8 @@ export interface CreateCollectionRequest {
   sync_interval_minutes?: number; // Required for continuous mode, minimum 15
   // Sparse indexing configuration
   sparse_index_config?: SparseIndexConfig;
+  // Custom pipeline configuration (DAG)
+  pipeline_config?: Record<string, unknown>; // Full pipeline DAG with nodes and edges
 }
 
 export interface UpdateCollectionRequest {

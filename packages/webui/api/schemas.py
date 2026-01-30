@@ -149,6 +149,12 @@ class CollectionCreate(CollectionBase):
         description="Optional sparse indexing configuration (BM25/SPLADE) for hybrid search",
     )
 
+    # Custom pipeline configuration (DAG)
+    pipeline_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Custom pipeline DAG with nodes and edges for document processing routing",
+    )
+
     @model_validator(mode="after")
     def validate_continuous_requires_interval(self) -> "CollectionCreate":
         """Validate that continuous sync has an interval."""

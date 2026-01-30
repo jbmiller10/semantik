@@ -289,6 +289,79 @@ class TestCreateCollection:
             persist_originals=False,
         )
 
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_custom_pipeline_config(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test that custom pipeline_config is used when provided."""
+        mock_collection_repo.create.return_value = mock_collection
+        mock_operation_repo.create.return_value = mock_operation
+
+        # Custom pipeline with specific routing (excludes .png via parallel predicate)
+        # Must have a catch-all edge for validation to pass
+        custom_pipeline = {
+            "id": "custom-pipeline",
+            "version": "1",
+            "nodes": [
+                {"id": "unstructured_parser", "type": "parser", "plugin_id": "unstructured", "config": {}},
+                {"id": "text_parser", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "chunker1", "type": "chunker", "plugin_id": "semantic", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                # PDF files go to unstructured parser
+                {"from_node": "_source", "to_node": "unstructured_parser", "when": {"mime_type": "application/pdf"}},
+                # Everything else (catch-all) goes to text parser - this is required
+                {"from_node": "_source", "to_node": "text_parser", "when": None},
+                {"from_node": "unstructured_parser", "to_node": "chunker1", "when": None},
+                {"from_node": "text_parser", "to_node": "chunker1", "when": None},
+                {"from_node": "chunker1", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+        with patch("webui.celery_app.celery_app.send_task"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "pipeline_config": custom_pipeline,
+                },
+            )
+
+        # Verify custom pipeline_config was used
+        mock_collection_repo.create.assert_called_once()
+        call_kwargs = mock_collection_repo.create.call_args.kwargs
+        assert call_kwargs["pipeline_config"] == custom_pipeline
+
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_invalid_pipeline_config(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+    ) -> None:
+        """Test that invalid pipeline_config raises an error."""
+        invalid_pipeline = {
+            "id": "invalid",
+            "version": "1",
+            "nodes": [],  # Empty nodes is invalid
+            "edges": [],
+        }
+
+        with pytest.raises(ValueError, match="Invalid pipeline_config"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "pipeline_config": invalid_pipeline,
+                },
+            )
+
 
 class TestAddSource:
     """Test add_source method."""
