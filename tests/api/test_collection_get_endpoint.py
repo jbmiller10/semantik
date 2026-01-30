@@ -1,7 +1,7 @@
 """API endpoint tests for collection retrieval."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import status
@@ -59,12 +59,21 @@ class TestCollectionGetEndpoint:
 
         app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user
 
-        try:
-            response = test_client.get(f"/api/v2/collections/{collection_uuid}")
-            assert response.status_code == status.HTTP_200_OK
-            payload = response.json()
+        # Mock DocumentRepository to return error_count
+        mock_doc_repo = MagicMock()
+        mock_doc_repo.count_failed_by_collection = AsyncMock(return_value=0)
 
-            assert "total_size_bytes" in payload
-            assert payload["total_size_bytes"] == total_size_bytes
+        try:
+            with patch(
+                "webui.api.v2.collections.DocumentRepository", return_value=mock_doc_repo
+            ):
+                response = test_client.get(f"/api/v2/collections/{collection_uuid}")
+                assert response.status_code == status.HTTP_200_OK
+                payload = response.json()
+
+                assert "total_size_bytes" in payload
+                assert payload["total_size_bytes"] == total_size_bytes
+                assert "error_count" in payload
+                assert payload["error_count"] == 0
         finally:
             del app.dependency_overrides[get_collection_for_user]

@@ -185,8 +185,7 @@ async def list_collections(
 
     # Convert ORM objects to response models
     collection_responses = [
-        CollectionResponse.from_collection(col, error_count=error_counts.get(col.id, 0))
-        for col in collections
+        CollectionResponse.from_collection(col, error_count=error_counts.get(col.id, 0)) for col in collections
     ]
 
     return CollectionListResponse(

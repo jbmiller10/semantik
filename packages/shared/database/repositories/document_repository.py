@@ -244,13 +244,17 @@ class DocumentRepository:
             total = await self.session.scalar(count_query)
 
             # Get paginated results - sort failed documents first, then by created_at desc
-            query = query.order_by(
-                case(
-                    (Document.status == DocumentStatus.FAILED, 0),
-                    else_=1,
-                ),
-                desc(Document.created_at),
-            ).offset(offset).limit(limit)
+            query = (
+                query.order_by(
+                    case(
+                        (Document.status == DocumentStatus.FAILED, 0),
+                        else_=1,
+                    ),
+                    desc(Document.created_at),
+                )
+                .offset(offset)
+                .limit(limit)
+            )
             result = await self.session.execute(query)
             documents = result.scalars().all()
 

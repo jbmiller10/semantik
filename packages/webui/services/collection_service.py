@@ -1307,8 +1307,7 @@ class CollectionService:
         # Validate collection state - must be READY
         if collection.status != CollectionStatus.READY:
             raise InvalidStateError(
-                f"Cannot sync collection in {collection.status} state. "
-                f"Collection must be in READY state."
+                f"Cannot sync collection in {collection.status} state. " f"Collection must be in READY state."
             )
 
         # Check for active operations (collection-level gating)
