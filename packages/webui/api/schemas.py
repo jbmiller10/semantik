@@ -273,8 +273,9 @@ class CollectionResponse(CollectionBase):
     document_count: int | None = 0
     vector_count: int | None = 0
     total_size_bytes: int | None = 0
-    status: str  # Collection status: pending, ready, processing, error, degraded
+    status: str  # Collection status: pending, ready, processing, error
     status_message: str | None = None
+    error_count: int = 0  # Count of documents with failed status
     initial_operation_id: str | None = None  # ID of the initial INDEX operation
 
     # Sync policy fields
@@ -292,8 +293,13 @@ class CollectionResponse(CollectionBase):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_collection(cls, collection: Any) -> "CollectionResponse":
-        """Create response from ORM Collection object."""
+    def from_collection(cls, collection: Any, error_count: int = 0) -> "CollectionResponse":
+        """Create response from ORM Collection object.
+
+        Args:
+            collection: ORM Collection object
+            error_count: Number of documents with failed status (computed at query time)
+        """
         # Safely coerce new chunking fields to expected types or None to avoid
         # MagicMock leakage in tests where attributes exist but aren't set.
         raw_strategy = getattr(collection, "chunking_strategy", None)
@@ -326,6 +332,7 @@ class CollectionResponse(CollectionBase):
             total_size_bytes=getattr(collection, "total_size_bytes", 0) or 0,
             status=collection.status.value if hasattr(collection.status, "value") else collection.status,
             status_message=getattr(collection, "status_message", None),
+            error_count=error_count,
             # Sync policy fields
             sync_mode=getattr(collection, "sync_mode", "one_time") or "one_time",
             sync_interval_minutes=getattr(collection, "sync_interval_minutes", None),
