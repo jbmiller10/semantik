@@ -808,3 +808,46 @@ class TestParallelEdgeRouting:
         parser_stage = next(s for s in result.routing_stages if s.from_node == "parser1")
         assert parser_stage.selected_nodes is not None
         assert set(parser_stage.selected_nodes) == {"chunker_a", "chunker_b"}
+
+    @pytest.mark.asyncio()
+    async def test_preview_route_multi_entry_parsers_use_path_local_metadata(self, preview_service: PipelinePreviewService) -> None:
+        """Ensure per-path parser metadata is used for routing in multi-entry DAGs."""
+        dag = {
+            "id": "test-dag-multi-entry-multi-parser",
+            "version": "1.0",
+            "nodes": [
+                {"id": "parser_a", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "parser_b", "type": "parser", "plugin_id": "text", "config": {}},
+                {"id": "chunker_a", "type": "chunker", "plugin_id": "recursive", "config": {}},
+                {"id": "chunker_b", "type": "chunker", "plugin_id": "recursive", "config": {}},
+                {"id": "embedder1", "type": "embedder", "plugin_id": "dense_local", "config": {}},
+            ],
+            "edges": [
+                {"from_node": "_source", "to_node": "parser_a", "when": {"extension": ".txt"}, "parallel": True, "path_name": "path_a"},
+                {"from_node": "_source", "to_node": "parser_b", "when": {"extension": ".txt"}, "parallel": True, "path_name": "path_b"},
+                {"from_node": "parser_a", "to_node": "chunker_a", "when": {"metadata.parsed.detected_language": "a"}},
+                {"from_node": "parser_b", "to_node": "chunker_b", "when": {"metadata.parsed.detected_language": "b"}},
+                {"from_node": "chunker_a", "to_node": "embedder1", "when": None},
+                {"from_node": "chunker_b", "to_node": "embedder1", "when": None},
+            ],
+        }
+
+        content = b"Test content"
+        filename = "test.txt"
+
+        def parser_side_effect(node, _content, _file_ref):
+            if node.id == "parser_a":
+                return {"detected_language": "a"}
+            if node.id == "parser_b":
+                return {"detected_language": "b"}
+            raise AssertionError(f"Unexpected parser node: {node.id}")
+
+        with patch.object(preview_service, "_run_parser", side_effect=parser_side_effect) as run_parser:
+            result = await preview_service.preview_route(content, filename, dag, include_parser_metadata=True)
+
+        assert run_parser.call_count == 2, "Each entry parser should run to support path-correct routing"
+        assert result.paths is not None
+
+        paths_by_name = {p.path_name: p.nodes for p in result.paths}
+        assert paths_by_name["path_a"] == ["_source", "parser_a", "chunker_a", "embedder1"]
+        assert paths_by_name["path_b"] == ["_source", "parser_b", "chunker_b", "embedder1"]

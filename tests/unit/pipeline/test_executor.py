@@ -280,6 +280,57 @@ class TestPipelineExecutorExecute:
         assert result.stage_timings["loader"] > 0
 
     @pytest.mark.asyncio()
+    async def test_execute_aggregates_stage_timings_across_files(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+        temp_file: Path,
+        mock_parser: MagicMock,
+        mock_chunks: list[MagicMock],
+    ) -> None:
+        """Test that stage timings aggregate across multi-file runs (not last-file only)."""
+        mock_strategy = MagicMock()
+        mock_strategy.chunk.return_value = mock_chunks
+
+        files = [
+            FileReference(
+                uri=f"file:///test{i}.txt",
+                source_type="directory",
+                content_type="document",
+                size_bytes=100,
+                metadata={"source": {"local_path": str(temp_file)}},
+            )
+            for i in range(2)
+        ]
+
+        async def file_iterator() -> AsyncIterator[FileReference]:
+            for f in files:
+                yield f
+
+        def fake_record_timing(self: PipelineExecutor, stage_key: str, start_time: float) -> None:  # noqa: ARG001
+            self._stage_timings[stage_key] = self._stage_timings.get(stage_key, 0.0) + 1.0
+
+        with (
+            patch("shared.plugins.plugin_registry.get", return_value=None),
+            patch("shared.pipeline.executor.get_parser", return_value=mock_parser),
+            patch(
+                "shared.pipeline.executor.UnifiedChunkingFactory.create_strategy",
+                return_value=mock_strategy,
+            ),
+            patch.object(PipelineExecutor, "_record_timing", new=fake_record_timing),
+        ):
+            executor = PipelineExecutor(
+                dag=valid_dag,
+                collection_id="test-collection",
+                session=mock_session,
+                mode=ExecutionMode.DRY_RUN,
+            )
+
+            result = await executor.execute(file_iterator())
+
+        assert result.stage_timings["loader"] == 2.0
+
+    @pytest.mark.asyncio()
     async def test_execute_dry_run_returns_samples(
         self,
         valid_dag: PipelineDAG,
@@ -1000,7 +1051,7 @@ class TestDatabaseErrorHandling:
             metadata={},
         )
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Database connection failed") as exc_info:
             await executor._should_skip(file_ref, "abc123hash")
 
         # Verify exception has stage context attributes

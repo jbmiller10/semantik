@@ -183,6 +183,8 @@ class PipelineExecutor:
 
         # Reset warnings for this execution run
         self._warnings = []
+        # Reset stage timing accumulator for this execution run (aggregated across files)
+        self._stage_timings.clear()
 
         # Counters
         files_processed = 0
@@ -372,9 +374,6 @@ class PipelineExecutor:
         Returns:
             Dict with processing results
         """
-        # Reset per-file timing accumulator to avoid cross-file contamination
-        self._stage_timings.clear()
-
         # 1. Load content
         stage_start = time.perf_counter()
         try:

@@ -11,6 +11,7 @@ import hashlib
 import logging
 import mimetypes
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +20,7 @@ from shared.pipeline.router import PipelineRouter
 from shared.pipeline.sniff import ContentSniffer, SniffConfig
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG
 from shared.pipeline.validation import SOURCE_NODE
+from shared.plugins.types.parser import ParserError
 from shared.text_processing.parsers.registry import get_parser
 from webui.api.v2.pipeline_schemas import (
     EdgeEvaluationResult,
@@ -99,6 +101,7 @@ class PipelinePreviewService:
         # 3. Run content sniffer
         sniff_result = await self._sniffer.sniff(file_content, file_ref)
         self._sniffer.enrich_file_ref(file_ref, sniff_result)
+        base_file_ref = deepcopy(file_ref)
 
         # Build sniff result dict
         sniff_dict = sniff_result.to_metadata_dict()
@@ -139,50 +142,68 @@ class PipelinePreviewService:
         # 5. Walk through the pipeline for each entry node
         all_paths: list[PathInfo] = []
         primary_path: list[str] = [SOURCE_NODE]
-        parsed_metadata: dict[str, Any] | None = None
-        ran_parser_for_primary = False
+        primary_parsed_metadata: dict[str, Any] | None = None
+        parser_cache: dict[str, dict[str, Any] | Exception] = {}
 
         for idx, entry_node_id in enumerate(entry_nodes):
             entry_path_name = path_names.get(entry_node_id, entry_node_id)
 
-            # Stack of (current_path, current_node_id, current_path_name, is_primary_path)
-            stack: list[tuple[list[str], str, str, bool]] = [
-                ([SOURCE_NODE, entry_node_id], entry_node_id, entry_path_name, idx == 0)
+            # Stack of (current_path, current_node_id, current_path_name, is_primary_path, file_ref_for_path)
+            stack: list[tuple[list[str], str, str, bool, FileReference]] = [
+                ([SOURCE_NODE, entry_node_id], entry_node_id, entry_path_name, idx == 0, deepcopy(base_file_ref))
             ]
 
             while stack:
-                current_path, current_node_id, current_path_name, is_primary_path = stack.pop()
+                current_path, current_node_id, current_path_name, is_primary_path, path_file_ref = stack.pop()
                 current_node = router.get_node(current_node_id)
 
                 while current_node is not None:
-                    # Handle parser stage (only for the primary path to avoid duplicate work)
-                    if (
-                        is_primary_path
-                        and not ran_parser_for_primary
-                        and current_node.type == NodeType.PARSER
-                        and include_parser_metadata
-                    ):
-                        ran_parser_for_primary = True
-                        try:
-                            parsed_metadata = self._run_parser(current_node, file_content, file_ref)
-                            # Enrich file_ref with parsed metadata for mid-pipeline routing
-                            self._enrich_parsed_metadata(file_ref, parsed_metadata)
-                        except Exception as e:
-                            parser_id = current_node.plugin_id
-                            fname = file_ref.filename or file_ref.uri
-                            error_type = type(e).__name__
+                    # Handle parser stage for the current path. Predicates may depend on
+                    # parsed metadata, so routing must be evaluated with path-correct state.
+                    if current_node.type == NodeType.PARSER and include_parser_metadata:
+                        cached = parser_cache.get(current_node.id)
+                        if cached is None:
+                            try:
+                                parsed = self._run_parser(current_node, file_content, base_file_ref)
+                                parser_cache[current_node.id] = parsed
+                                cached = parsed
+                            except ParserError as e:
+                                # Expected parser failure (format not supported, extraction failed, etc.)
+                                parser_cache[current_node.id] = e
+                                cached = e
+                            except Exception as e:
+                                # Unexpected error - likely a programming bug, log at error level
+                                logger.error(
+                                    "Unexpected error in parser %s during preview for %s: %s",
+                                    current_node.plugin_id,
+                                    base_file_ref.filename or base_file_ref.uri,
+                                    e,
+                                    exc_info=True,
+                                )
+                                parser_cache[current_node.id] = e
+                                cached = e
 
-                            warnings.append(f"Parser '{parser_id}' failed on '{fname}': {error_type}: {e}")
+                        if isinstance(cached, Exception):
+                            parser_id = current_node.plugin_id
+                            fname = base_file_ref.filename or base_file_ref.uri
+                            error_type = type(cached).__name__
+
+                            warnings.append(f"Parser '{parser_id}' failed on '{fname}': {error_type}: {cached}")
                             logger.warning(
                                 "Parser %s failed during preview for %s: %s",
                                 parser_id,
                                 fname,
-                                e,
+                                cached,
                                 exc_info=True,
                             )
+                        else:
+                            # Enrich path-local file_ref with parsed metadata for mid-pipeline routing
+                            self._enrich_parsed_metadata(path_file_ref, cached)
+                            if is_primary_path and primary_parsed_metadata is None:
+                                primary_parsed_metadata = cached
 
                     # Evaluate next routing stage (only record for primary path to avoid duplicates)
-                    next_stage = self._evaluate_next_routing(dag_obj, router, current_node, file_ref)
+                    next_stage = self._evaluate_next_routing(dag_obj, router, current_node, path_file_ref)
                     if next_stage is None:
                         break
 
@@ -200,7 +221,7 @@ class PipelinePreviewService:
                         for edge_result in selected_edges[1:]:
                             branched_path = current_path + [edge_result.to_node]
                             branched_name = edge_result.path_name or edge_result.to_node
-                            stack.append((branched_path, edge_result.to_node, branched_name, False))
+                            stack.append((branched_path, edge_result.to_node, branched_name, False, deepcopy(path_file_ref)))
 
                         first_edge = selected_edges[0]
                         current_path.append(first_edge.to_node)
@@ -222,12 +243,12 @@ class PipelinePreviewService:
         total_duration_ms = (time.perf_counter() - start_time) * 1000
 
         return RoutePreviewResponse(
-            file_info=self._build_file_info(file_ref),
+            file_info=self._build_file_info(base_file_ref),
             sniff_result=sniff_dict if sniff_dict else None,
             routing_stages=routing_stages,
             path=primary_path,
             paths=all_paths if len(all_paths) > 1 else None,
-            parsed_metadata=parsed_metadata,
+            parsed_metadata=primary_parsed_metadata,
             total_duration_ms=total_duration_ms,
             warnings=warnings,
         )
