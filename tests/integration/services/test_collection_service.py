@@ -588,7 +588,7 @@ class TestCollectionServiceIntegration:
         db_session,
         user_factory,
     ) -> None:
-        """remove_source should fail if collection is not in READY/DEGRADED."""
+        """remove_source should fail if collection is not in READY state."""
         owner = await user_factory()
         collection_dict, op_dict = await service.create_collection(
             user_id=owner.id,

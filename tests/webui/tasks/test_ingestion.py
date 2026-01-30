@@ -1248,8 +1248,8 @@ class TestHandleTaskFailureAsyncWithDatabase:
         assert call_args[0][1] == CollectionStatus.ERROR
 
     @pytest.mark.asyncio()
-    async def test_failure_handler_sets_collection_degraded_for_reindex(self):
-        """Test failure handler sets collection to DEGRADED for REINDEX operations."""
+    async def test_failure_handler_sets_collection_ready_for_reindex(self):
+        """Test failure handler sets collection to READY for REINDEX operations."""
         from shared.database import pg_connection_manager
         from shared.database.models import CollectionStatus, OperationType
 
@@ -1305,10 +1305,10 @@ class TestHandleTaskFailureAsyncWithDatabase:
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker  # type: ignore[attr-defined]
 
-        # Verify collection was set to DEGRADED for REINDEX failure
+        # Verify collection was set to READY for REINDEX failure
         mock_collection_repo.update_status.assert_called()
         call_args = mock_collection_repo.update_status.call_args
-        assert call_args[0][1] == CollectionStatus.DEGRADED
+        assert call_args[0][1] == CollectionStatus.READY
 
     @pytest.mark.asyncio()
     async def test_failure_handler_missing_operation(self):

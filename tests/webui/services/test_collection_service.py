@@ -573,7 +573,7 @@ class TestAddSource:
         assert result["uuid"] == mock_operation.uuid
 
     @pytest.mark.asyncio()
-    async def test_add_source_with_degraded_status(
+    async def test_add_source_with_ready_status(
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
@@ -583,8 +583,8 @@ class TestAddSource:
         mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
-        """Test adding source to degraded collection."""
-        mock_collection.status = CollectionStatus.DEGRADED
+        """Test adding source to ready collection."""
+        mock_collection.status = CollectionStatus.READY
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
@@ -933,7 +933,7 @@ class TestRemoveSource:
         assert "PENDING" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_remove_source_degraded_status(
+    async def test_remove_source_ready_status(
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
@@ -943,8 +943,8 @@ class TestRemoveSource:
         mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
-        """Test removing source from degraded collection."""
-        mock_collection.status = CollectionStatus.DEGRADED
+        """Test removing source from ready collection."""
+        mock_collection.status = CollectionStatus.READY
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_collection_source_repo.get_by_collection_and_path.return_value = mock_collection_source
         mock_operation_repo.get_active_operations_count.return_value = 0
