@@ -496,8 +496,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             doc_stats["total_size_bytes"],
                         )
                     else:
-                        new_status = CollectionStatus.DEGRADED
-                        await collection_repo.update_status(collection["id"], new_status)
+                        new_status = CollectionStatus.READY
+                        await collection_repo.update_status(
+                            collection["id"],
+                            new_status,
+                            status_message="Completed with errors",
+                        )
 
                     if old_status != new_status:
                         collections_total.labels(status=old_status.value).dec()
