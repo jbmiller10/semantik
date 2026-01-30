@@ -807,7 +807,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
         )
 
     # Mark legacy wrapper successes explicitly so orchestration logic can
-    # promote the collection out of DEGRADED status (it expects a "success"
+    # track partial failures via error_count (it expects a "success"
     # flag in the result payload).
     return {
         "success": failed == 0,
