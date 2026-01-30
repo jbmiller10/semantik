@@ -125,7 +125,6 @@ function CollectionsDashboard() {
                 <option value="ready">Ready</option>
                 <option value="processing">Processing</option>
                 <option value="error">Error</option>
-                <option value="degraded">Degraded</option>
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[var(--text-muted)]">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

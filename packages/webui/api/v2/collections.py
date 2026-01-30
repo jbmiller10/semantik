@@ -584,7 +584,7 @@ async def run_collection_sync(
 
     Fans out APPEND operations for each source and creates a sync run record
     to track completion aggregation. Returns 409 if collection has active
-    operations or is not in a valid state (READY/DEGRADED).
+    operations or is not in a valid state (READY).
     """
     sync_run = await service.run_collection_sync(
         collection_id=collection_uuid,

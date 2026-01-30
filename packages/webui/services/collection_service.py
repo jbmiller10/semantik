@@ -378,10 +378,10 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection.status not in [CollectionStatus.PENDING, CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        if collection.status not in [CollectionStatus.PENDING, CollectionStatus.READY]:
             raise InvalidStateError(
                 f"Cannot add source to collection in {collection.status} state. "
-                f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
+                f"Collection must be in {CollectionStatus.PENDING} or {CollectionStatus.READY} state."
             )
 
         # Lock the collection row to prevent race conditions between checking
@@ -677,10 +677,10 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        if collection.status != CollectionStatus.READY:
             raise InvalidStateError(
                 f"Cannot remove source from collection in {collection.status} state. "
-                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
+                f"Collection must be in {CollectionStatus.READY} state."
             )
 
         # Check if there's already an active operation
@@ -1304,11 +1304,11 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        # Validate collection state - must be READY or DEGRADED
-        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        # Validate collection state - must be READY
+        if collection.status != CollectionStatus.READY:
             raise InvalidStateError(
                 f"Cannot sync collection in {collection.status} state. "
-                f"Collection must be in READY or DEGRADED state."
+                f"Collection must be in READY state."
             )
 
         # Check for active operations (collection-level gating)
