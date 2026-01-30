@@ -469,7 +469,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         try:
                             runs, _ = await projection_repo.list_for_collection(collection["id"], limit=1)
                         except Exception as e:  # pragma: no cover - defensive path
-                            logger.debug(
+                            logger.warning(
                                 "Failed to list projections for collection %s: %s",
                                 collection["id"],
                                 e,
@@ -690,7 +690,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             try:
                 parse_result = extract_fn(_get(doc, "file_path", ""))
                 parse_result = await await_if_awaitable(parse_result)
-            except Exception:
+            except Exception as parse_exc:
+                logger.warning(
+                    "Parse failed for document %s (%s): %s",
+                    doc_id,
+                    doc_path,
+                    parse_exc,
+                    exc_info=True,
+                )
                 parse_result = None
 
             text = parse_result.text if parse_result else ""

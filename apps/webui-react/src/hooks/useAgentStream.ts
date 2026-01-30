@@ -199,6 +199,7 @@ export function useAgentStream(
         let parseFailureCount = 0;          // Consecutive failures for threshold check
         let totalParseFailures = 0;          // Total failures for diagnostics
         const PARSE_FAILURE_THRESHOLD = 3;
+        let validationFailureCount = 0;      // Track validation failures
 
         while (true) {
           const { done, value } = await reader.read();
@@ -263,8 +264,22 @@ export function useAgentStream(
 
             const validatedData = validateEventData(event, data);
             if (validatedData === null) {
-              // Validation failed - skip this event but don't stop streaming
-              console.warn(`Skipping invalid ${event} event`);
+              validationFailureCount++;
+              console.warn(`Validation failed for ${event} event (total: ${validationFailureCount})`);
+
+              // For critical events, notify user and stop
+              if (event === 'done' || event === 'error') {
+                const errorMsg = `Failed to process critical "${event}" event. Please refresh the page.`;
+                setError(errorMsg);
+                callbacks.onError?.(errorMsg);
+                reader.cancel();
+                return;
+              }
+
+              // Warn user on first validation failure (non-blocking)
+              if (validationFailureCount === 1) {
+                callbacks.onError?.('Some data may be incomplete due to a communication issue');
+              }
               continue;
             }
 

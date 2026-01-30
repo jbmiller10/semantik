@@ -673,6 +673,13 @@ class PipelineExecutor:
                 current_node = None
                 break
 
+            # Mid-pipeline fan-out algorithm:
+            # When routing returns multiple edges (parallel branches), we must:
+            # 1. Keep processing the first branch in-place (this path_state)
+            # 2. Queue new PathState copies for additional branches
+            # 3. Deep copy chunks since they may be modified by downstream stages
+            # 4. Re-tag chunks with new path_id for search filtering
+
             # No fan-out: continue on the same path_id for backward compatibility.
             if len(routed_next) == 1:
                 current_node = routed_next[0][0]

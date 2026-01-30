@@ -11,7 +11,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from shared.pipeline.types import FileReference
+    from shared.pipeline.types import FileReference, PipelineNode
 
 
 class ExecutionMode(str, Enum):
@@ -131,7 +131,7 @@ class PathState:
     """
 
     path_id: str
-    current_node: Any | None = None  # PipelineNode, avoid circular import
+    current_node: PipelineNode | None = None
     parsed_text: str = ""
     parse_metadata: dict[str, Any] = field(default_factory=dict)
     chunks: list[dict[str, Any]] = field(default_factory=list)

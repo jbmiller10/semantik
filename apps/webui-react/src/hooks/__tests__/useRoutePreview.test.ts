@@ -32,6 +32,7 @@ describe('useRoutePreview', () => {
       extension: '.txt',
       size_bytes: 12,
       mime_type: 'text/plain',
+      uri: 'file:///test.txt',
     },
     sniff_result: {
       is_code: false,
@@ -40,9 +41,10 @@ describe('useRoutePreview', () => {
       is_scanned_pdf: null,
     },
     path: ['_source', 'parser1'],
+    paths: null,
     routing_stages: [],
     parsed_metadata: null,
-    timing_ms: 10,
+    total_duration_ms: 10,
     warnings: [],
   };
 
@@ -54,6 +56,7 @@ describe('useRoutePreview', () => {
     it('has all null/false initial values', () => {
       const { result } = renderHook(() => useRoutePreview());
 
+      expect(result.current.status).toBe('idle');
       expect(result.current.isLoading).toBe(false);
       expect(result.current.error).toBeNull();
       expect(result.current.result).toBeNull();
@@ -76,12 +79,14 @@ describe('useRoutePreview', () => {
       });
 
       // Check immediately after starting
+      expect(result.current.status).toBe('loading');
       expect(result.current.isLoading).toBe(true);
       expect(result.current.error).toBeNull();
       expect(result.current.file).toBe(mockFile);
 
       // Wait for completion
       await waitFor(() => {
+        expect(result.current.status).toBe('success');
         expect(result.current.isLoading).toBe(false);
       });
     });
@@ -137,6 +142,7 @@ describe('useRoutePreview', () => {
         await result.current.previewFile(mockFile, mockDAG);
       });
 
+      expect(result.current.status).toBe('error');
       expect(result.current.error).toBe('Test error message');
       expect(result.current.isLoading).toBe(false);
     });
@@ -252,8 +258,8 @@ describe('useRoutePreview', () => {
 
   describe('multiple calls', () => {
     it('overwrites previous result with new result', async () => {
-      const firstResponse = { ...mockResponse, timing_ms: 10 };
-      const secondResponse = { ...mockResponse, timing_ms: 20 };
+      const firstResponse = { ...mockResponse, total_duration_ms: 10 };
+      const secondResponse = { ...mockResponse, total_duration_ms: 20 };
 
       vi.mocked(pipelineApi.previewRoute)
         .mockResolvedValueOnce(firstResponse)
@@ -265,13 +271,13 @@ describe('useRoutePreview', () => {
         await result.current.previewFile(mockFile, mockDAG);
       });
 
-      expect(result.current.result?.timing_ms).toBe(10);
+      expect(result.current.result?.total_duration_ms).toBe(10);
 
       await act(async () => {
         await result.current.previewFile(mockFile, mockDAG);
       });
 
-      expect(result.current.result?.timing_ms).toBe(20);
+      expect(result.current.result?.total_duration_ms).toBe(20);
     });
   });
 });

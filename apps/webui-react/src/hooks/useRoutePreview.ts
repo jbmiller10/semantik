@@ -5,12 +5,23 @@
 import { useState, useCallback } from 'react';
 import { pipelineApi } from '@/services/api/v2/pipeline';
 import type { RoutePreviewResponse, RoutePreviewState } from '@/types/routePreview';
+import { INITIAL_ROUTE_PREVIEW_STATE } from '@/types/routePreview';
 import type { PipelineDAG } from '@/types/pipeline';
 
 /**
  * Hook return type.
  */
-export interface UseRoutePreviewReturn extends RoutePreviewState {
+export interface UseRoutePreviewReturn {
+  /** Current status of the preview */
+  status: RoutePreviewState['status'];
+  /** Whether a preview is in progress */
+  isLoading: boolean;
+  /** Error message if preview failed */
+  error: string | null;
+  /** Preview result if successful */
+  result: RoutePreviewResponse | null;
+  /** The file that was previewed */
+  file: File | null;
   /** Preview a file through the pipeline DAG */
   previewFile: (file: File, dag: PipelineDAG, includeParserMetadata?: boolean) => Promise<void>;
   /** Clear the preview result */
@@ -32,21 +43,16 @@ export interface UseRoutePreviewReturn extends RoutePreviewState {
  * ```
  */
 export function useRoutePreview(): UseRoutePreviewReturn {
-  const [state, setState] = useState<RoutePreviewState>({
-    isLoading: false,
-    error: null,
-    result: null,
-    file: null,
-  });
+  const [state, setState] = useState<RoutePreviewState>(INITIAL_ROUTE_PREVIEW_STATE);
 
   const previewFile = useCallback(
     async (file: File, dag: PipelineDAG, includeParserMetadata: boolean = true) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
+      setState({
+        status: 'loading',
         file,
-      }));
+        error: null,
+        result: null,
+      });
 
       try {
         const result: RoutePreviewResponse = await pipelineApi.previewRoute(
@@ -55,11 +61,12 @@ export function useRoutePreview(): UseRoutePreviewReturn {
           includeParserMetadata
         );
 
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
+        setState({
+          status: 'success',
+          file,
+          error: null,
           result,
-        }));
+        });
       } catch (err) {
         // Log full error for debugging
         console.error('Route preview failed:', err);
@@ -85,27 +92,27 @@ export function useRoutePreview(): UseRoutePreviewReturn {
           }
         }
 
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
+        setState({
+          status: 'error',
+          file,
           error: errorMessage,
-        }));
+          result: null,
+        });
       }
     },
     []
   );
 
   const clearPreview = useCallback(() => {
-    setState({
-      isLoading: false,
-      error: null,
-      result: null,
-      file: null,
-    });
+    setState(INITIAL_ROUTE_PREVIEW_STATE);
   }, []);
 
   return {
-    ...state,
+    status: state.status,
+    isLoading: state.status === 'loading',
+    error: state.error,
+    result: state.result,
+    file: state.file,
     previewFile,
     clearPreview,
   };

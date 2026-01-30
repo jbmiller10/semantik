@@ -944,3 +944,107 @@ class TestPipelineExecutorExecute:
 
         assert failing_parser.parse_bytes.call_count == 1
         assert ok_parser.parse_bytes.call_count == 1
+
+
+class TestDatabaseErrorHandling:
+    """Tests for database error handling in executor methods."""
+
+    @pytest.fixture()
+    def valid_dag(self) -> PipelineDAG:
+        """Create a valid minimal DAG."""
+        return PipelineDAG(
+            id="test",
+            version="1.0",
+            nodes=[
+                PipelineNode(id="parser", type=NodeType.PARSER, plugin_id="text"),
+                PipelineNode(id="chunker", type=NodeType.CHUNKER, plugin_id="recursive"),
+                PipelineNode(id="embedder", type=NodeType.EMBEDDER, plugin_id="dense-local"),
+            ],
+            edges=[
+                PipelineEdge(from_node="_source", to_node="parser"),
+                PipelineEdge(from_node="parser", to_node="chunker"),
+                PipelineEdge(from_node="chunker", to_node="embedder"),
+            ],
+        )
+
+    @pytest.fixture()
+    def mock_session(self) -> AsyncMock:
+        """Create a mock database session."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio()
+    async def test_should_skip_database_error_annotated(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test database errors in _should_skip include stage metadata."""
+        executor = PipelineExecutor(
+            dag=valid_dag,
+            collection_id="test-collection",
+            session=mock_session,
+            mode=ExecutionMode.FULL,
+        )
+
+        # Mock doc_repo to raise an exception
+        mock_doc_repo = AsyncMock()
+        db_error = Exception("Database connection failed")
+        mock_doc_repo.get_by_uri.side_effect = db_error
+        executor._doc_repo = mock_doc_repo
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={},
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await executor._should_skip(file_ref, "abc123hash")
+
+        # Verify exception has stage context attributes
+        assert hasattr(exc_info.value, "stage_id")
+        assert exc_info.value.stage_id == "skip_check"  # type: ignore[attr-defined]
+        assert hasattr(exc_info.value, "stage_type")
+        assert exc_info.value.stage_type == "database"  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio()
+    async def test_create_document_database_error_logged(
+        self,
+        valid_dag: PipelineDAG,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test database errors in _create_document are logged and re-raised."""
+        executor = PipelineExecutor(
+            dag=valid_dag,
+            collection_id="test-collection",
+            session=mock_session,
+            mode=ExecutionMode.FULL,
+        )
+
+        # Mock doc_repo to raise an exception
+        mock_doc_repo = AsyncMock()
+        db_error = Exception("Database insert failed")
+        mock_doc_repo.create.side_effect = db_error
+        executor._doc_repo = mock_doc_repo
+
+        file_ref = FileReference(
+            uri="file:///test.txt",
+            source_type="directory",
+            content_type="document",
+            size_bytes=100,
+            metadata={"source": {"local_path": "/test.txt"}},
+        )
+
+        with (
+            patch("shared.pipeline.executor.logger") as mock_logger,
+            pytest.raises(Exception, match="Database insert failed"),
+        ):
+            await executor._create_document(file_ref, "abc123hash")
+
+        # Verify error was logged with file URI
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args
+        assert "test.txt" in str(call_args)
+        assert "Database insert failed" in str(call_args)

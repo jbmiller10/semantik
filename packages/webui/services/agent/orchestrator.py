@@ -721,6 +721,10 @@ Use spawn_source_analyzer to analyze this source and recommend an appropriate pi
                                 data={"pipeline": self.conversation.current_pipeline},
                             )
 
+                        # Persist state changes BEFORE emitting DONE event
+                        # so any persistence failures can be included in uncertainties
+                        await self._persist_state_changes()
+
                         # Emit ready status and done event
                         yield self._emit_status("ready", "Pipeline configuration complete")
                         yield self._emit_activity("Agent finished processing")
@@ -774,6 +778,10 @@ Use spawn_source_analyzer to analyze this source and recommend an appropriate pi
 
                 # Max turns reached
                 logger.warning(f"Conversation {self.conversation.id} reached max turns")
+
+                # Persist state changes BEFORE emitting DONE event
+                await self._persist_state_changes()
+
                 yield AgentStreamEvent(
                     event=AgentStreamEventType.CONTENT,
                     data={
@@ -793,8 +801,10 @@ Use spawn_source_analyzer to analyze this source and recommend an appropriate pi
                 )
 
         finally:
-            # Persist any state changes
-            await self._persist_state_changes()
+            # Note: State persistence is now handled before DONE events are emitted
+            # to ensure persistence failures are included in the streamed response.
+            # This finally block is kept for potential future cleanup needs.
+            pass
 
     async def _execute_tools_streaming(
         self, tool_calls: list[ToolCall]

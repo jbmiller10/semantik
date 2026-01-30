@@ -296,7 +296,7 @@ class PipelinePreviewService:
         The evaluation follows the router's actual logic:
         1. Parallel predicate edges - all matching edges fire
         2. Exclusive predicate edges - first match wins
-        3. Parallel catch-all edges - all fire if no exclusive matched
+        3. Parallel catch-all edges - all fire (regardless of exclusive matches)
         4. Exclusive catch-all edges - first wins if no exclusive matched
 
         Args:

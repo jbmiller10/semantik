@@ -97,14 +97,20 @@ export interface RoutePreviewResponse {
 
 /**
  * State for the route preview hook.
+ * Uses discriminated union to prevent invalid state combinations.
  */
-export interface RoutePreviewState {
-  /** Whether a preview is in progress */
-  isLoading: boolean;
-  /** Error message if preview failed */
-  error: string | null;
-  /** Preview result if successful */
-  result: RoutePreviewResponse | null;
-  /** The file that was previewed */
-  file: File | null;
-}
+export type RoutePreviewState =
+  | { status: 'idle'; file: null; error: null; result: null }
+  | { status: 'loading'; file: File; error: null; result: null }
+  | { status: 'success'; file: File; error: null; result: RoutePreviewResponse }
+  | { status: 'error'; file: File; error: string; result: null };
+
+/**
+ * Initial state for the route preview hook.
+ */
+export const INITIAL_ROUTE_PREVIEW_STATE: RoutePreviewState = {
+  status: 'idle',
+  file: null,
+  error: null,
+  result: null,
+};
