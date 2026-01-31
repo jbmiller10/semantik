@@ -5,6 +5,9 @@
 import type { PipelineEdge, NodePosition } from '@/types/pipeline';
 import { getNodeBottomCenter, getNodeTopCenter } from '@/utils/dagLayout';
 
+// Offset in pixels between parallel edge lines
+const PARALLEL_OFFSET = 3;
+
 interface PipelineEdgeComponentProps {
   edge: PipelineEdge;
   fromPosition: NodePosition;
@@ -72,33 +75,63 @@ export function PipelineEdgeComponent({
 
   const edgeId = `${edge.from_node}-${edge.to_node}`;
   const hasCondition = edge.when !== null;
+  const isParallel = edge.parallel ?? false;
+
+  // Create offset path for parallel edges (railroad-track effect)
+  const createOffsetPath = (offset: number) => {
+    const offsetFrom = { x: from.x + offset, y: from.y };
+    const offsetTo = { x: to.x + offset, y: to.y };
+    return `M ${offsetFrom.x} ${offsetFrom.y} C ${offsetFrom.x} ${midY}, ${offsetTo.x} ${midY}, ${offsetTo.x} ${offsetTo.y}`;
+  };
+
+  const leftPath = isParallel ? createOffsetPath(-PARALLEL_OFFSET) : verticalPath;
+  const rightPath = isParallel ? createOffsetPath(PARALLEL_OFFSET) : null;
 
   // Indicator position: beside the edge midpoint (offset to the right to avoid overlap)
   const labelX = (from.x + to.x) / 2 + 40;
   const labelY = midY;
+
+  // Common path styling
+  const pathStroke = isHighlighted
+    ? (highlightColor || 'rgb(34, 197, 94)')
+    : selected
+      ? 'var(--text-primary)'
+      : 'var(--text-muted)';
+  const pathStrokeWidth = isHighlighted || selected ? 2 : 1.5;
+  const pathStrokeDasharray = !hasCondition && showCatchAll ? '4 2' : undefined;
+  const pathMarkerEnd = isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)';
+  const pathClassName = `${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`;
 
   return (
     <g
       data-edge-id={edgeId}
       onClick={handleClick}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
+      className={isParallel ? 'pipeline-edge-parallel' : ''}
     >
-      {/* Edge path */}
+      {/* Primary edge path */}
       <path
-        d={verticalPath}
+        d={leftPath}
         fill="none"
-        stroke={
-          isHighlighted
-            ? (highlightColor || 'rgb(34, 197, 94)')
-            : selected
-              ? 'var(--text-primary)'
-              : 'var(--text-muted)'
-        }
-        strokeWidth={isHighlighted || selected ? 2 : 1.5}
-        strokeDasharray={!hasCondition && showCatchAll ? '4 2' : undefined}
-        markerEnd={isHighlighted ? 'url(#arrowhead-highlighted)' : 'url(#arrowhead)'}
-        className={`${isNew ? 'pipeline-edge-new' : ''} ${isHighlighted ? 'pipeline-edge-highlighted' : ''}`}
+        stroke={pathStroke}
+        strokeWidth={pathStrokeWidth}
+        strokeDasharray={pathStrokeDasharray}
+        markerEnd={pathMarkerEnd}
+        className={pathClassName}
       />
+
+      {/* Secondary path for parallel edges */}
+      {rightPath && (
+        <path
+          d={rightPath}
+          fill="none"
+          stroke={pathStroke}
+          strokeWidth={pathStrokeWidth}
+          strokeDasharray={pathStrokeDasharray}
+          markerEnd={pathMarkerEnd}
+          className={pathClassName}
+        />
+      )}
 
       {/* Priority badge (shown when multiple edges from same source) */}
       {priority !== undefined && totalFromSource !== undefined && totalFromSource > 1 && (

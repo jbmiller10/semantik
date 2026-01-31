@@ -241,4 +241,122 @@ describe('PipelineEdgeComponent', () => {
       expect(screen.getByText('*')).toBeInTheDocument();
     });
   });
+
+  describe('parallel edge rendering', () => {
+    it('renders single path for non-parallel edge', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: false,
+      };
+
+      const { container } = render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      const paths = container.querySelectorAll('path');
+      expect(paths).toHaveLength(1);
+    });
+
+    it('renders two paths for parallel edge', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: true,
+      };
+
+      const { container } = render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      const paths = container.querySelectorAll('path');
+      expect(paths).toHaveLength(2);
+    });
+
+    it('applies parallel class to container group', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: true,
+      };
+
+      const { container } = render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      const group = container.querySelector('g[data-edge-id]');
+      expect(group).toHaveClass('pipeline-edge-parallel');
+    });
+
+    it('does not apply parallel class to non-parallel edge', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: false,
+      };
+
+      const { container } = render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      const group = container.querySelector('g[data-edge-id]');
+      expect(group).not.toHaveClass('pipeline-edge-parallel');
+    });
+
+    it('renders parallel paths with correct offset', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: true,
+      };
+
+      const { container } = render(
+        <svg>
+          <PipelineEdgeComponent
+            edge={edge}
+            fromPosition={fromPosition}
+            toPosition={toPosition}
+            selected={false}
+          />
+        </svg>
+      );
+
+      const paths = container.querySelectorAll('path');
+      // Paths should have different d attributes due to offset
+      expect(paths[0].getAttribute('d')).not.toBe(paths[1].getAttribute('d'));
+    });
+  });
 });
