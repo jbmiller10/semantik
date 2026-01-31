@@ -121,7 +121,7 @@ describe('useAgentStream', () => {
       await result.current.sendMessage('hi');
     });
 
-    expect(result.current.error).toMatch(/failed to process critical \"done\" event/i);
+    expect(result.current.error).toMatch(/failed to process critical "done" event/i);
     expect(onError).toHaveBeenCalled();
   });
 

@@ -38,14 +38,12 @@ describe('PipelineVisualization add-node flow', () => {
     if (originalGetScreenCTM) {
       (SVGSVGElement.prototype as unknown as { getScreenCTM: unknown }).getScreenCTM = originalGetScreenCTM;
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete (SVGSVGElement.prototype as unknown as { getScreenCTM?: unknown }).getScreenCTM;
     }
 
     if (originalCreateSVGPoint) {
       (SVGSVGElement.prototype as unknown as { createSVGPoint: unknown }).createSVGPoint = originalCreateSVGPoint;
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete (SVGSVGElement.prototype as unknown as { createSVGPoint?: unknown }).createSVGPoint;
     }
   });
