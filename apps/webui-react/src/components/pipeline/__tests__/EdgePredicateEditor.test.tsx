@@ -405,4 +405,144 @@ describe('EdgePredicateEditor', () => {
       expect(stickyHeader).toHaveClass('top-0');
     });
   });
+
+  describe('parallel toggle', () => {
+    it('renders parallel toggle switch', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+      };
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByLabelText('Parallel edge')).toBeInTheDocument();
+    });
+
+    it('shows parallel toggle as unchecked by default', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+      };
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByLabelText('Parallel edge')).not.toBeChecked();
+    });
+
+    it('shows parallel toggle as checked when edge.parallel is true', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: true,
+      };
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByLabelText('Parallel edge')).toBeChecked();
+    });
+
+    it('calls onChange with parallel: true when toggle is checked', async () => {
+      const user = userEvent.setup();
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: false,
+      };
+      const onChange = vi.fn();
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={onChange}
+        />
+      );
+
+      await user.click(screen.getByLabelText('Parallel edge'));
+
+      expect(onChange).toHaveBeenCalledWith({
+        ...edge,
+        parallel: true,
+      });
+    });
+
+    it('calls onChange with parallel: false when toggle is unchecked', async () => {
+      const user = userEvent.setup();
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+        parallel: true,
+      };
+      const onChange = vi.fn();
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={onChange}
+        />
+      );
+
+      await user.click(screen.getByLabelText('Parallel edge'));
+
+      expect(onChange).toHaveBeenCalledWith({
+        ...edge,
+        parallel: false,
+      });
+    });
+
+    it('is disabled when readOnly is true', () => {
+      const edge: PipelineEdge = {
+        from_node: '_source',
+        to_node: 'parser1',
+        when: null,
+      };
+
+      render(
+        <EdgePredicateEditor
+          edge={edge}
+          dag={mockDag}
+          fromNodeLabel="Source"
+          toNodeLabel="Parser"
+          onChange={vi.fn()}
+          readOnly
+        />
+      );
+
+      expect(screen.getByLabelText('Parallel edge')).toBeDisabled();
+    });
+  });
 });

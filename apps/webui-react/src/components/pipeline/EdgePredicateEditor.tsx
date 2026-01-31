@@ -279,6 +279,30 @@ export function EdgePredicateEditor({
         </div>
       </div>
 
+      {/* Parallel edge toggle */}
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          id="parallel-edge"
+          aria-label="Parallel edge"
+          checked={edge.parallel ?? false}
+          onChange={(e) => onChange({ ...edge, parallel: e.target.checked })}
+          disabled={readOnly}
+          className="h-4 w-4 rounded border-[var(--border)] bg-[var(--bg-tertiary)]"
+        />
+        <div>
+          <label
+            htmlFor="parallel-edge"
+            className="text-sm font-medium text-[var(--text-primary)]"
+          >
+            Parallel edge
+          </label>
+          <p className="text-xs text-[var(--text-muted)]">
+            Fires alongside other parallel edges from this node
+          </p>
+        </div>
+      </div>
+
       {/* Predicate editor (hidden when catch-all) */}
       {!isCatchAll && (
         <div className="space-y-4 border-t border-[var(--border)] pt-4">
