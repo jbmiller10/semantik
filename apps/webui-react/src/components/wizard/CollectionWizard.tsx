@@ -17,6 +17,7 @@ import { waitForCollectionReady } from '../../services/api/v2/collections';
 import type { WizardState, WizardFlow } from '../../types/wizard';
 import type { PipelineDAG } from '../../types/pipeline';
 import type { SyncMode } from '../../types/collection';
+import { ensurePathNames } from '../../utils/pipelineUtils';
 
 interface CollectionWizardProps {
   onClose: () => void;
@@ -208,9 +209,12 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
     setIsSubmitting(true);
 
     try {
+      // Ensure parallel edges have path_names before submission
+      const dagWithPathNames = ensurePathNames(dag);
+
       // Extract config from DAG
-      const chunkerNode = dag.nodes.find(n => n.type === 'chunker');
-      const embedderNode = dag.nodes.find(n => n.type === 'embedder');
+      const chunkerNode = dagWithPathNames.nodes.find(n => n.type === 'chunker');
+      const embedderNode = dagWithPathNames.nodes.find(n => n.type === 'embedder');
 
       // Get embedding model from config (if using dense_local plugin) or fall back to plugin_id for legacy compatibility
       const embeddingModel = (embedderNode?.config?.model as string) || embedderNode?.plugin_id || 'sentence-transformers/all-MiniLM-L6-v2';
@@ -226,7 +230,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
         sync_mode: syncMode,
         sync_interval_minutes: syncMode === 'continuous' ? syncIntervalMinutes : undefined,
         // Pass full pipeline DAG for custom routing configuration
-        pipeline_config: dag as unknown as Record<string, unknown>,
+        pipeline_config: dagWithPathNames as unknown as Record<string, unknown>,
       });
 
       // Add source if configured
