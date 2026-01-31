@@ -6,10 +6,27 @@ import { CollectionWizard } from '../CollectionWizard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
+const { mockCreateConversation, mockAddToast } = vi.hoisted(() => ({
+  mockCreateConversation: vi.fn(),
+  mockAddToast: vi.fn(),
+}));
+
+// Avoid rendering the full pipeline editor stack (SVG + config panel hooks) in wizard flow tests.
+vi.mock('../steps/AnalysisStep', () => ({
+  AnalysisStep: (props: { onSummaryChange?: (summary: string) => void }) => {
+    props.onSummaryChange?.('mock summary');
+    return <div data-testid="agent-column" />;
+  },
+}));
+
+vi.mock('../steps/ReviewStep', () => ({
+  ReviewStep: () => <div data-testid="summary-column" />,
+}));
+
 // Mock hooks
 vi.mock('../../../hooks/useAgentConversation', () => ({
   useCreateConversation: () => ({
-    mutateAsync: vi.fn().mockResolvedValue({ id: 'conv-123' }),
+    mutateAsync: mockCreateConversation,
     isPending: false,
   }),
 }));
@@ -24,6 +41,8 @@ vi.mock('../../../hooks/useAgentStream', () => ({
     sendMessage: vi.fn(),
     currentContent: 'I recommend semantic chunking for your documentation.',
     pipeline: { chunking_strategy: 'semantic', embedding_model: 'default' },
+    error: null,
+    reset: vi.fn(),
   }),
 }));
 
@@ -45,6 +64,12 @@ vi.mock('../../../hooks/useConnectors', () => ({
   }),
   useGitPreview: () => ({ mutateAsync: vi.fn() }),
   useImapPreview: () => ({ mutateAsync: vi.fn() }),
+}));
+
+vi.mock('../../../stores/uiStore', () => ({
+  useUIStore: () => ({
+    addToast: mockAddToast,
+  }),
 }));
 
 vi.mock('../../../hooks/useCollections', () => ({
@@ -79,6 +104,7 @@ describe('CollectionWizard Assisted Flow', () => {
   beforeEach(() => {
     queryClient.clear();
     vi.clearAllMocks();
+    mockCreateConversation.mockResolvedValue({ id: 'conv-123' });
   });
 
   it('creates conversation when entering step 3 in assisted mode', async () => {
@@ -143,5 +169,45 @@ describe('CollectionWizard Assisted Flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('summary-column')).toBeInTheDocument();
     });
+  });
+
+  it('starts at analysis step when resumeConversationId is provided', async () => {
+    render(
+      <CollectionWizard onClose={vi.fn()} onSuccess={vi.fn()} resumeConversationId="conv-resume" />,
+      { wrapper }
+    );
+
+    expect(await screen.findByTestId('agent-column')).toBeInTheDocument();
+
+    const modal = screen.getByRole('dialog');
+    expect(modal.className).toContain('90vw');
+  });
+
+  it('shows a toast and does not advance when conversation creation fails', async () => {
+    mockCreateConversation.mockRejectedValueOnce(new Error('nope'));
+
+    render(<CollectionWizard onClose={vi.fn()} onSuccess={vi.fn()} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
+
+    const dirButton = screen.getByText(/directory/i);
+    await user.click(dirButton);
+
+    const pathInput = await screen.findByLabelText(/path/i);
+    await user.type(pathInput, '/home/user/docs');
+
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    await waitFor(() => expect(screen.getByText(/assisted/i)).toBeInTheDocument());
+    const assistedOption = screen.getByText(/assisted/i).closest('button');
+    if (assistedOption) await user.click(assistedOption);
+
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    await waitFor(() => {
+      expect(mockAddToast).toHaveBeenCalledWith({ message: 'nope', type: 'error' });
+    });
+    expect(screen.queryByTestId('agent-column')).not.toBeInTheDocument();
+    expect(screen.getByText(/choose how you want to configure/i)).toBeInTheDocument();
   });
 });
