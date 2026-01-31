@@ -30,7 +30,8 @@ from shared.plugins.types.sparse_indexer import (
 )
 
 if TYPE_CHECKING:
-    from transformers import PreTrainedModel, PreTrainedTokenizer
+    from transformers.modeling_utils import PreTrainedModel
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
 
         # Model state (loaded lazily via initialize())
         self._model: PreTrainedModel | None = None
-        self._tokenizer: PreTrainedTokenizer | None = None
+        self._tokenizer: PreTrainedTokenizerBase | None = None
         self._actual_device: str | None = None
 
     async def initialize(self, config: dict[str, Any] | None = None) -> None:
