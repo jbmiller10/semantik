@@ -196,6 +196,8 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
 
         # Load tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+        if getattr(self._tokenizer, "pad_token", None) is None and getattr(self._tokenizer, "eos_token", None):
+            self._tokenizer.pad_token = self._tokenizer.eos_token
 
         # Build model kwargs
         model_kwargs: dict[str, Any] = {"trust_remote_code": True}

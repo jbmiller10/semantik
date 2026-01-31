@@ -28,7 +28,7 @@ dependencies = [
     "python-dotenv>=1.0.1,<2",
     "torch",
     "transformers>=5.0.0,<6",
-    "bitsandbytes>=0.46.0,<0.47",
+    "bitsandbytes>=0.46.1,<0.47",
     "accelerate>=0.26.0",
     "passlib[bcrypt]>=1.7.4,<2",
     "pyjwt[crypto]>=2.10.1,<3",
