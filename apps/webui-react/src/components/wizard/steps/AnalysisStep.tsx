@@ -69,6 +69,17 @@ export function AnalysisStep({
   }, [currentContent, onSummaryChange]);
 
   // Update DAG when pipeline changes from agent
+  // FIXME: This completely ignores the actual pipeline DAG the agent builds!
+  // The agent's build_pipeline tool creates a full PipelineDAG with nodes, edges,
+  // and routing predicates, but this code throws it away and creates a hardcoded
+  // simple DAG. This means:
+  // 1. Any routing predicates (e.g., "NOT extension .png") configured by the agent are lost
+  // 2. Multi-parser setups with conditional routing are not preserved
+  // 3. User edits to edges in this step get overwritten when pipeline updates
+  //
+  // To fix: The `pipeline` from useAgentStream should contain the full DAG structure
+  // from conversation.current_pipeline. We should use it directly instead of
+  // constructing a simplified DAG here.
   useEffect(() => {
     if (pipeline) {
       // Convert pipeline config to DAG format

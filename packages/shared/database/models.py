@@ -92,7 +92,6 @@ class CollectionStatus(str, enum.Enum):
     READY = "ready"
     PROCESSING = "processing"
     ERROR = "error"
-    DEGRADED = "degraded"
 
 
 class OperationStatus(str, enum.Enum):

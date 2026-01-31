@@ -36,15 +36,15 @@ def _get_source_path(source_type: str, source_config: dict[str, Any]) -> str:
         Human-readable source path/identifier
     """
     if source_type == "directory":
-        return source_config.get("path", "")
+        return str(source_config.get("path", ""))
     if source_type == "git":
-        return source_config.get("repo_url", source_config.get("repository_url", ""))
+        return str(source_config.get("repo_url", source_config.get("repository_url", "")))
     if source_type == "imap":
-        username = source_config.get("username", "")
-        host = source_config.get("host", "")
+        username = str(source_config.get("username", ""))
+        host = str(source_config.get("host", ""))
         return f"{username}@{host}" if username and host else (username or host)
     # Fallback: try common path-like fields
-    return source_config.get("path", source_config.get("url", str(source_config)))
+    return str(source_config.get("path", source_config.get("url", str(source_config))))
 
 
 def _map_secret_key_to_type(secret_key: str) -> str | None:
@@ -610,12 +610,11 @@ class ApplyPipelineTool(BaseTool):
                     source_config=source_config,
                 )
                 # Cast to int for type safety (new_source.id is typed as Column[int])
-                new_source_id: int = int(new_source.id)  # type: ignore[arg-type]
+                new_source_id: int = int(new_source.id)
                 source_id = new_source_id
 
                 # Store secrets encrypted if any
                 # Note: secrets may already be encrypted (as base64 strings) from agent.py
-                failed_secrets: list[str] = []
                 if pending_secrets:
                     from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, decrypt_secret
 

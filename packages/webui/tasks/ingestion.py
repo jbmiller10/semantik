@@ -496,8 +496,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             doc_stats["total_size_bytes"],
                         )
                     else:
-                        new_status = CollectionStatus.DEGRADED
-                        await collection_repo.update_status(collection["id"], new_status)
+                        new_status = CollectionStatus.READY
+                        await collection_repo.update_status(
+                            collection["id"],
+                            new_status,
+                            status_message="Completed with errors",
+                        )
 
                     if old_status != new_status:
                         collections_total.labels(status=old_status.value).dec()
@@ -569,7 +573,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         elif operation_type == OperationType.REINDEX:
                             await collection_repo.update_status(
                                 collection["uuid"],
-                                CollectionStatus.DEGRADED,
+                                CollectionStatus.READY,
                                 status_message=f"Re-indexing failed: {str(exc)}. Original collection still available.",
                             )
                             await reindex_tasks._cleanup_staging_resources(collection_id, operation)
@@ -708,7 +712,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -740,7 +744,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = len(chunks)
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -753,7 +757,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
                 except Exception as status_exc:
-                    logger.warning(
+                    logger.error(
                         "Failed to update document status for %s (%s): %s",
                         doc_id,
                         doc_path,
@@ -773,7 +777,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             try:
                 doc.status = DocumentStatus.FAILED
             except Exception as status_exc:
-                logger.warning(
+                logger.error(
                     "Failed to mark document %s (%s) as failed: %s",
                     doc_id,
                     doc_path,
@@ -803,7 +807,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
         )
 
     # Mark legacy wrapper successes explicitly so orchestration logic can
-    # promote the collection out of DEGRADED status (it expects a "success"
+    # track partial failures via error_count (it expects a "success"
     # flag in the result payload).
     return {
         "success": failed == 0,
@@ -2770,20 +2774,20 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                 elif operation_type == OperationType.REINDEX:
                     await collection_repo.update_status(
                         collection_obj.id,
-                        CollectionStatus.DEGRADED,
+                        CollectionStatus.READY,
                         status_message=f"Re-indexing failed: {sanitized_error}. Original collection still available.",
                     )
                 elif operation_type == OperationType.APPEND:
                     if collection_obj.status != CollectionStatus.ERROR:
                         await collection_repo.update_status(
                             collection_obj.uuid,
-                            CollectionStatus.DEGRADED,
+                            CollectionStatus.READY,
                             status_message=f"Append operation failed: {sanitized_error}",
                         )
                 elif operation_type == OperationType.REMOVE_SOURCE:
                     await collection_repo.update_status(
                         collection_obj.id,
-                        CollectionStatus.DEGRADED,
+                        CollectionStatus.READY,
                         status_message=f"Remove source operation failed: {sanitized_error}",
                     )
 

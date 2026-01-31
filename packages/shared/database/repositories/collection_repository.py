@@ -534,7 +534,7 @@ class CollectionRepository:
         - sync_mode = 'continuous'
         - sync_paused_at IS NULL
         - sync_next_run_at <= now()
-        - status in (READY, DEGRADED)
+        - status = READY
 
         Args:
             limit: Maximum number of collections to return
@@ -553,7 +553,7 @@ class CollectionRepository:
                     Collection.sync_mode == "continuous",
                     Collection.sync_paused_at.is_(None),
                     Collection.sync_next_run_at <= now,
-                    Collection.status.in_([CollectionStatus.READY, CollectionStatus.DEGRADED]),
+                    Collection.status == CollectionStatus.READY,
                 )
                 .order_by(Collection.sync_next_run_at.asc())
                 .limit(limit)

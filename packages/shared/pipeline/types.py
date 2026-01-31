@@ -95,7 +95,8 @@ class FileReference:
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.metadata.get("source", {})
+        source: dict[str, Any] = self.metadata.get("source", {})
+        return source
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation.

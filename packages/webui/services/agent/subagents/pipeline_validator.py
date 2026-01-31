@@ -331,7 +331,8 @@ Start by running dry-run validation to see the overall success rate."""
 
         # Try to parse the whole content as JSON
         try:
-            return json.loads(content)
+            result: dict[str, Any] = json.loads(content)
+            return result
         except json.JSONDecodeError:
             pass
 

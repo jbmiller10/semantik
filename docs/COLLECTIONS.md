@@ -32,7 +32,7 @@ collections (
     chunk_size INTEGER DEFAULT 1000,           -- Chunk size in tokens
     chunk_overlap INTEGER DEFAULT 200,         -- Overlap between chunks
     is_public BOOLEAN DEFAULT FALSE,           -- Public visibility
-    status VARCHAR,                            -- pending|ready|processing|error|degraded
+    status VARCHAR,                            -- pending|ready|processing|error
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 )
@@ -454,10 +454,9 @@ Documents are processed into chunks for embedding:
 Collection status reflects overall health:
 
 - **pending**: Being created
-- **ready**: Available for use
+- **ready**: Available for use (check error_count for document-level issues)
 - **processing**: Operation in progress
 - **error**: Critical error occurred
-- **degraded**: Partial functionality
 
 ## Error Handling
 

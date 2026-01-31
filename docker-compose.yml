@@ -4,7 +4,7 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.12.1
+    image: qdrant/qdrant:v1.14.1
     container_name: semantik-qdrant
     ports:
       - "127.0.0.1:6333:6333"

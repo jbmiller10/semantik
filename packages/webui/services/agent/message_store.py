@@ -227,7 +227,8 @@ class MessageStore:
         """
         try:
             key = _messages_key(conversation_id)
-            return await self.redis.exists(key) > 0
+            exists_count: int = await self.redis.exists(key)
+            return exists_count > 0
 
         except Exception as e:
             logger.error(
@@ -247,7 +248,8 @@ class MessageStore:
         """
         try:
             key = _messages_key(conversation_id)
-            return await self.redis.expire(key, self.ttl)
+            result: bool = await self.redis.expire(key, self.ttl)
+            return result
 
         except Exception as e:
             logger.error(
@@ -285,7 +287,8 @@ class MessageStore:
         try:
             key = _messages_key(conversation_id)
             # Use LLEN for efficient count without fetching all data
-            return await self.redis.llen(key)
+            count: int = await self.redis.llen(key)
+            return count
         except Exception as e:
             logger.error(
                 f"Failed to get message count for {conversation_id}: {e}",
@@ -350,7 +353,8 @@ class MessageStore:
         """
         try:
             key = _lock_key(conversation_id)
-            return await self.redis.exists(key) > 0
+            exists_count: int = await self.redis.exists(key)
+            return exists_count > 0
 
         except Exception as e:
             logger.error(

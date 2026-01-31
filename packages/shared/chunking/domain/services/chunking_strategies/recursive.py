@@ -28,4 +28,5 @@ class RecursiveChunkingStrategy(DomainStrategyAdapter):
     @classmethod
     def get_config_schema(cls) -> dict[str, Any]:
         """Return JSON Schema for plugin configuration."""
-        return UnifiedRecursiveStrategy.get_config_schema()
+        schema: dict[str, Any] = UnifiedRecursiveStrategy.get_config_schema()
+        return schema

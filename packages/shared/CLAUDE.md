@@ -36,7 +36,7 @@
       - Benchmark, BenchmarkRun, BenchmarkRunMetric, BenchmarkQueryResult
     </key-models>
     <enums>
-      - CollectionStatus: PENDING -> READY -> PROCESSING -> ERROR/DEGRADED
+      - CollectionStatus: PENDING -> READY -> PROCESSING -> ERROR
       - OperationStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/CANCELLED
       - OperationType: INDEX, APPEND, REINDEX, DELETE, REMOVE_SOURCE, PROJECTION_BUILD, BENCHMARK
       - DocumentStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/DELETED

@@ -255,7 +255,7 @@ describe('CollectionsDashboard', () => {
         createTestCollection({ id: 'col-1', status: 'ready' }),
         createTestCollection({ id: 'col-2', status: 'processing' }),
         createTestCollection({ id: 'col-3', status: 'error' }),
-        createTestCollection({ id: 'col-4', status: 'degraded' }),
+        createTestCollection({ id: 'col-4', status: 'pending' }),
       ];
 
       vi.mocked(useCollections).mockReturnValue({

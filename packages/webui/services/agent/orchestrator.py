@@ -1036,7 +1036,7 @@ Use spawn_source_analyzer to analyze this source and recommend an appropriate pi
         """
         # Try to load from Redis
         if await self.message_store.has_messages(self.conversation.id):
-            messages = await self.message_store.get_messages(self.conversation.id)
+            messages: list[ConversationMessage] = await self.message_store.get_messages(self.conversation.id)
             logger.debug(f"Loaded {len(messages)} messages from Redis")
             return messages
 

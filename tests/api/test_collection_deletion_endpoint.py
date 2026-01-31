@@ -213,6 +213,10 @@ class TestCollectionDeletionIntegration:
 
         mock_service.list_for_user = AsyncMock(return_value=([mock_collection], 1))
         mock_service.delete_collection = AsyncMock()
+        # Mock document_repo for error_count lookups
+        mock_doc_repo = MagicMock()
+        mock_doc_repo.count_failed_by_collections = AsyncMock(return_value={})
+        mock_service.document_repo = mock_doc_repo
 
         app.dependency_overrides[get_collection_service] = lambda: mock_service
 

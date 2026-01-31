@@ -102,6 +102,7 @@ export function useCreateCollection() {
         sync_mode: newCollection.sync_mode || 'one_time',
         sync_interval_minutes: newCollection.sync_interval_minutes,
         isProcessing: true,
+        error_count: 0,
       };
 
       queryClient.setQueryData<Collection[]>(
