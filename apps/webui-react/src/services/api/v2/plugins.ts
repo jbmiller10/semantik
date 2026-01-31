@@ -11,6 +11,8 @@ import type {
   PluginInstallResponse,
   AvailablePluginsListResponse,
   AvailablePluginFilters,
+  PipelinePluginListResponse,
+  PipelinePluginFilters,
 } from '../../../types/plugin';
 
 /**
@@ -76,6 +78,25 @@ export const pluginsApi = {
    */
   checkHealth: (pluginId: string) =>
     apiClient.get<PluginHealthResponse>(`/api/v2/plugins/${pluginId}/health`),
+
+  // --- Pipeline Plugins (for wizard) ---
+
+  /**
+   * List all plugins (builtin + external) for pipeline configuration
+   * @param filters Optional filters for plugin type
+   */
+  listPipeline: (filters?: PipelinePluginFilters) =>
+    apiClient.get<PipelinePluginListResponse>('/api/v2/plugins/pipeline', {
+      params: filters,
+    }),
+
+  /**
+   * Get JSON Schema for any plugin configuration (builtin or external)
+   * @param pluginId The plugin identifier
+   * @returns The config schema, or null if plugin has no configuration
+   */
+  getPipelineConfigSchema: (pluginId: string) =>
+    apiClient.get<PluginConfigSchema | null>(`/api/v2/plugins/pipeline/${pluginId}/config-schema`),
 
   // --- Available Plugins (from registry) ---
 

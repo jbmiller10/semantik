@@ -57,6 +57,14 @@ class SearchRequest(BaseModel):
         description="Behavior when reranking fails: 'fallback' returns un-reranked results, 'error' raises HTTP 503",
     )
 
+    # Parallel fan-out path filtering (new in v2)
+    path_id: str | None = Field(
+        None,
+        max_length=100,
+        description="Filter results to a specific pipeline path (e.g., 'chunks', 'summary'). "
+        "When None, returns results from all paths.",
+    )
+
     class Config:
         populate_by_name = True  # Allow both 'k' and 'top_k'
         extra = "forbid"
@@ -97,6 +105,12 @@ class SearchResult(BaseModel):
     chunk_index: int | None = None
     total_chunks: int | None = None
     operation_uuid: str | None = Field(None, max_length=200)
+    # Parallel fan-out path identifier
+    path_id: str | None = Field(
+        None,
+        max_length=100,
+        description="Pipeline path that produced this chunk (e.g., 'chunks', 'summary')",
+    )
 
 
 class SearchResponse(BaseModel):

@@ -419,8 +419,9 @@
 
 <development>
   <commands>
-    - Run API: uvicorn vecpipe.search_api:app --host 0.0.0.0 --port 8001
+    - Run API: uvicorn vecpipe.search_api:app --host 0.0.0.0 --port 8000
     - CLI embedding: python -m vecpipe.embed_chunks_unified -i /input -o /output
     - Tests: pytest tests/unit/test_memory_governor.py -v
   </commands>
+  <note>In Docker, VecPipe runs on port 8000. WebUI proxies to it via SEARCH_API_URL.</note>
 </development>

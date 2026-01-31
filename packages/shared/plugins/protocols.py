@@ -465,6 +465,120 @@ class ExtractorProtocol(Protocol):
 
 
 # ============================================================================
+# Parser Protocol
+# ============================================================================
+
+
+@runtime_checkable
+class ParserProtocol(Protocol):
+    """Protocol for document parsers.
+
+    Parser plugins extract text from documents of various formats.
+    Methods are SYNC for billiard.Pool compatibility in Celery workers.
+
+    Example external implementation:
+        class MyParser:
+            PLUGIN_ID = "my-parser"
+            PLUGIN_TYPE = "parser"
+            PLUGIN_VERSION = "1.0.0"
+
+            def __init__(self, config: dict[str, Any] | None = None) -> None:
+                self._config = config or {}
+
+            def parse_file(self, file_path: str, metadata=None, *, include_elements=False):
+                content = Path(file_path).read_bytes()
+                return self.parse_bytes(content, filename=Path(file_path).name)
+
+            def parse_bytes(self, content: bytes, *, filename=None, file_extension=None,
+                           mime_type=None, metadata=None, include_elements=False):
+                text = content.decode("utf-8")
+                return {"text": text, "elements": [], "metadata": {}}
+
+            @classmethod
+            def supported_extensions(cls):
+                return frozenset({".txt", ".md"})
+
+            @classmethod
+            def get_manifest(cls):
+                return {"id": cls.PLUGIN_ID, "type": "parser", ...}
+    """
+
+    PLUGIN_ID: ClassVar[str]
+    PLUGIN_TYPE: ClassVar[str]
+    PLUGIN_VERSION: ClassVar[str]
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        """Initialize parser with configuration.
+
+        Args:
+            config: Dictionary containing parser-specific settings.
+        """
+        ...
+
+    def parse_file(
+        self,
+        file_path: str,
+        metadata: dict[str, Any] | None = None,
+        *,
+        include_elements: bool = False,
+    ) -> Any:
+        """Parse document from file path.
+
+        Must be SYNC for billiard.Pool compatibility.
+
+        Args:
+            file_path: Path to document file.
+            metadata: Optional metadata to include in result.
+            include_elements: Whether to populate elements list.
+
+        Returns:
+            Parser output (dict or dataclass) with keys: text, elements, metadata.
+        """
+        ...
+
+    def parse_bytes(
+        self,
+        content: bytes,
+        *,
+        filename: str | None = None,
+        file_extension: str | None = None,
+        mime_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        include_elements: bool = False,
+    ) -> Any:
+        """Parse document from bytes.
+
+        Must be SYNC for billiard.Pool compatibility.
+
+        Args:
+            content: Raw document bytes.
+            filename: Optional filename hint for format detection.
+            file_extension: Optional extension hint (e.g., ".pdf").
+            mime_type: Optional MIME type hint.
+            metadata: Optional metadata to include in result.
+            include_elements: Whether to populate elements list.
+
+        Returns:
+            Parser output (dict or dataclass) with keys: text, elements, metadata.
+        """
+        ...
+
+    @classmethod
+    def supported_extensions(cls) -> frozenset[str]:
+        """File extensions this parser can handle.
+
+        Returns:
+            Frozenset of extensions with leading dots (e.g., frozenset({".pdf"})).
+        """
+        ...
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        """Return plugin metadata for discovery."""
+        ...
+
+
+# ============================================================================
 # Sparse Indexer Protocol
 # ============================================================================
 
@@ -577,6 +691,7 @@ PROTOCOL_BY_TYPE: dict[str, type] = {
     "chunking": ChunkingProtocol,
     "reranker": RerankerProtocol,
     "extractor": ExtractorProtocol,
+    "parser": ParserProtocol,
     "sparse_indexer": SparseIndexerProtocol,
 }
 """Mapping from plugin type string to corresponding protocol class.

@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, TypedDict
+from typing import Any, ClassVar, TypedDict
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -21,6 +21,7 @@ from shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
 from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
 from shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
 from shared.chunking.utils.safe_regex import SafeRegex
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,24 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
     This strategy intelligently combines different chunking methods based on
     content characteristics to achieve optimal results.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Auto-detects content type and routes to the most appropriate chunker. "
+        "Analyzes markdown, code, structure, and narrative patterns.",
+        best_for=[
+            "mixed content types",
+            "unknown document formats",
+            "when optimal strategy is unclear",
+            "documents with multiple content styles",
+        ],
+        not_recommended_for=[
+            "when you know the content type (use specific chunker)",
+            "when consistent chunking behavior is required",
+        ],
+        output_type="chunks",
+        tradeoffs="Adaptive but adds detection overhead. May switch strategies "
+        "within a document, potentially affecting chunk consistency.",
+    )
 
     def __init__(self, use_llama_index: bool = False, embed_model: Any = None) -> None:
         """

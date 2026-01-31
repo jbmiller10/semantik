@@ -271,6 +271,43 @@ class ChunkingStrategy(ABC):
             "description": metadata.get("description", ""),
         }
 
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration.
+
+        Returns the common configuration options for all chunking strategies.
+        Subclasses should override to add strategy-specific options.
+
+        Returns:
+            JSON Schema dictionary for configuration.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "min_tokens": {
+                    "type": "integer",
+                    "title": "Minimum Tokens",
+                    "description": "Minimum number of tokens per chunk",
+                    "default": 100,
+                    "minimum": 1,
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "title": "Maximum Tokens",
+                    "description": "Maximum number of tokens per chunk",
+                    "default": 1000,
+                    "minimum": 1,
+                },
+                "overlap_tokens": {
+                    "type": "integer",
+                    "title": "Overlap Tokens",
+                    "description": "Number of overlapping tokens between chunks",
+                    "default": 50,
+                    "minimum": 0,
+                },
+            },
+        }
+
     def __repr__(self) -> str:
         """String representation of the strategy."""
         return f"{self.__class__.__name__}(name='{self._name}')"

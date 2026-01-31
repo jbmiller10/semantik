@@ -17,10 +17,14 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
 import pytest
 
 from shared.dtos.ingestion import IngestedDocument
 from webui.tasks import ingestion as ingestion_module
+from webui.tasks.utils import CeleryTaskWithOperationUpdates
 
 # Valid 64-character hex hash for test documents
 _VALID_HASH = "a" * 64
@@ -36,9 +40,6 @@ def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDoc
         content_hash=_VALID_HASH,
     )
 
-
-if TYPE_CHECKING:
-    from collections.abc import Generator
 
 # ---------------------------------------------------------------------------
 # Test Fixtures and Helpers
@@ -96,29 +97,35 @@ def make_mock_collection(
     return mock_col
 
 
-class MockUpdater:
-    """Mock CeleryTaskWithOperationUpdates for testing."""
+class MockUpdater(CeleryTaskWithOperationUpdates):
+    """Mock CeleryTaskWithOperationUpdates for testing.
+
+    Overrides Redis-dependent methods to avoid external dependencies in tests.
+    """
 
     def __init__(self, operation_id: str = "op-123"):
+        # Don't call super().__init__ to avoid settings dependency
         self.operation_id = operation_id
         self.updates: list[tuple[str, dict]] = []
         self.user_id: int | None = None
+        self.collection_id: str | None = None
+        self._redis_client = None
 
-    def set_user_id(self, user_id: int) -> None:
-        self.user_id = user_id
+    async def send_update(self, update_type: str, data: dict) -> None:
+        self.updates.append((update_type, data))
 
-    async def send_update(self, event_type: str, data: dict) -> None:
-        self.updates.append((event_type, data))
-
-    async def __aenter__(self):
+    async def __aenter__(self) -> MockUpdater:
         return self
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args: Any) -> None:
+        pass
+
+    def close(self) -> None:
         pass
 
 
 @asynccontextmanager
-async def mock_session_context(mock_session) -> Generator[Any, None, None]:
+async def mock_session_context(mock_session) -> AsyncGenerator[Any, None]:
     """Create an async context manager for mock session."""
     yield mock_session
 
@@ -1248,8 +1255,8 @@ class TestHandleTaskFailureAsyncWithDatabase:
         assert call_args[0][1] == CollectionStatus.ERROR
 
     @pytest.mark.asyncio()
-    async def test_failure_handler_sets_collection_degraded_for_reindex(self):
-        """Test failure handler sets collection to DEGRADED for REINDEX operations."""
+    async def test_failure_handler_sets_collection_ready_for_reindex(self):
+        """Test failure handler sets collection to READY for REINDEX operations."""
         from shared.database import pg_connection_manager
         from shared.database.models import CollectionStatus, OperationType
 
@@ -1305,10 +1312,10 @@ class TestHandleTaskFailureAsyncWithDatabase:
         finally:
             pg_connection_manager._sessionmaker = original_sessionmaker  # type: ignore[attr-defined]
 
-        # Verify collection was set to DEGRADED for REINDEX failure
+        # Verify collection was set to READY for REINDEX failure
         mock_collection_repo.update_status.assert_called()
         call_args = mock_collection_repo.update_status.call_args
-        assert call_args[0][1] == CollectionStatus.DEGRADED
+        assert call_args[0][1] == CollectionStatus.READY
 
     @pytest.mark.asyncio()
     async def test_failure_handler_missing_operation(self):
@@ -1432,8 +1439,8 @@ class TestProcessAppendOperationImplAdditional:
 
         # Create async generator for load_documents
         async def empty_async_gen():
-            return
-            yield  # Make it an async generator
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
@@ -1487,8 +1494,8 @@ class TestProcessAppendOperationImplAdditional:
 
         # Create async generator that yields nothing
         async def empty_async_gen():
-            return
-            yield  # Make it an async generator
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
@@ -2078,6 +2085,7 @@ class TestProcessCollectionOperationAsyncRouting:
                 await ingestion_module._process_collection_operation_async("op-123", mock_celery_task)
 
                 # Verify fallback was used
+                assert captured_collection is not None
                 assert captured_collection["vector_store_name"] == "fallback_qdrant_id"
 
         finally:
@@ -2140,8 +2148,8 @@ class TestProcessIndexOperationAdditional:
         assert result["vector_dim"] == 768
 
     @pytest.mark.asyncio()
-    async def test_index_falls_back_to_default_dimension(self):
-        """Test INDEX uses default dimension when model is unknown."""
+    async def test_index_raises_error_for_unknown_model(self):
+        """Test INDEX raises error when model is unknown (no silent fallback)."""
         operation = {
             "id": 1,
             "uuid": "op-123",
@@ -2179,13 +2187,11 @@ class TestProcessIndexOperationAdditional:
             patch("shared.embedding.factory.resolve_model_config", return_value=None),  # Unknown model
             patch("shared.embedding.validation.get_model_dimension", return_value=None),
             patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            pytest.raises(ValueError, match="Unknown embedding model.*cannot determine vector dimensions"),
         ):
-            result = await ingestion_module._process_index_operation(
+            await ingestion_module._process_index_operation(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
             )
-
-        assert result["success"] is True
-        assert result["vector_dim"] == 1024  # Default
 
     @pytest.mark.asyncio()
     async def test_index_logs_dimension_mismatch_warning(self):
@@ -2433,8 +2439,8 @@ class TestAppendTransactionHandling:
         mock_connector.authenticate = AsyncMock(return_value=True)
 
         async def empty_load_documents():
-            return
-            yield  # Make it an async generator that yields nothing
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector.load_documents = empty_load_documents
 
@@ -2604,8 +2610,8 @@ class TestAppendTransactionHandling:
         mock_connector.authenticate = AsyncMock(return_value=True)
 
         async def empty_gen():
-            return
-            yield
+            if False:
+                yield  # Make it an async generator that yields nothing
 
         mock_connector.load_documents = empty_gen
 
@@ -2838,6 +2844,7 @@ class TestSparseIndexingHelpers:
             )
 
         upsert.assert_awaited_once()
+        assert upsert.await_args is not None
         _args = upsert.await_args.args
         assert _args[0] == "dense_sparse_bm25"
         qdrant_vectors = _args[1]
@@ -2845,6 +2852,7 @@ class TestSparseIndexingHelpers:
         assert {v["metadata"]["original_chunk_id"] for v in qdrant_vectors} == {"orig-1_0", "orig-2_0"}
 
         store.assert_awaited_once()
+        assert store.await_args is not None
         stored_cfg = store.await_args.args[2]
         assert stored_cfg["document_count"] == 7
         assert stored_cfg["last_indexed_at"] is not None

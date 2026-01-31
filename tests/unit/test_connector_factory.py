@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from shared.connectors.base import BaseConnector
-from shared.dtos.ingestion import IngestedDocument
+from shared.pipeline.types import FileReference
 from shared.plugins.exceptions import PluginDuplicateError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
@@ -41,9 +41,15 @@ class DummyConnector(BaseConnector):
     async def authenticate(self) -> bool:
         return True
 
-    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
+    async def enumerate(
+        self,
+        source_id: int | None = None,
+    ) -> AsyncIterator[FileReference]:
         return
         yield  # Make this a generator
+
+    async def load_content(self, file_ref: FileReference) -> bytes:
+        return b"dummy content"
 
 
 class AnotherConnector(BaseConnector):
@@ -52,9 +58,15 @@ class AnotherConnector(BaseConnector):
     async def authenticate(self) -> bool:
         return False
 
-    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
+    async def enumerate(
+        self,
+        source_id: int | None = None,
+    ) -> AsyncIterator[FileReference]:
         return
         yield  # Make this a generator
+
+    async def load_content(self, file_ref: FileReference) -> bytes:
+        return b"another content"
 
 
 @pytest.fixture(autouse=True)

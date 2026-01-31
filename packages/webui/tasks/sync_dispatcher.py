@@ -55,7 +55,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
 
         # Get collections due for sync (collection-level sync scheduling)
         # WHERE sync_mode='continuous' AND sync_paused_at IS NULL
-        #   AND sync_next_run_at <= now() AND status IN (READY, DEGRADED)
+        #   AND sync_next_run_at <= now() AND status = READY
         due_collections = await collection_repo.get_due_for_sync(limit=MAX_COLLECTIONS_PER_RUN)
         stats["collections_checked"] = len(due_collections)
 
@@ -168,7 +168,7 @@ def dispatch_due_syncs(self: Any) -> dict[str, Any]:  # noqa: ARG001
 
     This task runs every 60 seconds via Celery Beat and:
     1. Queries collections where sync_mode='continuous' AND sync_paused_at IS NULL
-       AND sync_next_run_at <= now AND status IN (READY, DEGRADED)
+       AND sync_next_run_at <= now AND status = READY
     2. Checks each collection for active operations (collection-level gating)
     3. Creates a CollectionSyncRun record for completion tracking
     4. Fans out APPEND operations for each source with sync_run_id

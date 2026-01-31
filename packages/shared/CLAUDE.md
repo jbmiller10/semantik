@@ -36,7 +36,7 @@
       - Benchmark, BenchmarkRun, BenchmarkRunMetric, BenchmarkQueryResult
     </key-models>
     <enums>
-      - CollectionStatus: PENDING -> READY -> PROCESSING -> ERROR/DEGRADED
+      - CollectionStatus: PENDING -> READY -> PROCESSING -> ERROR
       - OperationStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/CANCELLED
       - OperationType: INDEX, APPEND, REINDEX, DELETE, REMOVE_SOURCE, PROJECTION_BUILD, BENCHMARK
       - DocumentStatus: PENDING -> PROCESSING -> COMPLETED/FAILED/DELETED
@@ -87,6 +87,7 @@
       - RerankerPlugin: Search result reranking
       - ExtractorPlugin: Entity/metadata extraction
       - SparseIndexerPlugin: Sparse vectors (BM25, SPLADE) for hybrid search
+      - ParserPlugin: Document text extraction (text, unstructured)
     </plugin-types>
     <state-file>
       Plugin state persisted to /data/plugin_state.json (shared volume).
@@ -373,6 +374,112 @@
       - Binary threshold: grade > 0 treated as relevant for precision/recall/MRR/AP
     </key-concepts>
   </module>
+
+  <module path="pipeline/">
+    <purpose>DAG-based document processing pipeline with conditional routing</purpose>
+    <structure>
+      - types.py: Core data structures (PipelineDAG, PipelineNode, PipelineEdge, FileReference)
+      - executor.py: PipelineExecutor - orchestrates DAG execution with progress tracking
+      - executor_types.py: Execution context, callbacks, result types
+      - router.py: PipelineRouter - edge matching with exclusive/parallel semantics
+      - predicates.py: Predicate expression evaluation (glob, negation, numeric, arrays)
+      - validation.py: DAG validation (reachability, terminal nodes, catch-all requirements)
+      - sniff.py: ContentSniffer - pre-routing content detection (code, scanned PDFs, structured data)
+      - loader.py: Load/save pipeline configs from database/YAML
+      - defaults.py: Default pipeline for backward compatibility
+      - failure_tracker.py: Track consecutive failures to halt on systemic issues
+      - templates/: Pre-configured pipeline templates (academic_papers, codebase, documentation, etc.)
+    </structure>
+    <key-types>
+      - PipelineDAG: Complete graph definition with nodes and edges
+      - PipelineNode: Processing step with type (PARSER, CHUNKER, EXTRACTOR, EMBEDDER), plugin_id, config
+      - PipelineEdge: Connection with optional `when` predicate and `parallel` flag for fan-out
+      - FileReference: Input file with namespaced metadata (source, detected, parsed)
+      - NodeType: Enum of PARSER, CHUNKER, EXTRACTOR, EMBEDDER
+    </key-types>
+    <predicate-expressions>
+      Predicates match against FileReference metadata using a mini-language:
+      - Exact: {"mime_type": "application/pdf"}
+      - Glob: {"mime_type": "application/*"}, {"extension": "*.md"}
+      - Negation: {"mime_type": "!image/*"} (prefix with !)
+      - Numeric: {"size_bytes": ">10000000"}, {"size_bytes": "<=1024"}
+      - Array (OR): {"extension": [".md", ".txt", ".rst"]}
+      - Nested paths: {"metadata.detected.is_code": true}
+      - Boolean: {"metadata.detected.is_scanned_pdf": true}
+    </predicate-expressions>
+    <edge-evaluation-order>
+      1. Parallel predicate edges (all matches fire for fan-out)
+      2. Exclusive predicate edges (first match wins)
+      3. Parallel catch-all edges (all fire)
+      4. Exclusive catch-all edges (fallback)
+      CRITICAL: Every DAG must have at least one non-parallel catch-all edge from _source
+    </edge-evaluation-order>
+    <metadata-namespacing>
+      FileReference.metadata uses namespaced keys:
+      - "source": Connector-provided metadata (path, filename, size_bytes, etc.)
+      - "detected": Sniff results (is_code, is_scanned_pdf, detected_language, etc.)
+      - "parsed": Parser-extracted metadata (page_count, has_tables, author, etc.)
+    </metadata-namespacing>
+    <validation-rules>
+      - Must have exactly one EMBEDDER node
+      - Every node must reach an embedder (or extractor for parallel paths)
+      - Requires at least one non-parallel catch-all edge from _source
+      - Parallel edges from same source need unique path_name values
+      - Tier ordering enforced: _source -> PARSER -> CHUNKER -> EXTRACTOR/EMBEDDER -> EMBEDDER
+    </validation-rules>
+    <execution-modes>
+      - ExecutionMode.FULL: Production - processes files, writes to database
+      - ExecutionMode.DRY_RUN: Validation - runs routing/parsing without writes
+    </execution-modes>
+    <usage>
+      from shared.pipeline import PipelineExecutor, PipelineDAG, ExecutionMode
+      from shared.pipeline.loader import load_pipeline_config
+
+      dag = load_pipeline_config(collection_id, session)
+      executor = PipelineExecutor(dag, plugins, session)
+      results = await executor.execute(file_refs, mode=ExecutionMode.FULL)
+    </usage>
+  </module>
+
+  <module path="plugins/types/parser.py">
+    <purpose>Parser plugin type for document text extraction</purpose>
+    <classes>
+      - ParserPlugin: Base class for parser implementations (sync methods for Celery)
+      - ParsedDocument: Result with content, metadata, chunks list
+      - ParserError, UnsupportedFormatError, ExtractionFailedError: Exception hierarchy
+      - AgentHints: Discovery metadata for agent-driven plugin selection
+    </classes>
+    <key-attributes>
+      - PLUGIN_TYPE = "parser"
+      - SUPPORTED_EXTENSIONS: frozenset of file extensions
+      - SUPPORTED_MIME_TYPES: frozenset of MIME types
+      - EMITTED_FIELDS: List of metadata fields emitted for routing predicates
+    </key-attributes>
+    <built-in-parsers>
+      - text: Lightweight text/markdown/code parser (no dependencies)
+      - unstructured: Full-featured parser using unstructured library (PDF, DOCX, PPTX, HTML, email)
+    </built-in-parsers>
+    <sync-requirement>
+      Parser methods (parse_file, parse_bytes) are SYNC, not async.
+      This is required for billiard.Pool compatibility in Celery workers.
+    </sync-requirement>
+  </module>
+
+  <module path="plugins/discovery.py">
+    <purpose>Agent-facing plugin discovery APIs</purpose>
+    <key-functions>
+      - list_plugins_for_agent(plugin_type): Returns plugins with AgentHints for selection
+      - find_plugins_for_input(mime_type): MIME matching with wildcard support and specificity scoring
+      - get_alternative_plugins(plugin_id): Find alternatives based on input_type overlap
+      - get_emitted_predicate_fields(plugin_type): Aggregate EMITTED_FIELDS for routing field discovery
+    </key-functions>
+    <usage>
+      from shared.plugins.discovery import list_plugins_for_agent, find_plugins_for_input
+
+      parsers = list_plugins_for_agent("parser")
+      best_parser = find_plugins_for_input("application/pdf")[0]
+    </usage>
+  </module>
 </modules>
 
 <repository-pattern>
@@ -481,9 +588,9 @@
 
 <development>
   <commands>
-    - Test: `poetry run pytest tests/`
-    - Lint: `poetry run ruff check packages/shared/`
-    - Type check: `poetry run mypy packages/shared/`
+    - Test: `uv run pytest tests/shared/`
+    - Lint: `uv run ruff check packages/shared/`
+    - Type check: `uv run mypy packages/shared/`
   </commands>
   <test-locations>
     - tests/unit/: Repository and utility tests

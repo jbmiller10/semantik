@@ -1700,10 +1700,10 @@ export interface CollectionCardProps {
 }
 
 // Use type for unions and intersections
-export type CollectionStatus = 'pending' | 'processing' | 'ready' | 'error' | 'degraded';
+export type CollectionStatus = 'pending' | 'processing' | 'ready' | 'error';
 
 // Const assertions for literals
-export const COLLECTION_STATUSES = ['pending', 'processing', 'ready', 'error', 'degraded'] as const;
+export const COLLECTION_STATUSES = ['pending', 'processing', 'ready', 'error'] as const;
 export type CollectionStatus = typeof COLLECTION_STATUSES[number];
 
 // Generic components

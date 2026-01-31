@@ -67,7 +67,7 @@ describe('CollectionCard', () => {
   })
 
   it('renders different status colors correctly', () => {
-    const statuses: CollectionStatus[] = ['ready', 'processing', 'error', 'degraded', 'pending']
+    const statuses: CollectionStatus[] = ['ready', 'processing', 'error', 'pending']
 
     statuses.forEach(status => {
       const { rerender } = render(
@@ -100,16 +100,16 @@ describe('CollectionCard', () => {
     expect(screen.getByText('Failed to connect to vector database')).toBeInTheDocument()
   })
 
-  it('shows status message for degraded state', () => {
-    const degradedCollection = {
+  it('shows error count badge when collection has failed documents', () => {
+    const collectionWithErrors = {
       ...mockCollection,
-      status: 'degraded' as CollectionStatus,
-      status_message: 'Some documents failed to index'
+      status: 'ready' as CollectionStatus,
+      error_count: 3
     }
-    render(<CollectionCard collection={degradedCollection} />)
+    render(<CollectionCard collection={collectionWithErrors} />)
 
-    expect(screen.getByText('degraded')).toBeInTheDocument()
-    expect(screen.getByText('Some documents failed to index')).toBeInTheDocument()
+    expect(screen.getByText('ready')).toBeInTheDocument()
+    expect(screen.getByText('3 errors')).toBeInTheDocument()
   })
 
   it('handles long collection names with truncation', () => {

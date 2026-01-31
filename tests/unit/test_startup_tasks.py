@@ -30,8 +30,9 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry):
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    await ensure_default_data()
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        await ensure_default_data()
 
     @pytest.mark.asyncio()
     async def test_ensure_default_data_with_disabled_plugins(self):
@@ -50,13 +51,14 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry) as mock_load:
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    await ensure_default_data()
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        await ensure_default_data()
 
-                # Check that disabled_plugin_ids was passed to load_plugins
-                mock_load.assert_called_once()
-                call_kwargs = mock_load.call_args.kwargs
-                assert call_kwargs.get("disabled_plugin_ids") == {"plugin1", "plugin2"}
+                    # Check that disabled_plugin_ids was passed to load_plugins
+                    mock_load.assert_called_once()
+                    call_kwargs = mock_load.call_args.kwargs
+                    assert call_kwargs.get("disabled_plugin_ids") == {"plugin1", "plugin2"}
 
     @pytest.mark.asyncio()
     async def test_ensure_default_data_with_embedding_plugins(self):
@@ -76,12 +78,13 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry):
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    with patch("webui.startup_tasks.logger") as mock_logger:
-                        await ensure_default_data()
-                        # Verify that embedding plugins were logged
-                        calls = list(mock_logger.info.call_args_list)
-                        assert any("embedding plugins" in str(call).lower() for call in calls)
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        with patch("webui.startup_tasks.logger") as mock_logger:
+                            await ensure_default_data()
+                            # Verify that embedding plugins were logged
+                            calls = list(mock_logger.info.call_args_list)
+                            assert any("embedding plugins" in str(call).lower() for call in calls)
 
     @pytest.mark.asyncio()
     async def test_ensure_default_data_with_chunking_plugins(self):
@@ -101,11 +104,12 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry):
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    with patch("webui.startup_tasks.logger") as mock_logger:
-                        await ensure_default_data()
-                        calls = list(mock_logger.info.call_args_list)
-                        assert any("chunking plugins" in str(call).lower() for call in calls)
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        with patch("webui.startup_tasks.logger") as mock_logger:
+                            await ensure_default_data()
+                            calls = list(mock_logger.info.call_args_list)
+                            assert any("chunking plugins" in str(call).lower() for call in calls)
 
     @pytest.mark.asyncio()
     async def test_ensure_default_data_with_connector_plugins(self):
@@ -125,11 +129,12 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry):
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    with patch("webui.startup_tasks.logger") as mock_logger:
-                        await ensure_default_data()
-                        calls = list(mock_logger.info.call_args_list)
-                        assert any("connector plugins" in str(call).lower() for call in calls)
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        with patch("webui.startup_tasks.logger") as mock_logger:
+                            await ensure_default_data()
+                            calls = list(mock_logger.info.call_args_list)
+                            assert any("connector plugins" in str(call).lower() for call in calls)
 
     @pytest.mark.asyncio()
     async def test_ensure_default_data_db_exception(self):
@@ -147,13 +152,14 @@ class TestEnsureDefaultData:
 
         with patch("webui.startup_tasks.get_db", return_value=mock_get_db()):
             with patch("webui.startup_tasks.load_plugins", return_value=mock_registry) as mock_load:
-                with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
-                    await ensure_default_data()
+                with patch("webui.startup_tasks.validate_templates"):
+                    with patch("webui.startup_tasks.ensure_default_chunking_strategies", new=AsyncMock()):
+                        await ensure_default_data()
 
-                # Should load plugins with None disabled_plugin_ids
-                mock_load.assert_called_once()
-                call_kwargs = mock_load.call_args.kwargs
-                assert call_kwargs.get("disabled_plugin_ids") is None
+                    # Should load plugins with None disabled_plugin_ids
+                    mock_load.assert_called_once()
+                    call_kwargs = mock_load.call_args.kwargs
+                    assert call_kwargs.get("disabled_plugin_ids") is None
 
 
 class TestEnsureDefaultChunkingStrategies:

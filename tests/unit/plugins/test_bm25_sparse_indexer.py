@@ -834,8 +834,15 @@ class TestBM25IDFFileLock:
         monkeypatch.setattr(py_time, "sleep", lambda *_args, **_kwargs: None)
 
         # Make time jump forward immediately so we exceed the timeout.
-        times = iter([0.0, 999.0])
-        monkeypatch.setattr(py_time, "time", lambda: next(times))
+        # Use a list with index to handle any number of calls (coverage may add extra calls)
+        call_count = [0]
+
+        def fake_time() -> float:
+            call_count[0] += 1
+            # First call returns 0.0 (start time), all subsequent calls return 999.0 (way past timeout)
+            return 0.0 if call_count[0] == 1 else 999.0
+
+        monkeypatch.setattr(py_time, "time", fake_time)
 
         with pytest.raises(TimeoutError):
             with plugin._idf_file_lock(timeout=0.01):

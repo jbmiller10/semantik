@@ -30,6 +30,8 @@
       - plugins/ - Plugin system unit tests
       - services/ - Service layer unit tests
       - tasks/ - Celery task unit tests
+      - pipeline/ - Pipeline executor, router, predicates, templates, validation tests
+      - agent/ - Agent orchestrator, message store, subagents, tools tests
     </subdirs>
     <examples>
       - test_auth.py - Authentication/authorization tests
@@ -37,6 +39,9 @@
       - test_memory_governor.py - GPU memory management tests
       - test_search_api.py - Search endpoint tests
       - test_plugin_loader.py - Plugin loading tests
+      - pipeline/test_executor.py - Pipeline execution flow tests
+      - pipeline/test_predicates.py - Predicate matching tests
+      - agent/test_orchestrator.py - Agent conversation orchestration tests
     </examples>
   </dir>
 
@@ -48,11 +53,17 @@
       - services/ - Service integration tests
       - strategies/ - Chunker strategy integration tests
       - web/ - Web layer integration tests
+      - pipeline/ - Pipeline execution integration tests (parallel, parsed metadata routing)
+      - agent/ - Agent API, conversation flow, streaming tests
     </subdirs>
     <examples>
       - test_search_api_integration.py - Full search flow tests
       - test_websocket_redis_integration.py - WebSocket + Redis tests
       - test_plugin_lifecycle.py - Plugin lifecycle integration
+      - pipeline/test_executor_integration.py - Full pipeline execution tests
+      - pipeline/test_route_preview.py - Route preview API tests
+      - agent/test_api.py - Agent REST API integration tests
+      - agent/test_streaming.py - SSE streaming tests
     </examples>
   </dir>
 
@@ -125,10 +136,16 @@
     <purpose>WebUI-specific tests (API endpoints, services)</purpose>
     <subdirs>
       - api/v1/ - V1 API tests
-      - api/v2/ - V2 API tests
-      - services/ - WebUI service tests
+      - api/v2/ - V2 API tests (including agent, pipeline, templates endpoints)
+      - services/ - WebUI service tests (including pipeline_preview_service)
       - tasks/ - WebUI Celery task tests
     </subdirs>
+    <examples>
+      - api/test_pipeline_preview.py - Pipeline route preview tests
+      - api/v2/test_available_predicate_fields.py - Predicate field discovery tests
+      - api/v2/test_templates.py - Pipeline template API tests
+      - services/test_pipeline_preview_service.py - Preview service unit tests
+    </examples>
   </dir>
 
   <dir path="shared/">

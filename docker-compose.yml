@@ -4,7 +4,7 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.12.1
+    image: qdrant/qdrant:v1.14.1
     container_name: semantik-qdrant
     ports:
       - "127.0.0.1:6333:6333"
@@ -257,6 +257,8 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
       - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Session timeout (must be > max LLM operation time)
+      - DB_IDLE_IN_TX_TIMEOUT_MS=${DB_IDLE_IN_TX_TIMEOUT_MS:-300000}
       # Connector secrets encryption (Fernet key for encrypting credentials)
       - CONNECTOR_SECRETS_KEY=${CONNECTOR_SECRETS_KEY:-}
     volumes:
@@ -350,6 +352,8 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
       - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Session timeout (must be > max LLM operation time)
+      - DB_IDLE_IN_TX_TIMEOUT_MS=${DB_IDLE_IN_TX_TIMEOUT_MS:-300000}
       # Connector secrets encryption (Fernet key for encrypting credentials)
       - CONNECTOR_SECRETS_KEY=${CONNECTOR_SECRETS_KEY:-}
     volumes:
@@ -417,6 +421,8 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
       - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Session timeout (must be > max LLM operation time)
+      - DB_IDLE_IN_TX_TIMEOUT_MS=${DB_IDLE_IN_TX_TIMEOUT_MS:-300000}
       # Beat schedule storage
       - CELERY_BEAT_SCHEDULE_FILE=${CELERY_BEAT_SCHEDULE_FILE:-/app/data/celerybeat-schedule}
     volumes:

@@ -172,7 +172,13 @@ class LLMServiceFactory:
                     f"No API key configured for {provider_type}. Please add your API key in settings.",
                 )
             # Update last_used timestamp (only for providers with API keys)
-            await self._config_repo.update_key_last_used(config.id, provider_type)
+            # This is telemetry - not critical for operation
+            try:
+                await self._config_repo.update_key_last_used(config.id, provider_type)
+            except Exception as e:
+                logger.warning(f"Failed to update last_used timestamp for {provider_type}: {e}")
+                # Rollback to clear the failed transaction state so subsequent operations can proceed
+                await self.session.rollback()
             quantization = None
 
         # Create and initialize provider
