@@ -270,8 +270,7 @@ Start by enumerating the files to understand the source composition."""
 
         # Try to parse the whole content as JSON
         try:
-            result = json.loads(content)
-            return result
+            return json.loads(content)
         except json.JSONDecodeError:
             pass
 
@@ -279,8 +278,7 @@ Start by enumerating the files to understand the source composition."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                result = json.loads(json_match.group())
-                return result
+                return json.loads(json_match.group())
             except json.JSONDecodeError:
                 pass
 

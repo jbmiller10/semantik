@@ -20,11 +20,13 @@ depends_on = None
 
 def upgrade() -> None:
     # Step 1: Update all DEGRADED collections to READY
-    op.execute("""
+    op.execute(
+        """
         UPDATE collections
         SET status = 'READY'
         WHERE status = 'DEGRADED'
-    """)
+    """
+    )
 
     # Step 2: Remove DEGRADED from the enum
     # PostgreSQL requires recreating the enum type to remove a value
@@ -35,48 +37,64 @@ def upgrade() -> None:
     # 4. Rename the new enum
 
     # Create new enum type without DEGRADED
-    op.execute("""
+    op.execute(
+        """
         CREATE TYPE collection_status_new AS ENUM ('PENDING', 'READY', 'PROCESSING', 'ERROR')
-    """)
+    """
+    )
 
     # Update the column to use the new type
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE collections
         ALTER COLUMN status TYPE collection_status_new
         USING status::text::collection_status_new
-    """)
+    """
+    )
 
     # Drop the old enum
-    op.execute("""
+    op.execute(
+        """
         DROP TYPE collection_status
-    """)
+    """
+    )
 
     # Rename new enum to original name
-    op.execute("""
+    op.execute(
+        """
         ALTER TYPE collection_status_new RENAME TO collection_status
-    """)
+    """
+    )
 
 
 def downgrade() -> None:
     # Re-add DEGRADED to the enum
     # Create new enum with DEGRADED
-    op.execute("""
+    op.execute(
+        """
         CREATE TYPE collection_status_new AS ENUM ('PENDING', 'READY', 'PROCESSING', 'ERROR', 'DEGRADED')
-    """)
+    """
+    )
 
     # Update the column to use the new type
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE collections
         ALTER COLUMN status TYPE collection_status_new
         USING status::text::collection_status_new
-    """)
+    """
+    )
 
     # Drop the old enum
-    op.execute("""
+    op.execute(
+        """
         DROP TYPE collection_status
-    """)
+    """
+    )
 
     # Rename new enum to original name
-    op.execute("""
+    op.execute(
+        """
         ALTER TYPE collection_status_new RENAME TO collection_status
-    """)
+    """
+    )

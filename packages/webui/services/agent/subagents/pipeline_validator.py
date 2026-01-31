@@ -340,8 +340,7 @@ Start by running dry-run validation to see the overall success rate."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                result = json.loads(json_match.group())
-                return result
+                return json.loads(json_match.group())
             except json.JSONDecodeError:
                 pass
 

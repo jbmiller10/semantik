@@ -12,11 +12,13 @@ This test suite covers:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 import pytest
 
@@ -37,7 +39,6 @@ def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDoc
         metadata={},
         content_hash=_VALID_HASH,
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +114,7 @@ class MockUpdater(CeleryTaskWithOperationUpdates):
     async def send_update(self, update_type: str, data: dict) -> None:
         self.updates.append((update_type, data))
 
-    async def __aenter__(self) -> "MockUpdater":
+    async def __aenter__(self) -> MockUpdater:
         return self
 
     async def __aexit__(self, *args: Any) -> None:
