@@ -331,7 +331,8 @@ Start by running dry-run validation to see the overall success rate."""
 
         # Try to parse the whole content as JSON
         try:
-            return json.loads(content)
+            result: dict[str, Any] = json.loads(content)
+            return result
         except json.JSONDecodeError:
             pass
 
@@ -339,7 +340,8 @@ Start by running dry-run validation to see the overall success rate."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                result = json.loads(json_match.group())
+                return result
             except json.JSONDecodeError:
                 pass
 

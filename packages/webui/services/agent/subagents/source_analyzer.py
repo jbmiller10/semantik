@@ -263,13 +263,15 @@ Start by enumerating the files to understand the source composition."""
         json_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", content, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group(1))
+                result: dict[str, Any] = json.loads(json_match.group(1))
+                return result
             except json.JSONDecodeError:
                 pass
 
         # Try to parse the whole content as JSON
         try:
-            return json.loads(content)
+            result = json.loads(content)
+            return result
         except json.JSONDecodeError:
             pass
 
@@ -277,7 +279,8 @@ Start by enumerating the files to understand the source composition."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                result = json.loads(json_match.group())
+                return result
             except json.JSONDecodeError:
                 pass
 

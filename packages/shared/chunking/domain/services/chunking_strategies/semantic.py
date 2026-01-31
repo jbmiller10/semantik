@@ -87,4 +87,5 @@ class SemanticChunkingStrategy(DomainStrategyAdapter):
     @classmethod
     def get_config_schema(cls) -> dict[str, Any]:
         """Return JSON Schema for plugin configuration."""
-        return UnifiedSemanticStrategy.get_config_schema()
+        schema: dict[str, Any] = UnifiedSemanticStrategy.get_config_schema()
+        return schema
