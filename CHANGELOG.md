@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.8.2] - 2026-01-30
+
+### Changed
+- Upgraded `transformers` from v4 to v5.0.0
+- Upgraded `sentence-transformers` from v3 to v5.2.2 (includes sparse embedding models)
+- Updated `huggingface_hub` to v1.3.5 (httpx backend)
+
+### Added
+- **Pipeline DAG system** (`packages/shared/pipeline/`) — Complete DAG-based document processing with conditional routing:
+  - Predicate expressions for routing (glob patterns, negation, numeric comparisons, arrays)
+  - Parallel edge support for fan-out processing (e.g., chunked + summarized paths simultaneously)
+  - Content sniffing before routing (code detection, scanned PDF identification, language detection)
+  - Pipeline templates for common use cases (academic papers, codebase, documentation, email archive, mixed documents)
+  - Validation rules ensuring DAG correctness (reachability, terminal nodes, catch-all requirements)
+  - Execution modes: FULL (production) and DRY_RUN (validation/preview)
+- **Agent service** (`packages/webui/services/agent/`) — AI-assisted pipeline configuration:
+  - Conversational pipeline builder with multi-turn LLM interaction
+  - Specialized subagents: SourceAnalyzer (file analysis), PipelineValidator (config validation)
+  - SSE streaming for real-time UI updates during long operations
+  - Uncertainty tracking with severity levels (blocking/notable/info)
+  - Tool system for plugin discovery, template selection, and pipeline manipulation
+- **Collection wizard** (frontend) — Multi-step collection creation flow:
+  - AI-assisted mode that analyzes sources and recommends optimal configuration
+  - Manual mode for direct pipeline configuration
+  - Route preview to test file routing before indexing
+  - Keyboard navigation and accessibility support
+- **Pipeline visualization** (frontend) — SVG DAG editor:
+  - Vertical tier layout with drag-to-connect edge creation
+  - Parallel edge rendering as double lines (railroad tracks)
+  - Edge predicate editor with field categorization (source/detected/parsed)
+  - Node configuration panel with plugin-specific settings
+  - Touch device detection with appropriate fallbacks
+- **Parser plugins** (`packages/shared/plugins/types/parser.py`) — Document text extraction:
+  - `text` parser: Lightweight text/markdown/code parser (no dependencies)
+  - `unstructured` parser: Full-featured parser for PDF, DOCX, PPTX, HTML, email
+  - `EMITTED_FIELDS` attribute for routing predicate field discovery
+  - AgentHints for AI-driven plugin selection
+- **Plugin discovery APIs** (`packages/shared/plugins/discovery.py`) — Agent-facing discovery:
+  - `list_plugins_for_agent()`: Returns plugins with AgentHints
+  - `find_plugins_for_input()`: MIME matching with specificity scoring
+  - `get_emitted_predicate_fields()`: Aggregate fields for routing
+- **Route preview API** — Test file routing against pipeline DAG before indexing
+- **Pipeline failure tracking** — Halt on systemic issues (consecutive failure threshold)
+- **CLAUDE.md documentation** — Added for pipeline and benchmarks subsystems
+
+### Changed
+- **Connector refactoring** — `enumerate()` replaces `load_documents()`:
+  - Connectors now only enumerate files (yield `FileReference` objects)
+  - Content loading and parsing handled by pipeline executor
+  - `load_documents()` deprecated, will be removed in future release
+- **Metadata namespacing** — Renamed `source_metadata` to `metadata` with namespaced structure:
+  - `metadata["source"]`: Connector-provided (path, filename, size_bytes)
+  - `metadata["detected"]`: Sniff results (is_code, is_scanned_pdf, detected_language)
+  - `metadata["parsed"]`: Parser-extracted (page_count, has_tables, author)
+- **QuickCreateModal** — Renamed from `CreateCollectionModal`, streamlined for simple creation
+- **Collection card** — Shows error count badge instead of DEGRADED status
+
+### Removed
+- **DEGRADED collection status** — Replaced with error count badge on collection cards
+
+### Fixed
+- ESLint warnings and errors in test files
+- Auto-generate `path_name` for parallel edges on collection creation
+
 ## [0.8.1] - 2026-01-22
 
 ### Changed

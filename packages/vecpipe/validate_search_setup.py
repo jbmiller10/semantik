@@ -38,7 +38,7 @@ def check_dependencies() -> bool:
     """Check required dependencies"""
     print("\n2. Dependencies:")
 
-    required = {"transformers": "4.51.0", "torch": None, "sentence_transformers": None, "accelerate": None}
+    required = {"transformers": "5.0.0", "torch": None, "sentence_transformers": None, "accelerate": None}
 
     all_good = True
     for package, min_version in required.items():
@@ -136,7 +136,7 @@ def suggest_fixes(
 
     if not deps_ok:
         print("\n✗ Missing dependencies. Install with:")
-        print("  pip install transformers>=4.51.0 torch sentence-transformers accelerate")
+        print("  pip install transformers>=5.0.0 torch sentence-transformers accelerate")
 
     if not model_loads:
         if not has_gpu:

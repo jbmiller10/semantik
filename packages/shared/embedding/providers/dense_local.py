@@ -21,7 +21,10 @@ import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-from transformers.modeling_utils import PreTrainedModel
+try:
+    from transformers import PreTrainedModel
+except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts
+    from transformers.modeling_utils import PreTrainedModel
 
 from shared.embedding.models import MODEL_CONFIGS, ModelConfig, get_model_config
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
@@ -323,6 +326,11 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
+            # Some LLM-style tokenizers ship without a pad token. We always use
+            # padding for batching, so ensure a pad token is set (common practice
+            # is to reuse EOS).
+            if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                self.tokenizer.pad_token = self.tokenizer.eos_token
 
             model_kwargs = self._get_model_kwargs()
             self.model = AutoModel.from_pretrained(model_name, **model_kwargs)

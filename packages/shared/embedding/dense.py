@@ -23,8 +23,11 @@ from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-from transformers.modeling_utils import PreTrainedModel
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+try:
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
+except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts
+    from transformers.modeling_utils import PreTrainedModel
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from shared.config.vecpipe import VecpipeConfig
 from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
@@ -318,6 +321,8 @@ class DenseEmbeddingService(BaseEmbeddingService):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
+            if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                self.tokenizer.pad_token = self.tokenizer.eos_token
 
             # Set dtype based on quantization
             model_kwargs = self._get_model_kwargs()

@@ -85,6 +85,8 @@ class CrossEncoderReranker:
                     trust_remote_code=True,
                     padding_side="left",  # Important for batch processing
                 )
+                if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 # Determine torch dtype based on quantization
                 torch_dtype = torch.float32

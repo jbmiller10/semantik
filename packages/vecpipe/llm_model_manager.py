@@ -225,7 +225,9 @@ class LLMModelManager:
         if not hasattr(tokenizer, "apply_chat_template"):
             raise RuntimeError("Tokenizer has no chat template; use curated chat models only in Phase 1")
 
-        input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True)
+        # transformers v5: apply_chat_template returns BatchEncoding, not raw tensor
+        outputs = tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True)
+        input_ids = outputs["input_ids"]
         prompt_tokens = int(input_ids.shape[-1])
         input_ids = input_ids.to(model.device)
 
