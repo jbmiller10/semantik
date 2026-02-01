@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +37,11 @@ if TYPE_CHECKING:
     from celery import Task
 
 logger = logging.getLogger(__name__)
+
+# Ensure test patches that target either ``webui.sparse_tasks`` or
+# ``packages.webui.sparse_tasks`` affect the same module instance.
+sys.modules.setdefault("webui.sparse_tasks", sys.modules[__name__])
+sys.modules.setdefault("packages.webui.sparse_tasks", sys.modules[__name__])
 
 # Batch size for processing chunks
 SPARSE_REINDEX_BATCH_SIZE = 100

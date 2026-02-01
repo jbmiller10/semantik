@@ -23,6 +23,7 @@ from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
+
 try:
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
 except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts

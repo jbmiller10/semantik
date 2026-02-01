@@ -92,7 +92,13 @@ class SearchService:
         """
         self.db_session = db_session
         self.collection_repo = collection_repo
-        self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
+        self.default_timeout = default_timeout or httpx.Timeout(
+            timeout=settings.SEARCH_API_TIMEOUT_SECONDS,
+            pool=settings.SEARCH_API_POOL_TIMEOUT_SECONDS,
+            connect=settings.SEARCH_API_CONNECT_TIMEOUT_SECONDS,
+            read=settings.SEARCH_API_READ_TIMEOUT_SECONDS,
+            write=settings.SEARCH_API_WRITE_TIMEOUT_SECONDS,
+        )
         self.retry_timeout_multiplier = retry_timeout_multiplier
 
     @staticmethod
@@ -217,12 +223,15 @@ class SearchService:
             max_timeout = min(
                 max(timeout.connect or 0, timeout.read or 0, timeout.write or 0, timeout.pool or 0)
                 * self.retry_timeout_multiplier,
-                60.0,
+                settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
             )
             extended_timeout = httpx.Timeout(
-                timeout=max_timeout if max_timeout > 0 else 60.0,
+                timeout=max_timeout if max_timeout > 0 else settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
                 connect=min(timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0, 30.0),
-                read=min(timeout.read * self.retry_timeout_multiplier if timeout.read else 60.0, 60.0),
+                read=min(
+                    timeout.read * self.retry_timeout_multiplier if timeout.read else settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
+                    settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
+                ),
                 write=min(timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0, 30.0),
             )
 

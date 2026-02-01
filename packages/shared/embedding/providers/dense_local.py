@@ -21,6 +21,7 @@ import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
+
 try:
     from transformers import PreTrainedModel
 except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts

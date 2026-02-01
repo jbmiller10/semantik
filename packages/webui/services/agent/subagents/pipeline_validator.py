@@ -18,7 +18,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from webui.services.agent.subagents.base import Message, SubAgent, SubAgentResult, Uncertainty
 from webui.services.agent.tools.subagent_tools.validation import (
@@ -324,15 +324,15 @@ Start by running dry-run validation to see the overall success rate."""
         json_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", content, re.DOTALL)
         if json_match:
             try:
-                result: dict[str, Any] = json.loads(json_match.group(1))
-                return result
+                parsed = json.loads(json_match.group(1))
+                return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else None
             except json.JSONDecodeError:
                 pass
 
         # Try to parse the whole content as JSON
         try:
-            result: dict[str, Any] = json.loads(content)
-            return result
+            parsed = json.loads(content)
+            return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else None
         except json.JSONDecodeError:
             pass
 
@@ -340,7 +340,8 @@ Start by running dry-run validation to see the overall success rate."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                parsed = json.loads(json_match.group())
+                return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else None
             except json.JSONDecodeError:
                 pass
 

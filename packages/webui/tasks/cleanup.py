@@ -13,16 +13,16 @@ from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
 from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 
 if TYPE_CHECKING:
     from types import ModuleType
 
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from .utils import (
     DEFAULT_DAYS_TO_KEEP,
+    _get_session_factory,
     celery_app,
     logger,
     resolve_awaitable_sync,
@@ -37,11 +37,7 @@ def _tasks_namespace() -> ModuleType:
 
 
 async def _resolve_session_factory() -> async_sessionmaker[AsyncSession]:
-    factory = AsyncSessionLocal
-    if factory is None:
-        factory = await ensure_async_sessionmaker()
-    assert factory is not None
-    return cast(async_sessionmaker[AsyncSession], factory)
+    return await _get_session_factory()
 
 
 @celery_app.task(name="webui.tasks.cleanup_old_results")

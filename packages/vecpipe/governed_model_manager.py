@@ -7,13 +7,16 @@ capabilities for sophisticated, dynamic memory management.
 
 import asyncio
 import concurrent.futures
+import hashlib
 import logging
+import random
 import threading
 import time
 from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from shared.config import settings
+from shared.embedding.types import EmbeddingMode
 
 from .cpu_offloader import get_offloader
 from .memory_governor import GPUMemoryGovernor, MemoryBudget, ModelType, create_memory_budget
@@ -94,6 +97,13 @@ class GovernedModelManager(ModelManager):
         # Track current reranker for switch detection
         self._current_reranker_key: str | None = None
 
+        # Per-model locks to prevent eviction during inference
+        # Adopts the pattern from LLMModelManager where the lock is held during
+        # the entire inference operation, and governor callbacks must acquire
+        # the same lock before unloading/offloading.
+        self._embedding_locks: dict[str, asyncio.Lock] = {}
+        self._reranker_locks: dict[str, asyncio.Lock] = {}
+
         logger.info(
             "GovernedModelManager initialized with governor (cpu_offload=%s, preemptive_eviction=%s)",
             enable_cpu_offload,
@@ -105,6 +115,24 @@ class GovernedModelManager(ModelManager):
         if self._enable_preemptive_eviction:
             await self._governor.start_monitor()
         self._governor_initialized = True
+
+    def _get_embedding_lock(self, model_key: str) -> asyncio.Lock:
+        """Get or create a per-model lock for serialized embedding operations.
+
+        Uses setdefault for atomic dict operation to avoid TOCTOU race.
+        The lock is held during the entire embedding operation (single or batch),
+        and governor callbacks must acquire the same lock before unloading/offloading.
+        """
+        return self._embedding_locks.setdefault(model_key, asyncio.Lock())
+
+    def _get_reranker_lock(self, model_key: str) -> asyncio.Lock:
+        """Get or create a per-model lock for serialized reranker operations.
+
+        Uses setdefault for atomic dict operation to avoid TOCTOU race.
+        The lock is held during the entire rerank operation, and governor
+        callbacks must acquire the same lock before unloading/offloading.
+        """
+        return self._reranker_locks.setdefault(model_key, asyncio.Lock())
 
     def _record_critical_failure(self, description: str, error: Exception) -> None:
         """Record a critical failure for later inspection.
@@ -467,23 +495,29 @@ class GovernedModelManager(ModelManager):
     ) -> None:
         """Callback for governor to unload embedding model.
 
+        Acquires the per-model lock to wait for any in-flight embedding operations
+        before unloading. This ensures models aren't evicted mid-inference.
+
         Note: Calls parent's unload directly to avoid deadlock.
         The governor already handles removal from tracking in _unload_model.
         """
-        expected_key = self._get_model_key(model_name, quantization)
-        if self.current_model_key == expected_key:
-            # Clean up any CPU-offloaded reference to prevent memory leak
-            offloader_key = f"embedding:{model_name}:{quantization}"
-            self._offloader.discard(offloader_key)
-            # Call parent directly - governor already removed from tracking
-            await super().unload_model_async()
-        else:
-            logger.warning(
-                "Governor requested unload of embedding %s:%s but current is %s - skipping",
-                model_name,
-                quantization,
-                self.current_model_key,
-            )
+        model_key = self._get_model_key(model_name, quantization)
+        lock = self._get_embedding_lock(model_key)
+
+        async with lock:  # Wait for any in-flight operations
+            if self.current_model_key == model_key:
+                # Clean up any CPU-offloaded reference to prevent memory leak
+                offloader_key = f"embedding:{model_name}:{quantization}"
+                self._offloader.discard(offloader_key)
+                # Call parent directly - governor already removed from tracking
+                await super().unload_model_async()
+            else:
+                logger.warning(
+                    "Governor requested unload of embedding %s:%s but current is %s - skipping",
+                    model_name,
+                    quantization,
+                    self.current_model_key,
+                )
 
     async def _governor_unload_reranker(
         self,
@@ -492,23 +526,29 @@ class GovernedModelManager(ModelManager):
     ) -> None:
         """Callback for governor to unload reranker.
 
+        Acquires the per-model lock to wait for any in-flight rerank operations
+        before unloading. This ensures models aren't evicted mid-inference.
+
         Note: Calls parent's unload directly to avoid deadlock.
         The governor already handles removal from tracking in _unload_model.
         """
-        expected_key = self._get_model_key(model_name, quantization)
-        if self.current_reranker_key == expected_key:
-            # Clean up any CPU-offloaded reference to prevent memory leak
-            offloader_key = f"reranker:{model_name}:{quantization}"
-            self._offloader.discard(offloader_key)
-            # Call parent directly - governor already removed from tracking
-            super().unload_reranker()
-        else:
-            logger.warning(
-                "Governor requested unload of reranker %s:%s but current is %s - skipping",
-                model_name,
-                quantization,
-                self.current_reranker_key,
-            )
+        model_key = self._get_model_key(model_name, quantization)
+        lock = self._get_reranker_lock(model_key)
+
+        async with lock:  # Wait for any in-flight operations
+            if self.current_reranker_key == model_key:
+                # Clean up any CPU-offloaded reference to prevent memory leak
+                offloader_key = f"reranker:{model_name}:{quantization}"
+                self._offloader.discard(offloader_key)
+                # Call parent directly - governor already removed from tracking
+                super().unload_reranker()
+            else:
+                logger.warning(
+                    "Governor requested unload of reranker %s:%s but current is %s - skipping",
+                    model_name,
+                    quantization,
+                    self.current_reranker_key,
+                )
 
     async def _governor_offload_embedding(
         self,
@@ -518,33 +558,39 @@ class GovernedModelManager(ModelManager):
     ) -> None:
         """Callback for governor to offload/restore embedding model.
 
+        Acquires the per-model lock to wait for any in-flight embedding operations
+        before offloading. This ensures models aren't moved to CPU mid-inference.
+
         Raises:
             RuntimeError: If offload/restore operation cannot be completed
         """
-        model_key = f"embedding:{model_name}:{quantization}"
+        model_key = self._get_model_key(model_name, quantization)
+        offloader_key = f"embedding:{model_name}:{quantization}"
+        lock = self._get_embedding_lock(model_key)
 
-        if target_device == "cpu":
-            if self._provider is None:
-                raise RuntimeError(
-                    f"Cannot offload {model_key} to CPU: provider is None (model may have been unloaded)"
-                )
-            model = getattr(self._provider, "model", None)
-            if model is None:
-                raise RuntimeError(f"Cannot offload {model_key} to CPU: provider has no model attribute")
-            self._offloader.offload_to_cpu(model_key, model)
+        async with lock:  # Wait for any in-flight operations
+            if target_device == "cpu":
+                if self._provider is None:
+                    raise RuntimeError(
+                        f"Cannot offload {offloader_key} to CPU: provider is None (model may have been unloaded)"
+                    )
+                model = getattr(self._provider, "model", None)
+                if model is None:
+                    raise RuntimeError(f"Cannot offload {offloader_key} to CPU: provider has no model attribute")
+                self._offloader.offload_to_cpu(offloader_key, model)
 
-        elif target_device == "cuda":
-            if self._provider is None:
-                raise RuntimeError(
-                    f"Cannot restore {model_key} to GPU: provider is None (model may have been unloaded)"
-                )
-            if self._offloader.is_offloaded(model_key):
-                self._offloader.restore_to_gpu(model_key)
-            else:
-                raise ModelRestoreError(
-                    model_key=model_key,
-                    reason="not found in offloaded models (state mismatch between governor and offloader)",
-                )
+            elif target_device == "cuda":
+                if self._provider is None:
+                    raise RuntimeError(
+                        f"Cannot restore {offloader_key} to GPU: provider is None (model may have been unloaded)"
+                    )
+                if self._offloader.is_offloaded(offloader_key):
+                    self._offloader.restore_to_gpu(offloader_key)
+                else:
+                    raise ModelRestoreError(
+                        model_key=offloader_key,
+                        reason="not found in offloaded models (state mismatch between governor and offloader)",
+                    )
 
     async def _governor_offload_reranker(
         self,
@@ -554,33 +600,39 @@ class GovernedModelManager(ModelManager):
     ) -> None:
         """Callback for governor to offload/restore reranker.
 
+        Acquires the per-model lock to wait for any in-flight rerank operations
+        before offloading. This ensures models aren't moved to CPU mid-inference.
+
         Raises:
             RuntimeError: If offload/restore operation cannot be completed
         """
-        model_key = f"reranker:{model_name}:{quantization}"
+        model_key = self._get_model_key(model_name, quantization)
+        offloader_key = f"reranker:{model_name}:{quantization}"
+        lock = self._get_reranker_lock(model_key)
 
-        if target_device == "cpu":
-            if self.reranker is None:
-                raise RuntimeError(
-                    f"Cannot offload {model_key} to CPU: reranker is None (model may have been unloaded)"
-                )
-            model = getattr(self.reranker, "model", None)
-            if model is None:
-                raise RuntimeError(f"Cannot offload {model_key} to CPU: reranker has no model attribute")
-            self._offloader.offload_to_cpu(model_key, model)
+        async with lock:  # Wait for any in-flight operations
+            if target_device == "cpu":
+                if self.reranker is None:
+                    raise RuntimeError(
+                        f"Cannot offload {offloader_key} to CPU: reranker is None (model may have been unloaded)"
+                    )
+                model = getattr(self.reranker, "model", None)
+                if model is None:
+                    raise RuntimeError(f"Cannot offload {offloader_key} to CPU: reranker has no model attribute")
+                self._offloader.offload_to_cpu(offloader_key, model)
 
-        elif target_device == "cuda":
-            if self.reranker is None:
-                raise RuntimeError(
-                    f"Cannot restore {model_key} to GPU: reranker is None (model may have been unloaded)"
-                )
-            if self._offloader.is_offloaded(model_key):
-                self._offloader.restore_to_gpu(model_key)
-            else:
-                raise ModelRestoreError(
-                    model_key=model_key,
-                    reason="not found in offloaded models (state mismatch between governor and offloader)",
-                )
+            elif target_device == "cuda":
+                if self.reranker is None:
+                    raise RuntimeError(
+                        f"Cannot restore {offloader_key} to GPU: reranker is None (model may have been unloaded)"
+                    )
+                if self._offloader.is_offloaded(offloader_key):
+                    self._offloader.restore_to_gpu(offloader_key)
+                else:
+                    raise ModelRestoreError(
+                        model_key=offloader_key,
+                        reason="not found in offloaded models (state mismatch between governor and offloader)",
+                    )
 
     def get_status(self) -> dict[str, Any]:
         """Get status including governor information."""
@@ -605,6 +657,171 @@ class GovernedModelManager(ModelManager):
         }
 
         return status
+
+    # =========================================================================
+    # Embedding methods with per-model lock protection
+    # =========================================================================
+    # These methods override the parent to add lock protection that prevents
+    # governor eviction during inference. The lock is held for the ENTIRE
+    # operation (including OOM retries), and governor callbacks must acquire
+    # the same lock before unloading/offloading.
+
+    async def generate_embedding_async(
+        self,
+        text: str,
+        model_name: str,
+        quantization: str,
+        instruction: str | None = None,
+        mode: str | None = None,
+    ) -> list[float] | None:
+        """Generate embedding with lock protection against governor eviction.
+
+        Overrides parent to hold per-model lock during the entire operation,
+        preventing governor from evicting the model mid-inference.
+
+        Args:
+            text: Text to embed
+            model_name: Model to use (provider is auto-detected)
+            quantization: Quantization type (float32, float16, int8)
+            instruction: Optional instruction for the model
+            mode: Embedding mode - 'query' for search, 'document' for indexing
+
+        Returns:
+            Embedding vector as list of floats, or None if failed
+        """
+        model_key = self._get_model_key(model_name, quantization)
+        lock = self._get_embedding_lock(model_key)
+
+        async with lock:
+            # Initialize provider (lazy loading) with governor memory management
+            provider = await self._ensure_provider_initialized(model_name, quantization)
+
+            # Schedule unloading after inactivity
+            await self._schedule_unload()
+
+            # Convert mode string to EmbeddingMode enum
+            embedding_mode: EmbeddingMode | None = None
+            if mode == "query":
+                embedding_mode = EmbeddingMode.QUERY
+            elif mode == "document":
+                embedding_mode = EmbeddingMode.DOCUMENT
+
+            # Generate embedding using provider (native async)
+            embedding = await provider.embed_single(text, mode=embedding_mode, instruction=instruction)
+            result: list[float] = embedding.tolist()
+            return result
+
+    async def generate_embeddings_batch_async(
+        self,
+        texts: list[str],
+        model_name: str,
+        quantization: str,
+        instruction: str | None = None,
+        batch_size: int = 32,
+        mode: str | None = None,
+    ) -> list[list[float]]:
+        """Generate batch embeddings with lock protection against governor eviction.
+
+        Overrides parent to hold per-model lock during the entire operation,
+        preventing governor from evicting the model mid-inference. This is
+        particularly important for large batches that may trigger OOM and
+        require batch size reduction retries.
+
+        Args:
+            texts: List of texts to embed
+            model_name: Model to use (provider is auto-detected)
+            quantization: Quantization type (float32, float16, int8)
+            instruction: Optional instruction for the model
+            batch_size: Batch size for processing
+            mode: Embedding mode - 'query' for search, 'document' for indexing
+
+        Returns:
+            List of embedding vectors
+        """
+        model_key = self._get_model_key(model_name, quantization)
+        lock = self._get_embedding_lock(model_key)
+
+        async with lock:
+            # Initialize provider (lazy loading) with governor memory management
+            provider = await self._ensure_provider_initialized(model_name, quantization)
+
+            # Schedule unloading after inactivity
+            await self._schedule_unload()
+
+            # Convert mode string to EmbeddingMode enum
+            embedding_mode: EmbeddingMode | None = None
+            if mode == "query":
+                embedding_mode = EmbeddingMode.QUERY
+            elif mode == "document":
+                embedding_mode = EmbeddingMode.DOCUMENT
+
+            # Generate embeddings using provider (native async)
+            embeddings_array = await provider.embed_texts(
+                texts, batch_size=batch_size, mode=embedding_mode, instruction=instruction
+            )
+
+            # Convert numpy array to list of lists
+            result: list[list[float]] = embeddings_array.tolist()
+            return result
+
+    async def rerank_async(
+        self,
+        query: str,
+        documents: list[str],
+        top_k: int,
+        model_name: str,
+        quantization: str,
+        instruction: str | None = None,
+    ) -> list[tuple[int, float]]:
+        """Perform reranking with lock protection against governor eviction.
+
+        Overrides parent to hold per-model lock during the entire operation,
+        preventing governor from evicting the model mid-inference.
+
+        Args:
+            query: Search query
+            documents: List of documents to rerank
+            top_k: Number of top documents to return
+            model_name: Reranker model to use
+            quantization: Quantization type
+            instruction: Optional instruction for reranking
+
+        Returns:
+            List of (index, score) tuples sorted by relevance
+        """
+        model_key = self._get_model_key(model_name, quantization)
+        lock = self._get_reranker_lock(model_key)
+
+        async with lock:
+            # Ensure reranker is loaded (uses sync loading with governor memory management)
+            if not self.ensure_reranker_loaded(model_name, quantization):
+                raise RuntimeError(f"Failed to load reranker {model_name}")
+
+            # Schedule unloading after inactivity
+            await self._schedule_reranker_unload()
+
+            # Perform reranking
+            if self.is_mock_mode:
+                # Mock reranking - just return indices with fake scores
+                seed_source = f"{query}|{len(documents)}|{top_k}|{'|'.join(documents)}"
+                seed = int(hashlib.sha256(seed_source.encode()).hexdigest()[:8], 16)
+                rng = random.Random(seed)
+                scores = [(i, rng.random()) for i in range(len(documents))]
+                scores.sort(key=lambda x: x[1], reverse=True)
+                return scores[:top_k]
+
+            # Use real reranker
+            loop = asyncio.get_running_loop()
+            assert self.reranker is not None  # Already checked in ensure_reranker_loaded
+            return await loop.run_in_executor(
+                self.executor,
+                self.reranker.rerank,
+                query,
+                documents,
+                top_k,
+                instruction,
+                True,  # return_scores
+            )
 
     async def preload_models(
         self,

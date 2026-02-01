@@ -13,7 +13,7 @@ from shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO, EmbeddingServ
 
 # Mock the metrics module before importing
 
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules.setdefault("shared.metrics.prometheus", MagicMock())
 
 
 class TestEmbeddingService(unittest.TestCase):

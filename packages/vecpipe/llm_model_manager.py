@@ -87,10 +87,11 @@ class LLMModelManager:
             logger.info("LLM idle unload set to %ss", self._unload_after_seconds)
 
     def _get_model_lock(self, key: str) -> asyncio.Lock:
-        """Get or create a per-model lock for serialized generation."""
-        if key not in self._model_locks:
-            self._model_locks[key] = asyncio.Lock()
-        return self._model_locks[key]
+        """Get or create a per-model lock for serialized generation.
+
+        Uses setdefault for atomic dict operation to avoid TOCTOU race.
+        """
+        return self._model_locks.setdefault(key, asyncio.Lock())
 
     def _ensure_idle_unload_task_started(self) -> None:
         """Start background idle-unload loop if enabled and not already running."""
@@ -242,7 +243,9 @@ class LLMModelManager:
             )
 
         response_ids = outputs[0][input_ids.shape[1] :]
-        content = tokenizer.decode(response_ids, skip_special_tokens=True)
+        # transformers v5 decode() primarily expects Python sequences; avoid
+        # relying on implicit torch.Tensor handling.
+        content = tokenizer.decode(response_ids.tolist(), skip_special_tokens=True)
         completion_tokens = int(response_ids.shape[-1])
 
         return content, prompt_tokens, completion_tokens
