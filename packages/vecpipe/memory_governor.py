@@ -552,6 +552,7 @@ class GPUMemoryGovernor:
         1. Offload idle models to CPU first (preserves warm state)
         2. Unload if CPU offload disabled or CPU is full
         3. Evict LRU models first
+        4. Clear CUDA cache after evictions to reclaim fragmented memory
 
         Args:
             needed_mb: Amount of memory to free
@@ -566,6 +567,7 @@ class GPUMemoryGovernor:
             Amount of memory freed in MB
         """
         freed_mb = 0
+        evictions_occurred = False
 
         # Get candidates sorted by last_used (oldest first = LRU)
         candidates = self._get_eviction_candidates(exclude_key)
@@ -601,6 +603,7 @@ class GPUMemoryGovernor:
                 if success:
                     freed_mb += tracked.memory_mb
                     self._total_offloads += 1
+                    evictions_occurred = True
                     continue
 
             # Fall back to full unload
@@ -609,6 +612,11 @@ class GPUMemoryGovernor:
                 if success:
                     freed_mb += tracked.memory_mb
                     self._total_unloads += 1
+                    evictions_occurred = True
+
+        # Clear CUDA cache after evictions to reclaim fragmented memory
+        if evictions_occurred:
+            self._clear_cuda_cache()
 
         logger.info("Eviction complete: freed %dMB (needed %dMB)", freed_mb, needed_mb)
         return freed_mb
@@ -962,8 +970,15 @@ class GPUMemoryGovernor:
                     current_backoff = min(current_backoff * 2, max_backoff_seconds)
 
     def _calculate_pressure_level(self) -> PressureLevel:
-        """Calculate current memory pressure level."""
-        usage_percent = self._get_usage_percent()
+        """Calculate current memory pressure level.
+
+        Uses MAX of tracked and actual GPU usage to be conservative.
+        This catches cases where CUDA cache holds fragmented memory
+        that isn't tracked by the governor (e.g., after LLM unload).
+        """
+        tracked_percent = self._get_usage_percent()
+        actual_percent = self._get_actual_usage_percent()
+        usage_percent = max(tracked_percent, actual_percent)
 
         if usage_percent >= 90:
             return PressureLevel.CRITICAL
@@ -977,6 +992,7 @@ class GPUMemoryGovernor:
         """Handle critical memory pressure - force unload all idle models.
 
         Continues processing remaining models even if individual unloads fail.
+        Clears CUDA cache after evictions to reclaim fragmented memory.
         """
         from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
 
@@ -1000,6 +1016,9 @@ class GPUMemoryGovernor:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to unload %s during critical pressure: %s", tracked.model_key, e)
             gc.collect()
+            # Clear CUDA cache after evictions to reclaim fragmented memory
+            if evicted_count > 0:
+                self._clear_cuda_cache()
             if failed_models:
                 logger.warning(
                     "Critical pressure handler completed with %d failures: %s", len(failed_models), failed_models
@@ -1010,6 +1029,7 @@ class GPUMemoryGovernor:
         """Handle high memory pressure - aggressive offloading.
 
         Continues processing remaining models even if individual operations fail.
+        Clears CUDA cache after evictions to reclaim fragmented memory.
         """
         from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
 
@@ -1037,6 +1057,9 @@ class GPUMemoryGovernor:
                     except Exception as e:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to evict %s during high pressure: %s", tracked.model_key, e)
+            # Clear CUDA cache after evictions to reclaim fragmented memory
+            if evicted_count > 0:
+                self._clear_cuda_cache()
             if failed_models:
                 logger.warning(
                     "High pressure handler completed with %d failures: %s", len(failed_models), failed_models
@@ -1047,6 +1070,7 @@ class GPUMemoryGovernor:
         """Handle moderate pressure - preemptive offloading of idle models.
 
         Continues processing remaining models even if individual offloads fail.
+        Clears CUDA cache after evictions to reclaim fragmented memory.
         """
         from vecpipe.search.metrics import models_evicted_per_event, pressure_events_total
 
@@ -1075,6 +1099,9 @@ class GPUMemoryGovernor:
                     except Exception as e:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to offload %s during moderate pressure: %s", tracked.model_key, e)
+            # Clear CUDA cache after evictions to reclaim fragmented memory
+            if evicted_count > 0:
+                self._clear_cuda_cache()
             if failed_models:
                 logger.warning(
                     "Moderate pressure handler completed with %d failures: %s", len(failed_models), failed_models
@@ -1262,10 +1289,50 @@ class GPUMemoryGovernor:
             return ProbeMode.SAFE
         return self._probe_mode
 
+    def _clear_cuda_cache(self) -> None:
+        """Clear CUDA cache to reclaim fragmented memory.
+
+        CRITICAL: torch.cuda.synchronize() must be called before empty_cache()
+        because CUDA operations are asynchronous. Without sync, memory checks
+        and cache clearing may see inconsistent state.
+
+        This should be called after evicting models to ensure PyTorch's CUDA
+        allocator releases fragmented memory back to the system.
+        """
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                return
+            torch.cuda.synchronize()  # CRITICAL: sync before empty_cache
+            torch.cuda.empty_cache()
+            logger.debug("CUDA cache cleared")
+        except Exception as e:
+            logger.warning("Failed to clear CUDA cache: %s", e)
+
     def _get_usage_percent(self) -> float:
         """Get GPU usage as percentage of usable budget."""
         gpu_usage = self._get_gpu_usage()
         return (gpu_usage / self._budget.usable_gpu_mb * 100) if self._budget.usable_gpu_mb > 0 else 0
+
+    def _get_actual_usage_percent(self) -> float:
+        """Get actual GPU usage from CUDA (not tracked models).
+
+        This provides ground truth for GPU memory usage, catching cases where
+        CUDA cache holds fragmented memory that isn't tracked by the governor.
+        """
+        if self._budget.total_gpu_mb == 0:
+            return 0.0
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                return 0.0
+            free_bytes, total_bytes = torch.cuda.mem_get_info()
+            used_bytes = total_bytes - free_bytes
+            return (used_bytes / total_bytes * 100) if total_bytes > 0 else 0.0
+        except Exception:
+            return 0.0
 
     def _get_model_memory(self, model_name: str, quantization: str) -> int:
         """Get memory requirement for a model.
