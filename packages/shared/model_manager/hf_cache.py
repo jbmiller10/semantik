@@ -59,9 +59,13 @@ def resolve_hf_cache_dir() -> Path:
 def resolve_transformers_cache_dir() -> Path | None:
     """Resolve the transformers cache directory if different from hub cache.
 
-    The transformers library may download models to TRANSFORMERS_CACHE which
-    can be different from HF_HUB_CACHE. This function returns that path only
-    if it would add additional scan coverage (i.e., is not the exact same path).
+    NOTE: `TRANSFORMERS_CACHE` is a legacy environment variable that is no longer
+    used by modern `transformers` releases (v5+). We still honor it here because
+    older deployments or custom setups may have models stored outside the hub
+    cache directory.
+
+    This function returns that path only if it would add additional scan
+    coverage (i.e., is not the exact same path).
 
     Common case: TRANSFORMERS_CACHE=/app/.cache/huggingface while
     HF_HUB_CACHE=/app/.cache/huggingface/hub - the parent directory is returned

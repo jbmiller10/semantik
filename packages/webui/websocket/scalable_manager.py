@@ -10,6 +10,7 @@ This implementation supports:
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import os
@@ -127,6 +128,7 @@ class ScalableWebSocketManager:
         # Startup management
         self._startup_lock = asyncio.Lock()
         self._startup_complete = False
+        self._local_only_mode = False
 
         # Concurrency locks for shared state
         self._connections_lock = asyncio.Lock()
@@ -174,7 +176,8 @@ class ScalableWebSocketManager:
                     await self.redis_client.ping()
 
                     # Create pub/sub client
-                    self.pubsub = self.redis_client.pubsub()
+                    pubsub_obj = self.redis_client.pubsub()
+                    self.pubsub = await pubsub_obj if inspect.isawaitable(pubsub_obj) else pubsub_obj
 
                     # Subscribe to instance channel
                     await self.pubsub.subscribe(f"instance:{self.instance_id}")
@@ -189,6 +192,7 @@ class ScalableWebSocketManager:
 
                     logger.info(f"ScalableWebSocketManager started successfully on instance {self.instance_id}")
                     self._startup_complete = True
+                    self._local_only_mode = False
                     return
 
                 except Exception as e:
@@ -200,10 +204,12 @@ class ScalableWebSocketManager:
                     else:
                         logger.error(f"Failed to start ScalableWebSocketManager after {max_retries} attempts: {e}")
                         logger.warning("Running in local-only mode without Redis")
-                        # Set a flag to indicate local-only mode
+                        # Switch to local-only mode and mark startup as complete.
+                        # Otherwise, connect() would retry startup for every connection.
                         self.redis_client = None
                         self.pubsub = None
-                        self._startup_complete = False  # Indicate partial startup
+                        self._startup_complete = True
+                        self._local_only_mode = True
                         return  # Don't raise, allow local operation
 
     async def shutdown(self) -> None:
@@ -559,10 +565,14 @@ class ScalableWebSocketManager:
         """Close Redis client and pubsub connections safely."""
         if self.pubsub:
             with contextlib.suppress(Exception):
-                await self.pubsub.aclose()
+                close_result = self.pubsub.aclose()
+                if inspect.isawaitable(close_result):
+                    await close_result
         if self.redis_client:
             with contextlib.suppress(Exception):
-                await self.redis_client.close()
+                close_result = self.redis_client.close()
+                if inspect.isawaitable(close_result):
+                    await close_result
         self.pubsub = None
         self.redis_client = None
 

@@ -182,10 +182,10 @@ class TestServiceFactoryEdgeCases:
 
         # Should have default values
         # SearchService sets default timeout if None is passed
-        assert service.default_timeout.pool == 30.0
-        assert service.default_timeout.connect == 5.0
-        assert service.default_timeout.read == 30.0
-        assert service.default_timeout.write == 5.0
+        assert service.default_timeout.pool == 120.0
+        assert service.default_timeout.connect == 10.0
+        assert service.default_timeout.read == 120.0
+        assert service.default_timeout.write == 30.0
         assert service.retry_timeout_multiplier == 4.0
 
 

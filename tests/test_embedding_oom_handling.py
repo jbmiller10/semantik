@@ -28,7 +28,7 @@ from sentence_transformers import SentenceTransformer
 from packages.shared.embedding.dense import DenseEmbeddingService
 
 # Mock the metrics module before importing
-sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
+sys.modules.setdefault("packages.shared.metrics.prometheus", MagicMock())
 
 
 class TestEmbeddingOOMHandling(unittest.TestCase):

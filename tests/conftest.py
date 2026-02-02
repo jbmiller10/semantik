@@ -21,6 +21,11 @@ os.environ["REDIS_URL"] = "redis://localhost:6379"
 os.environ.setdefault("PROMETHEUS_DISABLE_SERVER", "true")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 
+with contextlib.suppress(Exception):
+    # Some unit tests intentionally mock out Prometheus metrics; don't hard-fail
+    # test collection if the optional metrics dependencies aren't available.
+    import shared.metrics.prometheus  # noqa: F401
+
 import importlib  # noqa: E402
 
 import asyncpg  # noqa: E402

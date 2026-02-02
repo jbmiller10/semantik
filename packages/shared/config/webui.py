@@ -32,6 +32,18 @@ class WebuiConfig(BaseConfig):
 
     # Search Configuration
     SEARCH_CANDIDATE_MULTIPLIER: int = 3  # How many candidates to retrieve for re-ranking (k * multiplier)
+    # Vecpipe (search API) request timeouts (seconds).
+    #
+    # `transformers>=5` + `sentence-transformers>=5` can increase cold-start and first-request latency
+    # (e.g., model initialization, compilation, cache misses). Defaults here are tuned to avoid
+    # spurious timeouts while still failing fast on broken connectivity.
+    SEARCH_API_TIMEOUT_SECONDS: float = 120.0
+    SEARCH_API_CONNECT_TIMEOUT_SECONDS: float = 10.0
+    SEARCH_API_READ_TIMEOUT_SECONDS: float = 120.0
+    SEARCH_API_WRITE_TIMEOUT_SECONDS: float = 30.0
+    SEARCH_API_POOL_TIMEOUT_SECONDS: float = 120.0
+    # Cap for the retry timeout (after a read timeout). Keep bounded to avoid hanging requests forever.
+    SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS: float = 240.0
 
     # Resource limits (configurable)
     MAX_COLLECTIONS_PER_USER: int = 10

@@ -21,7 +21,11 @@ import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-from transformers.modeling_utils import PreTrainedModel
+
+try:
+    from transformers import PreTrainedModel
+except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts
+    from transformers.modeling_utils import PreTrainedModel
 
 from shared.embedding.models import MODEL_CONFIGS, ModelConfig, get_model_config
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
@@ -66,6 +70,7 @@ def check_int8_compatibility() -> tuple[bool, str]:
         test_input = torch.randn(1, 16).cuda()
         _ = test_layer(test_input)
         del test_layer, test_input
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
     except Exception as e:
         return False, f"INT8 layer test failed: {str(e)}"
@@ -323,6 +328,11 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
+            # Some LLM-style tokenizers ship without a pad token. We always use
+            # padding for batching, so ensure a pad token is set (common practice
+            # is to reuse EOS).
+            if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                self.tokenizer.pad_token = self.tokenizer.eos_token
 
             model_kwargs = self._get_model_kwargs()
             self.model = AutoModel.from_pretrained(model_name, **model_kwargs)
@@ -509,6 +519,16 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # Explicitly delete local tensors that may be holding GPU memory.
+                    # OOM can occur at different points, so some variables may not exist.
+                    # We reassign to None and call gc.collect() to ensure references are
+                    # released before empty_cache() can reclaim the memory blocks.
+                    batch_dict = None  # type: ignore[assignment]  # noqa: F841
+                    outputs = None  # type: ignore[assignment]  # noqa: F841
+                    embeddings = None  # type: ignore[assignment]  # noqa: F841
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -594,6 +614,10 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # GC to release any internal references before empty_cache
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -729,6 +753,8 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         self.dimension = None
 
         if self.device == "cuda":
+            # Synchronize before empty_cache to ensure all CUDA ops are complete
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
         gc.collect()
 

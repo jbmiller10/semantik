@@ -1568,3 +1568,260 @@ class TestProbeMode:
         mock_empty.assert_called_once()
         mock_sync.assert_called_once()
         await gov.shutdown()
+
+
+# =============================================================================
+# CUDA Cache Clearing Tests
+# =============================================================================
+
+
+class TestCUDACacheClearing:
+    """Tests for CUDA cache clearing after evictions."""
+
+    @pytest.mark.asyncio()
+    async def test_pressure_level_uses_max_of_tracked_and_actual(self, memory_budget: MemoryBudget) -> None:
+        """Pressure level should use MAX of tracked and actual GPU usage.
+
+        This catches cases where CUDA cache holds fragmented memory (e.g., after
+        LLM unload) that isn't tracked by the governor. If tracked=40% but
+        actual=91%, pressure should be CRITICAL.
+        """
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # Load a small model - 40% of 14400MB budget = 5760MB
+        with patch.object(gov, "_get_model_memory", return_value=5760):
+            await gov.mark_loaded("small-model", ModelType.EMBEDDING, "float16")
+
+        # Tracked usage is ~40%, but simulate actual GPU showing 91% used
+        # 91% of 16000MB total = ~14560MB used, so free = ~1440MB
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.mem_get_info", return_value=(1_440_000_000, 16_000_000_000)):
+                pressure = gov._calculate_pressure_level()
+
+        # Should be CRITICAL (>90%) based on actual usage, not MODERATE (~40% tracked)
+        assert pressure == PressureLevel.CRITICAL
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_pressure_level_uses_tracked_when_higher(self, memory_budget: MemoryBudget) -> None:
+        """Pressure level uses tracked when tracked > actual (conservative)."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # Load a large model - 85% of 14400MB budget = 12240MB
+        with patch.object(gov, "_get_model_memory", return_value=12240):
+            await gov.mark_loaded("large-model", ModelType.EMBEDDING, "float16")
+
+        # Simulate actual GPU showing only 50% used (less than tracked)
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.mem_get_info", return_value=(8_000_000_000, 16_000_000_000)):
+                pressure = gov._calculate_pressure_level()
+
+        # Should be HIGH (85% tracked > 50% actual)
+        assert pressure == PressureLevel.HIGH
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_make_room_clears_cuda_cache_after_evictions(self, memory_budget: MemoryBudget) -> None:
+        """_make_room should clear CUDA cache before and after evictions."""
+        gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=False)
+
+        unload_fn = AsyncMock()
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=unload_fn)
+
+        # Add an idle model
+        tracked = TrackedModel(
+            model_name="test-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=2000,
+            last_used=time.time() - 120,  # Idle
+        )
+        gov._models[tracked.model_key] = tracked
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.empty_cache") as mock_empty:
+                    await gov._make_room(2000)
+
+        # Cache should be cleared TWICE: once at start to reclaim stale memory,
+        # and once after eviction to reclaim newly freed memory
+        assert mock_sync.call_count == 2
+        assert mock_empty.call_count == 2
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_make_room_clears_cache_even_when_no_evictions(self, memory_budget: MemoryBudget) -> None:
+        """_make_room should clear CUDA cache even if no evictions occurred.
+
+        This is critical when models_loaded=0 but PyTorch's cache still holds
+        memory from previously unloaded models. Without the initial cache clear,
+        the allocation would fail with no candidates to evict.
+        """
+        gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=False)
+
+        unload_fn = AsyncMock()
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=unload_fn)
+
+        # Add a model that's too recently used to evict (within grace period)
+        tracked = TrackedModel(
+            model_name="active-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=2000,
+            last_used=time.time(),  # Just used - will be skipped
+        )
+        gov._models[tracked.model_key] = tracked
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.empty_cache") as mock_empty:
+                    # Without force=True, the grace period prevents eviction
+                    await gov._make_room(2000, force=False)
+
+        # Cache should still be cleared once at the start (to reclaim stale memory),
+        # even though no evictions occurred
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
+        unload_fn.assert_not_called()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_critical_pressure_clears_cuda_cache(self, memory_budget: MemoryBudget) -> None:
+        """Critical pressure handler should clear CUDA cache after evictions."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        unload_fn = AsyncMock()
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=unload_fn)
+
+        # Add an idle model (idle > 5 seconds for critical pressure)
+        tracked = TrackedModel(
+            model_name="idle-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=2000,
+            last_used=time.time() - 60,  # Idle for 60 seconds
+        )
+        gov._models[tracked.model_key] = tracked
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.empty_cache") as mock_empty:
+                    await gov._handle_critical_pressure()
+
+        # Cache should be cleared after critical pressure eviction
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_high_pressure_clears_cuda_cache(self, memory_budget: MemoryBudget) -> None:
+        """High pressure handler should clear CUDA cache after evictions."""
+        gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=False)
+
+        unload_fn = AsyncMock()
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=unload_fn)
+
+        # Add model idle > 30 seconds for high pressure
+        tracked = TrackedModel(
+            model_name="idle-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=2000,
+            last_used=time.time() - 60,  # Idle for 60 seconds
+        )
+        gov._models[tracked.model_key] = tracked
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.empty_cache") as mock_empty:
+                    await gov._handle_high_pressure()
+
+        # Cache should be cleared after high pressure eviction
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_moderate_pressure_clears_cuda_cache(self, memory_budget: MemoryBudget) -> None:
+        """Moderate pressure handler should clear CUDA cache after evictions."""
+        gov = GPUMemoryGovernor(
+            memory_budget,
+            enable_cpu_offload=True,
+            eviction_idle_threshold_seconds=60,
+        )
+
+        offload_fn = AsyncMock()
+        unload_fn = AsyncMock()
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=unload_fn, offload_fn=offload_fn)
+
+        # Add model idle beyond threshold for moderate pressure offload
+        tracked = TrackedModel(
+            model_name="idle-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=2000,
+            last_used=time.time() - 120,  # Idle for 120 seconds
+        )
+        gov._models[tracked.model_key] = tracked
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize") as mock_sync:
+                with patch("torch.cuda.empty_cache") as mock_empty:
+                    await gov._handle_moderate_pressure()
+
+        # Cache should be cleared after moderate pressure offload
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_clear_cuda_cache_handles_no_cuda(self, memory_budget: MemoryBudget) -> None:
+        """_clear_cuda_cache should handle missing CUDA gracefully."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        with patch("torch.cuda.is_available", return_value=False):
+            # Should not raise
+            gov._clear_cuda_cache()
+
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_clear_cuda_cache_handles_exception(self, memory_budget: MemoryBudget) -> None:
+        """_clear_cuda_cache should log warning on exception."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.synchronize", side_effect=RuntimeError("CUDA error")):
+                # Should not raise, just log warning
+                gov._clear_cuda_cache()
+
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_get_actual_usage_percent_cpu_only_mode(self, memory_budget: MemoryBudget) -> None:
+        """_get_actual_usage_percent returns 0 in CPU-only mode."""
+        cpu_only_budget = MemoryBudget(total_gpu_mb=0, total_cpu_mb=16000)
+        gov = GPUMemoryGovernor(cpu_only_budget)
+
+        result = gov._get_actual_usage_percent()
+        assert result == 0.0
+
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_get_actual_usage_percent_with_cuda(self, memory_budget: MemoryBudget) -> None:
+        """_get_actual_usage_percent returns correct percentage from CUDA."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # 10GB used out of 16GB = 62.5%
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.mem_get_info", return_value=(6_000_000_000, 16_000_000_000)):
+                result = gov._get_actual_usage_percent()
+
+        assert 62.0 <= result <= 63.0  # ~62.5%
+        await gov.shutdown()

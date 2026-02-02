@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
-from shared.embedding.factory import _PROVIDER_CLASSES
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
-from shared.embedding.provider_registry import _PROVIDERS, _clear_caches
-from shared.plugins.registry import plugin_registry
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -25,6 +22,10 @@ def clean_registry() -> Generator[None, None, None]:  # noqa: PT004
     This fixture ensures that modifications to the provider registries
     during tests don't affect other tests.
     """
+    from shared.embedding.factory import _PROVIDER_CLASSES, EmbeddingProviderFactory
+    from shared.embedding.provider_registry import _PROVIDERS, _clear_caches
+    from shared.plugins.registry import plugin_registry
+
     # Save original state
     original_classes = dict(_PROVIDER_CLASSES)
     original_providers = dict(_PROVIDERS)
@@ -34,8 +35,9 @@ def clean_registry() -> Generator[None, None, None]:  # noqa: PT004
     yield
 
     # Restore original state
-    _PROVIDER_CLASSES.clear()
-    _PROVIDER_CLASSES.update(original_classes)
+    EmbeddingProviderFactory.clear_providers()
+    for internal_name, provider_class in original_classes.items():
+        EmbeddingProviderFactory.register_provider(internal_name, provider_class)
     _PROVIDERS.clear()
     _PROVIDERS.update(original_providers)
     _clear_caches()
@@ -48,12 +50,16 @@ def empty_registry() -> Generator[None, None, None]:  # noqa: PT004
 
     This fixture clears all providers before the test and restores them after.
     """
+    from shared.embedding.factory import _PROVIDER_CLASSES, EmbeddingProviderFactory
+    from shared.embedding.provider_registry import _PROVIDERS, _clear_caches
+    from shared.plugins.registry import plugin_registry
+
     # Save original state
     original_classes = dict(_PROVIDER_CLASSES)
     original_providers = dict(_PROVIDERS)
 
     # Clear registries
-    _PROVIDER_CLASSES.clear()
+    EmbeddingProviderFactory.clear_providers()
     _PROVIDERS.clear()
     _clear_caches()
     plugin_registry.reset()
@@ -61,8 +67,9 @@ def empty_registry() -> Generator[None, None, None]:  # noqa: PT004
     yield
 
     # Restore original state
-    _PROVIDER_CLASSES.clear()
-    _PROVIDER_CLASSES.update(original_classes)
+    EmbeddingProviderFactory.clear_providers()
+    for internal_name, provider_class in original_classes.items():
+        EmbeddingProviderFactory.register_provider(internal_name, provider_class)
     _PROVIDERS.clear()
     _PROVIDERS.update(original_providers)
     _clear_caches()

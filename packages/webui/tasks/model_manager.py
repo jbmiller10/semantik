@@ -187,22 +187,33 @@ class _DownloadProgressAggregator:
 
 def _is_retryable_error(exc: Exception) -> bool:
     """Check if an exception is retryable."""
-    import requests
+    try:
+        import httpx
+    except Exception:  # pragma: no cover - optional dependency in some deployments
+        httpx = None  # type: ignore[assignment]
+
+    try:
+        import requests
+    except Exception:  # pragma: no cover - requests is not a hard dependency anymore
+        requests = None  # type: ignore[assignment]
 
     # Network errors are retryable
-    if isinstance(exc, ConnectionError | TimeoutError | requests.exceptions.ConnectionError):
+    if isinstance(exc, ConnectionError | TimeoutError):
+        return True
+    if httpx is not None and isinstance(exc, httpx.TransportError | httpx.TimeoutException):
+        return True
+    if requests is not None and isinstance(exc, requests.exceptions.ConnectionError):
         return True
 
     # HTTP errors - some are retryable
-    if isinstance(exc, requests.exceptions.HTTPError):
-        status_code = getattr(exc.response, "status_code", None)
-        if status_code:
-            # 5xx server errors are retryable
-            if 500 <= status_code < 600:
-                return True
-            # 429 rate limit is retryable
-            if status_code == 429:
-                return True
+    status_code = _extract_http_status_code(exc)
+    if status_code is not None:
+        # 5xx server errors are retryable
+        if 500 <= status_code < 600:
+            return True
+        # 429 rate limit is retryable
+        if status_code == 429:
+            return True
         return False
 
     return False
@@ -210,17 +221,14 @@ def _is_retryable_error(exc: Exception) -> bool:
 
 def _is_fatal_error(exc: Exception) -> bool:
     """Check if an exception should fail immediately without retry."""
-    import requests
-
-    if isinstance(exc, requests.exceptions.HTTPError):
-        status_code = getattr(exc.response, "status_code", None)
-        if status_code:
-            # 401/403 auth errors
-            if status_code in (401, 403):
-                return True
-            # 404 not found
-            if status_code == 404:
-                return True
+    status_code = _extract_http_status_code(exc)
+    if status_code is not None:
+        # 401/403 auth errors
+        if status_code in (401, 403):
+            return True
+        # 404 not found
+        if status_code == 404:
+            return True
         return False
 
     # Disk errors are fatal
@@ -233,6 +241,31 @@ def _is_fatal_error(exc: Exception) -> bool:
             return True
 
     return False
+
+
+def _extract_http_status_code(exc: Exception) -> int | None:
+    """Try to extract an HTTP status code from common exception types.
+
+    With `huggingface_hub>=1.0.0`, network calls are powered by `httpx`, but other
+    dependencies may still raise `requests` exceptions. This helper keeps our
+    retry/fatal logic robust across both backends.
+    """
+    # Direct status_code attribute (rare but easy)
+    direct = getattr(exc, "status_code", None)
+    if isinstance(direct, int):
+        return direct
+
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None) if response is not None else None
+    if isinstance(status_code, int):
+        return status_code
+
+    # Some exception wrappers store the originating exception as __cause__/__context__.
+    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if isinstance(cause, Exception) and cause is not exc:
+        return _extract_http_status_code(cause)
+
+    return None
 
 
 @celery_app.task(
@@ -492,6 +525,12 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
                     )
                     if attempt < 2:
                         time.sleep(0.2 * (2**attempt))
+            else:
+                # All retries exhausted
+                logger.error(
+                    "Failed to release operation slot for %s after 3 attempts. Slot will auto-expire after TTL.",
+                    model_id,
+                )
 
 
 @celery_app.task(
@@ -694,3 +733,9 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
                 )
                 if attempt < 2:
                     time.sleep(0.2 * (2**attempt))
+        else:
+            # All retries exhausted
+            logger.error(
+                "Failed to release operation slot for %s after 3 attempts. Slot will auto-expire after TTL.",
+                model_id,
+            )

@@ -1,5 +1,6 @@
 """Repository implementation for DocumentArtifact model."""
 
+import inspect
 import logging
 from typing import Any
 
@@ -190,7 +191,10 @@ class DocumentArtifactRepository:
                     DocumentArtifact.artifact_kind == "primary",
                 )
             )
-            return result.scalar_one_or_none()
+            artifact = result.scalar_one_or_none()
+            if inspect.isawaitable(artifact):
+                artifact = await artifact
+            return artifact
         except Exception as e:
             logger.error("Failed to get primary artifact for document %s: %s", document_id, e, exc_info=True)
             raise DatabaseOperationError("get", "DocumentArtifact", str(e)) from e
@@ -213,7 +217,10 @@ class DocumentArtifactRepository:
                     DocumentArtifact.artifact_kind == artifact_kind,
                 )
             )
-            return result.scalar_one_or_none()
+            artifact = result.scalar_one_or_none()
+            if inspect.isawaitable(artifact):
+                artifact = await artifact
+            return artifact
         except Exception as e:
             logger.error("Failed to get artifact for document %s: %s", document_id, e, exc_info=True)
             raise DatabaseOperationError("get", "DocumentArtifact", str(e)) from e
@@ -265,7 +272,10 @@ class DocumentArtifactRepository:
                     DocumentArtifact.artifact_kind == artifact_kind,
                 )
             )
-            return result.scalar_one_or_none() is not None
+            value = result.scalar_one_or_none()
+            if inspect.isawaitable(value):
+                value = await value
+            return value is not None
         except Exception as e:
             logger.error(
                 "Failed to check artifact existence for document %s: %s",

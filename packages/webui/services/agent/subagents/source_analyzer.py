@@ -19,7 +19,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from webui.services.agent.subagents.base import Message, SubAgent, SubAgentResult, Uncertainty
 from webui.services.agent.tools.subagent_tools.source import (
@@ -270,7 +270,8 @@ Start by enumerating the files to understand the source composition."""
 
         # Try to parse the whole content as JSON
         try:
-            return json.loads(content)
+            parsed = json.loads(content)
+            return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else None
         except json.JSONDecodeError:
             pass
 
@@ -278,7 +279,8 @@ Start by enumerating the files to understand the source composition."""
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                parsed = json.loads(json_match.group())
+                return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else None
             except json.JSONDecodeError:
                 pass
 

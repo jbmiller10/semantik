@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -726,7 +726,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
     @classmethod
     def get_config_schema(cls) -> dict[str, Any]:
         """Return JSON Schema for hierarchical chunking configuration."""
-        base_schema = super().get_config_schema()
+        base_schema = cast(dict[str, Any], super().get_config_schema())
         base_schema["properties"]["hierarchy_levels"] = {
             "type": "integer",
             "title": "Hierarchy Levels",

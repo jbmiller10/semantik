@@ -112,6 +112,7 @@ dmypy.json
 
 # Claude / AI assistants
 .claude/
+!.claude/rules/
 .claude-trace/
 GEMINI.md
 /CLAUDE.md

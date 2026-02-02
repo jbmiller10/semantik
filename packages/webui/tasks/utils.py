@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import socket
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +38,11 @@ from webui.celery_app import celery_app
 from webui.qdrant import qdrant_manager
 
 logger = logging.getLogger(__name__)
+
+# Ensure test patches that target either ``webui.tasks.utils`` or
+# ``packages.webui.tasks.utils`` affect the same module instance.
+sys.modules.setdefault("webui.tasks.utils", sys.modules[__name__])
+sys.modules.setdefault("packages.webui.tasks.utils", sys.modules[__name__])
 
 try:
     ensure_internal_api_key(settings)

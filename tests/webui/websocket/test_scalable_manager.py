@@ -133,7 +133,8 @@ class TestScalableWebSocketManagerStartup:
 
             # Should fall back to local-only mode
             assert manager.redis_client is None
-            assert manager._startup_complete is False
+            assert manager._startup_complete is True
+            assert manager._local_only_mode is True
 
 
 class TestScalableWebSocketManagerShutdown:
