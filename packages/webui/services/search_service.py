@@ -229,7 +229,11 @@ class SearchService:
                 timeout=max_timeout if max_timeout > 0 else settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
                 connect=min(timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0, 30.0),
                 read=min(
-                    timeout.read * self.retry_timeout_multiplier if timeout.read else settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
+                    (
+                        timeout.read * self.retry_timeout_multiplier
+                        if timeout.read
+                        else settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS
+                    ),
                     settings.SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS,
                 ),
                 write=min(timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0, 30.0),

@@ -227,7 +227,9 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
             # Generate embeddings - this might trigger batch size reduction
             try:
-                embeddings = service.generate_embeddings(test_texts, model_name=model_name, batch_size=initial_batch_size)
+                embeddings = service.generate_embeddings(
+                    test_texts, model_name=model_name, batch_size=initial_batch_size
+                )
 
                 assert embeddings is not None
                 assert len(embeddings) == len(test_texts)
@@ -328,9 +330,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 
             memory_after_cleanup = get_allocated_mb()
             reserved_after_cleanup, _ = get_memory_usage()
-            print(
-                f"After cleanup: allocated={memory_after_cleanup:.1f} MB, reserved={reserved_after_cleanup:.1f} MB"
-            )
+            print(f"After cleanup: allocated={memory_after_cleanup:.1f} MB, reserved={reserved_after_cleanup:.1f} MB")
 
             # `sentence-transformers` + PyTorch CUDA allocator may keep some memory
             # reserved/allocated for reuse. Assert we don't grow unbounded.

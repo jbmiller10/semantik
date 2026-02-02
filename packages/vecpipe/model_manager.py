@@ -175,7 +175,11 @@ class ModelManager:
                 raise ValueError(f"No provider found for model: {model_name}. Available providers: {available}")
 
             # Switch providers if needed (different provider type or different model)
-            if self._provider is None or self._provider_name != new_provider_name or self.current_model_key != model_key:
+            if (
+                self._provider is None
+                or self._provider_name != new_provider_name
+                or self.current_model_key != model_key
+            ):
                 if self._provider is not None:
                     logger.info(
                         "Switching provider from '%s' to '%s' for model '%s'",
