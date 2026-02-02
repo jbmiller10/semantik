@@ -50,6 +50,7 @@ from .api.chunking_exception_handlers import register_chunking_exception_handler
 from .api.v2 import (
     agent as v2_agent,
     api_keys as v2_api_keys,
+    assisted_flow as v2_assisted_flow,
     benchmark_datasets as v2_benchmark_datasets,
     benchmarks as v2_benchmarks,
     chunking as v2_chunking,
@@ -348,6 +349,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     # Include v2 API routers
     app.include_router(v2_agent.router)
     app.include_router(v2_api_keys.router)
+    app.include_router(v2_assisted_flow.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
     app.include_router(v2_connectors.router)
