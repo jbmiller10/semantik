@@ -1,0 +1,160 @@
+"""SDK MCP Server creation for assisted flow.
+
+This module creates an in-process MCP server with all the tools
+needed for the pipeline configuration assistant.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING, Any
+
+from claude_agent_sdk import create_sdk_mcp_server, tool
+
+from shared.plugins.registry import plugin_registry
+
+if TYPE_CHECKING:
+    from claude_agent_sdk.types import McpSdkServerConfig
+
+    from webui.services.assisted_flow.context import ToolContext
+
+logger = logging.getLogger(__name__)
+
+
+def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
+    """Create an SDK MCP server with assisted flow tools.
+
+    Args:
+        ctx: Shared context for all tools
+
+    Returns:
+        SDK MCP server configuration
+    """
+
+    @tool(
+        "list_plugins",
+        "List available plugins for pipeline configuration. Can filter by type.",
+        {
+            "type": "object",
+            "properties": {
+                "plugin_type": {
+                    "type": "string",
+                    "description": "Filter by type: parser, chunker, embedding, extractor, reranker",
+                    "enum": ["parser", "chunking", "embedding", "extractor", "reranker", "sparse_indexer"],
+                },
+                "include_disabled": {
+                    "type": "boolean",
+                    "description": "Include disabled plugins",
+                    "default": False,
+                },
+            },
+        },
+    )
+    async def list_plugins(args: dict[str, Any]) -> dict[str, Any]:
+        """List available plugins."""
+        plugin_type = args.get("plugin_type")
+        include_disabled = args.get("include_disabled", False)
+
+        try:
+            records = plugin_registry.list_records(plugin_type=plugin_type)
+            plugins = []
+
+            for record in records:
+                if not include_disabled and plugin_registry.is_disabled(record.plugin_id):
+                    continue
+
+                manifest = record.manifest
+                plugin_info: dict[str, Any] = {
+                    "id": record.plugin_id,
+                    "type": record.plugin_type,
+                    "display_name": manifest.display_name,
+                    "description": manifest.description,
+                    "version": record.plugin_version,
+                }
+
+                if manifest.agent_hints:
+                    plugin_info["agent_hints"] = {
+                        "purpose": manifest.agent_hints.purpose,
+                        "best_for": manifest.agent_hints.best_for,
+                    }
+
+                plugins.append(plugin_info)
+
+            plugins.sort(key=lambda p: (p["type"], p["display_name"]))
+
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({
+                            "plugins": plugins,
+                            "count": len(plugins),
+                            "filter": plugin_type,
+                        }),
+                    }
+                ]
+            }
+        except Exception as e:
+            logger.error(f"list_plugins failed: {e}", exc_info=True)
+            return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
+
+    @tool(
+        "get_plugin_details",
+        "Get detailed information about a specific plugin by ID.",
+        {
+            "type": "object",
+            "properties": {
+                "plugin_id": {
+                    "type": "string",
+                    "description": "The plugin ID to look up",
+                },
+            },
+            "required": ["plugin_id"],
+        },
+    )
+    async def get_plugin_details(args: dict[str, Any]) -> dict[str, Any]:
+        """Get plugin details."""
+        plugin_id = args.get("plugin_id", "")
+
+        try:
+            record = plugin_registry.find_by_id(plugin_id)
+
+            if not record:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({
+                                "found": False,
+                                "error": f"Plugin '{plugin_id}' not found",
+                            }),
+                        }
+                    ]
+                }
+
+            manifest = record.manifest
+            result: dict[str, Any] = {
+                "found": True,
+                "id": record.plugin_id,
+                "type": record.plugin_type,
+                "version": record.plugin_version,
+                "display_name": manifest.display_name,
+                "description": manifest.description,
+                "capabilities": manifest.capabilities,
+            }
+
+            if manifest.agent_hints:
+                result["agent_hints"] = manifest.agent_hints.to_dict()
+
+            return {"content": [{"type": "text", "text": json.dumps(result)}]}
+
+        except Exception as e:
+            logger.error(f"get_plugin_details failed: {e}", exc_info=True)
+            return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
+
+    return create_sdk_mcp_server(
+        name="semantik-assisted-flow",
+        version="1.0.0",
+        tools=[list_plugins, get_plugin_details],
+    )
