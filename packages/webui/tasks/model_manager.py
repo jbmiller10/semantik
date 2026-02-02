@@ -528,7 +528,7 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
             else:
                 # All retries exhausted
                 logger.error(
-                    "Failed to release operation slot for %s after 3 attempts. " "Slot will auto-expire after TTL.",
+                    "Failed to release operation slot for %s after 3 attempts. Slot will auto-expire after TTL.",
                     model_id,
                 )
 
@@ -736,6 +736,6 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
         else:
             # All retries exhausted
             logger.error(
-                "Failed to release operation slot for %s after 3 attempts. " "Slot will auto-expire after TTL.",
+                "Failed to release operation slot for %s after 3 attempts. Slot will auto-expire after TTL.",
                 model_id,
             )
