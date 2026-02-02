@@ -1,8 +1,6 @@
 """Tests for assisted flow tool context."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from unittest.mock import MagicMock
 
 from webui.services.assisted_flow.context import ToolContext
 
@@ -14,7 +12,7 @@ class TestToolContext:
         """Context stores session, user_id, source_id."""
         session = MagicMock()
         user_id = 123
-        source_id = uuid4()
+        source_id = 456
 
         ctx = ToolContext(
             session=session,
@@ -35,7 +33,7 @@ class TestToolContext:
         ctx = ToolContext(
             session=session,
             user_id=1,
-            source_id=uuid4(),
+            source_id=42,
             pipeline_state=pipeline,
         )
 

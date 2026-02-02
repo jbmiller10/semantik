@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,11 +27,11 @@ class ToolContext:
     Attributes:
         session: Async SQLAlchemy session for database operations
         user_id: ID of the authenticated user
-        source_id: UUID of the collection source being configured
+        source_id: Integer ID of the collection source being configured
         pipeline_state: Current pipeline DAG configuration (None if not yet built)
     """
 
     session: AsyncSession
     user_id: int
-    source_id: UUID
+    source_id: int
     pipeline_state: dict[str, Any] | None = None
