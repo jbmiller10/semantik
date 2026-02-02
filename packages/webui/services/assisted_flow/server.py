@@ -249,8 +249,125 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
             logger.error(f"build_pipeline failed: {e}", exc_info=True)
             return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
 
+    @tool(
+        "apply_pipeline",
+        "Apply the current pipeline configuration to create a collection. "
+        "Validates the pipeline and prepares it for collection creation.",
+        {
+            "type": "object",
+            "properties": {
+                "collection_name": {
+                    "type": "string",
+                    "description": "Name for the new collection",
+                },
+                "collection_description": {
+                    "type": "string",
+                    "description": "Optional description for the collection",
+                },
+            },
+            "required": ["collection_name"],
+        },
+    )
+    async def apply_pipeline(args: dict[str, Any]) -> dict[str, Any]:
+        """Apply pipeline configuration to create a collection."""
+        collection_name = args.get("collection_name", "").strip()
+        collection_description = args.get("collection_description")
+
+        try:
+            # Validate collection name
+            if not collection_name:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({
+                                "success": False,
+                                "error": "collection_name is required",
+                            }),
+                        }
+                    ]
+                }
+
+            # Check for pipeline
+            if not ctx.pipeline_state:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({
+                                "success": False,
+                                "error": "No pipeline configured. Use build_pipeline first.",
+                            }),
+                        }
+                    ]
+                }
+
+            # Validate pipeline structure using PipelineDAG
+            from shared.pipeline.types import PipelineDAG
+
+            try:
+                dag = PipelineDAG.from_dict(ctx.pipeline_state)
+                known_plugins = set(plugin_registry.list_ids())
+                errors = dag.validate(known_plugins)
+
+                if errors:
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps({
+                                    "success": False,
+                                    "error": "Pipeline has validation errors",
+                                    "validation_errors": [
+                                        {"rule": e.rule, "message": e.message}
+                                        for e in errors
+                                    ],
+                                }),
+                            }
+                        ]
+                    }
+            except Exception as e:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({
+                                "success": False,
+                                "error": f"Invalid pipeline configuration: {e}",
+                            }),
+                        }
+                    ]
+                }
+
+            # Store the applied configuration in context
+            ctx.applied_config = {
+                "collection_name": collection_name,
+                "collection_description": collection_description,
+                "pipeline_config": ctx.pipeline_state,
+                "source_id": ctx.source_id,
+            }
+
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({
+                            "success": True,
+                            "message": f"Pipeline validated and ready to create collection '{collection_name}'",
+                            "collection_name": collection_name,
+                            "pipeline_node_count": len(ctx.pipeline_state.get("nodes", [])),
+                            "pipeline_edge_count": len(ctx.pipeline_state.get("edges", [])),
+                        }),
+                    }
+                ]
+            }
+
+        except Exception as e:
+            logger.error(f"apply_pipeline failed: {e}", exc_info=True)
+            return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
+
     return create_sdk_mcp_server(
         name="semantik-assisted-flow",
         version="1.0.0",
-        tools=[list_plugins, get_plugin_details, build_pipeline],
+        tools=[list_plugins, get_plugin_details, build_pipeline, apply_pipeline],
     )

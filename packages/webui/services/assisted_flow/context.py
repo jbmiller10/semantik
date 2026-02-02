@@ -23,15 +23,18 @@ class ToolContext:
     - User ID for permission checks
     - Source ID being configured
     - Current pipeline state (mutable during session)
+    - Applied configuration (set when user confirms pipeline)
 
     Attributes:
         session: Async SQLAlchemy session for database operations
         user_id: ID of the authenticated user
         source_id: Integer ID of the collection source being configured
         pipeline_state: Current pipeline DAG configuration (None if not yet built)
+        applied_config: Final configuration after apply_pipeline (None until applied)
     """
 
     session: AsyncSession
     user_id: int
     source_id: int
     pipeline_state: dict[str, Any] | None = None
+    applied_config: dict[str, Any] | None = None
