@@ -1338,7 +1338,8 @@ class GPUMemoryGovernor:
             free_bytes, total_bytes = torch.cuda.mem_get_info()
             used_bytes = total_bytes - free_bytes
             return (used_bytes / total_bytes * 100) if total_bytes > 0 else 0.0
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to get actual GPU usage: %s", e)
             return 0.0
 
     def _get_model_memory(self, model_name: str, quantization: str) -> int:

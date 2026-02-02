@@ -525,6 +525,13 @@ def download_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:
                     )
                     if attempt < 2:
                         time.sleep(0.2 * (2**attempt))
+            else:
+                # All retries exhausted
+                logger.error(
+                    "Failed to release operation slot for %s after 3 attempts. "
+                    "Slot will auto-expire after TTL.",
+                    model_id,
+                )
 
 
 @celery_app.task(
@@ -727,3 +734,10 @@ def delete_model(self: Any, model_id: str, task_id: str) -> dict[str, Any]:  # n
                 )
                 if attempt < 2:
                     time.sleep(0.2 * (2**attempt))
+        else:
+            # All retries exhausted
+            logger.error(
+                "Failed to release operation slot for %s after 3 attempts. "
+                "Slot will auto-expire after TTL.",
+                model_id,
+            )

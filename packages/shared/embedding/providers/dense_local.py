@@ -70,6 +70,7 @@ def check_int8_compatibility() -> tuple[bool, str]:
         test_input = torch.randn(1, 16).cuda()
         _ = test_layer(test_input)
         del test_layer, test_input
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
     except Exception as e:
         return False, f"INT8 layer test failed: {str(e)}"

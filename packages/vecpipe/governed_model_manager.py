@@ -834,7 +834,7 @@ class GovernedModelManager(ModelManager):
             # Use real reranker
             loop = asyncio.get_running_loop()
             assert self.reranker is not None  # Already checked in ensure_reranker_loaded
-            return await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 self.executor,
                 self.reranker.rerank,
                 query,
@@ -843,6 +843,14 @@ class GovernedModelManager(ModelManager):
                 instruction,
                 True,  # return_scores
             )
+
+            # Cleanup GPU memory before releasing lock
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+
+            return result
 
     async def preload_models(
         self,
