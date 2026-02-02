@@ -153,8 +153,104 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
             logger.error(f"get_plugin_details failed: {e}", exc_info=True)
             return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
 
+    @tool(
+        "build_pipeline",
+        "Create or update the pipeline configuration. Builds a DAG with nodes and edges.",
+        {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "description": "Pipeline nodes (parser, chunker, embedder)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "type": {
+                                "type": "string",
+                                "enum": ["parser", "chunker", "extractor", "embedder"],
+                            },
+                            "plugin_id": {"type": "string"},
+                            "config": {"type": "object"},
+                        },
+                        "required": ["id", "type", "plugin_id"],
+                    },
+                },
+                "edges": {
+                    "type": "array",
+                    "description": "Edges connecting nodes with optional predicates",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "from_node": {"type": "string"},
+                            "to_node": {"type": "string"},
+                            "when": {
+                                "type": "object",
+                                "description": "Predicate for conditional routing",
+                            },
+                            "parallel": {"type": "boolean", "default": False},
+                        },
+                        "required": ["from_node", "to_node"],
+                    },
+                },
+            },
+            "required": ["nodes", "edges"],
+        },
+    )
+    async def build_pipeline(args: dict[str, Any]) -> dict[str, Any]:
+        """Build pipeline configuration."""
+        nodes = args.get("nodes", [])
+        edges = args.get("edges", [])
+
+        try:
+            # Validate plugins exist
+            missing_plugins = []
+            for node in nodes:
+                if not plugin_registry.find_by_id(node["plugin_id"]):
+                    missing_plugins.append(node["plugin_id"])
+
+            if missing_plugins:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({
+                                "success": False,
+                                "error": f"Unknown plugins: {', '.join(missing_plugins)}",
+                            }),
+                        }
+                    ]
+                }
+
+            # Build DAG structure
+            pipeline = {
+                "nodes": nodes,
+                "edges": edges,
+            }
+
+            # Store in context
+            ctx.pipeline_state = pipeline
+
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({
+                            "success": True,
+                            "pipeline": pipeline,
+                            "node_count": len(nodes),
+                            "edge_count": len(edges),
+                        }),
+                    }
+                ]
+            }
+
+        except Exception as e:
+            logger.error(f"build_pipeline failed: {e}", exc_info=True)
+            return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
+
     return create_sdk_mcp_server(
         name="semantik-assisted-flow",
         version="1.0.0",
-        tools=[list_plugins, get_plugin_details],
+        tools=[list_plugins, get_plugin_details, build_pipeline],
     )
