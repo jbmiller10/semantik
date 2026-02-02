@@ -10,12 +10,13 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,24 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
     preferring natural document boundaries like paragraphs, sentences, and words.
     Can optionally use LlamaIndex for enhanced text splitting.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Recursively splits on separators (paragraphs, sentences, words). Respects natural text boundaries.",
+        best_for=[
+            "general text documents",
+            "articles and blog posts",
+            "documentation",
+            "prose with natural paragraph structure",
+        ],
+        not_recommended_for=[
+            "source code (use code-aware chunker)",
+            "highly structured documents with headers (use markdown)",
+            "content requiring semantic coherence (use semantic)",
+        ],
+        output_type="chunks",
+        tradeoffs="Good balance of speed and quality. Default choice for most text. "
+        "May not preserve semantic units as well as semantic chunking.",
+    )
 
     def __init__(self, use_llama_index: bool = False) -> None:
         """

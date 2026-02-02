@@ -72,7 +72,7 @@ CREATE TABLE collections (
     meta JSON,                                  -- Additional metadata
     
     -- Status and metrics fields
-    status ENUM('pending','ready','processing','error','degraded') NOT NULL DEFAULT 'pending',
+    status ENUM('pending','ready','processing','error') NOT NULL DEFAULT 'pending',
     status_message TEXT,                        -- Human-readable status details
     qdrant_collections JSON,                    -- List of Qdrant collection names
     qdrant_staging JSON,                        -- Staging collections during reindex

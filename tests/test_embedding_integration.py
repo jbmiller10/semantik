@@ -22,7 +22,7 @@ from shared.embedding import (
 from shared.embedding.dense import DenseEmbeddingService
 
 # Mock metrics before importing
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules.setdefault("shared.metrics.prometheus", MagicMock())
 
 
 class TestEmbeddingIntegration(unittest.TestCase):
@@ -73,13 +73,14 @@ class TestEmbeddingIntegration(unittest.TestCase):
         """Establish performance baseline for embedding generation"""
 
         service = EmbeddingService(mock_mode=True)
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
         # Test texts
         texts = ["test text"] * 100
 
         # Measure time for mock embeddings
         start = time.time()
-        embeddings = service.generate_embeddings(texts, "test-model", batch_size=32)
+        embeddings = service.generate_embeddings(texts, model_name, batch_size=32)
         duration = time.time() - start
 
         # Mock mode should be very fast

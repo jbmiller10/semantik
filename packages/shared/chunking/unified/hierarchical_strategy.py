@@ -10,12 +10,13 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,25 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
     different levels of detail. Can optionally use LlamaIndex for
     enhanced hierarchical parsing.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Parent-child chunk relationships with multiple granularity levels. "
+        "Enables both broad and detailed retrieval.",
+        best_for=[
+            "books with chapters and sections",
+            "deeply nested documents",
+            "content requiring multi-scale retrieval",
+            "when both summary and detail views are needed",
+        ],
+        not_recommended_for=[
+            "flat documents without natural hierarchy",
+            "short documents (adds unnecessary complexity)",
+            "when storage space is limited (creates more chunks)",
+        ],
+        output_type="chunks",
+        tradeoffs="Enables flexible retrieval at multiple scales but increases "
+        "storage and indexing time. Best for complex, nested content.",
+    )
 
     def __init__(self, use_llama_index: bool = False) -> None:
         """
@@ -702,3 +722,17 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             total_chunks += max(1, level_chunks)
 
         return total_chunks
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for hierarchical chunking configuration."""
+        base_schema = cast(dict[str, Any], super().get_config_schema())
+        base_schema["properties"]["hierarchy_levels"] = {
+            "type": "integer",
+            "title": "Hierarchy Levels",
+            "description": "Number of hierarchy levels to create (1-10)",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 10,
+        }
+        return base_schema

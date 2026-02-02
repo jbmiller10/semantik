@@ -191,7 +191,6 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY
 ENV CC=gcc
 ENV CXX=g++
 ENV HF_HOME=/app/.cache/huggingface
-ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/

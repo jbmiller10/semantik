@@ -190,6 +190,19 @@ SEARCH_API_PORT=8000        # Search API port
 SEARCH_API_URL=http://vecpipe:8000  # Internal URL for WebUI
 SEARCH_API_HOST=vecpipe     # Search API hostname
 
+# WebUI -> Search API (Vecpipe) timeouts (seconds)
+# These configure the httpx client used by WebUI when calling Vecpipe endpoints
+# (e.g., /search, /embed, /upsert). The defaults below are recommended for
+# `transformers>=5` / `sentence-transformers>=5`, where cold starts and first
+# requests can take longer due to model init, compilation, and cache misses.
+SEARCH_API_TIMEOUT_SECONDS=120.0          # Overall timeout cap
+SEARCH_API_POOL_TIMEOUT_SECONDS=120.0     # Wait for a connection from the pool
+SEARCH_API_CONNECT_TIMEOUT_SECONDS=10.0   # Establish TCP/TLS connection
+SEARCH_API_READ_TIMEOUT_SECONDS=120.0     # Read response bytes
+SEARCH_API_WRITE_TIMEOUT_SECONDS=30.0     # Send request bytes
+# When WebUI retries after a read timeout, it increases timeouts up to this cap.
+SEARCH_API_RETRY_MAX_TIMEOUT_SECONDS=240.0
+
 # Service Discovery
 WAIT_FOR_QDRANT=true        # Wait for Qdrant on startup
 WAIT_FOR_SEARCH_API=true    # Wait for Search API on startup

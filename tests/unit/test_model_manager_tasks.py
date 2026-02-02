@@ -249,22 +249,24 @@ class TestHelperFunctions:
 
     def test_is_retryable_error_http_5xx(self):
         """HTTP 5xx errors should be retryable."""
-        import requests
+        import httpx
 
         from webui.tasks.model_manager import _is_retryable_error
 
-        err = requests.exceptions.HTTPError("Server error")
-        err.response = MagicMock(status_code=503)  # type: ignore[attr-defined]
+        request = httpx.Request("GET", "https://example.invalid")
+        response = httpx.Response(503, request=request)
+        err = httpx.HTTPStatusError("Server error", request=request, response=response)
         assert _is_retryable_error(err) is True
 
     def test_is_retryable_error_http_429(self):
         """HTTP 429 errors should be retryable."""
-        import requests
+        import httpx
 
         from webui.tasks.model_manager import _is_retryable_error
 
-        err = requests.exceptions.HTTPError("Rate limited")
-        err.response = MagicMock(status_code=429)  # type: ignore[attr-defined]
+        request = httpx.Request("GET", "https://example.invalid")
+        response = httpx.Response(429, request=request)
+        err = httpx.HTTPStatusError("Rate limited", request=request, response=response)
         assert _is_retryable_error(err) is True
 
     def test_is_fatal_error_permission_denied(self):
@@ -289,13 +291,14 @@ class TestHelperFunctions:
 
     def test_is_fatal_error_http_401_403_404(self):
         """HTTP 401/403/404 errors should be fatal."""
-        import requests
+        import httpx
 
         from webui.tasks.model_manager import _is_fatal_error
 
         for code in (401, 403, 404):
-            err = requests.exceptions.HTTPError("HTTP error")
-            err.response = MagicMock(status_code=code)  # type: ignore[attr-defined]
+            request = httpx.Request("GET", "https://example.invalid")
+            response = httpx.Response(code, request=request)
+            err = httpx.HTTPStatusError("HTTP error", request=request, response=response)
             assert _is_fatal_error(err) is True
 
 

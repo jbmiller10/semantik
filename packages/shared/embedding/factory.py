@@ -13,10 +13,17 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sys
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from shared.plugins.state import get_plugin_config
+
+# Import shims exist for this repo (`shared/` points at `packages/shared/`).
+# Ensure this module is a singleton even if imported via both names.
+if __name__ in {"shared.embedding.factory", "packages.shared.embedding.factory"}:
+    sys.modules.setdefault("shared.embedding.factory", sys.modules[__name__])
+    sys.modules.setdefault("packages.shared.embedding.factory", sys.modules[__name__])
 
 if TYPE_CHECKING:
     from shared.config.vecpipe import VecpipeConfig

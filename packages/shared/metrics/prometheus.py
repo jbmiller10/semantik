@@ -6,6 +6,7 @@ Provides observability into system performance
 
 import logging
 import os
+import sys
 import threading
 import time
 from typing import Any
@@ -15,6 +16,12 @@ import psutil
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
 
 logger = logging.getLogger(__name__)
+
+# Import shims exist for this repo (`shared/` points at `packages/shared/`).
+# Ensure this module is a singleton even if imported via both names.
+if __name__ in {"shared.metrics.prometheus", "packages.shared.metrics.prometheus"}:
+    sys.modules.setdefault("shared.metrics.prometheus", sys.modules[__name__])
+    sys.modules.setdefault("packages.shared.metrics.prometheus", sys.modules[__name__])
 
 # Re-export prometheus_client types for convenience
 __all__ = [

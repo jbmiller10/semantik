@@ -169,7 +169,8 @@ async def test_startup_falls_back_to_local_mode(manager):
         await manager.startup()
 
         assert manager.redis_client is None
-        assert manager._startup_complete is False
+        assert manager._startup_complete is True
+        assert manager._local_only_mode is True
 
 
 # -----------------------------------------------------------------------------

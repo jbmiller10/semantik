@@ -2,8 +2,7 @@ export type CollectionStatus =
   | 'pending'
   | 'ready'
   | 'processing'
-  | 'error'
-  | 'degraded';
+  | 'error';
 
 export type SyncMode = 'one_time' | 'continuous';
 
@@ -39,6 +38,7 @@ export interface Collection {
   is_public: boolean;
   status: CollectionStatus;
   status_message?: string;
+  error_count: number;  // Count of documents with failed status
   metadata?: Record<string, unknown>;
   document_count: number;
   vector_count: number;
@@ -108,6 +108,8 @@ export interface CreateCollectionRequest {
   sync_interval_minutes?: number; // Required for continuous mode, minimum 15
   // Sparse indexing configuration
   sparse_index_config?: SparseIndexConfig;
+  // Custom pipeline configuration (DAG)
+  pipeline_config?: Record<string, unknown>; // Full pipeline DAG with nodes and edges
 }
 
 export interface UpdateCollectionRequest {

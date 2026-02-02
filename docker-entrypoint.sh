@@ -118,7 +118,7 @@ case "$SERVICE" in
             echo "Warning: unable to create $CACHE_ROOT, falling back to /tmp/huggingface-cache"
             CACHE_ROOT="/tmp/huggingface-cache"
             export HF_HOME="$CACHE_ROOT"
-            export TRANSFORMERS_CACHE="$CACHE_ROOT"
+            export HF_HUB_CACHE="$CACHE_ROOT/hub"
             mkdir -p "$CACHE_ROOT/hub"
         fi
         find "$CACHE_ROOT" -name "*.lock" -type f -delete 2>/dev/null || true

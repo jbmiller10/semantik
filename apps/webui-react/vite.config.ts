@@ -11,6 +11,11 @@ const appVersion = readFileSync(versionFile, 'utf-8').trim()
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   base: '/',
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },

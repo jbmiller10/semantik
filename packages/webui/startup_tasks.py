@@ -36,8 +36,10 @@ async def ensure_default_data() -> None:
         except SQLAlchemyError as exc:
             logger.info("Plugin configs not available yet; loading all plugins (%s)", exc)
 
+        # Load all plugin types needed for template validation
+        # Note: parser and extractor plugins are referenced by templates
         registry = load_plugins(
-            plugin_types={"embedding", "chunking", "connector"},
+            plugin_types={"embedding", "chunking", "connector", "extractor", "parser"},
             disabled_plugin_ids=disabled_plugin_ids,
         )
 
@@ -66,11 +68,30 @@ async def ensure_default_data() -> None:
         if connector_plugins:
             logger.info("Loaded connector plugins: %s", ", ".join(connector_plugins))
 
+        # Validate pipeline templates (fail fast on errors)
+        validate_templates()
+
         await ensure_default_chunking_strategies(session)
     finally:
         await session_gen.aclose()
 
     logger.info("Startup tasks completed")
+
+
+def validate_templates() -> None:
+    """Validate all pipeline templates at startup.
+
+    Loads and validates all templates from the templates module.
+    Raises ValueError on invalid templates, causing fail-fast startup behavior.
+    """
+    from shared.pipeline.templates import list_templates
+
+    try:
+        templates = list_templates()  # Raises ValueError on invalid templates
+        logger.info("Validated %d pipeline templates", len(templates))
+    except ValueError as e:
+        logger.error("Pipeline template validation failed: %s", e)
+        raise
 
 
 async def ensure_default_chunking_strategies(session: AsyncSession) -> None:

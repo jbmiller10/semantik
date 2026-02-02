@@ -112,9 +112,10 @@ dmypy.json
 
 # Claude / AI assistants
 .claude/
+!.claude/rules/
 .claude-trace/
-CLAUDE.md
 GEMINI.md
+/CLAUDE.md
 
 # Planning and roadmap docs (not for version control)
 archive/
@@ -286,3 +287,5 @@ conductor/
 
 # Git worktrees
 .worktrees/
+docs/investigation*
+docs/notes*

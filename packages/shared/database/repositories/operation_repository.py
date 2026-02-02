@@ -481,6 +481,45 @@ class OperationRepository:
             logger.error("Failed to get stuck operations: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "operations", str(e)) from e
 
+    async def update_meta(
+        self,
+        operation_uuid: str,
+        meta: dict[str, Any],
+        merge: bool = True,
+    ) -> Operation:
+        """Update operation metadata.
+
+        Args:
+            operation_uuid: UUID of the operation
+            meta: Metadata to set or merge
+            merge: If True, merge with existing meta. If False, replace entirely.
+
+        Returns:
+            Updated Operation instance
+
+        Raises:
+            EntityNotFoundError: If operation not found
+        """
+        try:
+            operation = await self.get_by_uuid(operation_uuid)
+            if not operation:
+                raise EntityNotFoundError("operation", operation_uuid)
+
+            # Merge new meta with existing if requested, otherwise replace
+            updated_meta = {**(operation.meta or {}), **meta} if merge and operation.meta else meta
+
+            operation.meta = updated_meta
+            await self.session.flush()
+
+            logger.debug(f"Updated meta for operation {operation_uuid}")
+            return operation
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error("Failed to update operation meta: %s", e, exc_info=True)
+            raise DatabaseOperationError("update", "operation", str(e)) from e
+
     async def mark_operations_failed(
         self,
         operation_ids: list[int],

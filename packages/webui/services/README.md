@@ -36,7 +36,7 @@ async def create_collection(
 
 ## State Rules
 
-- Add sources: READY or DEGRADED only
+- Add sources: READY only
 - No operations during PROCESSING
 - Cannot reindex FAILED (must delete and recreate)
 

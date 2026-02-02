@@ -70,6 +70,11 @@ class ModelManager:
         self.unload_task: asyncio.Task[None] | None = None
         self.reranker_unload_task: asyncio.Task[None] | None = None
 
+        # Guards provider initialization / switching against concurrent async calls.
+        # This avoids races where multiple requests try to initialize the provider
+        # at the same time and one observes a half-initialized provider.
+        self._provider_init_lock = asyncio.Lock()
+
         # Mock mode from settings
         self.is_mock_mode = settings.USE_MOCK_EMBEDDINGS
 
@@ -140,53 +145,63 @@ class ModelManager:
             self._update_last_used()
             return self._provider
 
-        # Ensure providers are registered (idempotent)
-        load_plugins(plugin_types={"embedding"})
+        async with self._provider_init_lock:
+            # Re-check under the lock in case another task initialized while we awaited.
+            if self._provider is not None and self.current_model_key == model_key:
+                self._update_last_used()
+                return self._provider
 
-        # Mock mode handling - use MockEmbeddingProvider
-        if self.is_mock_mode:
-            if self._provider is None or self._provider_name != "mock":
+            # Ensure providers are registered (idempotent)
+            load_plugins(plugin_types={"embedding"})
+
+            # Mock mode handling - use MockEmbeddingProvider
+            if self.is_mock_mode:
+                if self._provider is None or self._provider_name != "mock":
+                    if self._provider is not None:
+                        logger.info("Switching to mock provider, cleaning up previous provider")
+                        await self._provider.cleanup()
+                    logger.info("Creating mock embedding provider")
+                    self._provider = EmbeddingProviderFactory.create_provider_by_name("mock")
+                    self._provider_name = "mock"
+                    await self._provider.initialize(model_name)
+                    self.current_model_key = model_key
+                self._update_last_used()
+                return self._provider
+
+            # Real provider via factory auto-detection
+            new_provider_name = EmbeddingProviderFactory.get_provider_for_model(model_name)
+            if new_provider_name is None:
+                available = EmbeddingProviderFactory.list_available_providers()
+                raise ValueError(f"No provider found for model: {model_name}. Available providers: {available}")
+
+            # Switch providers if needed (different provider type or different model)
+            if (
+                self._provider is None
+                or self._provider_name != new_provider_name
+                or self.current_model_key != model_key
+            ):
                 if self._provider is not None:
-                    logger.info("Switching to mock provider, cleaning up previous provider")
+                    logger.info(
+                        "Switching provider from '%s' to '%s' for model '%s'",
+                        self._provider_name,
+                        new_provider_name,
+                        model_name,
+                    )
                     await self._provider.cleanup()
-                logger.info("Creating mock embedding provider")
-                self._provider = EmbeddingProviderFactory.create_provider_by_name("mock")
-                self._provider_name = "mock"
-                await self._provider.initialize(model_name)
-                self.current_model_key = model_key
-            self._update_last_used()
-            return self._provider
 
-        # Real provider via factory auto-detection
-        new_provider_name = EmbeddingProviderFactory.get_provider_for_model(model_name)
-        if new_provider_name is None:
-            available = EmbeddingProviderFactory.list_available_providers()
-            raise ValueError(f"No provider found for model: {model_name}. Available providers: {available}")
-
-        # Switch providers if needed (different provider type or different model)
-        if self._provider is None or self._provider_name != new_provider_name or self.current_model_key != model_key:
-            if self._provider is not None:
                 logger.info(
-                    "Switching provider from '%s' to '%s' for model '%s'",
-                    self._provider_name,
+                    "Creating embedding provider '%s' for model '%s' with %s quantization",
                     new_provider_name,
                     model_name,
+                    quantization,
                 )
-                await self._provider.cleanup()
+                self._provider = EmbeddingProviderFactory.create_provider(model_name)
+                self._provider_name = new_provider_name
+                await self._provider.initialize(model_name, quantization=quantization)
+                self.current_model_key = model_key
 
-            logger.info(
-                "Creating embedding provider '%s' for model '%s' with %s quantization",
-                new_provider_name,
-                model_name,
-                quantization,
-            )
-            self._provider = EmbeddingProviderFactory.create_provider(model_name)
-            self._provider_name = new_provider_name
-            await self._provider.initialize(model_name, quantization=quantization)
-            self.current_model_key = model_key
-
-        self._update_last_used()
-        return self._provider
+            self._update_last_used()
+            return self._provider
 
     async def _schedule_unload(self) -> None:
         """Schedule model unloading after inactivity."""
@@ -226,10 +241,13 @@ class ModelManager:
             gc.collect()
 
             # Clear GPU cache if using CUDA
+            # IMPORTANT: synchronize() must be called before empty_cache()
+            # because CUDA operations are async and tensors may still be in use
             try:
                 import torch
 
                 if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
             except ImportError:
                 pass
@@ -253,6 +271,7 @@ class ModelManager:
                 import torch
 
                 if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
             except ImportError:
                 pass

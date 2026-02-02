@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNavigate } from 'react-router-dom'
 import CollectionsDashboard from '../CollectionsDashboard'
@@ -315,21 +315,39 @@ describe('Collections - Permission Error Handling', () => {
       const createButtons = await screen.findAllByRole('button', { name: /create.*collection/i })
       await userEvent.click(createButtons[0])
       
-      // Wait for modal to open
+      // Wait for wizard modal to open (look for the h2 wizard title)
       await waitFor(() => {
-        expect(screen.getByText(/create new collection/i)).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: /create collection/i, level: 2 })).toBeInTheDocument()
       })
-      
+
       server.use(
         createErrorHandler('post', '/api/v2/collections', 401, { detail: 'Token expired' })
       )
-      
-      // Try to create collection
+
+      // Try to create collection - fill form and navigate through wizard steps
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test')
-      // Find the submit button (has type="submit") among all Create Collection buttons
-      const submitButtons = screen.getAllByRole('button', { name: /create collection/i })
-      const submitButton = submitButtons.find(btn => btn.getAttribute('type') === 'submit')
-      if (!submitButton) throw new Error('Submit button not found')
+
+      // Navigate to Step 2: Mode Selection
+      const modal = screen.getByRole('dialog')
+      let nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 2
+      await waitFor(() => {
+        expect(screen.getByText(/manual/i)).toBeInTheDocument()
+      })
+
+      // Navigate to Step 3: Configure
+      nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 3 with Create Collection button
+      await waitFor(() => {
+        expect(within(modal).getByRole('button', { name: /create collection/i })).toBeInTheDocument()
+      })
+
+      // Click Create Collection button on step 3
+      const submitButton = within(modal).getByRole('button', { name: /create collection/i })
       await userEvent.click(submitButton)
       
       // The mutation should have failed and the error state should be set

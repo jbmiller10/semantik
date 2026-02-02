@@ -6,6 +6,9 @@ This module provides a wrapper around the unified character chunking strategy
 to make it compatible with domain tests.
 """
 
+from typing import Any
+
+from shared.chunking.unified.character_strategy import CharacterChunkingStrategy as UnifiedCharacterStrategy
 from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
 
 
@@ -21,3 +24,9 @@ class CharacterChunkingStrategy(DomainStrategyAdapter):
         """Initialize the character chunking strategy."""
         unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=False)
         super().__init__(unified_strategy)
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration."""
+        schema: dict[str, Any] = UnifiedCharacterStrategy.get_config_schema()
+        return schema

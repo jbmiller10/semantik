@@ -4,14 +4,21 @@ Uses Qwen3-Reranker models for state-of-the-art reranking
 """
 
 import logging
+import sys
 import threading
 import time
-from typing import Any
+from typing import Any, cast
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
+
+# Import shims exist for this repo (`vecpipe/` points at `packages/vecpipe/`).
+# Ensure this module is a singleton even if imported via both names.
+if __name__ in {"vecpipe.reranker", "packages.vecpipe.reranker"}:
+    sys.modules.setdefault("vecpipe.reranker", sys.modules[__name__])
+    sys.modules.setdefault("packages.vecpipe.reranker", sys.modules[__name__])
 
 
 class CrossEncoderReranker:
@@ -42,8 +49,8 @@ class CrossEncoderReranker:
         self.device = device if torch.cuda.is_available() else "cpu"
         self.quantization = quantization
         self.max_length = max_length
-        self.model = None
-        self.tokenizer = None
+        self.model: Any | None = None
+        self.tokenizer: Any | None = None
         self._lock = threading.Lock()  # Thread safety lock
 
         # Model size to batch size mapping
@@ -85,6 +92,8 @@ class CrossEncoderReranker:
                     trust_remote_code=True,
                     padding_side="left",  # Important for batch processing
                 )
+                if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 # Determine torch dtype based on quantization
                 torch_dtype = torch.float32
@@ -131,7 +140,9 @@ class CrossEncoderReranker:
 
                 # Move to device if not using device_map
                 if self.model is not None and (self.device == "cpu" or self.quantization != "int8"):
-                    self.model = self.model.to(self.device)
+                    # Mypy can get confused by `transformers`' model `.to()` typing
+                    # (especially with remote-code models). Treat as `Any`.
+                    self.model = cast(Any, self.model).to(self.device)
 
                 if self.model is not None:
                     self.model.eval()

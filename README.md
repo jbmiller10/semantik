@@ -54,6 +54,8 @@ Everything is organized around **collections** — each with its own embedding m
 - Embedding space visualization via embedding-atlas
 
 ### Data Pipeline
+- DAG-based processing with conditional routing (route files by type, size, content characteristics)
+- AI-assisted pipeline configuration via conversational wizard (EXPERIMENTAL)
 - Pluggable connectors: directories, Git repos, IMAP mailboxes (credentials encrypted at rest)
 - 15+ document formats via unstructured (PDF, DOCX, Markdown, HTML, and more)
 - Continuous sync with configurable intervals

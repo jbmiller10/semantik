@@ -21,12 +21,17 @@ import torch.nn.functional as F  # noqa: N812
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
-from transformers.modeling_utils import PreTrainedModel
+
+try:
+    from transformers import PreTrainedModel
+except ImportError:  # pragma: no cover - defensive for older/newer transformers layouts
+    from transformers.modeling_utils import PreTrainedModel
 
 from shared.embedding.models import MODEL_CONFIGS, ModelConfig, get_model_config
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
 from shared.embedding.types import EmbeddingMode
 from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
+from shared.plugins.manifest import AgentHints
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -65,6 +70,7 @@ def check_int8_compatibility() -> tuple[bool, str]:
         test_input = torch.randn(1, 16).cuda()
         _ = test_layer(test_input)
         del test_layer, test_input
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
     except Exception as e:
         return False, f"INT8 layer test failed: {str(e)}"
@@ -96,6 +102,24 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
     INTERNAL_NAME: ClassVar[str] = "dense_local"
     API_ID: ClassVar[str] = "dense_local"
     PROVIDER_TYPE: ClassVar[str] = "local"
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Local GPU embedding using configurable transformer models. "
+        "Supports asymmetric query/document prefixes.",
+        best_for=[
+            "privacy-sensitive data",
+            "offline/air-gapped environments",
+            "when you need full control over the model",
+            "high-volume embedding with GPU",
+        ],
+        not_recommended_for=[
+            "no GPU available (very slow on CPU)",
+            "when cloud API is acceptable and simpler",
+        ],
+        input_types=["text/plain"],
+        output_type="vectors",
+        tradeoffs="Full control and privacy but requires GPU. Model choice affects quality and speed.",
+    )
 
     METADATA: ClassVar[dict[str, Any]] = {
         "display_name": "Local Dense Embeddings",
@@ -304,6 +328,11 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, padding_side="left", trust_remote_code=kwargs.get("trust_remote_code", False)
             )
+            # Some LLM-style tokenizers ship without a pad token. We always use
+            # padding for batching, so ensure a pad token is set (common practice
+            # is to reuse EOS).
+            if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
+                self.tokenizer.pad_token = self.tokenizer.eos_token
 
             model_kwargs = self._get_model_kwargs()
             self.model = AutoModel.from_pretrained(model_name, **model_kwargs)
@@ -490,6 +519,16 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # Explicitly delete local tensors that may be holding GPU memory.
+                    # OOM can occur at different points, so some variables may not exist.
+                    # We reassign to None and call gc.collect() to ensure references are
+                    # released before empty_cache() can reclaim the memory blocks.
+                    batch_dict = None  # type: ignore[assignment]  # noqa: F841
+                    outputs = None  # type: ignore[assignment]  # noqa: F841
+                    embeddings = None  # type: ignore[assignment]  # noqa: F841
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -575,6 +614,10 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # GC to release any internal references before empty_cache
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -710,7 +753,41 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         self.dimension = None
 
         if self.device == "cuda":
+            # Synchronize before empty_cache to ensure all CUDA ops are complete
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
         gc.collect()
 
         logger.info("Dense local embedding provider cleaned up")
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for plugin configuration.
+
+        Note: The 'model' field uses x-model-selector to indicate that the UI
+        should fetch the list of installed models from the model manager API
+        rather than using a static enum.
+
+        Advanced options (batch_size, device) are omitted as they are handled
+        automatically by the adaptive batch sizing system and device auto-detection.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "title": "Model",
+                    "description": "Embedding model to use for dense vectors",
+                    "default": "sentence-transformers/all-MiniLM-L6-v2",
+                    # Custom extension to indicate dynamic model selection
+                    "x-model-selector": True,
+                },
+                "quantization": {
+                    "type": "string",
+                    "title": "Quantization",
+                    "description": "Model precision (float16 recommended for most cases)",
+                    "enum": ["float16", "float32", "int8"],
+                    "default": "float16",
+                },
+            },
+        }

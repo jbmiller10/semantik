@@ -35,6 +35,38 @@ vi.mock('../../hooks/useCollections', () => ({
   useCreateCollection: () => mockCreateCollectionMutation,
 }));
 
+// Mock useAddSource from useCollectionOperations
+vi.mock('../../hooks/useCollectionOperations', () => ({
+  useAddSource: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    isError: false,
+  }),
+}));
+
+// Mock useConnectorCatalog
+vi.mock('../../hooks/useConnectors', () => ({
+  useConnectorCatalog: () => ({
+    data: {
+      directory: {
+        display_name: 'Directory',
+        description: 'Local directory',
+        fields: [],
+        supports_preview: false,
+      },
+    },
+    isLoading: false,
+  }),
+}));
+
+// Mock usePreferences (needed by AnimationContext)
+vi.mock('../../hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    data: { interface: { animation_enabled: true } },
+    isLoading: false,
+  }),
+}));
+
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: () => ({
     addToast: mockAddToast,
@@ -197,13 +229,14 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       
       // Open create modal - when empty state, there are two buttons, click the header one
       const header = screen.getByRole('heading', { name: 'Collections' }).parentElement?.parentElement
-      const headerButton = within(header!).getByRole('button', { name: /create.*collection/i })
+      const headerButton = within(header!).getByRole('button', { name: /new collection/i })
       await userEvent.click(headerButton)
       
       // Wait for modal to open and be fully rendered
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument()
-        expect(screen.getByText(/create new collection/i)).toBeInTheDocument()
+        // Look for the wizard title specifically (h2 with id="wizard-title")
+        expect(screen.getByRole('heading', { name: /create collection/i, level: 2 })).toBeInTheDocument()
         expect(screen.getByLabelText(/collection name/i)).toBeInTheDocument()
       })
     })
@@ -211,22 +244,39 @@ describe('CollectionsDashboard - Network Error Handling', () => {
     it('should show error toast when collection creation fails due to network error', async () => {
       // Set up mutation to fail
       mockCreateCollectionMutation.mutateAsync = vi.fn().mockRejectedValue(new Error('Network error'))
-      
-      // Fill form
+
+      // Fill form - Step 1: Basics
       const nameInput = screen.getByLabelText(/collection name/i)
       await userEvent.type(nameInput, 'Test Collection')
-      
-      // Submit - find the button inside the modal
+
+      // Navigate to Step 2: Mode Selection
       const modal = screen.getByRole('dialog')
-      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
-      expect(submitButton).toBeInTheDocument()
-      await userEvent.click(submitButton)
-      
+      let nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 2
+      await waitFor(() => {
+        expect(screen.getByText(/manual/i)).toBeInTheDocument()
+      })
+
+      // Navigate to Step 3: Configure (manual flow)
+      nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 3 with Create Collection button
+      await waitFor(() => {
+        expect(within(modal).getByRole('button', { name: /create collection/i })).toBeInTheDocument()
+      })
+
+      // Click Create Collection
+      const createButton = within(modal).getByRole('button', { name: /create collection/i })
+      await userEvent.click(createButton)
+
       // Should call mutateAsync
       await waitFor(() => {
         expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled()
       })
-      
+
       // Should show error toast
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
@@ -234,10 +284,9 @@ describe('CollectionsDashboard - Network Error Handling', () => {
           type: 'error'
         })
       })
-      
-      // Modal should remain open with form data intact
-      expect(screen.getByLabelText(/collection name/i)).toHaveValue('Test Collection')
-      expect(screen.getByText(/create new collection/i)).toBeInTheDocument()
+
+      // Modal should remain open (wizard stays on current step on error)
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
     it('should preserve form data when network error occurs', async () => {
@@ -245,72 +294,38 @@ describe('CollectionsDashboard - Network Error Handling', () => {
       mockCreateCollectionMutation.mutateAsync = vi.fn().mockRejectedValue(new Error('Network error'))
       mockCreateCollectionMutation.isError = false
       mockCreateCollectionMutation.isPending = false
-      
+
       // Wait for modal to be fully rendered
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument()
       })
-      
-      // Fill out complete form
-      await userEvent.type(screen.getByLabelText(/collection name/i), 'My Collection')
-      // Get the actual description textarea (not the search input)
-      const descriptionField = screen.getByPlaceholderText(/a collection of technical documentation/i)
-      await userEvent.type(descriptionField, 'Test description')
-      
-      // Expand advanced settings
-      const advancedButton = screen.getByText(/advanced settings/i)
-      await userEvent.click(advancedButton)
-      
-      // Verify chunking strategy section is visible
-      await waitFor(() => {
-        expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
-      })
-      
-      // Submit the form
-      const form = screen.getByRole('dialog').querySelector('form')
-      expect(form).toBeInTheDocument()
-      
-      // Find the submit button inside the modal
-      const modal = screen.getByRole('dialog')
-      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
-      expect(submitButton).toBeInTheDocument()
-      
-      await userEvent.click(submitButton)
-      
-      // Since the mutation mock isn't being called properly in this setup,
-      // let's just verify the form data is preserved - which is the main goal of this test
-      // Wait a bit for any async operations
-      await waitFor(() => {
-        expect(screen.getByLabelText(/collection name/i)).toHaveValue('My Collection')
-      })
-      
-      // All form data should be preserved
-      const descField = screen.getByPlaceholderText(/a collection of technical documentation/i)
-      expect(descField).toHaveValue('Test description')
-      // Verify chunking strategy section is still visible
-      expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
-      
-      // Modal should still be open
-      expect(screen.getByText(/create new collection/i)).toBeInTheDocument()
-    })
 
-    it('should allow retry after network error with preserved data', async () => {
-      // First attempt fails
-      mockCreateCollectionMutation.mutateAsync = vi.fn()
-        .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce({ 
-          id: '123', 
-          name: 'Test Collection',
-          initial_operation_id: 'op-123'
-        })
-      
-      await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
-      
-      // Submit - find the button inside the modal
+      // Fill out form - Step 1: Name
+      await userEvent.type(screen.getByLabelText(/collection name/i), 'My Collection')
+
       const modal = screen.getByRole('dialog')
-      const submitButton = within(modal).getByRole('button', { name: /Create Collection/i })
-      expect(submitButton).toBeInTheDocument()
-      await userEvent.click(submitButton)
+
+      // Navigate through steps to reach Create Collection
+      let nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 2
+      await waitFor(() => {
+        expect(screen.getByText(/manual/i)).toBeInTheDocument()
+      })
+
+      // Navigate to Step 3
+      nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      // Wait for step 3 with Create Collection button
+      await waitFor(() => {
+        expect(within(modal).getByRole('button', { name: /create collection/i })).toBeInTheDocument()
+      })
+
+      // Click Create Collection
+      const createButton = within(modal).getByRole('button', { name: /create collection/i })
+      await userEvent.click(createButton)
       
       // Should show error toast
       await waitFor(() => {
@@ -319,18 +334,71 @@ describe('CollectionsDashboard - Network Error Handling', () => {
           type: 'error'
         })
       })
-      
+
+      // Modal should still be open after error
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+      // Can navigate back to step 1 to verify form data preserved
+      const backButton = within(modal).getByRole('button', { name: /back/i })
+      await userEvent.click(backButton) // Go to step 2
+      await userEvent.click(within(modal).getByRole('button', { name: /back/i })) // Go to step 1
+
+      // Form data should be preserved
+      await waitFor(() => {
+        expect(screen.getByLabelText(/collection name/i)).toHaveValue('My Collection')
+      })
+    })
+
+    it('should allow retry after network error with preserved data', async () => {
+      // First attempt fails
+      mockCreateCollectionMutation.mutateAsync = vi.fn()
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          id: '123',
+          name: 'Test Collection',
+          initial_operation_id: 'op-123'
+        })
+
+      // Step 1: Fill form
+      await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
+
+      const modal = screen.getByRole('dialog')
+
+      // Navigate to step 3
+      let nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+      await waitFor(() => expect(screen.getByText(/manual/i)).toBeInTheDocument())
+
+      nextButton = within(modal).getByRole('button', { name: /next/i })
+      await userEvent.click(nextButton)
+
+      await waitFor(() => {
+        expect(within(modal).getByRole('button', { name: /create collection/i })).toBeInTheDocument()
+      })
+
+      // First attempt - should fail
+      const createButton = within(modal).getByRole('button', { name: /create collection/i })
+      await userEvent.click(createButton)
+
+      // Should show error toast
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith({
+          message: expect.stringContaining('Network error'),
+          type: 'error'
+        })
+      })
+
       // Clear previous calls
       mockAddToast.mockClear()
-      
-      // Try again - data should still be there
-      await userEvent.click(submitButton)
-      
+
+      // Try again - should succeed
+      await userEvent.click(createButton)
+
       // Should succeed this time
       await waitFor(() => {
         expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalledTimes(2)
       })
-      
+
       // Should show success toast
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({

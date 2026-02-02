@@ -116,7 +116,10 @@ class TestDocumentAPI:
         mock_document_repository.get_by_id = AsyncMock(return_value=mock_document)
 
         # Patch create_document_repository to return our mock
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repository):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repository),
+            patch("webui.api.v2.documents.DocumentArtifactRepository.get_content", new=AsyncMock(return_value=None)),
+        ):
             # Test
             response = test_client_with_document_mocks.get(
                 "/api/v2/collections/test-operation/documents/test-doc/content"

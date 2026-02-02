@@ -92,7 +92,6 @@ class CollectionStatus(str, enum.Enum):
     READY = "ready"
     PROCESSING = "processing"
     ERROR = "error"
-    DEGRADED = "degraded"
 
 
 class OperationStatus(str, enum.Enum):
@@ -306,6 +305,11 @@ class Collection(Base):
         JSON, nullable=True
     )  # {"enabled": bool, "extractor_ids": [], "types": [], "options": {}}
 
+    # Pipeline DAG support (Phase 1b)
+    pipeline_config = Column(JSON, nullable=True)  # Serialized PipelineDAG
+    pipeline_version = Column(Integer, nullable=False, default=1)  # Incremented on pipeline changes
+    persist_originals = Column(Boolean, nullable=False, default=False)  # Store artifacts
+
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
@@ -323,6 +327,7 @@ class Collection(Base):
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
     mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
+    pipeline_failures = relationship("PipelineFailure", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -368,6 +373,9 @@ class Document(Base):
     retry_count = Column(Integer, nullable=False, default=0)  # Number of retry attempts
     last_retry_at = Column(DateTime(timezone=True), nullable=True)  # When last retry was attempted
     error_category = Column(String(50), nullable=True)  # 'transient', 'permanent', or 'unknown'
+
+    # Pipeline version tracking (Phase 1b)
+    pipeline_version = Column(Integer, nullable=True)  # Version used to index this doc
 
     # Relationships
     collection = relationship("Collection", back_populates="documents")
@@ -462,6 +470,62 @@ class DocumentArtifact(Base):
             name="ck_artifact_kind_values",
         ),
     )
+
+
+class PipelineFailure(Base):
+    """Records files that failed during pipeline execution.
+
+    Tracks pipeline failures for retry and debugging purposes. Each failure
+    records the file URI, the pipeline stage where failure occurred, and
+    error details. Failures are linked to collections and optionally to
+    specific operations.
+
+    Attributes:
+        file_uri: URI of the file that failed
+        stage_id: Pipeline node ID where failure occurred
+        stage_type: Type of pipeline node (e.g., 'parser', 'chunker')
+        error_type: Category of error (e.g., 'parse_error', 'timeout', 'oom')
+        retry_count: Number of retry attempts made
+    """
+
+    __tablename__ = "pipeline_failures"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    operation_id = Column(
+        String,
+        ForeignKey("operations.uuid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # What failed
+    file_uri = Column(String, nullable=False)
+    file_metadata = Column(JSON)  # FileReference fields for debugging
+
+    # Where it failed
+    stage_id = Column(String, nullable=False)  # Pipeline node ID
+    stage_type = Column(String, nullable=False)  # NodeType value
+
+    # Error details
+    error_type = Column(String, nullable=False)  # "parse_error", "timeout", "oom"
+    error_message = Column(Text, nullable=False)
+    error_traceback = Column(Text, nullable=True)
+
+    # Retry tracking
+    retry_count = Column(Integer, nullable=False, default=0)
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    collection = relationship("Collection", back_populates="pipeline_failures")
+    operation = relationship("Operation")
 
 
 class ApiKey(Base):

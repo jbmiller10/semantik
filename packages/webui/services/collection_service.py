@@ -231,6 +231,42 @@ class CollectionService:
                 if plugin_record is None or plugin_record.plugin_type != "sparse_indexer":
                     raise ValueError(f"Sparse indexer plugin '{plugin_id}' not found")
 
+            # Use custom pipeline config if provided, otherwise generate default
+            custom_pipeline_config = config.get("pipeline_config") if config else None
+
+            if custom_pipeline_config and isinstance(custom_pipeline_config, dict):
+                # Validate the custom pipeline config
+                from shared.pipeline.types import PipelineDAG
+
+                try:
+                    dag = PipelineDAG.from_dict(custom_pipeline_config)
+                    errors = dag.validate()
+                    if errors:
+                        error_msgs = [e.message for e in errors]
+                        raise ValueError(f"Invalid pipeline_config: {'; '.join(error_msgs)}")
+                    pipeline_config_dict = custom_pipeline_config
+                    logger.info("Using custom pipeline config for collection '%s'", name)
+                except Exception as e:
+                    if "Invalid pipeline_config" in str(e):
+                        raise
+                    raise ValueError(f"Invalid pipeline_config: {e}") from e
+            else:
+                # Generate default pipeline config
+                from shared.pipeline.defaults import get_default_pipeline
+
+                pipeline_chunk_config = {
+                    "chunking_strategy": chunking_strategy,
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap,
+                    "chunking_config": chunking_config,
+                }
+                default_pipeline = get_default_pipeline(
+                    embedding_model=embedding_model,
+                    chunk_config=pipeline_chunk_config,
+                )
+                pipeline_config_dict = default_pipeline.to_dict()
+            persist_originals = config.get("persist_originals", False) if config else False
+
             # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
@@ -247,6 +283,8 @@ class CollectionService:
                 sync_mode=sync_mode,
                 sync_interval_minutes=sync_interval_minutes,
                 sync_next_run_at=sync_next_run_at,
+                pipeline_config=pipeline_config_dict,
+                persist_originals=persist_originals,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -360,10 +398,10 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection.status not in [CollectionStatus.PENDING, CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        if collection.status not in [CollectionStatus.PENDING, CollectionStatus.READY]:
             raise InvalidStateError(
                 f"Cannot add source to collection in {collection.status} state. "
-                f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
+                f"Collection must be in {CollectionStatus.PENDING} or {CollectionStatus.READY} state."
             )
 
         # Lock the collection row to prevent race conditions between checking
@@ -659,10 +697,10 @@ class CollectionService:
         )
 
         # Validate collection state
-        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        if collection.status != CollectionStatus.READY:
             raise InvalidStateError(
                 f"Cannot remove source from collection in {collection.status} state. "
-                f"Collection must be in {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
+                f"Collection must be in {CollectionStatus.READY} state."
             )
 
         # Check if there's already an active operation
@@ -1230,6 +1268,10 @@ class CollectionService:
             "sync_last_run_completed_at": getattr(collection, "sync_last_run_completed_at", None),
             "sync_last_run_status": getattr(collection, "sync_last_run_status", None),
             "sync_last_error": getattr(collection, "sync_last_error", None),
+            # Pipeline DAG support
+            "pipeline_config": getattr(collection, "pipeline_config", None),
+            "pipeline_version": getattr(collection, "pipeline_version", 1),
+            "persist_originals": getattr(collection, "persist_originals", False),
         }
         base["config"] = {
             "embedding_model": base["embedding_model"],
@@ -1282,11 +1324,10 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        # Validate collection state - must be READY or DEGRADED
-        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+        # Validate collection state - must be READY
+        if collection.status != CollectionStatus.READY:
             raise InvalidStateError(
-                f"Cannot sync collection in {collection.status} state. "
-                f"Collection must be in READY or DEGRADED state."
+                f"Cannot sync collection in {collection.status} state. Collection must be in READY state."
             )
 
         # Check for active operations (collection-level gating)

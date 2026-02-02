@@ -22,7 +22,9 @@ from shared.embedding import (
 )
 
 # Mock metrics before importing
-sys.modules["shared.metrics.prometheus"] = MagicMock()
+sys.modules.setdefault("shared.metrics.prometheus", MagicMock())
+
+TEST_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 class TestThreadSafety(unittest.TestCase):
@@ -60,7 +62,7 @@ class TestThreadSafety(unittest.TestCase):
         def load_model(thread_id: int) -> None:
             try:
                 service = EmbeddingService(mock_mode=True)
-                success = service.load_model("test-model")
+                success = service.load_model(TEST_MODEL_NAME)
                 with lock:
                     results.append((thread_id, success))
             except Exception as e:
@@ -82,7 +84,7 @@ class TestThreadSafety(unittest.TestCase):
         """Test concurrent embedding generation is safe."""
 
         service = EmbeddingService(mock_mode=True)
-        service.load_model("test-model")
+        service.load_model(TEST_MODEL_NAME)
 
         results = []
         errors = []
@@ -91,7 +93,7 @@ class TestThreadSafety(unittest.TestCase):
         def generate_embeddings(thread_id: int) -> None:
             try:
                 texts = [f"Thread {thread_id} text {i}" for i in range(100)]
-                embeddings = service.generate_embeddings(texts, "test-model")
+                embeddings = service.generate_embeddings(texts, TEST_MODEL_NAME)
                 with lock:
                     results.append((thread_id, embeddings.shape if embeddings is not None else None))
             except Exception as e:
@@ -164,7 +166,7 @@ class TestThreadSafety(unittest.TestCase):
         """Test cleanup behavior with active requests."""
 
         service = EmbeddingService(mock_mode=True)
-        service.load_model("test-model")
+        service.load_model(TEST_MODEL_NAME)
 
         results = []
         errors = []
@@ -176,7 +178,7 @@ class TestThreadSafety(unittest.TestCase):
                 texts = ["text"] * 1000
                 # Wait for cleanup to be called
                 cleanup_called.wait()
-                embeddings = service.generate_embeddings(texts, "test-model")
+                embeddings = service.generate_embeddings(texts, TEST_MODEL_NAME)
                 with lock:
                     results.append(embeddings is not None)
             except Exception as e:
@@ -211,7 +213,7 @@ class TestAsyncConcurrency(unittest.TestCase):
 
         async def run_test() -> None:
             # Initialize service
-            await initialize_embedding_service("test-model", mock_mode=True)
+            await initialize_embedding_service(TEST_MODEL_NAME, mock_mode=True)
             service = await get_embedding_service()
 
             # Create concurrent tasks
@@ -252,7 +254,7 @@ class TestAsyncConcurrency(unittest.TestCase):
                         raise RuntimeError("Simulated failure")
                     return await self.service.embed_texts(texts, **kwargs)
 
-            await initialize_embedding_service("test-model", mock_mode=True)
+            await initialize_embedding_service(TEST_MODEL_NAME, mock_mode=True)
             real_service = await get_embedding_service()
 
             # Wrap with failing service

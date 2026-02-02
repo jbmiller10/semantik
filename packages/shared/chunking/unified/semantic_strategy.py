@@ -10,12 +10,13 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.plugins.manifest import AgentHints
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,26 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
     or paragraphs, keeping related content together. Can optionally use
     LlamaIndex for embedding-based semantic chunking.
     """
+
+    AGENT_HINTS: ClassVar[AgentHints] = AgentHints(
+        purpose="Embedding-based topic detection that groups semantically related "
+        "sentences together. Uses similarity thresholds to detect topic shifts.",
+        best_for=[
+            "research papers",
+            "long-form prose",
+            "documents with topic changes",
+            "content requiring semantic coherence",
+            "narrative text",
+        ],
+        not_recommended_for=[
+            "very short documents (not enough context)",
+            "highly structured content (use markdown)",
+            "when speed is critical (slower due to similarity computation)",
+        ],
+        output_type="chunks",
+        tradeoffs="Best semantic coherence but slower. Requires embedding model "
+        "for best results. Domain implementation uses word overlap heuristics.",
+    )
 
     def __init__(self, use_llama_index: bool = False, embed_model: Any = None) -> None:
         """
@@ -807,3 +828,17 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
         # Semantic chunking tends to create slightly fewer, more coherent chunks
         base_estimate = config.estimate_chunks(estimated_tokens)
         return max(1, int(base_estimate * 0.8))
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return JSON Schema for semantic chunking configuration."""
+        base_schema = cast(dict[str, Any], super().get_config_schema())
+        base_schema["properties"]["semantic_threshold"] = {
+            "type": "number",
+            "title": "Semantic Threshold",
+            "description": "Threshold for semantic similarity (0.0 to 1.0). Lower values create more chunks.",
+            "default": 0.7,
+            "minimum": 0.0,
+            "maximum": 1.0,
+        }
+        return base_schema

@@ -1,12 +1,14 @@
 """Health check endpoints for monitoring service status"""
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from shared.config import settings
 from shared.database import check_postgres_connection
 from webui.background_tasks import redis_cleanup_task
 from webui.qdrant import qdrant_manager
@@ -72,11 +74,23 @@ async def liveness_probe() -> dict[str, str]:
 async def _check_redis_health() -> dict[str, Any]:
     """Check Redis connection health with timeout."""
     try:
-        if not ws_manager.redis_client:
-            return {"status": "unhealthy", "message": "Redis connection not initialized"}
+        # Prefer the shared websocket manager client if initialized, otherwise
+        # probe Redis directly to avoid false negatives during startup.
+        redis_client = ws_manager.redis_client
+        should_close = False
+        if redis_client is None:
+            import redis.asyncio as redis
 
-        # Test Redis connection with timeout
-        await asyncio.wait_for(ws_manager.redis_client.ping(), timeout=HEALTH_CHECK_TIMEOUT)
+            redis_client = await redis.from_url(settings.REDIS_URL, decode_responses=True)
+            should_close = True
+
+        await asyncio.wait_for(redis_client.ping(), timeout=HEALTH_CHECK_TIMEOUT)
+
+        if should_close:
+            with contextlib.suppress(Exception):
+                close_result = redis_client.close()
+                if asyncio.iscoroutine(close_result):
+                    await close_result
         return {"status": "healthy", "message": "Redis connection successful"}
     except TimeoutError:
         return {"status": "unhealthy", "message": "Redis connection timeout"}

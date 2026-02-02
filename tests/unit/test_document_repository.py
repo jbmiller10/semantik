@@ -946,3 +946,67 @@ class TestDocumentRepository:
                 file_size=200,
                 content_hash=content_hash,
             )
+
+    # --- count_failed_by_collection Tests ---
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collection_returns_count(self, repository, mock_session) -> None:
+        """Test successful count of failed documents."""
+        from unittest.mock import MagicMock
+
+        # Mock scalar returning 5
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 5
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        count = await repository.count_failed_by_collection("collection-id")
+        assert count == 5
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collection_returns_zero_when_none(self, repository, mock_session) -> None:
+        """Test returns 0 when no failed documents (None result)."""
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        count = await repository.count_failed_by_collection("collection-id")
+        assert count == 0
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collection_raises_on_error(self, repository, mock_session) -> None:
+        """Test database error raises DatabaseOperationError."""
+        mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
+
+        with pytest.raises(DatabaseOperationError):
+            await repository.count_failed_by_collection("collection-id")
+
+    # --- count_failed_by_collections Tests ---
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collections_returns_dict(self, repository, mock_session) -> None:
+        """Test batch count returns correct mapping."""
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [("coll-1", 3), ("coll-2", 7)]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.count_failed_by_collections(["coll-1", "coll-2"])
+        assert result == {"coll-1": 3, "coll-2": 7}
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collections_empty_list(self, repository, mock_session) -> None:
+        """Test empty input returns empty dict without query."""
+        result = await repository.count_failed_by_collections([])
+        assert result == {}
+        mock_session.execute.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_count_failed_by_collections_raises_on_error(self, repository, mock_session) -> None:
+        """Test database error raises DatabaseOperationError."""
+        mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
+
+        with pytest.raises(DatabaseOperationError):
+            await repository.count_failed_by_collections(["coll-1"])
