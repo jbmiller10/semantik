@@ -1,5 +1,11 @@
 /**
  * React Query hooks for agent conversation CRUD operations.
+ *
+ * @deprecated These hooks are for the legacy agent orchestrator which has been
+ * replaced by the Claude Agent SDK-based assisted-flow API. New code should use
+ * hooks from `useAssistedFlow.ts` instead.
+ *
+ * @see ./useAssistedFlow.ts for the new SDK-based hooks
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

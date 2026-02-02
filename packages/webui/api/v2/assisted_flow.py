@@ -48,25 +48,57 @@ async def start_assisted_flow(
     Creates a new SDK session with the pipeline configuration tools
     and returns a session ID for subsequent message requests.
 
+    Supports two modes:
+    - source_id: Configure an existing source from the database
+    - inline_source: Configure a new source (will be created when pipeline is applied)
+
     Args:
-        request: Contains source_id to configure
+        request: Contains source_id OR inline_source config
         db: Database session
         user: Authenticated user
 
     Returns:
         Session ID and source info
     """
+    import uuid
+
     try:
-        # Get source stats for initial context
-        stats = await get_source_stats(db, request.source_id)
+        if request.source_id is not None:
+            # Existing source mode
+            stats = await get_source_stats(db, request.source_id)
+            session_id = f"session_{request.source_id}_{uuid.uuid4().hex[:8]}"
+            source_name = stats["source_name"]
+        else:
+            # Inline source mode
+            inline = request.inline_source
+            assert inline is not None  # Validated by schema
+
+            # Generate session ID using source type and a unique suffix
+            session_id = f"session_inline_{inline.source_type}_{uuid.uuid4().hex[:8]}"
+
+            # Derive a display name from the config
+            config = inline.source_config
+            if inline.source_type == "directory":
+                source_name = str(config.get("path", "New Directory Source"))
+            elif inline.source_type == "git":
+                source_name = str(
+                    config.get("repo_url", config.get("repository_url", "New Git Source"))
+                )
+            elif inline.source_type == "imap":
+                username = str(config.get("username", ""))
+                host = str(config.get("host", ""))
+                source_name = f"{username}@{host}" if username and host else "New IMAP Source"
+            else:
+                source_name = f"New {inline.source_type.title()} Source"
+
+            # TODO: Store inline source config and secrets in session manager
+            # for use when apply_pipeline is called
 
         # TODO: Initialize SDK session with tools and prompts
         # For now, return a placeholder
-        session_id = f"session_{request.source_id}"
-
         return StartFlowResponse(
             session_id=session_id,
-            source_name=stats["source_name"],
+            source_name=source_name,
         )
 
     except Exception as e:
