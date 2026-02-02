@@ -7,6 +7,7 @@ capabilities for sophisticated, dynamic memory management.
 
 import asyncio
 import concurrent.futures
+import gc
 import hashlib
 import logging
 import random
@@ -14,6 +15,8 @@ import threading
 import time
 from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any, TypeVar
+
+import torch
 
 from shared.config import settings
 from shared.embedding.types import EmbeddingMode
@@ -709,6 +712,14 @@ class GovernedModelManager(ModelManager):
             # Generate embedding using provider (native async)
             embedding = await provider.embed_single(text, mode=embedding_mode, instruction=instruction)
             result: list[float] = embedding.tolist()
+
+            # Cleanup GPU memory before releasing lock
+            del embedding
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+
             return result
 
     async def generate_embeddings_batch_async(
@@ -762,6 +773,16 @@ class GovernedModelManager(ModelManager):
 
             # Convert numpy array to list of lists
             result: list[list[float]] = embeddings_array.tolist()
+
+            # Cleanup GPU memory before releasing lock to ensure reserve can be met
+            # for subsequent requests. The numpy array is on CPU, but intermediate
+            # activation tensors may still be in CUDA cache.
+            del embeddings_array
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+
             return result
 
     async def rerank_async(

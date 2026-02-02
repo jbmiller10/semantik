@@ -237,10 +237,13 @@ class ModelManager:
             gc.collect()
 
             # Clear GPU cache if using CUDA
+            # IMPORTANT: synchronize() must be called before empty_cache()
+            # because CUDA operations are async and tensors may still be in use
             try:
                 import torch
 
                 if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
             except ImportError:
                 pass
@@ -264,6 +267,7 @@ class ModelManager:
                 import torch
 
                 if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
             except ImportError:
                 pass

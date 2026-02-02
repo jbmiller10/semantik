@@ -549,10 +549,11 @@ class GPUMemoryGovernor:
         Free memory by offloading/unloading models.
 
         Strategy:
-        1. Offload idle models to CPU first (preserves warm state)
-        2. Unload if CPU offload disabled or CPU is full
-        3. Evict LRU models first
-        4. Clear CUDA cache after evictions to reclaim fragmented memory
+        1. Clear CUDA cache first to reclaim stale memory (critical when models_loaded=0)
+        2. Offload idle models to CPU first (preserves warm state)
+        3. Unload if CPU offload disabled or CPU is full
+        4. Evict LRU models first
+        5. Clear CUDA cache again after evictions to reclaim fragmented memory
 
         Args:
             needed_mb: Amount of memory to free
@@ -566,6 +567,12 @@ class GPUMemoryGovernor:
         Returns:
             Amount of memory freed in MB
         """
+        # ALWAYS clear CUDA cache first to reclaim stale/fragmented memory.
+        # This is critical when models_loaded=0 but PyTorch's cache still
+        # holds memory from previously unloaded models. Without this, we
+        # would skip _clear_cuda_cache() entirely if there are no candidates.
+        self._clear_cuda_cache()
+
         freed_mb = 0
         evictions_occurred = False
 

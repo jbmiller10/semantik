@@ -1622,7 +1622,7 @@ class TestCUDACacheClearing:
 
     @pytest.mark.asyncio()
     async def test_make_room_clears_cuda_cache_after_evictions(self, memory_budget: MemoryBudget) -> None:
-        """_make_room should clear CUDA cache after successful evictions."""
+        """_make_room should clear CUDA cache before and after evictions."""
         gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=False)
 
         unload_fn = AsyncMock()
@@ -1644,14 +1644,20 @@ class TestCUDACacheClearing:
                 with patch("torch.cuda.empty_cache") as mock_empty:
                     await gov._make_room(2000)
 
-        # Cache should be cleared after eviction
-        mock_sync.assert_called_once()
-        mock_empty.assert_called_once()
+        # Cache should be cleared TWICE: once at start to reclaim stale memory,
+        # and once after eviction to reclaim newly freed memory
+        assert mock_sync.call_count == 2
+        assert mock_empty.call_count == 2
         await gov.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_make_room_no_cache_clear_when_no_evictions(self, memory_budget: MemoryBudget) -> None:
-        """_make_room should NOT clear CUDA cache if no evictions occurred."""
+    async def test_make_room_clears_cache_even_when_no_evictions(self, memory_budget: MemoryBudget) -> None:
+        """_make_room should clear CUDA cache even if no evictions occurred.
+
+        This is critical when models_loaded=0 but PyTorch's cache still holds
+        memory from previously unloaded models. Without the initial cache clear,
+        the allocation would fail with no candidates to evict.
+        """
         gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=False)
 
         unload_fn = AsyncMock()
@@ -1674,9 +1680,10 @@ class TestCUDACacheClearing:
                     # Without force=True, the grace period prevents eviction
                     await gov._make_room(2000, force=False)
 
-        # No evictions occurred, so no cache clearing
-        mock_sync.assert_not_called()
-        mock_empty.assert_not_called()
+        # Cache should still be cleared once at the start (to reclaim stale memory),
+        # even though no evictions occurred
+        mock_sync.assert_called_once()
+        mock_empty.assert_called_once()
         unload_fn.assert_not_called()
         await gov.shutdown()
 

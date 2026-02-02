@@ -518,6 +518,16 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # Explicitly delete local tensors that may be holding GPU memory.
+                    # OOM can occur at different points, so some variables may not exist.
+                    # We reassign to None and call gc.collect() to ensure references are
+                    # released before empty_cache() can reclaim the memory blocks.
+                    batch_dict = None  # type: ignore[assignment]  # noqa: F841
+                    outputs = None  # type: ignore[assignment]  # noqa: F841
+                    embeddings = None  # type: ignore[assignment]  # noqa: F841
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -603,6 +613,10 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     record_oom_error(self.model_name, self.quantization)
 
                 if current_batch_size > self.min_batch_size:
+                    # GC to release any internal references before empty_cache
+                    gc.collect()
+                    # Synchronize before empty_cache to ensure pending CUDA ops complete
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     new_batch_size = max(self.min_batch_size, current_batch_size // 2)
                     logger.warning(
@@ -738,6 +752,8 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         self.dimension = None
 
         if self.device == "cuda":
+            # Synchronize before empty_cache to ensure all CUDA ops are complete
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
         gc.collect()
 
