@@ -432,17 +432,21 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     }
 
                     return {
-                        "content": [{
-                            "type": "text",
-                            "text": json.dumps({
-                                "success": True,
-                                "mode": "reindex",
-                                "collection_id": str(source.collection_id),
-                                "collection_name": collection.name if collection else "Unknown",
-                                "operation_id": reindex_result.get("uuid"),
-                                "message": "Pipeline updated. Reindexing started for collection.",
-                            }),
-                        }]
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(
+                                    {
+                                        "success": True,
+                                        "mode": "reindex",
+                                        "collection_id": str(source.collection_id),
+                                        "collection_name": collection.name if collection else "Unknown",
+                                        "operation_id": reindex_result.get("uuid"),
+                                        "message": "Pipeline updated. Reindexing started for collection.",
+                                    }
+                                ),
+                            }
+                        ]
                     }
 
                 # INLINE SOURCE MODE: Create new collection + source
@@ -507,19 +511,23 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                 }
 
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": json.dumps({
-                            "success": True,
-                            "mode": "create",
-                            "collection_id": collection_id,
-                            "collection_name": collection_name,
-                            "source_id": new_source_id,
-                            "index_operation_id": index_op_result.get("uuid"),
-                            "append_operation_id": append_result.get("uuid"),
-                            "message": f"Collection '{collection_name}' created. Indexing started.",
-                        }),
-                    }]
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "mode": "create",
+                                    "collection_id": collection_id,
+                                    "collection_name": collection_name,
+                                    "source_id": new_source_id,
+                                    "index_operation_id": index_op_result.get("uuid"),
+                                    "append_operation_id": append_result.get("uuid"),
+                                    "message": f"Collection '{collection_name}' created. Indexing started.",
+                                }
+                            ),
+                        }
+                    ]
                 }
 
         except Exception as e:
