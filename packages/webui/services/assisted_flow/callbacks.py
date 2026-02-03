@@ -55,9 +55,7 @@ class PendingQuestion:
 
     question_id: str
     questions: list[dict[str, Any]]
-    future: asyncio.Future[dict[str, str]] = field(
-        default_factory=lambda: asyncio.get_running_loop().create_future()
-    )
+    future: asyncio.Future[dict[str, str]] = field(default_factory=lambda: asyncio.get_running_loop().create_future())
     created_at: float = field(default_factory=time.time)
 
 
@@ -155,9 +153,7 @@ class QuestionManager:
         removed = 0
 
         async with self._lock:
-            stale_ids = [
-                qid for qid, q in self._pending.items() if (now - q.created_at) > max_age_seconds
-            ]
+            stale_ids = [qid for qid, q in self._pending.items() if (now - q.created_at) > max_age_seconds]
             for qid in stale_ids:
                 question = self._pending.pop(qid, None)
                 if question and not question.future.done():

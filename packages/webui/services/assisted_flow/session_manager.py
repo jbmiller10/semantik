@@ -121,7 +121,9 @@ class SessionManager:
         expired_items: list[tuple[str, ClaudeSDKClient]] = []
         async with self._lock:
             now = datetime.now(UTC)
-            expired_ids = [sid for sid, (_, created_at, _user_id) in self._clients.items() if now - created_at > self._ttl]
+            expired_ids = [
+                sid for sid, (_, created_at, _user_id) in self._clients.items() if now - created_at > self._ttl
+            ]
             for sid in expired_ids:
                 client, _created_at, _user_id = self._clients.pop(sid)
                 expired_items.append((sid, client))
