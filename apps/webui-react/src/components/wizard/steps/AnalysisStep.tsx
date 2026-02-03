@@ -1,5 +1,6 @@
 // apps/webui-react/src/components/wizard/steps/AnalysisStep.tsx
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useAssistedFlowStream } from '../../../hooks/useAssistedFlowStream';
 import { PipelineVisualization, ConfigurationPanel } from '../../pipeline';
 import { QuestionPrompt } from '../QuestionPrompt';
@@ -256,12 +257,83 @@ export function AnalysisStep({
               </div>
             )}
 
-            {/* Agent response text */}
+            {/* Agent response text - rendered as markdown */}
             {currentContent && (
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <div className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[var(--text-primary)]">
+                <ReactMarkdown
+                  components={{
+                    // Links open in new tab
+                    a: ({ children, ...props }) => (
+                      <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                        {children}
+                      </a>
+                    ),
+                    // Inline code styling
+                    code: ({ children, className, ...props }) => {
+                      const isBlock = className?.includes('language-');
+                      return isBlock ? (
+                        <code className={`block bg-[var(--bg-tertiary)] p-3 rounded text-sm overflow-x-auto ${className || ''}`} {...props}>
+                          {children}
+                        </code>
+                      ) : (
+                        <code className="bg-[var(--bg-tertiary)] px-1 py-0.5 rounded text-sm" {...props}>
+                          {children}
+                        </code>
+                      );
+                    },
+                    // Pre blocks (code containers)
+                    pre: ({ children }) => (
+                      <pre className="bg-[var(--bg-tertiary)] rounded overflow-x-auto my-2">
+                        {children}
+                      </pre>
+                    ),
+                    // Tables
+                    table: ({ children }) => (
+                      <table className="border-collapse border border-[var(--border)] text-sm my-2 w-full">
+                        {children}
+                      </table>
+                    ),
+                    th: ({ children }) => (
+                      <th className="border border-[var(--border)] px-2 py-1 bg-[var(--bg-tertiary)] text-left">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="border border-[var(--border)] px-2 py-1">
+                        {children}
+                      </td>
+                    ),
+                    // Lists
+                    ul: ({ children }) => (
+                      <ul className="list-disc list-inside my-2 space-y-1">
+                        {children}
+                      </ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="list-decimal list-inside my-2 space-y-1">
+                        {children}
+                      </ol>
+                    ),
+                    // Paragraphs with proper spacing
+                    p: ({ children }) => (
+                      <p className="my-2 leading-relaxed">
+                        {children}
+                      </p>
+                    ),
+                    // Headings
+                    h1: ({ children }) => (
+                      <h1 className="text-lg font-semibold mt-4 mb-2">{children}</h1>
+                    ),
+                    h2: ({ children }) => (
+                      <h2 className="text-base font-semibold mt-3 mb-2">{children}</h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>
+                    ),
+                  }}
+                >
                   {currentContent}
-                </div>
+                </ReactMarkdown>
               </div>
             )}
 
