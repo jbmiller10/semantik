@@ -130,7 +130,13 @@ export function AnalysisStep({
   useEffect(() => {
     const latest = [...toolCalls]
       .reverse()
-      .find((tc) => tc.tool_name === 'build_pipeline' && tc.status === 'success' && tc.result != null);
+      .find((tc) =>
+        // Match the full MCP tool name pattern
+        (tc.tool_name === 'mcp__assisted-flow__build_pipeline' ||
+         tc.tool_name?.endsWith('build_pipeline')) &&
+        tc.status === 'success' &&
+        tc.result != null
+      );
     if (!latest) return;
 
     const parsed = extractPipelineFromToolResult(latest.result);

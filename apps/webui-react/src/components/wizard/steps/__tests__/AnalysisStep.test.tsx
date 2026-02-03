@@ -115,7 +115,7 @@ describe('AnalysisStep', () => {
     streamState.current.toolCalls = [
       {
         id: 'tool-1',
-        tool_name: 'build_pipeline',
+        tool_name: 'mcp__assisted-flow__build_pipeline',
         status: 'success',
         result: [{ type: 'text', text: JSON.stringify({ success: true, pipeline }) }],
       },
