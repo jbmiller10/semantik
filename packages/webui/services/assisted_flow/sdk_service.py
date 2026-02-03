@@ -50,6 +50,8 @@ async def create_sdk_session(
     user_id: int,
     source_id: int | None,
     source_stats: dict[str, Any],
+    inline_source_config: dict[str, Any] | None = None,
+    inline_secrets: dict[str, str] | None = None,
 ) -> tuple[str, ClaudeSDKClient]:
     """Create a new SDK session for assisted flow.
 
@@ -57,6 +59,8 @@ async def create_sdk_session(
         user_id: Authenticated user's ID
         source_id: Collection source ID being configured (None for inline sources)
         source_stats: Source statistics for initial prompt
+        inline_source_config: Source configuration for inline source mode (optional)
+        inline_secrets: Secrets for inline source mode (optional)
 
     Returns:
         Tuple of (session_id, client)
@@ -65,13 +69,21 @@ async def create_sdk_session(
         SDKNotAvailableError: If Claude Code CLI is not installed
         SDKSessionError: If session creation fails
     """
+    from shared.database.database import ensure_async_sessionmaker
+
     # Generate unique session ID
     session_id = f"af_{uuid.uuid4().hex[:16]}"
 
-    # Create tool context
+    # Get session factory for persistence operations
+    sessionmaker = await ensure_async_sessionmaker()
+
+    # Create tool context with all necessary fields
     ctx = ToolContext(
         user_id=user_id,
         source_id=source_id,
+        inline_source_config=inline_source_config,
+        inline_secrets=inline_secrets,
+        get_session=sessionmaker,
     )
 
     # Create MCP server with tools

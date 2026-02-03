@@ -20,11 +20,18 @@ class TestCreateSDKSession:
             "source_config": {},
         }
 
+        # Mock the sessionmaker factory
+        mock_sessionmaker = MagicMock()
+
         with (
             patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client_cls,
             patch("webui.services.assisted_flow.sdk_service.ClaudeAgentOptions"),
             patch("webui.services.assisted_flow.sdk_service.create_mcp_server"),
             patch("webui.services.assisted_flow.sdk_service.session_manager") as mock_manager,
+            patch(
+                "shared.database.database.ensure_async_sessionmaker",
+                new=AsyncMock(return_value=mock_sessionmaker),
+            ),
         ):
             mock_client = MagicMock()
             mock_client.connect = AsyncMock()
@@ -53,11 +60,18 @@ class TestCreateSDKSession:
             "source_config": {},
         }
 
+        # Mock the sessionmaker factory
+        mock_sessionmaker = MagicMock()
+
         with (
             patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client_cls,
             patch("webui.services.assisted_flow.sdk_service.ClaudeAgentOptions"),
             patch("webui.services.assisted_flow.sdk_service.create_mcp_server"),
             patch("webui.services.assisted_flow.sdk_service.session_manager") as mock_manager,
+            patch(
+                "shared.database.database.ensure_async_sessionmaker",
+                new=AsyncMock(return_value=mock_sessionmaker),
+            ),
         ):
             mock_client = MagicMock()
             mock_client.connect = AsyncMock()
@@ -92,11 +106,18 @@ class TestCreateSDKSession:
             "source_config": {},
         }
 
+        # Mock the sessionmaker factory
+        mock_sessionmaker = MagicMock()
+
         with (
             patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client_cls,
             patch("webui.services.assisted_flow.sdk_service.ClaudeAgentOptions"),
             patch("webui.services.assisted_flow.sdk_service.create_mcp_server"),
             patch("webui.services.assisted_flow.sdk_service.session_manager"),
+            patch(
+                "shared.database.database.ensure_async_sessionmaker",
+                new=AsyncMock(return_value=mock_sessionmaker),
+            ),
         ):
             mock_client_cls.side_effect = CLINotFoundError("CLI not found")
 

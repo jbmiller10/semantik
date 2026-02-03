@@ -359,125 +359,172 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
 
     @tool(
         "apply_pipeline",
-        "Apply the current pipeline configuration to create a collection. "
-        "Validates the pipeline and prepares it for collection creation.",
+        "Apply the pipeline configuration. For new sources, creates a collection and starts indexing. "
+        "For existing sources, updates the collection's pipeline and triggers reindexing.",
         {
             "type": "object",
             "properties": {
                 "collection_name": {
                     "type": "string",
-                    "description": "Name for the new collection",
+                    "description": "Name for the collection (required for new sources, optional for existing)",
                 },
                 "collection_description": {
                     "type": "string",
                     "description": "Optional description for the collection",
                 },
             },
-            "required": ["collection_name"],
         },
     )
     async def apply_pipeline(args: dict[str, Any]) -> dict[str, Any]:
-        """Apply pipeline configuration to create a collection."""
+        """Apply pipeline: create or update collection, then start indexing."""
         collection_name = args.get("collection_name", "").strip()
-        collection_description = args.get("collection_description")
+        collection_description = args.get("collection_description", "")
+
+        if not ctx.pipeline_state:
+            return _error_result("No pipeline configured. Use build_pipeline first.")
+
+        if not ctx.get_session:
+            return _error_result("Database access not configured")
 
         try:
-            # Validate collection name
-            if not collection_name:
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": False,
-                                    "error": "collection_name is required",
-                                }
-                            ),
-                        }
-                    ]
-                }
+            # Validate DAG first
+            dag = PipelineDAG.from_dict(ctx.pipeline_state)
+            known_plugins = set(plugin_registry.list_ids())
+            errors = dag.validate(known_plugins)
+            if errors:
+                error_msgs = [f"{e.rule}: {e.message}" for e in errors]
+                return _error_result(f"Pipeline validation failed: {', '.join(error_msgs)}")
 
-            # Check for pipeline
-            if not ctx.pipeline_state:
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": False,
-                                    "error": "No pipeline configured. Use build_pipeline first.",
-                                }
-                            ),
-                        }
-                    ]
-                }
+            # Import services (avoid circular imports)
+            from webui.services.factory import create_collection_service, create_source_service
 
-            # Validate pipeline structure using PipelineDAG
-            try:
-                dag = PipelineDAG.from_dict(ctx.pipeline_state)
-                known_plugins = set(plugin_registry.list_ids())
-                errors = dag.validate(known_plugins)
+            async with ctx.get_session() as session:
+                collection_service = create_collection_service(session)
 
-                if errors:
+                # EXISTING SOURCE MODE: Update existing collection's pipeline
+                if ctx.source_id is not None:
+                    # Get source to find its collection
+                    source_service = create_source_service(session)
+                    source_obj = await source_service.get_source(ctx.user_id, ctx.source_id)
+                    # get_source returns CollectionSource directly when include_secret_types=False
+                    if isinstance(source_obj, tuple):
+                        source_obj = source_obj[0]
+                    source = source_obj
+
+                    # Update collection's pipeline_config and trigger REINDEX
+                    reindex_result = await collection_service.reindex_collection(
+                        collection_id=str(source.collection_id),
+                        user_id=ctx.user_id,
+                        config_updates={"pipeline_config": ctx.pipeline_state},
+                    )
+
+                    # Get updated collection info
+                    collection = await collection_service.collection_repo.get_by_uuid(str(source.collection_id))
+
+                    await session.commit()
+
+                    ctx.applied_config = {
+                        "collection_id": str(source.collection_id),
+                        "collection_name": collection.name if collection else "Unknown",
+                        "source_id": ctx.source_id,
+                        "operation_id": reindex_result.get("uuid"),
+                        "mode": "reindex",
+                    }
+
                     return {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(
-                                    {
-                                        "success": False,
-                                        "error": "Pipeline has validation errors",
-                                        "validation_errors": [{"rule": e.rule, "message": e.message} for e in errors],
-                                    }
-                                ),
-                            }
-                        ]
-                    }
-            except Exception as e:
-                return {
-                    "content": [
-                        {
+                        "content": [{
                             "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": False,
-                                    "error": f"Invalid pipeline configuration: {e}",
-                                }
-                            ),
-                        }
-                    ]
+                            "text": json.dumps({
+                                "success": True,
+                                "mode": "reindex",
+                                "collection_id": str(source.collection_id),
+                                "collection_name": collection.name if collection else "Unknown",
+                                "operation_id": reindex_result.get("uuid"),
+                                "message": "Pipeline updated. Reindexing started for collection.",
+                            }),
+                        }]
+                    }
+
+                # INLINE SOURCE MODE: Create new collection + source
+                if not collection_name:
+                    return _error_result("collection_name is required for new sources")
+
+                if not ctx.inline_source_config:
+                    return _error_result("No source configuration provided")
+
+                # Create collection with pipeline config
+                collection_config = {"pipeline_config": ctx.pipeline_state}
+
+                collection_result, index_op_result = await collection_service.create_collection(
+                    user_id=ctx.user_id,
+                    name=collection_name,
+                    description=collection_description,
+                    config=collection_config,
+                )
+
+                collection_id = collection_result["id"]
+
+                # Determine source_type from inline config
+                source_type = ctx.inline_source_config.get("source_type", "directory")
+                # Remove source_type from config dict (it's a separate param)
+                source_config = {k: v for k, v in ctx.inline_source_config.items() if k != "source_type"}
+
+                # Derive source_path from config
+                if source_type == "directory":
+                    source_path = source_config.get("path", collection_name)
+                elif source_type == "git":
+                    source_path = source_config.get("repo_url", source_config.get("repository_url", collection_name))
+                else:
+                    source_path = collection_name
+
+                # Create source
+                source_service = create_source_service(session)
+                new_source, _secret_types = await source_service.create_source(
+                    user_id=ctx.user_id,
+                    collection_id=collection_id,
+                    source_type=source_type,
+                    source_path=source_path,
+                    source_config=source_config,
+                    secrets=ctx.inline_secrets,
+                )
+                new_source_id = int(new_source.id)
+
+                # Trigger APPEND operation to index the source
+                append_result = await source_service.run_now(
+                    user_id=ctx.user_id,
+                    source_id=new_source_id,
+                )
+
+                await session.commit()
+
+                ctx.applied_config = {
+                    "collection_id": collection_id,
+                    "collection_name": collection_name,
+                    "source_id": new_source_id,
+                    "index_operation_id": index_op_result.get("uuid"),
+                    "append_operation_id": append_result.get("uuid"),
+                    "mode": "create",
                 }
 
-            # Store the applied configuration in context
-            ctx.applied_config = {
-                "collection_name": collection_name,
-                "collection_description": collection_description,
-                "pipeline_config": ctx.pipeline_state,
-                "source_id": ctx.source_id,
-            }
-
-            return {
-                "content": [
-                    {
+                return {
+                    "content": [{
                         "type": "text",
-                        "text": json.dumps(
-                            {
-                                "success": True,
-                                "message": f"Pipeline validated and ready to create collection '{collection_name}'",
-                                "collection_name": collection_name,
-                                "pipeline_node_count": len(ctx.pipeline_state.get("nodes", [])),
-                                "pipeline_edge_count": len(ctx.pipeline_state.get("edges", [])),
-                            }
-                        ),
-                    }
-                ]
-            }
+                        "text": json.dumps({
+                            "success": True,
+                            "mode": "create",
+                            "collection_id": collection_id,
+                            "collection_name": collection_name,
+                            "source_id": new_source_id,
+                            "index_operation_id": index_op_result.get("uuid"),
+                            "append_operation_id": append_result.get("uuid"),
+                            "message": f"Collection '{collection_name}' created. Indexing started.",
+                        }),
+                    }]
+                }
 
         except Exception as e:
             logger.error(f"apply_pipeline failed: {e}", exc_info=True)
-            return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
+            return _error_result(str(e))
 
     @tool(
         "sample_files",

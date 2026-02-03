@@ -107,10 +107,19 @@ async def start_assisted_flow(
                 "source_path": source_name,
                 "source_config": {k: v for k, v in config.items() if k not in (request.secrets or {})},
             }
+
+            # Build full source config with source_type for persistence
+            full_source_config = {
+                "source_type": inline.source_type,
+                **config,
+            }
+
             session_id, _client = await create_sdk_session(
                 user_id=user_id,
                 source_id=None,
                 source_stats=stats,
+                inline_source_config=full_source_config,
+                inline_secrets=request.secrets,
             )
 
         return StartFlowResponse(

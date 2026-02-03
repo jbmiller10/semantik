@@ -4,7 +4,7 @@ These tests verify the full flow from start to apply works end-to-end,
 with mocked SDK client to avoid requiring Claude Code CLI.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -141,7 +141,16 @@ class TestAssistedFlowIntegration:
             "source_path": "/test",
         }
 
-        with patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client:
+        # Mock the sessionmaker factory
+        mock_sessionmaker = MagicMock()
+
+        with (
+            patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client,
+            patch(
+                "shared.database.database.ensure_async_sessionmaker",
+                new=AsyncMock(return_value=mock_sessionmaker),
+            ),
+        ):
             # Simulate CLI not found
             mock_client.side_effect = CLINotFoundError("Claude Code CLI not found")
 
