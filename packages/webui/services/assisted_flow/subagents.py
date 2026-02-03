@@ -18,6 +18,11 @@ EXPLORER_AGENT = AgentDefinition(
     description="Analyzes data sources to recommend optimal pipeline configurations",
     prompt=EXPLORER_SUBAGENT_PROMPT,
     model="haiku",
+    tools=[
+        "mcp__assisted-flow__sample_files",
+        "mcp__assisted-flow__preview_content",
+        "mcp__assisted-flow__detect_patterns",
+    ],
 )
 
 # Validator subagent: Validates pipeline configurations against actual data
@@ -25,6 +30,10 @@ VALIDATOR_AGENT = AgentDefinition(
     description="Validates pipeline configurations against sample data",
     prompt=VALIDATOR_SUBAGENT_PROMPT,
     model="haiku",
+    tools=[
+        "mcp__assisted-flow__validate_pipeline",
+        "mcp__assisted-flow__list_plugins",
+    ],
 )
 
 

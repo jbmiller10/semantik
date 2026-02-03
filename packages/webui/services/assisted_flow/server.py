@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
+from shared.connectors.base import BaseConnector  # noqa: TCH001 - used in runtime type hints
+from shared.database.database import ensure_async_sessionmaker
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+from shared.pipeline.types import FileReference, PipelineDAG
 from shared.plugins.registry import plugin_registry
+from webui.services.connector_factory import ConnectorFactory
 
 if TYPE_CHECKING:
     from claude_agent_sdk.types import McpSdkServerConfig
@@ -20,6 +25,81 @@ if TYPE_CHECKING:
     from webui.services.assisted_flow.context import ToolContext
 
 logger = logging.getLogger(__name__)
+
+
+def _error_result(message: str) -> dict[str, Any]:
+    """Create standardized error response for MCP tools."""
+    return {"content": [{"type": "text", "text": json.dumps({"success": False, "error": message})}]}
+
+
+def _get_parser_recommendations(extension_counts: dict[str, int]) -> dict[str, str]:
+    """Map file extensions to recommended parser plugin IDs.
+
+    Args:
+        extension_counts: Dictionary of extension -> count
+
+    Returns:
+        Dictionary mapping extensions to recommended parser plugin IDs
+    """
+    # Extension to parser mapping
+    extension_parser_map = {
+        # Text parser handles
+        ".txt": "text",
+        ".md": "text",
+        ".markdown": "text",
+        ".rst": "text",
+        ".py": "text",
+        ".js": "text",
+        ".ts": "text",
+        ".tsx": "text",
+        ".jsx": "text",
+        ".java": "text",
+        ".c": "text",
+        ".cpp": "text",
+        ".h": "text",
+        ".hpp": "text",
+        ".go": "text",
+        ".rs": "text",
+        ".rb": "text",
+        ".php": "text",
+        ".sh": "text",
+        ".bash": "text",
+        ".zsh": "text",
+        ".yaml": "text",
+        ".yml": "text",
+        ".json": "text",
+        ".xml": "text",
+        ".html": "text",
+        ".css": "text",
+        ".scss": "text",
+        ".sql": "text",
+        ".toml": "text",
+        ".ini": "text",
+        ".cfg": "text",
+        ".conf": "text",
+        # Unstructured parser handles
+        ".pdf": "unstructured",
+        ".docx": "unstructured",
+        ".doc": "unstructured",
+        ".pptx": "unstructured",
+        ".ppt": "unstructured",
+        ".xlsx": "unstructured",
+        ".xls": "unstructured",
+        ".eml": "unstructured",
+        ".msg": "unstructured",
+        ".epub": "unstructured",
+        ".rtf": "unstructured",
+        ".odt": "unstructured",
+        ".ods": "unstructured",
+        ".odp": "unstructured",
+    }
+
+    recommendations = {}
+    for ext in extension_counts:
+        # Default to text parser for unknown extensions
+        recommendations[ext] = extension_parser_map.get(ext, "text")
+
+    return recommendations
 
 
 def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
@@ -335,8 +415,6 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                 }
 
             # Validate pipeline structure using PipelineDAG
-            from shared.pipeline.types import PipelineDAG
-
             try:
                 dag = PipelineDAG.from_dict(ctx.pipeline_state)
                 known_plugins = set(plugin_registry.list_ids())
@@ -401,8 +479,461 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
             logger.error(f"apply_pipeline failed: {e}", exc_info=True)
             return {"content": [{"type": "text", "text": json.dumps({"error": str(e)})}]}
 
+    @tool(
+        "sample_files",
+        "Sample files from the source to understand content types and structure.",
+        {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "description": "Number of files to sample (default 10, max 50)",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 50,
+                },
+                "filter_extension": {
+                    "type": "string",
+                    "description": "Filter by file extension (e.g., '.pdf')",
+                },
+            },
+        },
+    )
+    async def sample_files(args: dict[str, Any]) -> dict[str, Any]:
+        """Sample files from the configured source."""
+        count = min(args.get("count", 10), 50)
+        filter_extension = args.get("filter_extension")
+
+        if filter_extension and not filter_extension.startswith("."):
+            filter_extension = f".{filter_extension}"
+
+        if ctx.source_id is None:
+            return _error_result("No source configured for this session")
+
+        try:
+            # Get source from database
+            sessionmaker = await ensure_async_sessionmaker()
+            async with sessionmaker() as session:
+                repo = CollectionSourceRepository(session)
+                source = await repo.get_by_id(ctx.source_id)
+
+                if not source:
+                    return _error_result(f"Source {ctx.source_id} not found")
+
+                # Create connector
+                connector: BaseConnector = ConnectorFactory.get_connector(
+                    source.source_type,
+                    source.source_config or {},
+                )
+
+                # Authenticate
+                if not await connector.authenticate():
+                    return _error_result("Failed to authenticate with source")
+
+                # Enumerate files
+                sampled_files: list[dict[str, Any]] = []
+                async for file_ref in connector.enumerate(source.id):
+                    # Apply extension filter if specified
+                    if filter_extension and file_ref.extension != filter_extension.lower():
+                        continue
+
+                    sampled_files.append(
+                        {
+                            "uri": file_ref.uri,
+                            "filename": file_ref.filename,
+                            "extension": file_ref.extension,
+                            "mime_type": file_ref.mime_type,
+                            "size_bytes": file_ref.size_bytes,
+                            "content_type": file_ref.content_type,
+                        }
+                    )
+
+                    if len(sampled_files) >= count:
+                        break
+
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "files": sampled_files,
+                                    "count": len(sampled_files),
+                                    "filter_extension": filter_extension,
+                                    "source_type": source.source_type,
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+        except Exception as e:
+            logger.error(f"sample_files failed: {e}", exc_info=True)
+            return _error_result(str(e))
+
+    @tool(
+        "preview_content",
+        "Preview the content of a specific file (first 2000 characters).",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "File URI from sample_files result",
+                },
+            },
+            "required": ["file_path"],
+        },
+    )
+    async def preview_content(args: dict[str, Any]) -> dict[str, Any]:
+        """Preview content of a specific file."""
+        file_path = args.get("file_path", "")
+
+        if not file_path:
+            return _error_result("file_path is required")
+
+        if ctx.source_id is None:
+            return _error_result("No source configured for this session")
+
+        try:
+            # Get source from database
+            sessionmaker = await ensure_async_sessionmaker()
+            async with sessionmaker() as session:
+                repo = CollectionSourceRepository(session)
+                source = await repo.get_by_id(ctx.source_id)
+
+                if not source:
+                    return _error_result(f"Source {ctx.source_id} not found")
+
+                # Create connector
+                connector: BaseConnector = ConnectorFactory.get_connector(
+                    source.source_type,
+                    source.source_config or {},
+                )
+
+                # Authenticate
+                if not await connector.authenticate():
+                    return _error_result("Failed to authenticate with source")
+
+                # Find the matching file reference
+                target_file: FileReference | None = None
+                async for file_ref in connector.enumerate(source.id):
+                    if file_ref.uri == file_path:
+                        target_file = file_ref
+                        break
+
+                if not target_file:
+                    return _error_result(f"File not found: {file_path}")
+
+                # Load content
+                content_bytes = await connector.load_content(target_file)
+
+                # Decode to text (try UTF-8, fall back to latin-1)
+                try:
+                    content_text = content_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    content_text = content_bytes.decode("latin-1")
+
+                # Truncate to 2000 chars
+                max_chars = 2000
+                truncated = len(content_text) > max_chars
+                preview = content_text[:max_chars]
+
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "uri": target_file.uri,
+                                    "filename": target_file.filename,
+                                    "mime_type": target_file.mime_type,
+                                    "size_bytes": target_file.size_bytes,
+                                    "preview": preview,
+                                    "truncated": truncated,
+                                    "preview_length": len(preview),
+                                    "total_length": len(content_text),
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+        except Exception as e:
+            logger.error(f"preview_content failed: {e}", exc_info=True)
+            return _error_result(str(e))
+
+    @tool(
+        "detect_patterns",
+        "Analyze sampled files to detect patterns and recommend parsers.",
+        {
+            "type": "object",
+            "properties": {
+                "sample_count": {
+                    "type": "integer",
+                    "description": "Number of files to analyze (default 20, max 100)",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        },
+    )
+    async def detect_patterns(args: dict[str, Any]) -> dict[str, Any]:
+        """Detect file patterns and recommend parsers."""
+        sample_count = min(args.get("sample_count", 20), 100)
+
+        if ctx.source_id is None:
+            return _error_result("No source configured for this session")
+
+        try:
+            # Get source from database
+            sessionmaker = await ensure_async_sessionmaker()
+            async with sessionmaker() as session:
+                repo = CollectionSourceRepository(session)
+                source = await repo.get_by_id(ctx.source_id)
+
+                if not source:
+                    return _error_result(f"Source {ctx.source_id} not found")
+
+                # Create connector
+                connector: BaseConnector = ConnectorFactory.get_connector(
+                    source.source_type,
+                    source.source_config or {},
+                )
+
+                # Authenticate
+                if not await connector.authenticate():
+                    return _error_result("Failed to authenticate with source")
+
+                # Collect file statistics
+                extension_counts: dict[str, int] = {}
+                mime_type_counts: dict[str, int] = {}
+                sizes: list[int] = []
+                content_types: dict[str, int] = {}
+                files_analyzed = 0
+
+                async for file_ref in connector.enumerate(source.id):
+                    files_analyzed += 1
+
+                    # Track extensions
+                    ext = file_ref.extension or "(no extension)"
+                    extension_counts[ext] = extension_counts.get(ext, 0) + 1
+
+                    # Track MIME types
+                    mime = file_ref.mime_type or "(unknown)"
+                    mime_type_counts[mime] = mime_type_counts.get(mime, 0) + 1
+
+                    # Track sizes
+                    sizes.append(file_ref.size_bytes)
+
+                    # Track content types
+                    ct = file_ref.content_type
+                    content_types[ct] = content_types.get(ct, 0) + 1
+
+                    if files_analyzed >= sample_count:
+                        break
+
+                # Compute size statistics
+                size_stats = {
+                    "min_bytes": min(sizes) if sizes else 0,
+                    "max_bytes": max(sizes) if sizes else 0,
+                    "avg_bytes": sum(sizes) // len(sizes) if sizes else 0,
+                    "total_bytes": sum(sizes),
+                }
+
+                # Get parser recommendations
+                parser_recommendations = _get_parser_recommendations(extension_counts)
+
+                # Sort counts by frequency
+                sorted_extensions = sorted(extension_counts.items(), key=lambda x: -x[1])
+                sorted_mime_types = sorted(mime_type_counts.items(), key=lambda x: -x[1])
+
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "files_analyzed": files_analyzed,
+                                    "extension_counts": dict(sorted_extensions),
+                                    "mime_type_counts": dict(sorted_mime_types),
+                                    "content_types": content_types,
+                                    "size_stats": size_stats,
+                                    "parser_recommendations": parser_recommendations,
+                                    "source_type": source.source_type,
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+        except Exception as e:
+            logger.error(f"detect_patterns failed: {e}", exc_info=True)
+            return _error_result(str(e))
+
+    @tool(
+        "validate_pipeline",
+        "Validate current pipeline configuration against sample files.",
+        {
+            "type": "object",
+            "properties": {
+                "sample_count": {
+                    "type": "integer",
+                    "description": "Number of files to validate against (default 5, max 20)",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+            },
+        },
+    )
+    async def validate_pipeline(args: dict[str, Any]) -> dict[str, Any]:
+        """Validate pipeline configuration against sample files."""
+        sample_count = min(args.get("sample_count", 5), 20)
+
+        if ctx.pipeline_state is None:
+            return _error_result("No pipeline configured. Use build_pipeline first.")
+
+        try:
+            # Validate pipeline structure using PipelineDAG
+            dag = PipelineDAG.from_dict(ctx.pipeline_state)
+            known_plugins = set(plugin_registry.list_ids())
+            validation_errors = dag.validate(known_plugins)
+
+            if validation_errors:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": "Pipeline has validation errors",
+                                    "validation_errors": [
+                                        {"rule": e.rule, "message": e.message} for e in validation_errors
+                                    ],
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+            # If no source, just validate DAG structure
+            if ctx.source_id is None:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "dag_valid": True,
+                                    "message": "Pipeline DAG is valid (no source to test routing)",
+                                    "node_count": len(dag.nodes),
+                                    "edge_count": len(dag.edges),
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+            # Get source and sample files for routing validation
+            sessionmaker = await ensure_async_sessionmaker()
+            async with sessionmaker() as session:
+                repo = CollectionSourceRepository(session)
+                source = await repo.get_by_id(ctx.source_id)
+
+                if not source:
+                    return _error_result(f"Source {ctx.source_id} not found")
+
+                # Create connector
+                connector: BaseConnector = ConnectorFactory.get_connector(
+                    source.source_type,
+                    source.source_config or {},
+                )
+
+                # Authenticate
+                if not await connector.authenticate():
+                    return _error_result("Failed to authenticate with source")
+
+                # Sample files and check routing
+                from shared.pipeline.router import PipelineRouter
+
+                router = PipelineRouter(dag)
+                file_results: list[dict[str, Any]] = []
+                files_checked = 0
+
+                async for file_ref in connector.enumerate(source.id):
+                    files_checked += 1
+
+                    # Get entry nodes from _source
+                    try:
+                        entry_nodes = router.get_entry_nodes(file_ref)
+                        matched_nodes = [n.id for n, _ in entry_nodes]
+                        has_route = len(matched_nodes) > 0
+                    except Exception as e:
+                        matched_nodes = []
+                        has_route = False
+                        logger.warning(f"Routing failed for {file_ref.uri}: {e}")
+
+                    file_results.append(
+                        {
+                            "uri": file_ref.uri,
+                            "filename": file_ref.filename,
+                            "extension": file_ref.extension,
+                            "mime_type": file_ref.mime_type,
+                            "has_route": has_route,
+                            "matched_nodes": matched_nodes,
+                        }
+                    )
+
+                    if files_checked >= sample_count:
+                        break
+
+                # Summary
+                routed_count = sum(1 for f in file_results if f["has_route"])
+                unrouted_count = len(file_results) - routed_count
+
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": True,
+                                    "dag_valid": True,
+                                    "files_checked": files_checked,
+                                    "routed_count": routed_count,
+                                    "unrouted_count": unrouted_count,
+                                    "all_files_routed": unrouted_count == 0,
+                                    "file_results": file_results,
+                                    "node_count": len(dag.nodes),
+                                    "edge_count": len(dag.edges),
+                                }
+                            ),
+                        }
+                    ]
+                }
+
+        except Exception as e:
+            logger.error(f"validate_pipeline failed: {e}", exc_info=True)
+            return _error_result(str(e))
+
     return create_sdk_mcp_server(
         name="semantik-assisted-flow",
         version="1.0.0",
-        tools=[list_plugins, get_plugin_details, build_pipeline, apply_pipeline],
+        tools=[
+            list_plugins,
+            get_plugin_details,
+            build_pipeline,
+            apply_pipeline,
+            sample_files,
+            preview_content,
+            detect_patterns,
+            validate_pipeline,
+        ],
     )
