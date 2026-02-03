@@ -202,6 +202,8 @@ async def send_message_stream(
     async def event_generator() -> AsyncGenerator[str, None]:
         """Generate SSE events from SDK client streaming."""
         tool_names_by_id: dict[str, str] = {}
+        # Track text already streamed incrementally to avoid duplication
+        streamed_text_length: int = 0
 
         def _sse(event: str, data: dict[str, Any]) -> str:
             return f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -228,14 +230,20 @@ async def send_message_stream(
                         delta = event.get("delta") or {}
                         text = delta.get("text")
                         if isinstance(text, str) and text:
+                            streamed_text_length += len(text)
                             yield _sse("text", {"content": text})
                     continue
 
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
                         if isinstance(block, TextBlock):
-                            if block.text:
-                                yield _sse("text", {"content": block.text})
+                            # Only emit text that wasn't already streamed incrementally
+                            if block.text and len(block.text) > streamed_text_length:
+                                remaining = block.text[streamed_text_length:]
+                                if remaining:
+                                    yield _sse("text", {"content": remaining})
+                            # Reset for next message
+                            streamed_text_length = 0
                         elif isinstance(block, ToolUseBlock):
                             tool_names_by_id[block.id] = block.name
                             yield _sse(
