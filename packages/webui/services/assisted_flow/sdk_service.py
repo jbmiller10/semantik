@@ -90,6 +90,8 @@ async def create_sdk_session(
     mcp_server = create_mcp_server(ctx)
 
     try:
+        logger.info(f"Creating SDK session {session_id} for source {source_id}")
+
         # Create SDK options
         # SECURITY: Use allowed_tools whitelist to restrict agent to only our MCP
         # tools plus AskUserQuestion. Setting tools=[] alone does NOT disable
@@ -114,17 +116,22 @@ async def create_sdk_session(
             can_use_tool=can_use_tool,
         )
 
+        logger.info(f"SDK options created for session {session_id}")
+
         # Create client
         client = ClaudeSDKClient(options=options)
+        logger.info(f"SDK client created for session {session_id}")
 
         # Connect in streaming mode; do NOT pass a string prompt here, which
         # triggers one-shot CLI mode and exits.
+        logger.info(f"Connecting SDK client for session {session_id}")
         await client.connect()
+        logger.info(f"SDK client connected for session {session_id}")
 
         # Store in session manager
         await session_manager.store_client(session_id, client, user_id=user_id)
 
-        logger.info(f"Created SDK session {session_id} for source {source_id}")
+        logger.info(f"SDK session {session_id} created and stored successfully")
         return session_id, client
 
     except CLINotFoundError as e:
@@ -171,17 +178,24 @@ async def send_message(session_id: str, message: str, *, user_id: int | None = N
     Raises:
         SDKSessionError: If session not found or message fails
     """
+    logger.info(f"send_message called for session {session_id}")
+
     if user_id is None:
         client = await session_manager.get_client(session_id)
     else:
         client = await session_manager.get_client(session_id, user_id=user_id)
 
     if not client:
+        logger.warning(f"Session {session_id} not found in session manager")
         raise SDKSessionError(f"Session {session_id} not found or expired")
+
+    logger.info(f"Got client for session {session_id}, sending query")
 
     try:
         sdk_client = cast("ClaudeSDKClient", client)
+        logger.info(f"Calling sdk_client.query() for session {session_id}")
         await sdk_client.query(message)
+        logger.info(f"Query sent successfully for session {session_id}")
         return sdk_client
 
     except ProcessError as e:
