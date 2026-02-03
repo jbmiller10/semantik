@@ -56,3 +56,19 @@ class MessageEvent(BaseModel):
 
     type: str = Field(..., description="Event type")
     data: dict = Field(default_factory=dict, description="Event data")
+
+
+class SubmitAnswerRequest(BaseModel):
+    """Request to submit an answer to a pending question."""
+
+    question_id: str = Field(..., description="ID of the question being answered")
+    answers: dict[str, str] = Field(
+        ...,
+        description="Answers mapping question text to selected option label",
+    )
+
+
+class SubmitAnswerResponse(BaseModel):
+    """Response from submitting an answer."""
+
+    success: bool = Field(..., description="Whether the answer was accepted")

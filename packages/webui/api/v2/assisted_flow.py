@@ -19,8 +19,11 @@ from webui.api.v2.assisted_flow_schemas import (
     SendMessageRequest,
     StartFlowRequest,
     StartFlowResponse,
+    SubmitAnswerRequest,
+    SubmitAnswerResponse,
 )
 from webui.auth import get_current_user
+from webui.services.assisted_flow.callbacks import compute_question_id, get_question_manager
 from webui.services.assisted_flow.sdk_service import (
     SDKNotAvailableError,
     SDKSessionError,
@@ -234,6 +237,21 @@ async def send_message_stream(
                                     "arguments": block.input,
                                 },
                             )
+
+                            # For AskUserQuestion, emit a question event with the questions
+                            # The frontend will display a UI for the user to answer
+                            if block.name == "AskUserQuestion":
+                                questions = block.input.get("questions", [])
+                                if questions:
+                                    # Compute the same question_id that the callback will use
+                                    question_id = compute_question_id(questions)
+                                    yield _sse(
+                                        "question",
+                                        {
+                                            "question_id": question_id,
+                                            "questions": questions,
+                                        },
+                                    )
                         elif isinstance(block, ToolResultBlock):
                             yield _sse(
                                 "tool_result",
@@ -293,3 +311,56 @@ async def send_message_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post(
+    "/{session_id}/answer",
+    response_model=SubmitAnswerResponse,
+    responses={
+        200: {"description": "Answer submitted successfully"},
+        404: {"description": "Question not found"},
+    },
+)
+async def submit_answer(
+    session_id: str,
+    request: SubmitAnswerRequest,
+    _current_user: dict[str, Any] = Depends(get_current_user),
+) -> SubmitAnswerResponse:
+    """Submit an answer to a pending question.
+
+    When the agent uses AskUserQuestion, the frontend receives a 'question'
+    SSE event with a question_id and questions array. The user selects
+    answers and submits them here.
+
+    Args:
+        session_id: The assisted flow session ID
+        request: Contains question_id and answers dict
+        _current_user: Authenticated user (ensures session access)
+
+    Returns:
+        Success status
+    """
+    # Verify user has access to this session
+    user_id = _current_user.get("id")
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user session")
+
+    client = await get_session_client(session_id, user_id=user_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found or expired",
+        )
+
+    # Submit answer to question manager
+    manager = get_question_manager()
+    success = await manager.submit_answer(request.question_id, request.answers)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Question {request.question_id} not found or already answered",
+        )
+
+    logger.info(f"Answer submitted for question {request.question_id} in session {session_id}")
+    return SubmitAnswerResponse(success=True)

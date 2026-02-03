@@ -17,6 +17,7 @@ from claude_agent_sdk import (
     ProcessError,
 )
 
+from webui.services.assisted_flow.callbacks import can_use_tool
 from webui.services.assisted_flow.context import ToolContext
 from webui.services.assisted_flow.prompts import SYSTEM_PROMPT
 from webui.services.assisted_flow.server import create_mcp_server
@@ -78,15 +79,23 @@ async def create_sdk_session(
 
     try:
         # Create SDK options
+        # SECURITY: Use allowed_tools whitelist to restrict agent to only our MCP
+        # tools plus AskUserQuestion. Setting tools=[] alone does NOT disable
+        # default Claude Code tools (bash/edit/etc).
         options = ClaudeAgentOptions(
             system_prompt=_build_system_prompt(source_stats),
-            # SECURITY: disable default Claude Code tools (bash/edit/etc) and only
-            # expose our MCP tools.
-            tools=[],
+            allowed_tools=[
+                "mcp__assisted-flow__list_plugins",
+                "mcp__assisted-flow__get_plugin_details",
+                "mcp__assisted-flow__build_pipeline",
+                "mcp__assisted-flow__apply_pipeline",
+                "AskUserQuestion",
+            ],
             permission_mode="default",
             mcp_servers={"assisted-flow": mcp_server},
             agents=get_subagents(),
             include_partial_messages=True,
+            can_use_tool=can_use_tool,
         )
 
         # Create client

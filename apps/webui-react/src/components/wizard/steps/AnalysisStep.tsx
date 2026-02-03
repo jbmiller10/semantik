@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAssistedFlowStream } from '../../../hooks/useAssistedFlowStream';
 import { PipelineVisualization, ConfigurationPanel } from '../../pipeline';
+import { QuestionPrompt } from '../QuestionPrompt';
 import type { PipelineDAG, DAGSelection, PipelineNode, PipelineEdge } from '../../../types/pipeline';
 
 interface AnalysisStepProps {
@@ -41,11 +42,30 @@ export function AnalysisStep({
   const {
     isStreaming,
     sendMessage,
+    submitAnswer,
     currentContent,
     toolCalls,
+    pendingQuestion,
     error: streamError,
     reset: resetStream,
   } = useAssistedFlowStream(conversationId, streamCallbacks);
+
+  // Track whether we're submitting an answer
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+
+  // Handle question answer submission
+  const handleQuestionSubmit = useCallback(
+    async (answers: Record<string, string>) => {
+      if (!pendingQuestion) return;
+      setIsSubmittingAnswer(true);
+      try {
+        await submitAnswer(pendingQuestion.question_id, answers);
+      } finally {
+        setIsSubmittingAnswer(false);
+      }
+    },
+    [pendingQuestion, submitAnswer]
+  );
 
   // Auto-start agent analysis
   useEffect(() => {
@@ -150,6 +170,9 @@ export function AnalysisStep({
     if (isComplete) {
       return { text: 'Analysis complete', color: 'green' };
     }
+    if (pendingQuestion) {
+      return { text: 'Waiting for your input', color: 'blue' };
+    }
     if (isStreaming) {
       // Show current tool activity if any
       const runningTool = toolCalls.find(tc => tc.status === 'running');
@@ -194,6 +217,7 @@ export function AnalysisStep({
                 ${statusDisplay.color === 'green' ? 'bg-green-400' : ''}
                 ${statusDisplay.color === 'gray' ? 'bg-gray-400' : ''}
                 ${statusDisplay.color === 'red' ? 'bg-red-400' : ''}
+                ${statusDisplay.color === 'blue' ? 'bg-blue-400' : ''}
               `} />
               <span className="text-sm font-medium text-[var(--text-primary)]">
                 {statusDisplay.text}
@@ -232,6 +256,17 @@ export function AnalysisStep({
                 <div className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">
                   {currentContent}
                 </div>
+              </div>
+            )}
+
+            {/* Question prompt - shown when agent asks a question */}
+            {pendingQuestion && (
+              <div className="mt-4">
+                <QuestionPrompt
+                  question={pendingQuestion}
+                  onSubmit={handleQuestionSubmit}
+                  isSubmitting={isSubmittingAnswer}
+                />
               </div>
             )}
 

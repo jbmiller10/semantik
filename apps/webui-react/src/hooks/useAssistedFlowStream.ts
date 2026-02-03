@@ -12,6 +12,7 @@ import type {
   TextEventData,
   ToolUseEventData,
   ToolResultEventData,
+  QuestionEventData,
   DoneEventData,
   ErrorEventData,
 } from '../types/assisted-flow';
@@ -20,6 +21,7 @@ export interface UseAssistedFlowStreamCallbacks {
   onText?: (text: string) => void;
   onToolUse?: (data: ToolUseEventData) => void;
   onToolResult?: (data: ToolResultEventData) => void;
+  onQuestion?: (data: QuestionEventData) => void;
   onDone?: (data: DoneEventData) => void;
   onError?: (error: string) => void;
 }
@@ -29,7 +31,9 @@ export interface UseAssistedFlowStreamReturn {
   error: string | null;
   currentContent: string;
   toolCalls: AssistedFlowToolCall[];
+  pendingQuestion: QuestionEventData | null;
   sendMessage: (message: string) => Promise<void>;
+  submitAnswer: (questionId: string, answers: Record<string, string>) => Promise<void>;
   cancel: () => void;
   reset: () => void;
 }
@@ -74,6 +78,7 @@ export function useAssistedFlowStream(
   const [error, setError] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState('');
   const [toolCalls, setToolCalls] = useState<AssistedFlowToolCall[]>([]);
+  const [pendingQuestion, setPendingQuestion] = useState<QuestionEventData | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const token = useAuthStore((state) => state.token);
@@ -83,6 +88,7 @@ export function useAssistedFlowStream(
     setError(null);
     setCurrentContent('');
     setToolCalls([]);
+    setPendingQuestion(null);
   }, []);
 
   const cancel = useCallback(() => {
@@ -93,6 +99,21 @@ export function useAssistedFlowStream(
     setIsStreaming(false);
   }, []);
 
+  const submitAnswer = useCallback(
+    async (questionId: string, answers: Record<string, string>) => {
+      try {
+        await assistedFlowApi.submitAnswer(sessionId, questionId, answers);
+        // Clear pending question after successful submission
+        setPendingQuestion(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
+        setError(errorMessage);
+        callbacks.onError?.(errorMessage);
+      }
+    },
+    [sessionId, callbacks]
+  );
+
   const sendMessage = useCallback(
     async (message: string) => {
       // Reset state for new message
@@ -100,6 +121,7 @@ export function useAssistedFlowStream(
       setError(null);
       setCurrentContent('');
       setToolCalls([]);
+      setPendingQuestion(null);
 
       // Create abort controller
       abortControllerRef.current = new AbortController();
@@ -200,6 +222,14 @@ export function useAssistedFlowStream(
                 break;
               }
 
+              case 'question': {
+                // Agent is asking the user a question
+                const questionData = data as unknown as QuestionEventData;
+                setPendingQuestion(questionData);
+                callbacks.onQuestion?.(questionData);
+                break;
+              }
+
               case 'done': {
                 const doneData = data as DoneEventData;
                 callbacks.onDone?.(doneData);
@@ -253,7 +283,9 @@ export function useAssistedFlowStream(
     error,
     currentContent,
     toolCalls,
+    pendingQuestion,
     sendMessage,
+    submitAnswer,
     cancel,
     reset,
   };

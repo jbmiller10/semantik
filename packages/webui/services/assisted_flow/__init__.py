@@ -14,6 +14,13 @@ Key components:
 API endpoints are at /api/v2/assisted-flow/.
 """
 
+from webui.services.assisted_flow.callbacks import (
+    PendingQuestion,
+    QuestionManager,
+    can_use_tool,
+    compute_question_id,
+    get_question_manager,
+)
 from webui.services.assisted_flow.context import ToolContext
 from webui.services.assisted_flow.prompts import SYSTEM_PROMPT, build_initial_prompt
 from webui.services.assisted_flow.sdk_service import (
@@ -34,6 +41,12 @@ from webui.services.assisted_flow.subagents import (
 )
 
 __all__ = [
+    # Callbacks
+    "PendingQuestion",
+    "QuestionManager",
+    "can_use_tool",
+    "compute_question_id",
+    "get_question_manager",
     # Context
     "ToolContext",
     # Server

@@ -55,8 +55,33 @@ export type AssistedFlowEventType =
   | 'text'
   | 'tool_use'
   | 'tool_result'
+  | 'question'
   | 'done'
   | 'error';
+
+// =============================================================================
+// Question Types (for AskUserQuestion handling)
+// =============================================================================
+
+/** A single option in a question */
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+/** A single question item from AskUserQuestion */
+export interface QuestionItem {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
+/** Data from a question SSE event */
+export interface QuestionEventData {
+  question_id: string;
+  questions: QuestionItem[];
+}
 
 /** Text content event data from the agent */
 export interface TextEventData {
@@ -99,6 +124,7 @@ export type AssistedFlowEvent =
   | { event: 'text'; data: TextEventData }
   | { event: 'tool_use'; data: ToolUseEventData }
   | { event: 'tool_result'; data: ToolResultEventData }
+  | { event: 'question'; data: QuestionEventData }
   | { event: 'done'; data: DoneEventData }
   | { event: 'error'; data: ErrorEventData };
 

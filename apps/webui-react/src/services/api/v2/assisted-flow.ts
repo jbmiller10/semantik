@@ -20,6 +20,11 @@ export const assistedFlowKeys = {
   session: (id: string) => [...assistedFlowKeys.sessions(), id] as const,
 };
 
+/** Response from submitting an answer */
+export interface SubmitAnswerResponse {
+  success: boolean;
+}
+
 /**
  * Assisted flow API client.
  */
@@ -36,6 +41,15 @@ export const assistedFlowApi = {
    */
   getStreamUrl: (sessionId: string) =>
     `${getApiBaseUrl()}/api/v2/assisted-flow/${sessionId}/messages/stream`,
+
+  /**
+   * Submit an answer to a pending question from AskUserQuestion.
+   */
+  submitAnswer: (sessionId: string, questionId: string, answers: Record<string, string>) =>
+    apiClient.post<SubmitAnswerResponse>(`/api/v2/assisted-flow/${sessionId}/answer`, {
+      question_id: questionId,
+      answers,
+    }),
 };
 
 export default assistedFlowApi;
