@@ -1,7 +1,5 @@
 """Tests for assisted flow MCP server creation."""
 
-from unittest.mock import MagicMock
-
 from webui.services.assisted_flow.context import ToolContext
 
 
@@ -13,7 +11,6 @@ class TestCreateMCPServer:
         from webui.services.assisted_flow.server import create_mcp_server
 
         mock_context = ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
         )

@@ -1,7 +1,5 @@
 """Tests for apply_pipeline tool."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 
@@ -14,10 +12,11 @@ class TestApplyPipelineTool:
         from webui.services.assisted_flow.context import ToolContext
 
         return ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
             pipeline_state={
+                "id": "agent-recommended",
+                "version": "1",
                 "nodes": [
                     {"id": "parser", "type": "parser", "plugin_id": "tika"},
                     {"id": "chunker", "type": "chunker", "plugin_id": "recursive"},
@@ -44,7 +43,6 @@ class TestApplyPipelineTool:
         from webui.services.assisted_flow.server import create_mcp_server
 
         ctx = ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
             pipeline_state=None,  # No pipeline configured

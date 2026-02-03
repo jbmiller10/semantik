@@ -10,8 +10,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from shared.database.exceptions import EntityNotFoundError
-from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+from sqlalchemy import select
+
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import Collection, CollectionSource
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +45,7 @@ def _get_display_path(source_type: str, config: dict[str, Any], source_path: str
 
 async def get_source_stats(
     session: AsyncSession,
+    user_id: int,
     source_id: int,
 ) -> dict[str, Any]:
     """Gather statistics about a collection source.
@@ -52,6 +55,7 @@ async def get_source_stats(
 
     Args:
         session: Database session
+        user_id: Authenticated user id (used to enforce ownership)
         source_id: Integer ID of the collection source
 
     Returns:
@@ -63,12 +67,20 @@ async def get_source_stats(
 
     Raises:
         EntityNotFoundError: If source not found
+        AccessDeniedError: If the user does not own the source
     """
-    repo = CollectionSourceRepository(session)
-    source = await repo.get_by_id(source_id)
-
-    if not source:
+    stmt = (
+        select(CollectionSource, Collection.owner_id)
+        .join(Collection, Collection.id == CollectionSource.collection_id)
+        .where(CollectionSource.id == source_id)
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+    if not row:
         raise EntityNotFoundError("collection_source", str(source_id))
+    source, owner_id = row
+    if owner_id != user_id:
+        raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
     # Redact any secrets from config
     safe_config = {

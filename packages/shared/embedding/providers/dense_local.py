@@ -523,9 +523,9 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                     # OOM can occur at different points, so some variables may not exist.
                     # We reassign to None and call gc.collect() to ensure references are
                     # released before empty_cache() can reclaim the memory blocks.
-                    batch_dict = None  # type: ignore[assignment]  # noqa: F841
-                    outputs = None  # type: ignore[assignment]  # noqa: F841
-                    embeddings = None  # type: ignore[assignment]  # noqa: F841
+                    batch_dict = None  # noqa: F841
+                    outputs = None  # noqa: F841
+                    embeddings = None  # noqa: F841
                     gc.collect()
                     # Synchronize before empty_cache to ensure pending CUDA ops complete
                     torch.cuda.synchronize()

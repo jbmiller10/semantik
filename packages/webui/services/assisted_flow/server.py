@@ -163,6 +163,14 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
         {
             "type": "object",
             "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional pipeline DAG id. Defaults to 'agent-recommended'.",
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Optional pipeline DAG schema version. Defaults to '1'.",
+                },
                 "nodes": {
                     "type": "array",
                     "description": "Pipeline nodes (parser, chunker, embedder)",
@@ -203,6 +211,8 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
     )
     async def build_pipeline(args: dict[str, Any]) -> dict[str, Any]:
         """Build pipeline configuration."""
+        pipeline_id = str(args.get("id") or "agent-recommended")
+        version = str(args.get("version") or "1")
         nodes = args.get("nodes", [])
         edges = args.get("edges", [])
 
@@ -228,8 +238,18 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     ]
                 }
 
+            # Ensure there's at least one catch-all edge from _source so the DAG
+            # validates even if the agent forgets it.
+            has_source_edge = any(isinstance(e, dict) and e.get("from_node") == "_source" for e in edges)
+            if not has_source_edge:
+                first_parser = next((n for n in nodes if isinstance(n, dict) and n.get("type") == "parser"), None)
+                if first_parser and first_parser.get("id"):
+                    edges = [{"from_node": "_source", "to_node": first_parser["id"], "when": None}, *edges]
+
             # Build DAG structure
             pipeline = {
+                "id": pipeline_id,
+                "version": version,
                 "nodes": nodes,
                 "edges": edges,
             }

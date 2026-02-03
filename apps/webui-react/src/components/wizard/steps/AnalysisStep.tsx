@@ -1,10 +1,8 @@
 // apps/webui-react/src/components/wizard/steps/AnalysisStep.tsx
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useAgentStream } from '../../../hooks/useAgentStream';
-import { agentApi } from '../../../services/api/v2/agent';
+import { useAssistedFlowStream } from '../../../hooks/useAssistedFlowStream';
 import { PipelineVisualization, ConfigurationPanel } from '../../pipeline';
 import type { PipelineDAG, DAGSelection, PipelineNode, PipelineEdge } from '../../../types/pipeline';
-import type { AgentPhase } from '../../../types/agent';
 
 interface AnalysisStepProps {
   conversationId: string;
@@ -25,13 +23,13 @@ export function AnalysisStep({
 }: AnalysisStepProps) {
   const [selection, setSelection] = useState<DAGSelection>({ type: 'none' });
   const [hasAutoStarted, setHasAutoStarted] = useState(false);
-  const [answerError, setAnswerError] = useState<string | null>(null);
-  const [customResponseInput, setCustomResponseInput] = useState('');
   const [userMessageInput, setUserMessageInput] = useState('');
+  const [isComplete, setIsComplete] = useState(false);
 
   // Memoize callbacks to avoid re-creating on every render
   const streamCallbacks = useMemo(() => ({
     onDone: () => {
+      setIsComplete(true);
       onAgentComplete();
     },
     onError: (errorMsg: string) => {
@@ -39,19 +37,15 @@ export function AnalysisStep({
     },
   }), [onAgentComplete]);
 
-  // Agent stream hook
+  // Agent stream hook - using new assisted flow hook
   const {
-    status,
-    activities,
-    pendingQuestions,
-    dismissQuestion,
     isStreaming,
     sendMessage,
     currentContent,
-    pipeline,
+    toolCalls,
     error: streamError,
     reset: resetStream,
-  } = useAgentStream(conversationId, streamCallbacks);
+  } = useAssistedFlowStream(conversationId, streamCallbacks);
 
   // Auto-start agent analysis
   useEffect(() => {
@@ -68,70 +62,67 @@ export function AnalysisStep({
     }
   }, [currentContent, onSummaryChange]);
 
-  // Update DAG when pipeline changes from agent
-  // FIXME: This completely ignores the actual pipeline DAG the agent builds!
-  // The agent's build_pipeline tool creates a full PipelineDAG with nodes, edges,
-  // and routing predicates, but this code throws it away and creates a hardcoded
-  // simple DAG. This means:
-  // 1. Any routing predicates (e.g., "NOT extension .png") configured by the agent are lost
-  // 2. Multi-parser setups with conditional routing are not preserved
-  // 3. User edits to edges in this step get overwritten when pipeline updates
-  //
-  // To fix: The `pipeline` from useAgentStream should contain the full DAG structure
-  // from conversation.current_pipeline. We should use it directly instead of
-  // constructing a simplified DAG here.
-  useEffect(() => {
-    if (pipeline) {
-      // Convert pipeline config to DAG format
-      // This is a simplified conversion - the real one should be more comprehensive
-      const newDag: PipelineDAG = {
-        id: 'agent-recommended',
-        version: '1',
-        nodes: [
-          { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
-          {
-            id: 'chunker1',
-            type: 'chunker',
-            plugin_id: (pipeline as Record<string, unknown>).chunking_strategy as string || 'semantic',
-            config: (pipeline as Record<string, unknown>).chunking_config as Record<string, unknown> || {},
-          },
-          {
-            id: 'embedder1',
-            type: 'embedder',
-            // Plugin is always dense_local, model is stored in config
-            plugin_id: 'dense_local',
-            config: {
-              model: (pipeline as Record<string, unknown>).embedding_model as string || undefined,
-            },
-          },
-        ],
-        edges: [
-          { from_node: '_source', to_node: 'parser1', when: null },
-          { from_node: 'parser1', to_node: 'chunker1', when: null },
-          { from_node: 'chunker1', to_node: 'embedder1', when: null },
-        ],
-      };
-      onDagChange(newDag);
-    }
-  }, [pipeline, onDagChange]);
+  // Note: The new SDK-based backend uses tool calls instead of a separate pipeline object.
+  // Pipeline updates come through tool_result events from the build_pipeline tool.
+  // We best-effort parse those results and update the preview DAG.
 
-  // Handle question answer
-  const handleAnswer = useCallback(async (
-    questionId: string,
-    optionId?: string,
-    customResponse?: string
-  ) => {
-    setAnswerError(null);
-    try {
-      await agentApi.answerQuestion(conversationId, questionId, optionId, customResponse);
-      dismissQuestion(questionId);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
-      console.error('Failed to submit answer:', err);
-      setAnswerError(`Could not submit your answer: ${errorMessage}. Please try again.`);
-      // NOTE: Do NOT dismiss the question - let user retry
+  const extractPipelineFromToolResult = useCallback((result: unknown): PipelineDAG | null => {
+    // Most commonly: result is a content array like [{ type: 'text', text: '{...json...}' }]
+    const tryParseJson = (text: string): unknown => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    };
+
+    let payload: unknown = null;
+    if (typeof result === 'string') {
+      payload = tryParseJson(result);
+    } else if (Array.isArray(result)) {
+      const textBlock = result.find(
+        (b) => b && typeof b === 'object' && 'text' in b && typeof (b as { text?: unknown }).text === 'string'
+      ) as { text?: string } | undefined;
+      if (textBlock?.text) payload = tryParseJson(textBlock.text);
+    } else if (result && typeof result === 'object') {
+      payload = result;
     }
-  }, [conversationId, dismissQuestion]);
+
+    if (!payload || typeof payload !== 'object') return null;
+
+    const maybe = payload as { pipeline?: unknown };
+    const pipeline = maybe.pipeline && typeof maybe.pipeline === 'object' ? maybe.pipeline : null;
+    if (!pipeline) return null;
+
+    const dagCandidate = pipeline as Partial<PipelineDAG>;
+    if (
+      typeof dagCandidate.id === 'string' &&
+      typeof dagCandidate.version === 'string' &&
+      Array.isArray(dagCandidate.nodes) &&
+      Array.isArray(dagCandidate.edges)
+    ) {
+      return dagCandidate as PipelineDAG;
+    }
+
+    return null;
+  }, []);
+
+  useEffect(() => {
+    const latest = [...toolCalls]
+      .reverse()
+      .find((tc) => tc.tool_name === 'build_pipeline' && tc.status === 'success' && tc.result != null);
+    if (!latest) return;
+
+    const parsed = extractPipelineFromToolResult(latest.result);
+    if (!parsed) return;
+
+    // Avoid spamming updates if nothing changed.
+    if (parsed.id === dag.id && parsed.version === dag.version && parsed.nodes.length === dag.nodes.length && parsed.edges.length === dag.edges.length) {
+      return;
+    }
+
+    onDagChange(parsed);
+  }, [toolCalls, extractPipelineFromToolResult, onDagChange, dag]);
 
   const handleNodeChange = useCallback((updatedNode: PipelineNode) => {
     onDagChange({
@@ -151,32 +142,23 @@ export function AnalysisStep({
     });
   }, [dag, onDagChange]);
 
-  // Get status display
+  // Get status display based on streaming state and completion
   const getStatusDisplay = () => {
-    if (!status) return { text: 'Analyzing...', color: 'amber' };
-
-    const phaseLabels: Record<AgentPhase, string> = {
-      idle: 'Ready',
-      analyzing: 'Analyzing source...',
-      sampling: 'Sampling content...',
-      building: 'Building pipeline...',
-      validating: 'Validating configuration...',
-      ready: 'Analysis complete',
-    };
-
-    const colors: Record<AgentPhase, string> = {
-      idle: 'gray',
-      analyzing: 'amber',
-      sampling: 'amber',
-      building: 'amber',
-      validating: 'amber',
-      ready: 'green',
-    };
-
-    return {
-      text: status.message || phaseLabels[status.phase] || 'Working...',
-      color: colors[status.phase] || 'amber',
-    };
+    if (streamError) {
+      return { text: 'Analysis failed', color: 'red' };
+    }
+    if (isComplete) {
+      return { text: 'Analysis complete', color: 'green' };
+    }
+    if (isStreaming) {
+      // Show current tool activity if any
+      const runningTool = toolCalls.find(tc => tc.status === 'running');
+      if (runningTool) {
+        return { text: `Running ${runningTool.tool_name}...`, color: 'amber' };
+      }
+      return { text: 'Analyzing...', color: 'amber' };
+    }
+    return { text: 'Ready', color: 'gray' };
   };
 
   const statusDisplay = getStatusDisplay();
@@ -211,13 +193,14 @@ export function AnalysisStep({
                 ${statusDisplay.color === 'amber' ? 'bg-amber-400 animate-pulse' : ''}
                 ${statusDisplay.color === 'green' ? 'bg-green-400' : ''}
                 ${statusDisplay.color === 'gray' ? 'bg-gray-400' : ''}
+                ${statusDisplay.color === 'red' ? 'bg-red-400' : ''}
               `} />
               <span className="text-sm font-medium text-[var(--text-primary)]">
                 {statusDisplay.text}
               </span>
-              {status?.progress && (
+              {toolCalls.length > 0 && (
                 <span className="text-xs text-[var(--text-muted)]">
-                  ({status.progress.current}/{status.progress.total})
+                  ({toolCalls.filter(tc => tc.status === 'success').length}/{toolCalls.length} tools)
                 </span>
               )}
             </div>
@@ -225,13 +208,19 @@ export function AnalysisStep({
 
           {/* Agent response / activities */}
           <div className="flex-1 overflow-y-auto p-4">
-            {/* Activities list */}
-            {activities.length > 0 && (
+            {/* Tool calls list */}
+            {toolCalls.length > 0 && (
               <div className="space-y-2 mb-4">
-                {activities.map((activity, index) => (
-                  <div key={index} className="flex items-start gap-2 text-sm">
-                    <span className="text-[var(--text-muted)]">-</span>
-                    <span className="text-[var(--text-secondary)]">{activity.message}</span>
+                {toolCalls.map((toolCall) => (
+                  <div key={toolCall.id} className="flex items-start gap-2 text-sm">
+                    <span className={`
+                      ${toolCall.status === 'running' ? 'text-amber-400' : ''}
+                      ${toolCall.status === 'success' ? 'text-green-400' : ''}
+                      ${toolCall.status === 'error' ? 'text-red-400' : ''}
+                    `}>
+                      {toolCall.status === 'running' ? '⟳' : toolCall.status === 'success' ? '✓' : '✗'}
+                    </span>
+                    <span className="text-[var(--text-secondary)]">{toolCall.tool_name}</span>
                   </div>
                 ))}
               </div>
@@ -269,7 +258,7 @@ export function AnalysisStep({
             )}
 
             {/* Empty state */}
-            {!currentContent && activities.length === 0 && !streamError && (
+            {!currentContent && toolCalls.length === 0 && !streamError && (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--text-muted)] mx-auto mb-4" />
                 <p className="text-sm text-[var(--text-muted)]">Analyzing your source...</p>
@@ -277,53 +266,8 @@ export function AnalysisStep({
             )}
           </div>
 
-          {/* Pending questions */}
-          {pendingQuestions.length > 0 && (
-            <div className="border-t border-[var(--border)] p-4 bg-[var(--bg-secondary)] shrink-0">
-              {/* Answer error message */}
-              {answerError && (
-                <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-sm text-red-400">{answerError}</p>
-                </div>
-              )}
-              {pendingQuestions.map((question) => (
-                <div key={question.id} className="space-y-3">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {question.message}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {question.options.map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => handleAnswer(question.id, option.id)}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  {question.allowCustom && (
-                    <input
-                      type="text"
-                      value={customResponseInput}
-                      onChange={(e) => setCustomResponseInput(e.target.value)}
-                      placeholder="Or type a custom response..."
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-primary)]"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && customResponseInput.trim()) {
-                          handleAnswer(question.id, undefined, customResponseInput);
-                          setCustomResponseInput('');
-                        }
-                      }}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* User input (when not streaming and no pending questions) */}
-          {!isStreaming && pendingQuestions.length === 0 && status?.phase === 'ready' && (
+          {/* User input (when not streaming and complete) */}
+          {!isStreaming && isComplete && (
             <div className="border-t border-[var(--border)] p-4 shrink-0">
               <div className="flex gap-2">
                 <input

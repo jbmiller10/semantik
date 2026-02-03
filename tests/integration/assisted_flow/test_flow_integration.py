@@ -34,7 +34,6 @@ class TestAssistedFlowIntegration:
     def test_context_creation_and_mutation(self) -> None:
         """ToolContext can be created and mutated during session."""
         ctx = ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
         )
@@ -79,7 +78,6 @@ class TestAssistedFlowIntegration:
     def test_mcp_server_has_required_tools(self) -> None:
         """MCP server includes all required tools."""
         ctx = ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
         )
@@ -114,17 +112,17 @@ class TestAssistedFlowIntegration:
 
         # Store a mock client
         mock_client = MagicMock()
-        await manager.store_client("test_session", mock_client)
+        await manager.store_client("test_session", mock_client, user_id=1)
 
         # Retrieve it
-        retrieved = await manager.get_client("test_session")
+        retrieved = await manager.get_client("test_session", user_id=1)
         assert retrieved is mock_client
 
         # Remove it
         await manager.remove_client("test_session")
 
         # Should be gone
-        retrieved = await manager.get_client("test_session")
+        retrieved = await manager.get_client("test_session", user_id=1)
         assert retrieved is None
 
     @pytest.mark.asyncio()
@@ -149,7 +147,6 @@ class TestAssistedFlowIntegration:
 
             with pytest.raises(SDKNotAvailableError):
                 await create_sdk_session(
-                    db=MagicMock(),
                     user_id=1,
                     source_id=42,
                     source_stats=source_stats,
@@ -163,7 +160,6 @@ class TestToolExecution:
     def mock_context(self) -> ToolContext:
         """Create a mock tool context."""
         return ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
         )

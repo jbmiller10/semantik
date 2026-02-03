@@ -67,6 +67,7 @@ export interface TextEventData {
 /** Tool use event data - agent is executing a tool */
 export interface ToolUseEventData {
   type?: 'tool_use';
+  tool_use_id?: string;
   tool_name?: string;
   arguments?: Record<string, unknown>;
 }
@@ -74,6 +75,7 @@ export interface ToolUseEventData {
 /** Tool result event data - tool execution completed */
 export interface ToolResultEventData {
   type?: 'tool_result';
+  tool_use_id?: string;
   tool_name?: string;
   result?: unknown;
   success?: boolean;

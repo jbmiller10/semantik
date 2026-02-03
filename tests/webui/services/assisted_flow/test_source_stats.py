@@ -1,6 +1,6 @@
 """Tests for source stats gathering."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -26,13 +26,11 @@ class TestGetSourceStats:
         from webui.services.assisted_flow.source_stats import get_source_stats
 
         session = AsyncMock()
+        result = MagicMock()
+        result.first.return_value = (mock_source, 1)
+        session.execute = AsyncMock(return_value=result)
 
-        with patch("webui.services.assisted_flow.source_stats.CollectionSourceRepository") as mock_repo_cls:
-            mock_repo = mock_repo_cls.return_value
-            # Make get_by_id return an awaitable
-            mock_repo.get_by_id = AsyncMock(return_value=mock_source)
-
-            stats = await get_source_stats(session, mock_source.id)
+        stats = await get_source_stats(session, user_id=1, source_id=mock_source.id)
 
         assert stats["source_name"] == "/data/docs"
         assert stats["source_type"] == "directory"
@@ -45,11 +43,23 @@ class TestGetSourceStats:
         from webui.services.assisted_flow.source_stats import get_source_stats
 
         session = AsyncMock()
+        result = MagicMock()
+        result.first.return_value = None
+        session.execute = AsyncMock(return_value=result)
 
-        with patch("webui.services.assisted_flow.source_stats.CollectionSourceRepository") as mock_repo_cls:
-            mock_repo = mock_repo_cls.return_value
-            # Make get_by_id return an awaitable that returns None
-            mock_repo.get_by_id = AsyncMock(return_value=None)
+        with pytest.raises(EntityNotFoundError):
+            await get_source_stats(session, user_id=1, source_id=999)
 
-            with pytest.raises(EntityNotFoundError):
-                await get_source_stats(session, 999)
+    @pytest.mark.asyncio()
+    async def test_get_source_stats_access_denied(self, mock_source: CollectionSource) -> None:
+        """Raises error when user does not own the source."""
+        from shared.database.exceptions import AccessDeniedError
+        from webui.services.assisted_flow.source_stats import get_source_stats
+
+        session = AsyncMock()
+        result = MagicMock()
+        result.first.return_value = (mock_source, 999)
+        session.execute = AsyncMock(return_value=result)
+
+        with pytest.raises(AccessDeniedError):
+            await get_source_stats(session, user_id=1, source_id=mock_source.id)

@@ -14,7 +14,6 @@ class TestBuildPipelineTool:
     def mock_context(self) -> ToolContext:
         """Create mock context with pipeline state."""
         return ToolContext(
-            session=MagicMock(),
             user_id=1,
             source_id=42,
             pipeline_state=None,

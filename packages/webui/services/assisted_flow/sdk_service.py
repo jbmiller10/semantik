@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import Any, cast
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -18,12 +18,10 @@ from claude_agent_sdk import (
 )
 
 from webui.services.assisted_flow.context import ToolContext
-from webui.services.assisted_flow.prompts import SYSTEM_PROMPT, build_initial_prompt
+from webui.services.assisted_flow.prompts import SYSTEM_PROMPT
 from webui.services.assisted_flow.server import create_mcp_server
 from webui.services.assisted_flow.session_manager import session_manager
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from webui.services.assisted_flow.subagents import get_subagents
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +38,23 @@ class SDKSessionError(SDKServiceError):
     """Raised when SDK session creation or operation fails."""
 
 
+def _build_system_prompt(source_stats: dict[str, Any]) -> str:
+    """Build a per-session system prompt with non-sensitive source context."""
+    safe_stats = dict(source_stats)
+    safe_stats.pop("secrets", None)
+    return f"{SYSTEM_PROMPT}\n\n## Source Context (non-sensitive)\n{safe_stats}\n"
+
+
 async def create_sdk_session(
-    db: AsyncSession,
     user_id: int,
-    source_id: int,
+    source_id: int | None,
     source_stats: dict[str, Any],
 ) -> tuple[str, ClaudeSDKClient]:
     """Create a new SDK session for assisted flow.
 
     Args:
-        db: Database session
         user_id: Authenticated user's ID
-        source_id: Collection source ID being configured
+        source_id: Collection source ID being configured (None for inline sources)
         source_stats: Source statistics for initial prompt
 
     Returns:
@@ -66,7 +69,6 @@ async def create_sdk_session(
 
     # Create tool context
     ctx = ToolContext(
-        session=db,
         user_id=user_id,
         source_id=source_id,
     )
@@ -74,25 +76,28 @@ async def create_sdk_session(
     # Create MCP server with tools
     mcp_server = create_mcp_server(ctx)
 
-    # Build initial prompt
-    initial_prompt = build_initial_prompt(source_stats)
-
     try:
         # Create SDK options
         options = ClaudeAgentOptions(
-            system_prompt=SYSTEM_PROMPT,
-            permission_mode="acceptEdits",
+            system_prompt=_build_system_prompt(source_stats),
+            # SECURITY: disable default Claude Code tools (bash/edit/etc) and only
+            # expose our MCP tools.
+            tools=[],
+            permission_mode="default",
             mcp_servers={"assisted-flow": mcp_server},
+            agents=get_subagents(),
+            include_partial_messages=True,
         )
 
         # Create client
         client = ClaudeSDKClient(options=options)
 
-        # Connect with initial prompt
-        await client.connect(prompt=initial_prompt)
+        # Connect in streaming mode; do NOT pass a string prompt here, which
+        # triggers one-shot CLI mode and exits.
+        await client.connect()
 
         # Store in session manager
-        await session_manager.store_client(session_id, client)
+        await session_manager.store_client(session_id, client, user_id=user_id)
 
         logger.info(f"Created SDK session {session_id} for source {source_id}")
         return session_id, client
@@ -112,7 +117,7 @@ async def create_sdk_session(
         raise SDKSessionError(f"Failed to create session: {e}") from e
 
 
-async def get_session_client(session_id: str) -> ClaudeSDKClient | None:
+async def get_session_client(session_id: str, *, user_id: int | None = None) -> ClaudeSDKClient | None:
     """Get an existing SDK client by session ID.
 
     Args:
@@ -121,10 +126,14 @@ async def get_session_client(session_id: str) -> ClaudeSDKClient | None:
     Returns:
         ClaudeSDKClient or None if session not found/expired
     """
-    return await session_manager.get_client(session_id)
+    if user_id is None:
+        client = await session_manager.get_client(session_id)
+    else:
+        client = await session_manager.get_client(session_id, user_id=user_id)
+    return cast("ClaudeSDKClient | None", client)
 
 
-async def send_message(session_id: str, message: str) -> ClaudeSDKClient:
+async def send_message(session_id: str, message: str, *, user_id: int | None = None) -> ClaudeSDKClient:
     """Send a message to an existing session.
 
     Args:
@@ -137,14 +146,18 @@ async def send_message(session_id: str, message: str) -> ClaudeSDKClient:
     Raises:
         SDKSessionError: If session not found or message fails
     """
-    client = await session_manager.get_client(session_id)
+    if user_id is None:
+        client = await session_manager.get_client(session_id)
+    else:
+        client = await session_manager.get_client(session_id, user_id=user_id)
 
     if not client:
         raise SDKSessionError(f"Session {session_id} not found or expired")
 
     try:
-        await client.query(message)
-        return client
+        sdk_client = cast("ClaudeSDKClient", client)
+        await sdk_client.query(message)
+        return sdk_client
 
     except ProcessError as e:
         logger.error(f"Message failed: exit_code={e.exit_code}", exc_info=True)
@@ -161,13 +174,5 @@ async def close_session(session_id: str) -> None:
     Args:
         session_id: Session ID to close
     """
-    client = await session_manager.get_client(session_id)
-
-    if client:
-        try:
-            client.disconnect()
-        except Exception as e:
-            logger.warning(f"Error disconnecting session {session_id}: {e}")
-
     await session_manager.remove_client(session_id)
     logger.info(f"Closed session {session_id}")

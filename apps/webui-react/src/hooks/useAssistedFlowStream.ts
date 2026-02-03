@@ -166,7 +166,7 @@ export function useAssistedFlowStream(
               case 'tool_use': {
                 const toolData = data as ToolUseEventData;
                 const toolName = toolData.tool_name || 'unknown';
-                const toolCallId = `${Date.now()}-${toolName}`;
+                const toolCallId = toolData.tool_use_id || `${Date.now()}-${toolName}`;
                 setToolCalls((prev) => [
                   ...prev,
                   {
@@ -185,7 +185,9 @@ export function useAssistedFlowStream(
                 const toolName = resultData.tool_name || 'unknown';
                 setToolCalls((prev) =>
                   prev.map((tc) =>
-                    tc.tool_name === toolName && tc.status === 'running'
+                    (resultData.tool_use_id
+                      ? tc.id === resultData.tool_use_id
+                      : tc.tool_name === toolName && tc.status === 'running')
                       ? {
                           ...tc,
                           status: resultData.success !== false ? 'success' : 'error',

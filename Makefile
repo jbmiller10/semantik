@@ -225,7 +225,7 @@ docker-postgres-restore:
 
 fix: format
 
-check: lint type-check test
+check: lint type-check test-ci
 
 run:
 	PYTHONPATH=packages$${PYTHONPATH:+:$$PYTHONPATH} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload

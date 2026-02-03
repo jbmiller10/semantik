@@ -11,7 +11,7 @@ import ErrorBoundary from '../ErrorBoundary';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
 import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
-import { useCreateConversation } from '../../hooks/useAgentConversation';
+import { useStartAssistedFlow } from '../../hooks/useAssistedFlow';
 import { useUIStore } from '../../stores/uiStore';
 import { waitForCollectionReady } from '../../services/api/v2/collections';
 import type { WizardState, WizardFlow } from '../../types/wizard';
@@ -66,7 +66,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
 
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
-  const createConversationMutation = useCreateConversation();
+  const startAssistedFlowMutation = useStartAssistedFlow();
   const { addToast } = useUIStore();
 
   // Assisted flow state - initialize with resume ID if provided
@@ -132,14 +132,14 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       !conversationId
     ) {
       try {
-        const conversation = await createConversationMutation.mutateAsync({
+        const response = await startAssistedFlowMutation.mutateAsync({
           inline_source: {
             source_type: connectorType,
             source_config: configValues,
           },
           secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
         });
-        setConversationId(conversation.id);
+        setConversationId(response.session_id);
       } catch (error) {
         addToast({
           message: error instanceof Error ? error.message : 'Failed to start analysis',
@@ -158,7 +158,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
         steps: newSteps,
       };
     });
-  }, [wizardState.currentStep, wizardState.flow, validateBasics, connectorType, configValues, secrets, conversationId, createConversationMutation, addToast]);
+  }, [wizardState.currentStep, wizardState.flow, validateBasics, connectorType, configValues, secrets, conversationId, startAssistedFlowMutation, addToast]);
 
   const handleBack = useCallback(() => {
     setWizardState(prev => ({

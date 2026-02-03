@@ -13,7 +13,6 @@ class TestCreateSDKSession:
         """Session ID is unique and starts with 'af_'."""
         from webui.services.assisted_flow.sdk_service import create_sdk_session
 
-        mock_db = AsyncMock()
         source_stats = {
             "source_name": "Test Source",
             "source_type": "directory",
@@ -33,7 +32,6 @@ class TestCreateSDKSession:
             mock_manager.store_client = AsyncMock()
 
             session_id, client = await create_sdk_session(
-                db=mock_db,
                 user_id=1,
                 source_id=42,
                 source_stats=source_stats,
@@ -48,7 +46,6 @@ class TestCreateSDKSession:
         """Client is stored in session manager."""
         from webui.services.assisted_flow.sdk_service import create_sdk_session
 
-        mock_db = AsyncMock()
         source_stats = {
             "source_name": "Test",
             "source_type": "directory",
@@ -68,7 +65,6 @@ class TestCreateSDKSession:
             mock_manager.store_client = AsyncMock()
 
             session_id, _ = await create_sdk_session(
-                db=mock_db,
                 user_id=1,
                 source_id=42,
                 source_stats=source_stats,
@@ -89,7 +85,6 @@ class TestCreateSDKSession:
             create_sdk_session,
         )
 
-        mock_db = AsyncMock()
         source_stats = {
             "source_name": "Test",
             "source_type": "directory",
@@ -107,7 +102,6 @@ class TestCreateSDKSession:
 
             with pytest.raises(SDKNotAvailableError):
                 await create_sdk_session(
-                    db=mock_db,
                     user_id=1,
                     source_id=42,
                     source_stats=source_stats,
@@ -150,16 +144,12 @@ class TestCloseSession:
 
     @pytest.mark.asyncio()
     async def test_disconnects_and_removes_client(self) -> None:
-        """Disconnects client and removes from manager."""
+        """Delegates to session manager."""
         from webui.services.assisted_flow.sdk_service import close_session
 
-        mock_client = MagicMock()
-
         with patch("webui.services.assisted_flow.sdk_service.session_manager") as mock_manager:
-            mock_manager.get_client = AsyncMock(return_value=mock_client)
             mock_manager.remove_client = AsyncMock()
 
             await close_session("session-123")
 
-        mock_client.disconnect.assert_called_once()
         mock_manager.remove_client.assert_called_once_with("session-123")

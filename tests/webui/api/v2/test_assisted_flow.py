@@ -29,11 +29,17 @@ class TestStartAssistedFlow:
                 "source_config": {},
             }
 
-            response = await api_client.post(
-                "/api/v2/assisted-flow/start",
-                json={"source_id": source_id},
-                headers=api_auth_headers,
-            )
+            with patch(
+                "webui.api.v2.assisted_flow.create_sdk_session",
+                new_callable=AsyncMock,
+            ) as mock_create_session:
+                mock_create_session.return_value = ("af_deadbeefdeadbeef", MagicMock())
+
+                response = await api_client.post(
+                    "/api/v2/assisted-flow/start",
+                    json={"source_id": source_id},
+                    headers=api_auth_headers,
+                )
 
         assert response.status_code == 200
         data = response.json()
@@ -103,16 +109,32 @@ class TestSendMessageStream:
 
         # Mock receive_response as an async generator
         async def mock_receive():
-            yield MagicMock(type="text", content="Hello")
+            from claude_agent_sdk.types import AssistantMessage, ResultMessage, TextBlock
 
-        mock_client.query = AsyncMock()
+            yield AssistantMessage(content=[TextBlock(text="Hello")], model="haiku")
+            yield ResultMessage(
+                subtype="stop",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="default",
+            )
+
         mock_client.receive_response = mock_receive
 
-        with patch(
-            "webui.api.v2.assisted_flow.get_session_client",
-            new_callable=AsyncMock,
-        ) as mock_get_client:
+        with (
+            patch(
+                "webui.api.v2.assisted_flow.get_session_client",
+                new_callable=AsyncMock,
+            ) as mock_get_client,
+            patch(
+                "webui.api.v2.assisted_flow.send_message",
+                new_callable=AsyncMock,
+            ) as mock_send_message,
+        ):
             mock_get_client.return_value = mock_client
+            mock_send_message.return_value = mock_client
 
             response = await api_client.post(
                 "/api/v2/assisted-flow/test_session/messages/stream",

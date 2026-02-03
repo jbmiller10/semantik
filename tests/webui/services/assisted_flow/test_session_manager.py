@@ -17,8 +17,8 @@ class TestSessionManager:
         manager = SessionManager()
         mock_client = MagicMock()
 
-        await manager.store_client("session-123", mock_client)
-        retrieved = await manager.get_client("session-123")
+        await manager.store_client("session-123", mock_client, user_id=1)
+        retrieved = await manager.get_client("session-123", user_id=1)
 
         assert retrieved is mock_client
 
@@ -28,7 +28,7 @@ class TestSessionManager:
         from webui.services.assisted_flow.session_manager import SessionManager
 
         manager = SessionManager()
-        retrieved = await manager.get_client("nonexistent")
+        retrieved = await manager.get_client("nonexistent", user_id=1)
 
         assert retrieved is None
 
@@ -40,9 +40,9 @@ class TestSessionManager:
         manager = SessionManager()
         mock_client = MagicMock()
 
-        await manager.store_client("session-123", mock_client)
+        await manager.store_client("session-123", mock_client, user_id=1)
         await manager.remove_client("session-123")
-        retrieved = await manager.get_client("session-123")
+        retrieved = await manager.get_client("session-123", user_id=1)
 
         assert retrieved is None
 
@@ -54,9 +54,9 @@ class TestSessionManager:
         manager = SessionManager(ttl_seconds=0)  # Immediate expiry
         mock_client = MagicMock()
 
-        await manager.store_client("session-123", mock_client)
+        await manager.store_client("session-123", mock_client, user_id=1)
         await asyncio.sleep(0.01)  # Wait for expiry
-        retrieved = await manager.get_client("session-123")
+        retrieved = await manager.get_client("session-123", user_id=1)
 
         assert retrieved is None
 
