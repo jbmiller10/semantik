@@ -219,10 +219,16 @@ async def send_message_stream(
 
         try:
             # Send message to SDK
+            logger.info(f"Sending message to session {session_id}")
             sdk_client = await send_message(session_id, message, user_id=user_id)
+            logger.info(f"Message sent, starting response stream for {session_id}")
+
+            # Emit started event so frontend knows connection is established
+            yield _sse("started", {"session_id": session_id})
 
             # Stream response
             async for msg in sdk_client.receive_response():
+                logger.debug(f"Received message type: {type(msg).__name__}")
                 if isinstance(msg, StreamEvent):
                     # Best-effort incremental text streaming.
                     event = msg.event or {}

@@ -230,6 +230,12 @@ export function useAssistedFlowStream(
                 break;
               }
 
+              case 'started': {
+                // Connection established, agent is starting
+                console.debug('SSE stream started');
+                break;
+              }
+
               case 'done': {
                 const doneData = data as DoneEventData;
                 callbacks.onDone?.(doneData);

@@ -52,6 +52,7 @@ export interface SendMessageRequest {
 
 /** Event types from the assisted flow streaming endpoint */
 export type AssistedFlowEventType =
+  | 'started'
   | 'text'
   | 'tool_use'
   | 'tool_result'
