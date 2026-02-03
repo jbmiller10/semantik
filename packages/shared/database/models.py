@@ -713,7 +713,13 @@ class AgentConversation(Base):
 
     # State
     status = Column(
-        Enum(ConversationStatus, name="conversation_status", native_enum=True, create_constraint=False),
+        Enum(
+            ConversationStatus,
+            name="conversation_status",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
         default=ConversationStatus.ACTIVE,
     )  # type: ignore[var-annotated]
@@ -761,7 +767,13 @@ class ConversationUncertainty(Base):
         index=True,
     )
     severity = Column(
-        Enum(UncertaintySeverity, name="uncertainty_severity", native_enum=True, create_constraint=False),
+        Enum(
+            UncertaintySeverity,
+            name="uncertainty_severity",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
     )  # type: ignore[var-annotated]
     message = Column(Text, nullable=False)
