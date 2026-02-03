@@ -139,6 +139,31 @@ class SessionManager:
 
         return len(expired_items)
 
+    async def cleanup_all(self) -> int:
+        """Remove and disconnect all sessions.
+
+        Called during application shutdown.
+
+        Returns:
+            Number of sessions removed
+        """
+        all_items: list[tuple[str, ClaudeSDKClient]] = []
+        async with self._lock:
+            for sid, (client, _created_at, _user_id) in list(self._clients.items()):
+                all_items.append((sid, client))
+            self._clients.clear()
+
+        for sid, client in all_items:
+            try:
+                await client.disconnect()
+            except Exception:
+                logger.debug("Failed to disconnect session %s during cleanup", sid, exc_info=True)
+
+        if all_items:
+            logger.info("Cleaned up all %s assisted flow sessions", len(all_items))
+
+        return len(all_items)
+
     @property
     def active_session_count(self) -> int:
         """Return the number of active sessions."""

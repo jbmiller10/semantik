@@ -1,7 +1,7 @@
 """Tests for assisted flow session manager."""
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -66,3 +66,57 @@ class TestSessionManager:
         from webui.services.assisted_flow.session_manager import session_manager
 
         assert session_manager is not None
+
+    @pytest.mark.asyncio()
+    async def test_cleanup_all_disconnects_all_sessions(self) -> None:
+        """cleanup_all disconnects and removes all sessions."""
+        from webui.services.assisted_flow.session_manager import SessionManager
+
+        manager = SessionManager()
+        mock_client1 = MagicMock()
+        mock_client1.disconnect = AsyncMock()
+        mock_client2 = MagicMock()
+        mock_client2.disconnect = AsyncMock()
+
+        await manager.store_client("session-1", mock_client1, user_id=1)
+        await manager.store_client("session-2", mock_client2, user_id=2)
+
+        assert manager.active_session_count == 2
+
+        removed_count = await manager.cleanup_all()
+
+        assert removed_count == 2
+        assert manager.active_session_count == 0
+        mock_client1.disconnect.assert_called_once()
+        mock_client2.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_cleanup_all_handles_disconnect_errors(self) -> None:
+        """cleanup_all continues even if a disconnect fails."""
+        from webui.services.assisted_flow.session_manager import SessionManager
+
+        manager = SessionManager()
+        mock_client1 = MagicMock()
+        mock_client1.disconnect = AsyncMock(side_effect=RuntimeError("Disconnect failed"))
+        mock_client2 = MagicMock()
+        mock_client2.disconnect = AsyncMock()
+
+        await manager.store_client("session-1", mock_client1, user_id=1)
+        await manager.store_client("session-2", mock_client2, user_id=2)
+
+        # Should not raise, and both clients should be cleared
+        removed_count = await manager.cleanup_all()
+
+        assert removed_count == 2
+        assert manager.active_session_count == 0
+
+    @pytest.mark.asyncio()
+    async def test_cleanup_all_returns_zero_when_empty(self) -> None:
+        """cleanup_all returns zero when no sessions exist."""
+        from webui.services.assisted_flow.session_manager import SessionManager
+
+        manager = SessionManager()
+
+        removed_count = await manager.cleanup_all()
+
+        assert removed_count == 0
