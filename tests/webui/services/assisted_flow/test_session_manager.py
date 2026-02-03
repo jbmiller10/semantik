@@ -1,7 +1,6 @@
 """Tests for assisted flow session manager."""
 
 import asyncio
-from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +9,7 @@ import pytest
 class TestSessionManager:
     """Test SessionManager class."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_store_and_get_client(self) -> None:
         """Can store and retrieve a client."""
         from webui.services.assisted_flow.session_manager import SessionManager
@@ -23,7 +22,7 @@ class TestSessionManager:
 
         assert retrieved is mock_client
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_nonexistent_client_returns_none(self) -> None:
         """Getting nonexistent client returns None."""
         from webui.services.assisted_flow.session_manager import SessionManager
@@ -33,7 +32,7 @@ class TestSessionManager:
 
         assert retrieved is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_remove_client(self) -> None:
         """Can remove a client."""
         from webui.services.assisted_flow.session_manager import SessionManager
@@ -47,7 +46,7 @@ class TestSessionManager:
 
         assert retrieved is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_expired_client_returns_none(self) -> None:
         """Expired clients are not returned."""
         from webui.services.assisted_flow.session_manager import SessionManager
@@ -61,7 +60,7 @@ class TestSessionManager:
 
         assert retrieved is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_singleton_instance(self) -> None:
         """Module provides singleton instance."""
         from webui.services.assisted_flow.session_manager import session_manager

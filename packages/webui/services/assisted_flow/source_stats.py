@@ -72,7 +72,8 @@ async def get_source_stats(
 
     # Redact any secrets from config
     safe_config = {
-        k: v for k, v in (source.source_config or {}).items()
+        k: v
+        for k, v in (source.source_config or {}).items()
         if "password" not in k.lower()
         and "secret" not in k.lower()
         and "token" not in k.lower()

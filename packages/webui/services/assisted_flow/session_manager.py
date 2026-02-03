@@ -92,10 +92,7 @@ class SessionManager:
         """
         async with self._lock:
             now = datetime.now(UTC)
-            expired = [
-                sid for sid, (_, created_at) in self._clients.items()
-                if now - created_at > self._ttl
-            ]
+            expired = [sid for sid, (_, created_at) in self._clients.items() if now - created_at > self._ttl]
             for sid in expired:
                 del self._clients[sid]
 

@@ -4,8 +4,9 @@ These tests verify the full flow from start to apply works end-to-end,
 with mocked SDK client to avoid requiring Claude Code CLI.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from webui.services.assisted_flow.context import ToolContext
 from webui.services.assisted_flow.prompts import SYSTEM_PROMPT, build_initial_prompt
@@ -20,13 +21,15 @@ class TestAssistedFlowIntegration:
     def test_full_module_imports(self) -> None:
         """All assisted flow modules can be imported."""
         # These imports verify the module structure is correct
-        from webui.services.assisted_flow import context  # noqa: F401
-        from webui.services.assisted_flow import prompts  # noqa: F401
-        from webui.services.assisted_flow import server  # noqa: F401
-        from webui.services.assisted_flow import session_manager  # noqa: F401
-        from webui.services.assisted_flow import subagents  # noqa: F401
-        from webui.services.assisted_flow import source_stats  # noqa: F401
-        from webui.services.assisted_flow import sdk_service  # noqa: F401
+        from webui.services.assisted_flow import (
+            context,  # noqa: F401
+            prompts,  # noqa: F401
+            sdk_service,  # noqa: F401
+            server,  # noqa: F401
+            session_manager,  # noqa: F401
+            source_stats,  # noqa: F401
+            subagents,  # noqa: F401
+        )
 
     def test_context_creation_and_mutation(self) -> None:
         """ToolContext can be created and mutated during session."""
@@ -104,7 +107,7 @@ class TestAssistedFlowIntegration:
         assert agents["explorer"].prompt
         assert agents["validator"].prompt
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_session_manager_lifecycle(self) -> None:
         """Session manager handles full lifecycle correctly."""
         manager = SessionManager(ttl_seconds=60)
@@ -124,7 +127,7 @@ class TestAssistedFlowIntegration:
         retrieved = await manager.get_client("test_session")
         assert retrieved is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_sdk_service_error_handling(self) -> None:
         """SDK service properly wraps SDK errors."""
         from claude_agent_sdk import CLINotFoundError
@@ -140,11 +143,9 @@ class TestAssistedFlowIntegration:
             "source_path": "/test",
         }
 
-        with patch(
-            "webui.services.assisted_flow.sdk_service.ClaudeSDKClient"
-        ) as MockClient:
+        with patch("webui.services.assisted_flow.sdk_service.ClaudeSDKClient") as mock_client:
             # Simulate CLI not found
-            MockClient.side_effect = CLINotFoundError("Claude Code CLI not found")
+            mock_client.side_effect = CLINotFoundError("Claude Code CLI not found")
 
             with pytest.raises(SDKNotAvailableError):
                 await create_sdk_session(
@@ -158,7 +159,7 @@ class TestAssistedFlowIntegration:
 class TestToolExecution:
     """Test individual tool execution."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_context(self) -> ToolContext:
         """Create a mock tool context."""
         return ToolContext(
@@ -184,9 +185,7 @@ class TestToolExecution:
         assert mock_context.pipeline_state == pipeline
         assert len(mock_context.pipeline_state["nodes"]) == 2
 
-    def test_apply_pipeline_requires_built_pipeline(
-        self, mock_context: ToolContext
-    ) -> None:
+    def test_apply_pipeline_requires_built_pipeline(self, mock_context: ToolContext) -> None:
         """apply_pipeline should check for existing pipeline."""
         # No pipeline state - would fail
         assert mock_context.pipeline_state is None

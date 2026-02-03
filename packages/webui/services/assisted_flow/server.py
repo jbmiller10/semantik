@@ -87,11 +87,13 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                 "content": [
                     {
                         "type": "text",
-                        "text": json.dumps({
-                            "plugins": plugins,
-                            "count": len(plugins),
-                            "filter": plugin_type,
-                        }),
+                        "text": json.dumps(
+                            {
+                                "plugins": plugins,
+                                "count": len(plugins),
+                                "filter": plugin_type,
+                            }
+                        ),
                     }
                 ]
             }
@@ -125,10 +127,12 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps({
-                                "found": False,
-                                "error": f"Plugin '{plugin_id}' not found",
-                            }),
+                            "text": json.dumps(
+                                {
+                                    "found": False,
+                                    "error": f"Plugin '{plugin_id}' not found",
+                                }
+                            ),
                         }
                     ]
                 }
@@ -214,10 +218,12 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": f"Unknown plugins: {', '.join(missing_plugins)}",
-                            }),
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": f"Unknown plugins: {', '.join(missing_plugins)}",
+                                }
+                            ),
                         }
                     ]
                 }
@@ -235,12 +241,14 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                 "content": [
                     {
                         "type": "text",
-                        "text": json.dumps({
-                            "success": True,
-                            "pipeline": pipeline,
-                            "node_count": len(nodes),
-                            "edge_count": len(edges),
-                        }),
+                        "text": json.dumps(
+                            {
+                                "success": True,
+                                "pipeline": pipeline,
+                                "node_count": len(nodes),
+                                "edge_count": len(edges),
+                            }
+                        ),
                     }
                 ]
             }
@@ -280,10 +288,12 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": "collection_name is required",
-                            }),
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": "collection_name is required",
+                                }
+                            ),
                         }
                     ]
                 }
@@ -294,10 +304,12 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": "No pipeline configured. Use build_pipeline first.",
-                            }),
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": "No pipeline configured. Use build_pipeline first.",
+                                }
+                            ),
                         }
                     ]
                 }
@@ -315,14 +327,13 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                         "content": [
                             {
                                 "type": "text",
-                                "text": json.dumps({
-                                    "success": False,
-                                    "error": "Pipeline has validation errors",
-                                    "validation_errors": [
-                                        {"rule": e.rule, "message": e.message}
-                                        for e in errors
-                                    ],
-                                }),
+                                "text": json.dumps(
+                                    {
+                                        "success": False,
+                                        "error": "Pipeline has validation errors",
+                                        "validation_errors": [{"rule": e.rule, "message": e.message} for e in errors],
+                                    }
+                                ),
                             }
                         ]
                     }
@@ -331,10 +342,12 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": f"Invalid pipeline configuration: {e}",
-                            }),
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": f"Invalid pipeline configuration: {e}",
+                                }
+                            ),
                         }
                     ]
                 }
@@ -351,13 +364,15 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                 "content": [
                     {
                         "type": "text",
-                        "text": json.dumps({
-                            "success": True,
-                            "message": f"Pipeline validated and ready to create collection '{collection_name}'",
-                            "collection_name": collection_name,
-                            "pipeline_node_count": len(ctx.pipeline_state.get("nodes", [])),
-                            "pipeline_edge_count": len(ctx.pipeline_state.get("edges", [])),
-                        }),
+                        "text": json.dumps(
+                            {
+                                "success": True,
+                                "message": f"Pipeline validated and ready to create collection '{collection_name}'",
+                                "collection_name": collection_name,
+                                "pipeline_node_count": len(ctx.pipeline_state.get("nodes", [])),
+                                "pipeline_edge_count": len(ctx.pipeline_state.get("edges", [])),
+                            }
+                        ),
                     }
                 ]
             }

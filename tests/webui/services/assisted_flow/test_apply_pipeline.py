@@ -1,13 +1,14 @@
 """Tests for apply_pipeline tool."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 class TestApplyPipelineTool:
     """Test apply_pipeline tool."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_context(self):
         """Create mock context with pipeline state."""
         from webui.services.assisted_flow.context import ToolContext

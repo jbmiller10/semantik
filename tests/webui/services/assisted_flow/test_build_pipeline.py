@@ -1,6 +1,5 @@
 """Tests for build_pipeline tool."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,7 +10,7 @@ from webui.services.assisted_flow.context import ToolContext
 class TestBuildPipelineTool:
     """Test build_pipeline tool."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_context(self) -> ToolContext:
         """Create mock context with pipeline state."""
         return ToolContext(
@@ -34,7 +33,7 @@ class TestBuildPipelineTool:
         assert server is not None
         assert server["name"] == "semantik-assisted-flow"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_pipeline_validates_plugins(self, mock_context: ToolContext) -> None:
         """build_pipeline validates that plugins exist."""
         from webui.services.assisted_flow.server import create_mcp_server

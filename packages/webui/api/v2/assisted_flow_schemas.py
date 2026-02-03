@@ -11,9 +11,7 @@ class InlineSourceConfig(BaseModel):
     """Configuration for a new source to be created with the session."""
 
     source_type: str = Field(..., description="Type of source (directory, git, imap)")
-    source_config: dict[str, Any] = Field(
-        default_factory=dict, description="Source-specific configuration"
-    )
+    source_config: dict[str, Any] = Field(default_factory=dict, description="Source-specific configuration")
 
 
 class StartFlowRequest(BaseModel):
@@ -24,18 +22,12 @@ class StartFlowRequest(BaseModel):
     - inline_source: Configure a new source (created when pipeline is applied)
     """
 
-    source_id: int | None = Field(
-        default=None, description="Integer ID of an existing collection source"
-    )
-    inline_source: InlineSourceConfig | None = Field(
-        default=None, description="Configuration for a new source"
-    )
-    secrets: dict[str, str] | None = Field(
-        default=None, description="Secrets for inline_source (passwords, tokens)"
-    )
+    source_id: int | None = Field(default=None, description="Integer ID of an existing collection source")
+    inline_source: InlineSourceConfig | None = Field(default=None, description="Configuration for a new source")
+    secrets: dict[str, str] | None = Field(default=None, description="Secrets for inline_source (passwords, tokens)")
 
     @model_validator(mode="after")
-    def validate_source(self) -> "StartFlowRequest":
+    def validate_source(self) -> StartFlowRequest:
         """Validate that exactly one of source_id or inline_source is provided."""
         if self.source_id is not None and self.inline_source is not None:
             raise ValueError("Cannot specify both source_id and inline_source")

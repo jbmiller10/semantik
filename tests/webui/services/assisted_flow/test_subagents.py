@@ -1,7 +1,5 @@
 """Tests for assisted flow subagent definitions."""
 
-import pytest
-
 
 class TestExplorerSubagent:
     """Test Explorer subagent definition."""

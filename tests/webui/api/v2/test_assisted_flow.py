@@ -1,15 +1,15 @@
 """Tests for assisted flow API endpoints."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from httpx import AsyncClient
 
 
 class TestStartAssistedFlow:
     """Test POST /api/v2/assisted-flow/start endpoint."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_start_returns_session_id(
         self,
         api_client: AsyncClient,
@@ -40,7 +40,7 @@ class TestStartAssistedFlow:
         assert "session_id" in data
         assert data["source_name"] == "Test Source"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_start_source_not_found(
         self,
         api_client: AsyncClient,
@@ -55,9 +55,7 @@ class TestStartAssistedFlow:
             "webui.api.v2.assisted_flow.get_source_stats",
             new_callable=AsyncMock,
         ) as mock_get_stats:
-            mock_get_stats.side_effect = EntityNotFoundError(
-                "collection_source", str(source_id)
-            )
+            mock_get_stats.side_effect = EntityNotFoundError("collection_source", str(source_id))
 
             response = await api_client.post(
                 "/api/v2/assisted-flow/start",
@@ -73,7 +71,7 @@ class TestStartAssistedFlow:
 class TestSendMessageStream:
     """Test POST /api/v2/assisted-flow/{session_id}/messages/stream endpoint."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_message_session_not_found(
         self,
         api_client: AsyncClient,
@@ -94,7 +92,7 @@ class TestSendMessageStream:
 
         assert response.status_code == 404
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_message_streams_response(
         self,
         api_client: AsyncClient,

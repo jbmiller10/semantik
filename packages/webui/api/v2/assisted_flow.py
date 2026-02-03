@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,6 +29,8 @@ from webui.services.assisted_flow.sdk_service import (
 from webui.services.assisted_flow.source_stats import get_source_stats
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ router = APIRouter(prefix="/api/v2/assisted-flow", tags=["assisted-flow"])
 async def start_assisted_flow(
     request: StartFlowRequest,
     db: AsyncSession = Depends(get_db),
-    user: dict[str, Any] = Depends(get_current_user),
+    _user: dict[str, Any] = Depends(get_current_user),
 ) -> StartFlowResponse:
     """Start a new assisted flow session.
 
@@ -81,9 +82,7 @@ async def start_assisted_flow(
             if inline.source_type == "directory":
                 source_name = str(config.get("path", "New Directory Source"))
             elif inline.source_type == "git":
-                source_name = str(
-                    config.get("repo_url", config.get("repository_url", "New Git Source"))
-                )
+                source_name = str(config.get("repo_url", config.get("repository_url", "New Git Source")))
             elif inline.source_type == "imap":
                 username = str(config.get("username", ""))
                 host = str(config.get("host", ""))
@@ -106,7 +105,7 @@ async def start_assisted_flow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post(
@@ -120,7 +119,7 @@ async def start_assisted_flow(
 async def send_message_stream(
     session_id: str,
     request: SendMessageRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
 ) -> StreamingResponse:
     """Send a message and stream the agent's response via SSE.
 
@@ -175,18 +174,22 @@ async def send_message_stream(
 
         except SDKNotAvailableError as e:
             logger.error(f"SDK not available: {e}")
-            error_data = json.dumps({
-                "message": "Claude Code CLI is not installed",
-                "code": "sdk_not_available",
-            })
+            error_data = json.dumps(
+                {
+                    "message": "Claude Code CLI is not installed",
+                    "code": "sdk_not_available",
+                }
+            )
             yield f"event: error\ndata: {error_data}\n\n"
 
         except SDKSessionError as e:
             logger.error(f"SDK session error: {e}")
-            error_data = json.dumps({
-                "message": str(e),
-                "code": "session_error",
-            })
+            error_data = json.dumps(
+                {
+                    "message": str(e),
+                    "code": "session_error",
+                }
+            )
             yield f"event: error\ndata: {error_data}\n\n"
 
         except Exception as e:
