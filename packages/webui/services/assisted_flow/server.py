@@ -32,6 +32,66 @@ def _error_result(message: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": json.dumps({"success": False, "error": message})}]}
 
 
+async def _get_connector_from_context(
+    ctx: ToolContext,
+) -> tuple[BaseConnector | None, dict[str, Any] | str, int | None, str | None]:
+    """Get a connector from context, supporting both existing sources and inline sources.
+
+    For existing sources (ctx.source_id is set), loads the source from the database
+    and creates a connector from its config.
+
+    For inline sources (ctx.inline_source_config is set), creates a connector
+    directly from the inline config.
+
+    Args:
+        ctx: Tool context containing source_id or inline_source_config
+
+    Returns:
+        On success: (connector, config_dict, source_id_or_none, source_type)
+        On failure: (None, error_message, None, None)
+
+    Note:
+        For inline sources, source_id is None since connectors don't require it
+        for enumeration (source_id is only used for DB tracking).
+    """
+    # Case 1: Existing source - load from database
+    if ctx.source_id is not None:
+        sessionmaker = await ensure_async_sessionmaker()
+        async with sessionmaker() as session:
+            repo = CollectionSourceRepository(session)
+            source = await repo.get_by_id(ctx.source_id)
+
+            if not source:
+                return (None, f"Source {ctx.source_id} not found", None, None)
+
+            connector: BaseConnector = ConnectorFactory.get_connector(
+                source.source_type,
+                source.source_config or {},
+            )
+            return (connector, source.source_config or {}, source.id, source.source_type)
+
+    # Case 2: Inline source - create from inline config
+    if ctx.inline_source_config is not None:
+        # Extract source_type and remove it from config dict
+        source_type = ctx.inline_source_config.get("source_type")
+        if not source_type:
+            return (None, "inline_source_config missing 'source_type' field", None, None)
+
+        # Build config without source_type key
+        config = {k: v for k, v in ctx.inline_source_config.items() if k != "source_type"}
+
+        # Merge in inline secrets if present
+        if ctx.inline_secrets:
+            config = {**config, **ctx.inline_secrets}
+
+        connector = ConnectorFactory.get_connector(source_type, config)
+        # Inline sources don't have a DB source_id yet - connectors don't need it for enumeration
+        return (connector, config, None, source_type)
+
+    # Neither source_id nor inline_source_config is set
+    return (None, "No source configured for this session", None, None)
+
+
 def _get_parser_recommendations(extension_counts: dict[str, int]) -> dict[str, str]:
     """Map file extensions to recommended parser plugin IDs.
 
@@ -562,66 +622,54 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
         if filter_extension and not filter_extension.startswith("."):
             filter_extension = f".{filter_extension}"
 
-        if ctx.source_id is None:
-            return _error_result("No source configured for this session")
-
         try:
-            # Get source from database
-            sessionmaker = await ensure_async_sessionmaker()
-            async with sessionmaker() as session:
-                repo = CollectionSourceRepository(session)
-                source = await repo.get_by_id(ctx.source_id)
+            # Get connector from context (handles both existing and inline sources)
+            connector, config_or_error, source_id, source_type = await _get_connector_from_context(ctx)
+            if connector is None:
+                # config_or_error is the error message when connector is None
+                return _error_result(str(config_or_error))
 
-                if not source:
-                    return _error_result(f"Source {ctx.source_id} not found")
+            # Authenticate
+            if not await connector.authenticate():
+                return _error_result("Failed to authenticate with source")
 
-                # Create connector
-                connector: BaseConnector = ConnectorFactory.get_connector(
-                    source.source_type,
-                    source.source_config or {},
+            # Enumerate files
+            sampled_files: list[dict[str, Any]] = []
+            async for file_ref in connector.enumerate(source_id):
+                # Apply extension filter if specified
+                if filter_extension and file_ref.extension != filter_extension.lower():
+                    continue
+
+                sampled_files.append(
+                    {
+                        "uri": file_ref.uri,
+                        "filename": file_ref.filename,
+                        "extension": file_ref.extension,
+                        "mime_type": file_ref.mime_type,
+                        "size_bytes": file_ref.size_bytes,
+                        "content_type": file_ref.content_type,
+                    }
                 )
 
-                # Authenticate
-                if not await connector.authenticate():
-                    return _error_result("Failed to authenticate with source")
+                if len(sampled_files) >= count:
+                    break
 
-                # Enumerate files
-                sampled_files: list[dict[str, Any]] = []
-                async for file_ref in connector.enumerate(source.id):
-                    # Apply extension filter if specified
-                    if filter_extension and file_ref.extension != filter_extension.lower():
-                        continue
-
-                    sampled_files.append(
-                        {
-                            "uri": file_ref.uri,
-                            "filename": file_ref.filename,
-                            "extension": file_ref.extension,
-                            "mime_type": file_ref.mime_type,
-                            "size_bytes": file_ref.size_bytes,
-                            "content_type": file_ref.content_type,
-                        }
-                    )
-
-                    if len(sampled_files) >= count:
-                        break
-
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": True,
-                                    "files": sampled_files,
-                                    "count": len(sampled_files),
-                                    "filter_extension": filter_extension,
-                                    "source_type": source.source_type,
-                                }
-                            ),
-                        }
-                    ]
-                }
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "success": True,
+                                "files": sampled_files,
+                                "count": len(sampled_files),
+                                "filter_extension": filter_extension,
+                                "source_type": source_type,
+                            }
+                        ),
+                    }
+                ]
+            }
 
         except Exception as e:
             logger.error(f"sample_files failed: {e}", exc_info=True)
@@ -648,73 +696,60 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
         if not file_path:
             return _error_result("file_path is required")
 
-        if ctx.source_id is None:
-            return _error_result("No source configured for this session")
-
         try:
-            # Get source from database
-            sessionmaker = await ensure_async_sessionmaker()
-            async with sessionmaker() as session:
-                repo = CollectionSourceRepository(session)
-                source = await repo.get_by_id(ctx.source_id)
+            # Get connector from context (handles both existing and inline sources)
+            connector, config_or_error, source_id, _source_type = await _get_connector_from_context(ctx)
+            if connector is None:
+                return _error_result(str(config_or_error))
 
-                if not source:
-                    return _error_result(f"Source {ctx.source_id} not found")
+            # Authenticate
+            if not await connector.authenticate():
+                return _error_result("Failed to authenticate with source")
 
-                # Create connector
-                connector: BaseConnector = ConnectorFactory.get_connector(
-                    source.source_type,
-                    source.source_config or {},
-                )
+            # Find the matching file reference
+            target_file: FileReference | None = None
+            async for file_ref in connector.enumerate(source_id):
+                if file_ref.uri == file_path:
+                    target_file = file_ref
+                    break
 
-                # Authenticate
-                if not await connector.authenticate():
-                    return _error_result("Failed to authenticate with source")
+            if not target_file:
+                return _error_result(f"File not found: {file_path}")
 
-                # Find the matching file reference
-                target_file: FileReference | None = None
-                async for file_ref in connector.enumerate(source.id):
-                    if file_ref.uri == file_path:
-                        target_file = file_ref
-                        break
+            # Load content
+            content_bytes = await connector.load_content(target_file)
 
-                if not target_file:
-                    return _error_result(f"File not found: {file_path}")
+            # Decode to text (try UTF-8, fall back to latin-1)
+            try:
+                content_text = content_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content_text = content_bytes.decode("latin-1")
 
-                # Load content
-                content_bytes = await connector.load_content(target_file)
+            # Truncate to 2000 chars
+            max_chars = 2000
+            truncated = len(content_text) > max_chars
+            preview = content_text[:max_chars]
 
-                # Decode to text (try UTF-8, fall back to latin-1)
-                try:
-                    content_text = content_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    content_text = content_bytes.decode("latin-1")
-
-                # Truncate to 2000 chars
-                max_chars = 2000
-                truncated = len(content_text) > max_chars
-                preview = content_text[:max_chars]
-
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": True,
-                                    "uri": target_file.uri,
-                                    "filename": target_file.filename,
-                                    "mime_type": target_file.mime_type,
-                                    "size_bytes": target_file.size_bytes,
-                                    "preview": preview,
-                                    "truncated": truncated,
-                                    "preview_length": len(preview),
-                                    "total_length": len(content_text),
-                                }
-                            ),
-                        }
-                    ]
-                }
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "success": True,
+                                "uri": target_file.uri,
+                                "filename": target_file.filename,
+                                "mime_type": target_file.mime_type,
+                                "size_bytes": target_file.size_bytes,
+                                "preview": preview,
+                                "truncated": truncated,
+                                "preview_length": len(preview),
+                                "total_length": len(content_text),
+                            }
+                        ),
+                    }
+                ]
+            }
 
         except Exception as e:
             logger.error(f"preview_content failed: {e}", exc_info=True)
@@ -740,91 +775,78 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
         """Detect file patterns and recommend parsers."""
         sample_count = min(args.get("sample_count", 20), 100)
 
-        if ctx.source_id is None:
-            return _error_result("No source configured for this session")
-
         try:
-            # Get source from database
-            sessionmaker = await ensure_async_sessionmaker()
-            async with sessionmaker() as session:
-                repo = CollectionSourceRepository(session)
-                source = await repo.get_by_id(ctx.source_id)
+            # Get connector from context (handles both existing and inline sources)
+            connector, config_or_error, source_id, source_type = await _get_connector_from_context(ctx)
+            if connector is None:
+                return _error_result(str(config_or_error))
 
-                if not source:
-                    return _error_result(f"Source {ctx.source_id} not found")
+            # Authenticate
+            if not await connector.authenticate():
+                return _error_result("Failed to authenticate with source")
 
-                # Create connector
-                connector: BaseConnector = ConnectorFactory.get_connector(
-                    source.source_type,
-                    source.source_config or {},
-                )
+            # Collect file statistics
+            extension_counts: dict[str, int] = {}
+            mime_type_counts: dict[str, int] = {}
+            sizes: list[int] = []
+            content_types: dict[str, int] = {}
+            files_analyzed = 0
 
-                # Authenticate
-                if not await connector.authenticate():
-                    return _error_result("Failed to authenticate with source")
+            async for file_ref in connector.enumerate(source_id):
+                files_analyzed += 1
 
-                # Collect file statistics
-                extension_counts: dict[str, int] = {}
-                mime_type_counts: dict[str, int] = {}
-                sizes: list[int] = []
-                content_types: dict[str, int] = {}
-                files_analyzed = 0
+                # Track extensions
+                ext = file_ref.extension or "(no extension)"
+                extension_counts[ext] = extension_counts.get(ext, 0) + 1
 
-                async for file_ref in connector.enumerate(source.id):
-                    files_analyzed += 1
+                # Track MIME types
+                mime = file_ref.mime_type or "(unknown)"
+                mime_type_counts[mime] = mime_type_counts.get(mime, 0) + 1
 
-                    # Track extensions
-                    ext = file_ref.extension or "(no extension)"
-                    extension_counts[ext] = extension_counts.get(ext, 0) + 1
+                # Track sizes
+                sizes.append(file_ref.size_bytes)
 
-                    # Track MIME types
-                    mime = file_ref.mime_type or "(unknown)"
-                    mime_type_counts[mime] = mime_type_counts.get(mime, 0) + 1
+                # Track content types
+                ct = file_ref.content_type
+                content_types[ct] = content_types.get(ct, 0) + 1
 
-                    # Track sizes
-                    sizes.append(file_ref.size_bytes)
+                if files_analyzed >= sample_count:
+                    break
 
-                    # Track content types
-                    ct = file_ref.content_type
-                    content_types[ct] = content_types.get(ct, 0) + 1
+            # Compute size statistics
+            size_stats = {
+                "min_bytes": min(sizes) if sizes else 0,
+                "max_bytes": max(sizes) if sizes else 0,
+                "avg_bytes": sum(sizes) // len(sizes) if sizes else 0,
+                "total_bytes": sum(sizes),
+            }
 
-                    if files_analyzed >= sample_count:
-                        break
+            # Get parser recommendations
+            parser_recommendations = _get_parser_recommendations(extension_counts)
 
-                # Compute size statistics
-                size_stats = {
-                    "min_bytes": min(sizes) if sizes else 0,
-                    "max_bytes": max(sizes) if sizes else 0,
-                    "avg_bytes": sum(sizes) // len(sizes) if sizes else 0,
-                    "total_bytes": sum(sizes),
-                }
+            # Sort counts by frequency
+            sorted_extensions = sorted(extension_counts.items(), key=lambda x: -x[1])
+            sorted_mime_types = sorted(mime_type_counts.items(), key=lambda x: -x[1])
 
-                # Get parser recommendations
-                parser_recommendations = _get_parser_recommendations(extension_counts)
-
-                # Sort counts by frequency
-                sorted_extensions = sorted(extension_counts.items(), key=lambda x: -x[1])
-                sorted_mime_types = sorted(mime_type_counts.items(), key=lambda x: -x[1])
-
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(
-                                {
-                                    "success": True,
-                                    "files_analyzed": files_analyzed,
-                                    "extension_counts": dict(sorted_extensions),
-                                    "mime_type_counts": dict(sorted_mime_types),
-                                    "content_types": content_types,
-                                    "size_stats": size_stats,
-                                    "parser_recommendations": parser_recommendations,
-                                    "source_type": source.source_type,
-                                }
-                            ),
-                        }
-                    ]
-                }
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "success": True,
+                                "files_analyzed": files_analyzed,
+                                "extension_counts": dict(sorted_extensions),
+                                "mime_type_counts": dict(sorted_mime_types),
+                                "content_types": content_types,
+                                "size_stats": size_stats,
+                                "parser_recommendations": parser_recommendations,
+                                "source_type": source_type,
+                            }
+                        ),
+                    }
+                ]
+            }
 
         except Exception as e:
             logger.error(f"detect_patterns failed: {e}", exc_info=True)
