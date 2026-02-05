@@ -244,17 +244,7 @@ class WebuiConfig(BaseConfig):
     @property
     def should_enforce_document_roots(self) -> bool:
         """Return True when document access must be constrained to known roots."""
-
-        if self.document_root_path is not None:
-            return True
-
         override_roots = getattr(self, "_document_allowed_roots", None)
-        if override_roots:
-            return True
-
-        if self.DOCUMENT_ALLOWED_ROOTS:
-            return True
-
-        default_mounts = getattr(self, "_default_document_mounts", None)
-        candidates = default_mounts if default_mounts is not None else (Path("/mnt/docs"),)
-        return any(isinstance(mount, Path) and mount.exists() for mount in candidates)
+        if override_roots is not None:
+            return len(override_roots) > 0
+        return True

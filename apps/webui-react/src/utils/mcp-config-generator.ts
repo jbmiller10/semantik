@@ -165,9 +165,10 @@ function generateOpencodeConfig(config: MCPClientConfig): string {
  */
 function generateCodexConfig(config: MCPClientConfig): string {
   const lines: string[] = [];
+  const sectionName = validateTomlSectionName(config.server_name);
 
   // Server section header
-  lines.push(`[mcp_servers.${config.server_name}]`);
+  lines.push(`[mcp_servers.${sectionName}]`);
   lines.push(`command = ${tomlString(config.command)}`);
   lines.push(`args = ${tomlStringArray(config.args)}`);
 
@@ -175,7 +176,7 @@ function generateCodexConfig(config: MCPClientConfig): string {
   const envKeys = Object.keys(config.env);
   if (envKeys.length > 0) {
     lines.push('');
-    lines.push(`[mcp_servers.${config.server_name}.env]`);
+    lines.push(`[mcp_servers.${sectionName}.env]`);
     for (const key of envKeys) {
       lines.push(`${key} = ${tomlString(config.env[key])}`);
     }
@@ -211,12 +212,13 @@ function generateClaudeCodeConfig(config: MCPClientConfig): string {
  * Escape a string for shell usage.
  */
 function shellEscape(value: string): string {
-  // If the value contains special characters, wrap in quotes
-  if (/[^a-zA-Z0-9_\-.:/@]/.test(value)) {
-    // Escape any existing quotes and wrap in double quotes
-    return `"${value.replace(/"/g, '\\"')}"`;
+  if (!value) {
+    return "''";
   }
-  return value;
+  if (/^[a-zA-Z0-9_@%+=:,./-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
 /**
@@ -234,6 +236,16 @@ function tomlString(value: string): string {
 function tomlStringArray(values: string[]): string {
   const items = values.map(tomlString).join(', ');
   return `[${items}]`;
+}
+
+/**
+ * Validate TOML section names used for table headers.
+ */
+function validateTomlSectionName(name: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+    throw new Error('Invalid MCP server name for TOML output');
+  }
+  return name;
 }
 
 /**

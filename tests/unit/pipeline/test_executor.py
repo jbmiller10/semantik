@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from shared.database.models import DocumentStatus
-from shared.pipeline.executor import PipelineExecutor
+from shared.pipeline.executor import PipelineExecutor, _get_internal_api_key
 from shared.pipeline.executor_types import ExecutionMode
 from shared.pipeline.types import FileReference, NodeType, PipelineDAG, PipelineEdge, PipelineNode
 
@@ -84,6 +84,19 @@ class TestPipelineExecutorInit:
                 collection_id="test-collection",
                 session=mock_session,
             )
+
+
+class TestInternalApiKeyHelpers:
+    """Tests for internal API key resolution helpers."""
+
+    def test_get_internal_api_key_returns_value(self) -> None:
+        with patch("shared.config.settings.INTERNAL_API_KEY", "test-key"):
+            assert _get_internal_api_key() == "test-key"
+
+    def test_get_internal_api_key_raises_when_missing(self) -> None:
+        with patch("shared.config.settings.INTERNAL_API_KEY", None):
+            with pytest.raises(RuntimeError, match="Internal API key is not configured"):
+                _get_internal_api_key()
 
 
 class TestPipelineExecutorExecute:

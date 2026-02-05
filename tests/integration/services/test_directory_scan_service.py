@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from shared.config import settings
 from webui.api.schemas import DirectoryScanProgress
 from webui.services.directory_scan_service import MAX_FILE_SIZE, DirectoryScanService
 
@@ -17,6 +18,11 @@ if TYPE_CHECKING:
 @pytest.mark.asyncio()
 class TestDirectoryScanServiceIntegration:
     """Exercise DirectoryScanService end-to-end with filesystem interactions."""
+
+    @pytest.fixture(autouse=True)
+    def allow_test_scan_roots(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Allow scans within each test's temp directory."""
+        monkeypatch.setattr(settings, "_document_allowed_roots", (tmp_path.resolve(),), raising=False)
 
     @pytest.fixture()
     def service(self) -> DirectoryScanService:

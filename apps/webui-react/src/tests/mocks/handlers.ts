@@ -757,9 +757,9 @@ export const handlers = [
     })
   }),
 
-  http.get('*/api/v2/llm/models/refresh', ({ request }) => {
-    const url = new URL(request.url)
-    const provider = url.searchParams.get('provider')
+  http.post('*/api/v2/llm/models/refresh', async ({ request }) => {
+    const payload = (await request.json()) as { provider?: string }
+    const provider = payload.provider
 
     if (provider === 'anthropic') {
       return HttpResponse.json({

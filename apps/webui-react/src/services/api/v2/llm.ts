@@ -58,7 +58,8 @@ export const llmApi = {
    * @param apiKey API key for the provider
    */
   refreshModels: (provider: LLMProviderType, apiKey: string) =>
-    apiClient.get<AvailableModelsResponse>('/api/v2/llm/models/refresh', {
-      params: { provider, api_key: apiKey },
+    apiClient.post<AvailableModelsResponse>('/api/v2/llm/models/refresh', {
+      provider,
+      api_key: apiKey,
     }),
 };

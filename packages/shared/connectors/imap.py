@@ -29,6 +29,18 @@ DEFAULT_MAX_MESSAGES = 1000
 DEFAULT_SINCE_DAYS = 30
 
 
+def _validate_mailbox_name(mailbox: str) -> str:
+    """Validate mailbox names before passing them to IMAP commands."""
+    value = mailbox.strip()
+    if not value:
+        raise ValueError("Mailbox name cannot be empty")
+    if any(ch in value for ch in ('"', "\\", "\r", "\n")):
+        raise ValueError(f"Invalid mailbox name: {mailbox!r}")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"Invalid mailbox name: {mailbox!r}")
+    return value
+
+
 def _decode_mime_header(header: str | None) -> str:
     """Decode a MIME-encoded email header to string."""
     if not header:
@@ -331,6 +343,7 @@ class ImapConnector(BaseConnector):
             total_fetched = 0
 
             for mailbox in self.mailboxes:
+                mailbox = _validate_mailbox_name(mailbox)
                 if total_fetched >= self.max_messages:
                     break
 
@@ -367,6 +380,7 @@ class ImapConnector(BaseConnector):
         """
         if not self._connection:
             return
+        mailbox = _validate_mailbox_name(mailbox)
 
         loop = asyncio.get_running_loop()
         conn = self._connection
@@ -549,6 +563,7 @@ class ImapConnector(BaseConnector):
 
         if uid is None or not mailbox:
             raise ValueError(f"Missing uid or mailbox in metadata.source for {file_ref.uri}")
+        mailbox = _validate_mailbox_name(str(mailbox))
 
         if not self._password:
             raise ValueError("Password not set - call set_credentials() first")

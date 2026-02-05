@@ -3,6 +3,7 @@
 import inspect
 import logging
 import os
+import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
@@ -269,7 +270,7 @@ async def require_admin_or_internal_key(
         return
 
     expected_key = settings.INTERNAL_API_KEY
-    if expected_key and x_internal_api_key == expected_key:
+    if expected_key and x_internal_api_key and secrets.compare_digest(x_internal_api_key, expected_key):
         return
 
     method = request.method

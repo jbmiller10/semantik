@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 
+from shared.config import settings
 from shared.plugins.types.sparse_indexer import (
     SparseIndexerCapabilities,
     SparseIndexerPlugin,
@@ -200,7 +201,7 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
         # Build model kwargs
-        model_kwargs: dict[str, Any] = {"trust_remote_code": True}
+        model_kwargs: dict[str, Any] = {"trust_remote_code": settings.LLM_TRUST_REMOTE_CODE}
 
         if self._actual_device == "cuda":
             # Use explicit device_map (NOT "auto") for proper memory management

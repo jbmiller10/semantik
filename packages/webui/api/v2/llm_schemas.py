@@ -108,6 +108,23 @@ class AvailableModelsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class LLMModelsRefreshRequest(BaseModel):
+    """Request body for refreshing provider models from live APIs."""
+
+    provider: Literal["anthropic", "openai"]
+    api_key: str = Field(min_length=1, description="API key for the selected provider")
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "provider": "anthropic",
+                "api_key": "sk-ant-...",
+            }
+        },
+    )
+
+
 class LLMTestRequest(BaseModel):
     """Request to test API key validity."""
 
