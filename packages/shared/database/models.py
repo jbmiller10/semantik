@@ -155,6 +155,22 @@ class ProjectionRunStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ConversationStatus(str, enum.Enum):
+    """Status of an agent conversation session."""
+
+    ACTIVE = "active"
+    APPLIED = "applied"
+    ABANDONED = "abandoned"
+
+
+class UncertaintySeverity(str, enum.Enum):
+    """Severity level of conversation uncertainties."""
+
+    BLOCKING = "blocking"
+    NOTABLE = "notable"
+    INFO = "info"
+
+
 class BenchmarkStatus(str, enum.Enum):
     """Status of a benchmark."""
 
@@ -672,6 +688,112 @@ class ConnectorSecret(Base):
     source = relationship("CollectionSource", back_populates="secrets")
 
     __table_args__ = (UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),)
+
+
+class AgentConversation(Base):
+    """Agent conversation session for assisted pipeline configuration.
+
+    Stores the state of an interactive conversation with the pipeline
+    configuration assistant. Each conversation is tied to a user and
+    optionally to a source being configured.
+
+    The conversation tracks:
+    - Current pipeline configuration being built
+    - Source analysis results
+    - Any inline source configuration pending creation
+    - Conversation status (active, applied, abandoned)
+    """
+
+    __tablename__ = "agent_conversations"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(Integer, ForeignKey("collection_sources.id", ondelete="SET NULL"), nullable=True, index=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="SET NULL"), nullable=True)
+
+    # State
+    status = Column(
+        Enum(
+            ConversationStatus,
+            name="conversation_status",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=ConversationStatus.ACTIVE,
+    )  # type: ignore[var-annotated]
+    current_pipeline = Column(JSON, nullable=True)
+    source_analysis = Column(JSON, nullable=True)
+    summary = Column(Text, nullable=True)
+
+    # Inline source config for sources not yet created
+    inline_source_config = Column(JSON, nullable=True)
+
+    # Extra data for mode toggle and other features
+    extra_data = Column(JSON, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    user = relationship("User")
+    source = relationship("CollectionSource")
+    collection = relationship("Collection")
+    uncertainties = relationship("ConversationUncertainty", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ConversationUncertainty(Base):
+    """Uncertainty or issue flagged during an agent conversation.
+
+    Tracks issues that need user attention during pipeline configuration,
+    such as ambiguous file types, conflicting requirements, or missing
+    information.
+
+    Severity levels:
+    - blocking: Must be resolved before proceeding
+    - notable: Should be addressed but not blocking
+    - info: Informational, can be ignored
+    """
+
+    __tablename__ = "conversation_uncertainties"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    conversation_id = Column(
+        String,
+        ForeignKey("agent_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    severity = Column(
+        Enum(
+            UncertaintySeverity,
+            name="uncertainty_severity",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+    )  # type: ignore[var-annotated]
+    message = Column(Text, nullable=False)
+    context = Column(JSON, nullable=True)
+    resolved = Column(Boolean, nullable=False, default=False)
+    resolved_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    conversation = relationship("AgentConversation", back_populates="uncertainties")
+
+    __table_args__ = (
+        Index(
+            "ix_uncertainties_blocking_unresolved",
+            "conversation_id",
+            "severity",
+            "resolved",
+            postgresql_where=text("severity = 'blocking' AND resolved = false"),
+        ),
+    )
 
 
 class PluginConfig(Base):

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from shared.config import settings
 from shared.connectors.base import BaseConnector
+from shared.plugins.validation import validate_git_ref
 from shared.pipeline.types import FileReference
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,9 @@ class GitConnector(BaseConnector):
 
         if auth_method == "https_token" and not url.startswith(("http://", "https://")):
             raise ValueError("auth_method=https_token requires an HTTP(S) repo_url")
+
+        ref = str(self._config.get("ref", "main")).strip()
+        validate_git_ref(ref)
 
     @classmethod
     def get_config_fields(cls) -> list[dict[str, Any]]:
@@ -216,7 +220,9 @@ class GitConnector(BaseConnector):
     @property
     def ref(self) -> str:
         """Get the ref to checkout."""
-        return str(self._config.get("ref", "main"))
+        ref = str(self._config.get("ref", "main")).strip()
+        validate_git_ref(ref)
+        return ref
 
     @property
     def auth_method(self) -> str:

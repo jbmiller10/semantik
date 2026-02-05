@@ -277,6 +277,43 @@ class TestListModels:
         assert "context_window" in model
 
 
+class TestRefreshModels:
+    """Tests for POST /api/v2/llm/models/refresh endpoint."""
+
+    @pytest.mark.asyncio()
+    async def test_refresh_models_uses_post_body(self, llm_api_client):
+        client, _, _ = llm_api_client
+
+        with patch("webui.api.v2.llm_settings.AnthropicLLMProvider.list_models", new_callable=AsyncMock) as mock_list:
+            mock_list.return_value = [
+                {
+                    "id": "claude-test-model",
+                    "name": "claude-test-model",
+                    "display_name": "Claude Test Model",
+                    "provider": "anthropic",
+                    "tier_recommendation": "high",
+                    "context_window": 200000,
+                    "description": "Test model",
+                }
+            ]
+            response = await client.post(
+                "/api/v2/llm/models/refresh",
+                json={"provider": "anthropic", "api_key": "sk-ant-test-key"},
+            )
+
+        assert response.status_code == 200
+        mock_list.assert_called_once_with("sk-ant-test-key")
+        payload = response.json()
+        assert "models" in payload
+        assert any(m["id"] == "claude-test-model" for m in payload["models"])
+
+    @pytest.mark.asyncio()
+    async def test_refresh_models_get_is_not_allowed(self, llm_api_client):
+        client, _, _ = llm_api_client
+        response = await client.get("/api/v2/llm/models/refresh")
+        assert response.status_code == 405
+
+
 class TestTestApiKey:
     """Tests for POST /api/v2/llm/test endpoint."""
 

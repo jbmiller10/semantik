@@ -712,71 +712,12 @@ async def _cleanup_stale_benchmarks_async(stale_threshold_hours: int) -> dict[st
         }
 
 
-@celery_app.task(name="webui.tasks.cleanup_conversation_pending_secrets")
-def cleanup_conversation_pending_secrets(max_age_hours: int = 24) -> dict[str, Any]:
-    """Clean up encrypted pending secrets from stale or abandoned agent conversations.
-
-    This task removes _pending_secrets from inline_source_config for conversations
-    that are either ABANDONED or ACTIVE but stale (not updated within max_age_hours).
-
-    This is a defense-in-depth measure to ensure encrypted secrets don't persist
-    indefinitely in conversations that were never applied.
-
-    Args:
-        max_age_hours: Hours after which an active conversation is considered stale
-
-    Returns:
-        Dictionary with cleanup statistics:
-        {
-            "conversations_cleaned": 5,
-            "errors": []
-        }
-    """
-    tasks_ns = _tasks_namespace()
-    log = getattr(tasks_ns, "logger", logger)
-
-    stats: dict[str, Any] = {
-        "conversations_cleaned": 0,
-        "errors": [],
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
-
-    try:
-        log.info("Starting cleanup of stale conversation pending secrets (threshold: %s hours)", max_age_hours)
-
-        result = cast(dict[str, Any], resolve_awaitable_sync(_cleanup_conversation_secrets_async(max_age_hours)))
-        stats.update(result)
-
-        log.info("Conversation secrets cleanup completed: %d conversations cleaned", stats["conversations_cleaned"])
-
-        return stats
-
-    except Exception as exc:  # pragma: no cover - defensive logging
-        log.error("Conversation secrets cleanup failed: %s", exc, exc_info=True)
-        stats["errors"].append(str(exc))
-        return stats
-
-
-async def _cleanup_conversation_secrets_async(max_age_hours: int) -> dict[str, Any]:
-    """Async implementation of conversation pending secrets cleanup."""
-    from webui.services.agent.repository import AgentConversationRepository
-
-    session_factory = await _resolve_session_factory()
-    async with session_factory() as session:
-        repo = AgentConversationRepository(session)
-        cleaned = await repo.cleanup_stale_pending_secrets(max_age_hours=max_age_hours)
-        await session.commit()
-
-        return {"conversations_cleaned": cleaned}
-
-
 __all__ = [
     "cleanup_old_results",
     "cleanup_old_collections",
     "cleanup_qdrant_collections",
     "cleanup_stuck_operations",
     "cleanup_stale_benchmarks",
-    "cleanup_conversation_pending_secrets",
     "refresh_collection_chunking_stats",
     "monitor_partition_health",
 ]

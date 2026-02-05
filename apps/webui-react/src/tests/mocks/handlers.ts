@@ -757,9 +757,9 @@ export const handlers = [
     })
   }),
 
-  http.get('*/api/v2/llm/models/refresh', ({ request }) => {
-    const url = new URL(request.url)
-    const provider = url.searchParams.get('provider')
+  http.post('*/api/v2/llm/models/refresh', async ({ request }) => {
+    const payload = (await request.json()) as { provider?: string }
+    const provider = payload.provider
 
     if (provider === 'anthropic') {
       return HttpResponse.json({
@@ -1837,6 +1837,67 @@ export const handlers = [
       status: 'abandoned',
       source_id: 42,
       created_at: now,
+    })
+  }),
+
+  // =============================================================================
+  // Assisted Flow (v2) - SDK-based pipeline configuration
+  // =============================================================================
+
+  http.post('*/api/v2/assisted-flow/start', async ({ request }) => {
+    const body = await request.json() as { source_id?: number; inline_source?: { source_type: string; source_config: Record<string, unknown> } }
+
+    // Generate session ID based on source or inline config
+    let sessionId: string
+    let sourceName: string
+
+    if (body.source_id) {
+      sessionId = `session_${body.source_id}_mock123`
+      sourceName = `Source ${body.source_id}`
+    } else if (body.inline_source) {
+      sessionId = `session_inline_${body.inline_source.source_type}_mock123`
+      const config = body.inline_source.source_config
+      sourceName = (config.path as string) || (config.repo_url as string) || `New ${body.inline_source.source_type} Source`
+    } else {
+      return HttpResponse.json(
+        { detail: 'Must specify either source_id or inline_source' },
+        { status: 422 }
+      )
+    }
+
+    return HttpResponse.json({
+      session_id: sessionId,
+      source_name: sourceName,
+    })
+  }),
+
+  http.post('*/api/v2/assisted-flow/:sessionId/messages/stream', async () => {
+    // Return a simple SSE stream for testing
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send a text event
+        controller.enqueue(encoder.encode('event: text\ndata: {"type":"text","content":"Analyzing your source..."}\n\n'))
+
+        // Send a tool use event
+        controller.enqueue(encoder.encode('event: tool_use\ndata: {"type":"tool_use","tool_name":"list_plugins"}\n\n'))
+
+        // Send a tool result event
+        controller.enqueue(encoder.encode('event: tool_result\ndata: {"type":"tool_result","tool_name":"list_plugins","success":true}\n\n'))
+
+        // Send done event
+        controller.enqueue(encoder.encode('event: done\ndata: {"status":"complete"}\n\n'))
+
+        controller.close()
+      },
+    })
+
+    return new HttpResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
   }),
 

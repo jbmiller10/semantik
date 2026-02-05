@@ -86,7 +86,7 @@ apiClient.interceptors.response.use(
         }
 
         // Attempt to refresh the token
-        const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+        const response = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }),

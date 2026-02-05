@@ -3,34 +3,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AnalysisStep } from '../AnalysisStep';
 import type { PipelineDAG } from '../../../../types/pipeline';
-import type { UseAgentStreamReturn } from '../../../../hooks/useAgentStream';
-import type { QuestionEvent } from '../../../../types/agent';
 import userEvent from '@testing-library/user-event';
+import type { UseAssistedFlowStreamReturn } from '../../../../hooks/useAssistedFlowStream';
 
 const {
   mockSendMessage,
-  mockDismissQuestion,
   mockResetStream,
-  mockAnswerQuestion,
   streamState,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
-  mockDismissQuestion: vi.fn(),
   mockResetStream: vi.fn(),
-  mockAnswerQuestion: vi.fn(),
-  streamState: { current: {} as Partial<UseAgentStreamReturn> },
+  streamState: { current: {} as Partial<UseAssistedFlowStreamReturn> },
 }));
 
-// Mock useAgentStream
-vi.mock('../../../../hooks/useAgentStream', () => ({
-  useAgentStream: () => streamState.current,
-}));
-
-// Mock agent API
-vi.mock('../../../../services/api/v2/agent', () => ({
-  agentApi: {
-    answerQuestion: (...args: unknown[]) => mockAnswerQuestion(...args),
-  },
+// Mock useAssistedFlowStream
+vi.mock('../../../../hooks/useAssistedFlowStream', () => ({
+  useAssistedFlowStream: () => streamState.current,
 }));
 
 vi.mock('../../../pipeline', () => ({
@@ -59,18 +47,13 @@ describe('AnalysisStep', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     streamState.current = {
-      status: { phase: 'analyzing', message: 'Analyzing source...' },
-      activities: [],
-      pendingQuestions: [],
-      dismissQuestion: mockDismissQuestion,
       isStreaming: false,
       sendMessage: mockSendMessage,
       currentContent: '',
-      pipeline: null,
+      toolCalls: [],
       error: null,
       reset: mockResetStream,
     };
-    mockAnswerQuestion.mockResolvedValue({ success: true });
   });
 
   it('renders two-column layout', () => {
@@ -88,10 +71,12 @@ describe('AnalysisStep', () => {
   });
 
   it('renders agent thinking indicator initially', () => {
+    // Show "Analyzing..." status when streaming
+    streamState.current.isStreaming = true;
+
     render(<AnalysisStep {...defaultProps} />);
 
-    // Should show some loading/thinking state - look for the status message
-    expect(screen.getByText('Analyzing source...')).toBeInTheDocument();
+    expect(screen.getByText('Analyzing...')).toBeInTheDocument();
   });
 
   it('auto-starts analysis on mount and updates summary when content is present', async () => {
@@ -106,78 +91,41 @@ describe('AnalysisStep', () => {
     expect(onSummaryChange).toHaveBeenCalledWith('Summary text');
   });
 
-  it('converts pipeline updates into a basic DAG and calls onDagChange', async () => {
-    const onDagChange = vi.fn();
-    streamState.current.pipeline = {
-      chunking_strategy: 'semantic',
-      chunking_config: { chunk_size: 123 },
-      embedding_model: 'm1',
-    };
-
-    render(<AnalysisStep {...defaultProps} onDagChange={onDagChange} />);
-
-    await waitFor(() => {
-      expect(onDagChange).toHaveBeenCalled();
-    });
-
-    expect(onDagChange).toHaveBeenCalledWith({
-      id: 'agent-recommended',
-      version: '1',
-      nodes: [
-        { id: 'parser1', type: 'parser', plugin_id: 'text', config: {} },
-        { id: 'chunker1', type: 'chunker', plugin_id: 'semantic', config: { chunk_size: 123 } },
-        { id: 'embedder1', type: 'embedder', plugin_id: 'dense_local', config: { model: 'm1' } },
-      ],
-      edges: [
-        { from_node: '_source', to_node: 'parser1', when: null },
-        { from_node: 'parser1', to_node: 'chunker1', when: null },
-        { from_node: 'chunker1', to_node: 'embedder1', when: null },
-      ],
-    });
-  });
-
-  it('submits answers for pending questions and dismisses on success', async () => {
-    const user = userEvent.setup();
-    const question: QuestionEvent = {
-      id: 'q1',
-      message: 'Pick',
-      options: [{ id: 'o1', label: 'Yes' }],
-      allowCustom: false,
-    };
-    streamState.current.pendingQuestions = [question];
-
-    render(<AnalysisStep {...defaultProps} />);
-
-    await user.click(screen.getByRole('button', { name: 'Yes' }));
-
-    await waitFor(() => {
-      expect(mockAnswerQuestion).toHaveBeenCalledWith('conv-123', 'q1', 'o1', undefined);
-    });
-    expect(mockDismissQuestion).toHaveBeenCalledWith('q1');
-  });
-
-  it('shows an error for failed answer submissions and allows retry', async () => {
-    const user = userEvent.setup();
-    mockAnswerQuestion.mockRejectedValueOnce(new Error('boom'));
-
-    streamState.current.pendingQuestions = [
-      {
-        id: 'q1',
-        message: 'Pick',
-        options: [{ id: 'o1', label: 'Yes' }],
-        allowCustom: false,
-      },
+  it('shows running tool status when a tool is executing', () => {
+    streamState.current.isStreaming = true;
+    streamState.current.toolCalls = [
+      { id: '1', tool_name: 'list_plugins', status: 'running' },
     ];
 
     render(<AnalysisStep {...defaultProps} />);
 
-    await user.click(screen.getByRole('button', { name: 'Yes' }));
+    expect(screen.getByText('Running list_plugins...')).toBeInTheDocument();
+    expect(screen.getByText('list_plugins')).toBeInTheDocument();
+  });
+
+  it('updates DAG when build_pipeline tool_result includes a pipeline', async () => {
+    const onDagChange = vi.fn();
+    const pipeline: PipelineDAG = {
+      id: 'agent-recommended',
+      version: '1',
+      nodes: [{ id: 'parser1', type: 'parser', plugin_id: 'text', config: {} }],
+      edges: [{ from_node: '_source', to_node: 'parser1', when: null }],
+    };
+
+    streamState.current.toolCalls = [
+      {
+        id: 'tool-1',
+        tool_name: 'mcp__assisted-flow__build_pipeline',
+        status: 'success',
+        result: [{ type: 'text', text: JSON.stringify({ success: true, pipeline }) }],
+      },
+    ];
+
+    render(<AnalysisStep {...defaultProps} dag={mockDag} onDagChange={onDagChange} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/could not submit your answer/i)).toBeInTheDocument();
+      expect(onDagChange).toHaveBeenCalledWith(pipeline);
     });
-
-    expect(mockDismissQuestion).not.toHaveBeenCalled();
   });
 
   it('resets the stream and re-triggers auto-start when clicking "Try again"', async () => {

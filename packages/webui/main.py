@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 # ruff: noqa: E402
+import asyncio
+import contextlib
 import logging
 import sys
 from collections.abc import AsyncIterator  # noqa: TCH003
@@ -48,8 +50,8 @@ from shared.embedding import configure_global_embedding_service
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
-    agent as v2_agent,
     api_keys as v2_api_keys,
+    assisted_flow as v2_assisted_flow,
     benchmark_datasets as v2_benchmark_datasets,
     benchmarks as v2_benchmarks,
     chunking as v2_chunking,
@@ -83,6 +85,8 @@ from .middleware.csp import CSPMiddleware
 from .middleware.exception_handlers import register_global_exception_handlers
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
+from .services.assisted_flow.callbacks import get_question_manager
+from .services.assisted_flow.session_manager import session_manager as assisted_flow_session_manager
 from .websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
@@ -189,6 +193,23 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
     return valid_origins
 
 
+async def _assisted_flow_cleanup_loop() -> None:
+    """Periodically clean up expired assisted flow sessions and stale questions."""
+    while True:
+        await asyncio.sleep(300)  # Every 5 minutes
+        try:
+            session_count = await assisted_flow_session_manager.cleanup_expired()
+            question_count = await get_question_manager().cleanup_stale()
+            if session_count > 0 or question_count > 0:
+                logger.info(
+                    "Assisted flow cleanup: %d expired sessions, %d stale questions",
+                    session_count,
+                    question_count,
+                )
+        except Exception:
+            logger.exception("Assisted flow session cleanup failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     """Manage application lifespan events."""
@@ -242,10 +263,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
         logger.error(f"Failed to start background tasks: {e}")
         # Don't fail startup if background tasks can't start
 
+    # Start assisted flow session cleanup task
+    logger.info("Starting assisted flow session cleanup task...")
+    assisted_flow_cleanup_task = asyncio.create_task(_assisted_flow_cleanup_loop())
+
     yield
 
     # Shutdown
     logger.info("Shutting down WebUI application...")
+
+    # Stop assisted flow cleanup task and clean up remaining sessions
+    logger.info("Stopping assisted flow session cleanup...")
+    assisted_flow_cleanup_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await assisted_flow_cleanup_task
+    await assisted_flow_session_manager.cleanup_all()
+    logger.info("Assisted flow sessions cleaned up")
 
     # Stop background tasks
     logger.info("Stopping background tasks...")
@@ -346,8 +379,8 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
-    app.include_router(v2_agent.router)
     app.include_router(v2_api_keys.router)
+    app.include_router(v2_assisted_flow.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
     app.include_router(v2_connectors.router)

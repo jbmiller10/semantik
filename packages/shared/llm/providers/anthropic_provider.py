@@ -17,6 +17,14 @@ from shared.llm.types import LLMResponse
 
 logger = logging.getLogger(__name__)
 
+_RESERVED_GENERATE_KWARGS = {"model", "messages", "max_tokens", "system", "temperature"}
+_ALLOWED_GENERATE_KWARGS = {
+    "top_p",
+    "top_k",
+    "stop_sequences",
+    "metadata",
+}
+
 
 class AnthropicLLMProvider(BaseLLMService):
     """Anthropic Claude provider implementation.
@@ -120,8 +128,16 @@ class AnthropicLLMProvider(BaseLLMService):
         if temperature is not None:
             params["temperature"] = temperature
 
-        # Merge any extra kwargs
-        params.update(kwargs)
+        # Merge only explicitly supported generation kwargs to prevent
+        # callers from overriding core controls like model/messages.
+        for key, value in kwargs.items():
+            if key in _RESERVED_GENERATE_KWARGS:
+                logger.warning("Ignoring reserved Anthropic generation kwarg: %s", key)
+                continue
+            if key in _ALLOWED_GENERATE_KWARGS:
+                params[key] = value
+            else:
+                logger.warning("Ignoring unsupported Anthropic generation kwarg: %s", key)
 
         try:
             async with asyncio.timeout(effective_timeout):
