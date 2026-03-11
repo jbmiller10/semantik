@@ -41,7 +41,8 @@ class ToolContext:
         pipeline_state: Current pipeline DAG configuration (None if not yet built)
         applied_config: Final configuration after apply_pipeline (None until applied)
         inline_source_config: Source configuration for inline source mode (None for existing sources)
-        inline_secrets: Encrypted secrets for inline source mode (None if no secrets)
+        inline_secrets: Plaintext secrets for inline source mode (passwords, tokens).
+            These are sensitive and should not be logged or persisted outside the session.
         get_session: Factory function to create database sessions for persistence
     """
 
@@ -55,5 +56,11 @@ class ToolContext:
     inline_secrets: dict[str, str] | None = None
 
     # Session factory for DB operations (callable, not live session)
-    # Type: Callable[[], AsyncContextManager[AsyncSession]] | None
-    get_session: Any = field(default=None, repr=False)
+    get_session: Any = field(default=None, repr=False)  # SessionFactory | None (Any to avoid runtime import)
+
+    def __post_init__(self) -> None:
+        """Validate mutually exclusive source fields."""
+        if self.source_id is not None and self.inline_source_config is not None:
+            raise ValueError("Cannot set both source_id and inline_source_config")
+        if self.inline_secrets and self.inline_source_config is None:
+            raise ValueError("inline_secrets requires inline_source_config")

@@ -1,6 +1,6 @@
 """Session manager for ClaudeSDKClient instances.
 
-This module provides a thread-safe session manager that stores
+This module provides an async-safe session manager that stores
 ClaudeSDKClient instances with TTL-based cleanup.
 """
 
@@ -23,7 +23,7 @@ DEFAULT_TTL_SECONDS = 3600
 class SessionManager:
     """Manages ClaudeSDKClient instances for assisted flow sessions.
 
-    Provides thread-safe storage and retrieval of SDK client instances
+    Provides async-safe storage and retrieval of SDK client instances
     with automatic TTL-based expiry.
 
     Attributes:
@@ -88,7 +88,7 @@ class SessionManager:
             try:
                 await client_to_disconnect.disconnect()
             except Exception:
-                logger.debug("Failed to disconnect expired session %s", session_id, exc_info=True)
+                logger.warning("Failed to disconnect expired session %s", session_id, exc_info=True)
             return None
 
         return client_to_return
@@ -109,7 +109,7 @@ class SessionManager:
         try:
             await client_to_disconnect.disconnect()
         except Exception:
-            logger.debug("Failed to disconnect session %s", session_id, exc_info=True)
+            logger.warning("Failed to disconnect session %s", session_id, exc_info=True)
         logger.debug(f"Removed client for session {session_id}")
 
     async def cleanup_expired(self) -> int:
@@ -132,7 +132,7 @@ class SessionManager:
             try:
                 await client.disconnect()
             except Exception:
-                logger.debug("Failed to disconnect expired session %s", sid, exc_info=True)
+                logger.warning("Failed to disconnect expired session %s", sid, exc_info=True)
 
         if expired_items:
             logger.info("Cleaned up %s expired sessions", len(expired_items))
@@ -157,7 +157,7 @@ class SessionManager:
             try:
                 await client.disconnect()
             except Exception:
-                logger.debug("Failed to disconnect session %s during cleanup", sid, exc_info=True)
+                logger.warning("Failed to disconnect session %s during cleanup", sid, exc_info=True)
 
         if all_items:
             logger.info("Cleaned up all %s assisted flow sessions", len(all_items))

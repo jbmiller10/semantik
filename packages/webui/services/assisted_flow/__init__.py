@@ -7,7 +7,10 @@ implementation using the SDK's built-in agent loop and tool handling.
 Key components:
 - context.ToolContext: Shared context for all tools during a session
 - server.create_mcp_server: Creates MCP server with pipeline tools
-- sdk_service: Session lifecycle management (create, send, close)
+- sdk_service: Session lifecycle management (create, send, get_client, close)
+- session_manager: In-memory TTL-based client storage
+- callbacks: Question management and can_use_tool permission callback
+- source_stats: Pre-session source statistics gathering
 - subagents: Explorer and Validator subagent definitions
 - prompts: System prompts and initial prompt builder
 
@@ -17,8 +20,8 @@ API endpoints are at /api/v2/assisted-flow/.
 from webui.services.assisted_flow.callbacks import (
     PendingQuestion,
     QuestionManager,
-    can_use_tool,
     compute_question_id,
+    create_can_use_tool,
     get_question_manager,
 )
 from webui.services.assisted_flow.context import ToolContext
@@ -44,7 +47,7 @@ __all__ = [
     # Callbacks
     "PendingQuestion",
     "QuestionManager",
-    "can_use_tool",
+    "create_can_use_tool",
     "compute_question_id",
     "get_question_manager",
     # Context

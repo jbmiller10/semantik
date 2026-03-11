@@ -72,7 +72,7 @@
     <router path="api/v2/system.py">System info, GPU status, resource usage</router>
     <router path="api/v2/benchmarks.py">Benchmark CRUD, start/cancel, results endpoints</router>
     <router path="api/v2/benchmark_datasets.py">Dataset upload, list, mapping, delete endpoints</router>
-    <router path="api/v2/agent.py">AI agent conversations for pipeline configuration (SSE streaming)</router>
+    <router path="api/v2/assisted_flow.py">Assisted flow pipeline configuration (Claude Agent SDK, SSE streaming)</router>
     <router path="api/v2/pipeline.py">Pipeline preview, route testing, available predicate fields</router>
     <router path="api/v2/templates.py">Pipeline template listing and details</router>
   </v2-routers>
@@ -196,12 +196,17 @@
       Claude Agent SDK + in-process MCP server:
       - sdk_service.py: Creates and manages ClaudeSDKClient sessions (in-memory TTL)
       - session_manager.py: Stores clients with automatic expiry + cleanup
-      - server.py: In-process MCP tool server (list_plugins, get_plugin_details, build_pipeline, apply_pipeline)
+      - server.py: In-process MCP tool server (list_plugins, get_plugin_details, build_pipeline, apply_pipeline, sample_files, preview_content, detect_patterns, validate_pipeline)
+      - callbacks.py: Question management and tool permission callback
+      - context.py: Shared ToolContext for all tools during a session
+      - source_stats.py: Pre-session source statistics gathering
+      - prompts.py: System and subagent prompts
       - subagents.py: Optional explorer/validator subagent definitions
     </architecture>
     <api>
       - POST /api/v2/assisted-flow/start
       - POST /api/v2/assisted-flow/{session_id}/messages/stream (SSE)
+      - POST /api/v2/assisted-flow/{session_id}/answer
     </api>
     <notes>
       Sessions are currently in-memory only (no persistence); the caller must keep the session_id to continue.

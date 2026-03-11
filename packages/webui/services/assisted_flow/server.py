@@ -180,7 +180,7 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
             "properties": {
                 "plugin_type": {
                     "type": "string",
-                    "description": "Filter by type: parser, chunker, embedding, extractor, reranker",
+                    "description": "Filter by type: parser, chunking, embedding, extractor, reranker, sparse_indexer",
                     "enum": ["parser", "chunking", "embedding", "extractor", "reranker", "sparse_indexer"],
                 },
                 "include_disabled": {
@@ -955,7 +955,23 @@ def create_mcp_server(ctx: ToolContext) -> McpSdkServerConfig:
                     except Exception as e:
                         matched_nodes = []
                         has_route = False
-                        logger.warning(f"Routing failed for {file_ref.uri}: {e}")
+                        logger.warning(f"Routing failed for {file_ref.uri}: {e}", exc_info=True)
+                        # Surface routing errors in results so users know predicates are broken
+                        file_results.append(
+                            {
+                                "uri": file_ref.uri,
+                                "filename": file_ref.filename,
+                                "extension": file_ref.extension,
+                                "mime_type": file_ref.mime_type,
+                                "has_route": False,
+                                "matched_nodes": [],
+                                "routing_error": str(e),
+                            }
+                        )
+                        files_checked += 1
+                        if files_checked >= sample_count:
+                            break
+                        continue
 
                     file_results.append(
                         {

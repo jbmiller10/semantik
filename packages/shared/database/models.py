@@ -735,7 +735,7 @@ class AgentConversation(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
 
     # Relationships
     user = relationship("User")

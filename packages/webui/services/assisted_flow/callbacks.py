@@ -37,15 +37,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def compute_question_id(questions: list[dict[str, Any]]) -> str:
-    """Compute a deterministic question_id from questions content.
+def compute_question_id(questions: list[dict[str, Any]], session_id: str = "") -> str:
+    """Compute a deterministic question_id from questions content and session.
 
     This allows both the SSE generator and callback to independently
-    compute the same ID for the same questions.
+    compute the same ID for the same questions within the same session.
+
+    Args:
+        questions: The questions array from the tool input
+        session_id: Session ID to scope question IDs per session (prevents cross-session collisions)
     """
     # Sort keys for deterministic serialization
     content = json.dumps(questions, sort_keys=True)
-    hash_digest = hashlib.sha256(content.encode()).hexdigest()[:16]
+    # Include session_id so identical questions in different sessions get different IDs
+    hash_input = f"{session_id}:{content}"
+    hash_digest = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
     return f"q_{hash_digest}"
 
 
@@ -62,7 +68,7 @@ class PendingQuestion:
 class QuestionManager:
     """Manages pending questions for assisted flow sessions.
 
-    Thread-safe management of questions awaiting user answers.
+    Async-safe management of questions awaiting user answers.
     Questions are keyed by question_id for lookup from the answer endpoint.
     """
 
@@ -112,15 +118,20 @@ class QuestionManager:
         async with self._lock:
             question = self._pending.get(question_id)
 
-        if not question:
-            logger.warning(f"Question {question_id} not found")
-            return False
+            if not question:
+                logger.warning(f"Question {question_id} not found")
+                return False
 
-        if question.future.done():
-            logger.warning(f"Question {question_id} already answered")
-            return False
+            if question.future.done():
+                logger.warning(f"Question {question_id} already answered")
+                return False
 
-        question.future.set_result(answers)
+            try:
+                question.future.set_result(answers)
+            except asyncio.InvalidStateError:
+                logger.warning(f"Question {question_id} future in invalid state")
+                return False
+
         logger.info(f"Submitted answer for question {question_id}")
         return True
 
@@ -175,71 +186,83 @@ def get_question_manager() -> QuestionManager:
     return _question_manager
 
 
-async def can_use_tool(
-    tool_name: str,
-    input_data: dict[str, Any],
-    context: ToolPermissionContext,  # noqa: ARG001 - Required by SDK callback signature
-) -> PermissionResultAllow | PermissionResultDeny:
-    """Callback to handle tool use requests from the SDK client.
+def create_can_use_tool(session_id: str = "") -> Any:
+    """Create a session-scoped can_use_tool callback.
 
-    This callback:
-    1. Auto-approves MCP tools (mcp__assisted-flow__*)
-    2. Captures AskUserQuestion calls and waits for user answers
-    3. Denies all other tools
+    Each session gets its own callback with the session_id baked in,
+    so question IDs are unique per session.
 
     Args:
-        tool_name: Name of the tool being used
-        input_data: Tool input parameters
-        context: SDK permission context
-
-    Returns:
-        PermissionResultAllow or PermissionResultDeny
+        session_id: Session ID for scoping question IDs
     """
-    from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
-    # Auto-approve our MCP tools
-    if tool_name.startswith("mcp__assisted-flow__"):
-        logger.debug(f"Auto-approving MCP tool: {tool_name}")
-        return PermissionResultAllow()
+    async def can_use_tool(
+        tool_name: str,
+        input_data: dict[str, Any],
+        context: ToolPermissionContext,  # noqa: ARG001 - Required by SDK callback signature
+    ) -> PermissionResultAllow | PermissionResultDeny:
+        """Callback to handle tool use requests from the SDK client.
 
-    # Handle AskUserQuestion specially
-    if tool_name == "AskUserQuestion":
-        questions = input_data.get("questions", [])
-        if not questions:
-            logger.warning("AskUserQuestion called with no questions")
-            return PermissionResultAllow()  # Let it proceed, will get empty result
+        This callback:
+        1. Auto-approves MCP tools (mcp__assisted-flow__*)
+        2. Captures AskUserQuestion calls and waits for user answers
+        3. Denies all other tools
 
-        # Compute deterministic question_id from questions content
-        # The SSE generator will compute the same ID for the question event
-        question_id = compute_question_id(questions)
+        Args:
+            tool_name: Name of the tool being used
+            input_data: Tool input parameters
+            context: SDK permission context
 
-        # Create pending question and wait for answer
-        manager = get_question_manager()
-        pending = await manager.create_question(
-            question_id=question_id,
-            questions=questions,
-        )
+        Returns:
+            PermissionResultAllow or PermissionResultDeny
+        """
+        from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
-        try:
-            # Wait for user to submit answer (with timeout)
-            answers = await asyncio.wait_for(pending.future, timeout=300)  # 5 minute timeout
-            logger.info(f"Got answers for question {pending.question_id}: {answers}")
+        # Auto-approve our MCP tools
+        if tool_name.startswith("mcp__assisted-flow__"):
+            logger.debug(f"Auto-approving MCP tool: {tool_name}")
+            return PermissionResultAllow()
 
-            # Clean up the pending question
-            await manager.remove_question(pending.question_id)
+        # Handle AskUserQuestion specially
+        if tool_name == "AskUserQuestion":
+            questions = input_data.get("questions", [])
+            if not questions:
+                logger.warning("AskUserQuestion called with no questions")
+                return PermissionResultDeny(message="AskUserQuestion called with no questions")
 
-            # Return Allow with updated input containing answers
-            return PermissionResultAllow(updated_input={"answers": answers, "questions": questions})
+            # Compute deterministic question_id from questions content + session
+            # The SSE generator will compute the same ID for the question event
+            question_id = compute_question_id(questions, session_id=session_id)
 
-        except TimeoutError:
-            logger.warning(f"Question {pending.question_id} timed out")
-            await manager.cancel_question(pending.question_id)
-            return PermissionResultDeny(message="Question timed out waiting for user response")
+            # Create pending question and wait for answer
+            manager = get_question_manager()
+            pending = await manager.create_question(
+                question_id=question_id,
+                questions=questions,
+            )
 
-        except asyncio.CancelledError:
-            logger.info(f"Question {pending.question_id} was cancelled")
-            return PermissionResultDeny(message="Question was cancelled")
+            try:
+                # Wait for user to submit answer (with timeout)
+                answers = await asyncio.wait_for(pending.future, timeout=300)  # 5 minute timeout
+                logger.info(f"Got answers for question {pending.question_id}: {answers}")
 
-    # Deny all other tools
-    logger.warning(f"Denying unexpected tool: {tool_name}")
-    return PermissionResultDeny(message=f"Tool '{tool_name}' is not allowed in assisted flow")
+                # Clean up the pending question
+                await manager.remove_question(pending.question_id)
+
+                # Return Allow with updated input containing answers
+                return PermissionResultAllow(updated_input={"answers": answers, "questions": questions})
+
+            except TimeoutError:
+                logger.warning(f"Question {pending.question_id} timed out")
+                await manager.cancel_question(pending.question_id)
+                return PermissionResultDeny(message="Question timed out waiting for user response")
+
+            except asyncio.CancelledError:
+                logger.info(f"Question {pending.question_id} was cancelled")
+                return PermissionResultDeny(message="Question was cancelled")
+
+        # Deny all other tools
+        logger.warning(f"Denying unexpected tool: {tool_name}")
+        return PermissionResultDeny(message=f"Tool '{tool_name}' is not allowed in assisted flow")
+
+    return can_use_tool

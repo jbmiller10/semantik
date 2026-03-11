@@ -1,9 +1,15 @@
 """Tests for assisted flow API endpoints."""
 
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+
+from webui.auth import get_current_user
+from webui.main import app
 
 
 class TestStartAssistedFlow:
@@ -144,3 +150,142 @@ class TestSendMessageStream:
 
         assert response.status_code == 200
         assert response.headers.get("content-type", "").startswith("text/event-stream")
+
+
+class TestSubmitAnswer:
+    """Test POST /api/v2/assisted-flow/{session_id}/answer endpoint."""
+
+    @pytest.mark.asyncio()
+    async def test_submit_answer_success(
+        self,
+        api_client: AsyncClient,
+        api_auth_headers: dict,
+    ) -> None:
+        """Submitting a valid answer resolves the pending question."""
+        mock_manager = MagicMock()
+        mock_manager.submit_answer = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "webui.api.v2.assisted_flow.get_session_client",
+                new_callable=AsyncMock,
+            ) as mock_get_client,
+            patch(
+                "webui.api.v2.assisted_flow.get_question_manager",
+                return_value=mock_manager,
+            ),
+        ):
+            mock_get_client.return_value = MagicMock()
+
+            response = await api_client.post(
+                "/api/v2/assisted-flow/test_session/answer",
+                json={
+                    "question_id": "q_123",
+                    "answers": {"Which model?": "gpt-4"},
+                },
+                headers=api_auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        mock_manager.submit_answer.assert_awaited_once_with(
+            "q_123", {"Which model?": "gpt-4"}
+        )
+
+    @pytest.mark.asyncio()
+    async def test_submit_answer_session_not_found(
+        self,
+        api_client: AsyncClient,
+        api_auth_headers: dict,
+    ) -> None:
+        """Returns 404 when session does not exist."""
+        with patch(
+            "webui.api.v2.assisted_flow.get_session_client",
+            new_callable=AsyncMock,
+        ) as mock_get_client:
+            mock_get_client.return_value = None
+
+            response = await api_client.post(
+                "/api/v2/assisted-flow/nonexistent_session/answer",
+                json={
+                    "question_id": "q_123",
+                    "answers": {"Which model?": "gpt-4"},
+                },
+                headers=api_auth_headers,
+            )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_submit_answer_question_not_found(
+        self,
+        api_client: AsyncClient,
+        api_auth_headers: dict,
+    ) -> None:
+        """Returns 404 when question_id is not found or already answered."""
+        mock_manager = MagicMock()
+        mock_manager.submit_answer = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "webui.api.v2.assisted_flow.get_session_client",
+                new_callable=AsyncMock,
+            ) as mock_get_client,
+            patch(
+                "webui.api.v2.assisted_flow.get_question_manager",
+                return_value=mock_manager,
+            ),
+        ):
+            mock_get_client.return_value = MagicMock()
+
+            response = await api_client.post(
+                "/api/v2/assisted-flow/test_session/answer",
+                json={
+                    "question_id": "q_unknown",
+                    "answers": {"Which model?": "gpt-4"},
+                },
+                headers=api_auth_headers,
+            )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_submit_answer_invalid_user_id(
+        self,
+        db_session,
+        use_fakeredis,
+        reset_redis_manager,
+    ) -> None:
+        """Returns 401 when user_id is not a valid integer."""
+        _ = use_fakeredis
+        _ = reset_redis_manager
+
+        async def override_get_current_user_invalid() -> dict[str, Any]:
+            return {
+                "id": None,
+                "username": "invalid",
+                "email": "invalid@test.com",
+                "full_name": "Invalid User",
+            }
+
+        original_overrides = dict(app.dependency_overrides)
+        app.dependency_overrides[get_current_user] = override_get_current_user_invalid
+
+        try:
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v2/assisted-flow/test_session/answer",
+                    json={
+                        "question_id": "q_123",
+                        "answers": {"Which model?": "gpt-4"},
+                    },
+                )
+
+            assert response.status_code == 401
+            assert "invalid user session" in response.json()["detail"].lower()
+        finally:
+            app.dependency_overrides = original_overrides

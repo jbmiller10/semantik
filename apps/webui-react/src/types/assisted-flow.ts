@@ -84,32 +84,38 @@ export interface QuestionEventData {
   questions: QuestionItem[];
 }
 
+/** Started event data - SSE connection established */
+export interface StartedEventData {
+  session_id: string;
+}
+
 /** Text content event data from the agent */
 export interface TextEventData {
-  type?: 'text';
-  content?: string;
+  content: string;
 }
 
 /** Tool use event data - agent is executing a tool */
 export interface ToolUseEventData {
-  type?: 'tool_use';
-  tool_use_id?: string;
-  tool_name?: string;
+  tool_use_id: string;
+  tool_name: string;
   arguments?: Record<string, unknown>;
 }
 
 /** Tool result event data - tool execution completed */
 export interface ToolResultEventData {
-  type?: 'tool_result';
-  tool_use_id?: string;
+  tool_use_id: string;
   tool_name?: string;
   result?: unknown;
-  success?: boolean;
+  success: boolean;
 }
 
 /** Done event data - stream complete */
 export interface DoneEventData {
   status?: 'complete';
+  is_error?: boolean;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  num_turns?: number;
 }
 
 /** Error event data from the stream */
@@ -122,6 +128,7 @@ export interface ErrorEventData {
  * Discriminated union for assisted flow stream events.
  */
 export type AssistedFlowEvent =
+  | { event: 'started'; data: StartedEventData }
   | { event: 'text'; data: TextEventData }
   | { event: 'tool_use'; data: ToolUseEventData }
   | { event: 'tool_result'; data: ToolResultEventData }

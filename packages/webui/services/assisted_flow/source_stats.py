@@ -20,6 +20,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Allowlist of safe config keys to include in agent prompt.
+# Only include keys known to be non-sensitive. This prevents accidental
+# exposure of credentials under unexpected key names.
+_SAFE_SOURCE_CONFIG_KEYS = frozenset(
+    {
+        "path",
+        "paths",
+        "recursive",
+        "file_extensions",
+        "repo_url",
+        "repository_url",
+        "branch",
+        "depth",
+        "host",
+        "port",
+        "mailbox",
+        "folder",
+        "use_ssl",
+        "username",  # username alone is not a secret
+        "source_type",
+        "name",
+        "description",
+    }
+)
+
 
 def _get_display_path(source_type: str, config: dict[str, Any], source_path: str) -> str:
     """Derive human-readable display path from source config.
@@ -82,15 +107,7 @@ async def get_source_stats(
     if owner_id != user_id:
         raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
-    # Redact any secrets from config
-    safe_config = {
-        k: v
-        for k, v in (source.source_config or {}).items()
-        if "password" not in k.lower()
-        and "secret" not in k.lower()
-        and "token" not in k.lower()
-        and "key" not in k.lower()
-    }
+    safe_config = {k: v for k, v in (source.source_config or {}).items() if k.lower() in _SAFE_SOURCE_CONFIG_KEYS}
 
     return {
         "source_name": source.source_path,

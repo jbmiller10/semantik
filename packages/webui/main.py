@@ -195,11 +195,17 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
 
 async def _assisted_flow_cleanup_loop() -> None:
     """Periodically clean up expired assisted flow sessions and stale questions."""
+    consecutive_failures = 0
+    base_interval = 300  # 5 minutes
+
     while True:
-        await asyncio.sleep(300)  # Every 5 minutes
+        # Exponential backoff on consecutive failures (cap at 30 minutes)
+        interval = min(base_interval * (2**consecutive_failures), 1800)
+        await asyncio.sleep(interval)
         try:
             session_count = await assisted_flow_session_manager.cleanup_expired()
             question_count = await get_question_manager().cleanup_stale()
+            consecutive_failures = 0  # Reset on success
             if session_count > 0 or question_count > 0:
                 logger.info(
                     "Assisted flow cleanup: %d expired sessions, %d stale questions",
@@ -207,7 +213,15 @@ async def _assisted_flow_cleanup_loop() -> None:
                     question_count,
                 )
         except Exception:
-            logger.exception("Assisted flow session cleanup failed")
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                logger.error(
+                    "Assisted flow cleanup has failed %d consecutive times, backing off to %ds",
+                    consecutive_failures,
+                    min(base_interval * (2**consecutive_failures), 1800),
+                )
+            else:
+                logger.exception("Assisted flow session cleanup failed")
 
 
 @asynccontextmanager

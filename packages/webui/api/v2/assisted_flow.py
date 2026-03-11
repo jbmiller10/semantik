@@ -155,7 +155,7 @@ async def start_assisted_flow(
         logger.error(f"Failed to start assisted flow: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="An internal error occurred while starting the assisted flow session",
         ) from e
 
 
@@ -180,9 +180,11 @@ async def send_message_stream(
         data: {json}
 
     Event types:
+    - started: SSE connection established, agent is processing
     - text: Text content from the agent
     - tool_use: Tool being executed
     - tool_result: Tool execution result
+    - question: Agent is asking the user a question (answer via /{session_id}/answer)
     - done: Stream complete
     - error: Error occurred
     """
@@ -267,7 +269,7 @@ async def send_message_stream(
                                 questions = block.input.get("questions", [])
                                 if questions:
                                     # Compute the same question_id that the callback will use
-                                    question_id = compute_question_id(questions)
+                                    question_id = compute_question_id(questions, session_id=session_id)
                                     yield _sse(
                                         "question",
                                         {
@@ -322,7 +324,7 @@ async def send_message_stream(
 
         except Exception as e:
             logger.exception(f"Streaming error for session {session_id}: {e}")
-            error_data = json.dumps({"message": str(e)})
+            error_data = json.dumps({"message": "An unexpected error occurred during processing"})
             yield f"event: error\ndata: {error_data}\n\n"
 
     return StreamingResponse(

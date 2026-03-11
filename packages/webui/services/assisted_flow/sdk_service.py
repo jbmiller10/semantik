@@ -17,7 +17,7 @@ from claude_agent_sdk import (
     ProcessError,
 )
 
-from webui.services.assisted_flow.callbacks import can_use_tool
+from webui.services.assisted_flow.callbacks import create_can_use_tool
 from webui.services.assisted_flow.context import ToolContext
 from webui.services.assisted_flow.prompts import SYSTEM_PROMPT
 from webui.services.assisted_flow.server import create_mcp_server
@@ -41,9 +41,11 @@ class SDKSessionError(SDKServiceError):
 
 def _build_system_prompt(source_stats: dict[str, Any]) -> str:
     """Build a per-session system prompt with non-sensitive source context."""
+    import json as _json
+
     safe_stats = dict(source_stats)
     safe_stats.pop("secrets", None)
-    return f"{SYSTEM_PROMPT}\n\n## Source Context (non-sensitive)\n{safe_stats}\n"
+    return f"{SYSTEM_PROMPT}\n\n## Source Context (non-sensitive)\n```json\n{_json.dumps(safe_stats, indent=2, default=str)}\n```\n"
 
 
 async def create_sdk_session(
@@ -113,7 +115,7 @@ async def create_sdk_session(
             mcp_servers={"assisted-flow": mcp_server},
             agents=get_subagents(),
             include_partial_messages=True,
-            can_use_tool=can_use_tool,
+            can_use_tool=create_can_use_tool(session_id=session_id),
         )
 
         logger.info(f"SDK options created for session {session_id}")
@@ -128,8 +130,13 @@ async def create_sdk_session(
         await client.connect()
         logger.info(f"SDK client connected for session {session_id}")
 
-        # Store in session manager
-        await session_manager.store_client(session_id, client, user_id=user_id)
+        # Store in session manager. If storage fails, disconnect to avoid
+        # leaking an orphaned SDK CLI process.
+        try:
+            await session_manager.store_client(session_id, client, user_id=user_id)
+        except Exception:
+            await client.disconnect()
+            raise
 
         logger.info(f"SDK session {session_id} created and stored successfully")
         return session_id, client
