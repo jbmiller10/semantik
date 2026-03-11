@@ -48,11 +48,14 @@ def _get_internal_api_key() -> str:
     """Get the internal API key for VecPipe communication.
 
     Uses the shared settings which are populated by ensure_internal_api_key()
-    at Celery app startup, falling back to environment variable.
+    at Celery app startup.
     """
     from shared.config import settings
 
-    return settings.INTERNAL_API_KEY or ""
+    key = settings.INTERNAL_API_KEY
+    if not key:
+        raise RuntimeError("Internal API key is not configured")
+    return key
 
 
 logger = logging.getLogger(__name__)

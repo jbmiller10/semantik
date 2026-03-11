@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from shared.config import settings
 from shared.utils.hashing import compute_file_hash
 from webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
 from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
@@ -58,13 +59,15 @@ class DirectoryScanService:
             PermissionError: If access denied
             FileNotFoundError: If path doesn't exist
         """
-        scan_path = Path(path)
+        raw_scan_path = Path(path).expanduser()
 
         # Validate path
-        if not scan_path.exists():
+        if not raw_scan_path.exists():
             raise FileNotFoundError(f"Path does not exist: {path}")
+        scan_path = raw_scan_path.resolve()
         if not scan_path.is_dir():
             raise ValueError(f"Path is not a directory: {path}")
+        self._validate_scan_path(scan_path)
 
         # Check access permissions
         try:
@@ -204,6 +207,18 @@ class DirectoryScanService:
         )
 
         return response
+
+    def _validate_scan_path(self, scan_path: Path) -> None:
+        """Validate that a scan path is under allowed document roots."""
+        if not settings.should_enforce_document_roots:
+            return
+
+        allowed_roots = tuple(root.resolve() for root in settings.document_allowed_roots)
+        if any(scan_path.is_relative_to(root) for root in allowed_roots):
+            return
+
+        allowed_roots_str = ", ".join(str(root) for root in allowed_roots)
+        raise PermissionError(f"Path is outside allowed document roots: {scan_path}. Allowed roots: {allowed_roots_str}")
 
     async def _count_files(
         self,

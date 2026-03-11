@@ -159,6 +159,47 @@ class TestAnthropicLLMProvider:
             call_kwargs = mock_client.messages.create.call_args.kwargs
             assert call_kwargs["max_tokens"] == 100
 
+    async def test_generate_filters_reserved_kwargs(self, provider):
+        """Reserved kwargs cannot override model/messages."""
+        with patch("shared.llm.providers.anthropic_provider.AsyncAnthropic") as mock_class:
+            mock_response = MagicMock()
+            mock_response.content = [MagicMock(text="Response")]
+            mock_response.model = "test-model"
+            mock_response.usage.input_tokens = 5
+            mock_response.usage.output_tokens = 3
+            mock_response.stop_reason = None
+
+            mock_client = AsyncMock()
+            mock_client.messages.create = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            await provider.initialize(api_key="test-key", model="test-model")
+            await provider.generate("Hello", model="override-model", messages=[{"role": "user", "content": "x"}])
+
+            call_kwargs = mock_client.messages.create.call_args.kwargs
+            assert call_kwargs["model"] == "test-model"
+            assert call_kwargs["messages"] == [{"role": "user", "content": "Hello"}]
+
+    async def test_generate_allows_supported_extra_kwargs(self, provider):
+        """Supported generation kwargs are forwarded to Anthropic SDK."""
+        with patch("shared.llm.providers.anthropic_provider.AsyncAnthropic") as mock_class:
+            mock_response = MagicMock()
+            mock_response.content = [MagicMock(text="Response")]
+            mock_response.model = "test-model"
+            mock_response.usage.input_tokens = 5
+            mock_response.usage.output_tokens = 3
+            mock_response.stop_reason = None
+
+            mock_client = AsyncMock()
+            mock_client.messages.create = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            await provider.initialize(api_key="test-key", model="test-model")
+            await provider.generate("Hello", top_p=0.9)
+
+            call_kwargs = mock_client.messages.create.call_args.kwargs
+            assert call_kwargs["top_p"] == 0.9
+
     async def test_authentication_error_conversion(self, provider):
         """Converts Anthropic AuthenticationError to LLMAuthenticationError."""
         import anthropic

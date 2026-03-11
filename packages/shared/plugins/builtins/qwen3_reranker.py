@@ -7,6 +7,7 @@ import logging
 import threading
 from typing import Any, ClassVar
 
+from shared.config import settings
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.types.reranker import RerankerCapabilities, RerankerPlugin, RerankResult
 
@@ -140,7 +141,7 @@ class Qwen3RerankerPlugin(RerankerPlugin):
 
             # Try to load tokenizer for default model (lightweight check)
             model_name = (config or {}).get("model_name", DEFAULT_MODEL)
-            _ = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            _ = AutoTokenizer.from_pretrained(model_name, trust_remote_code=settings.LLM_TRUST_REMOTE_CODE)
 
             return True
         except Exception as e:

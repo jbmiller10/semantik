@@ -1,6 +1,12 @@
 /**
  * TypeScript types for the agent conversation API.
  * Matches backend schemas from packages/webui/api/v2/agent_schemas.py
+ *
+ * @deprecated These types are for the legacy agent orchestrator which has been
+ * replaced by the Claude Agent SDK-based assisted-flow API. New code should use
+ * types from `assisted-flow.ts` instead.
+ *
+ * @see ./assisted-flow.ts for the new SDK-based types
  */
 
 // =============================================================================

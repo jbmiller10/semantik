@@ -1,0 +1,18 @@
+# Docker Compose override for CUDA-enabled builds with proper bitsandbytes support
+# Usage: docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d --build
+#
+# This override enables INT8 quantization support through bitsandbytes
+# Make sure to set DEFAULT_QUANTIZATION=int8 in your .env file
+version: '3.8'
+
+services:
+  vecpipe:
+    environment:
+      # Additional environment for bitsandbytes INT8 support
+      - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
+      - CUDA_HOME=/usr/local/cuda
+      # Suppress bitsandbytes welcome message
+      - BITSANDBYTES_NOWELCOME=1
+      # C compiler for bitsandbytes JIT compilation
+      - CC=gcc
+      - CXX=g++

@@ -7,23 +7,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
 // Comprehensive mocks for full flow
-vi.mock('../../../hooks/useAgentConversation', () => ({
-  useCreateConversation: () => ({
-    mutateAsync: vi.fn().mockResolvedValue({ id: 'conv-123' }),
+vi.mock('../../../hooks/useAssistedFlow', () => ({
+  useStartAssistedFlow: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({ session_id: 'conv-123', source_name: 'Test' }),
     isPending: false,
   }),
 }));
 
-vi.mock('../../../hooks/useAgentStream', () => ({
-  useAgentStream: () => ({
-    status: { phase: 'ready', message: 'Analysis complete' },
-    activities: [
-      { message: 'Scanning source files...', timestamp: new Date().toISOString() },
-      { message: 'Detected 47 markdown files', timestamp: new Date().toISOString() },
-      { message: 'Recommending semantic chunking', timestamp: new Date().toISOString() },
-    ],
-    pendingQuestions: [],
-    dismissQuestion: vi.fn(),
+vi.mock('../../../hooks/useAssistedFlowStream', () => ({
+  useAssistedFlowStream: () => ({
     isStreaming: false,
     sendMessage: vi.fn(),
     currentContent: `Based on my analysis of your documentation source:
@@ -33,11 +25,10 @@ vi.mock('../../../hooks/useAgentStream', () => ({
 3. **Embedding Model**: Qwen3-Embedding-0.6B for efficiency
 
 This configuration will provide good search quality while keeping processing efficient.`,
-    pipeline: {
-      chunking_strategy: 'semantic',
-      chunking_config: { chunk_size: 512, chunk_overlap: 50 },
-      embedding_model: 'Qwen/Qwen3-Embedding-0.6B',
-    },
+    toolCalls: [],
+    error: null,
+    cancel: vi.fn(),
+    reset: vi.fn(),
   }),
 }));
 
@@ -119,8 +110,8 @@ describe('CollectionWizard Full Assisted Flow', () => {
       expect(screen.getByTestId('agent-column')).toBeInTheDocument();
     });
 
-    // Should see activities
-    expect(screen.getByText(/scanning source files/i)).toBeInTheDocument();
+    // Should see agent content
+    expect(screen.getByText(/based on my analysis/i)).toBeInTheDocument();
 
     // Click Next to go to Review
     await user.click(screen.getByRole('button', { name: /next/i }));

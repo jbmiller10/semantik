@@ -65,6 +65,14 @@ describe('UpstreamNodePicker', () => {
   });
 
   describe('click-outside handling', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('calls onCancel when clicking outside the popover', async () => {
       const onCancel = vi.fn();
 
@@ -75,8 +83,8 @@ describe('UpstreamNodePicker', () => {
         </div>
       );
 
-      // Wait for the click outside handler to be registered (uses setTimeout)
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Advance timers to allow the click outside handler to be registered (uses setTimeout(..., 0))
+      await vi.runAllTimersAsync();
 
       // Click outside the popover
       fireEvent.mouseDown(screen.getByTestId('outside'));
@@ -89,8 +97,8 @@ describe('UpstreamNodePicker', () => {
 
       render(<UpstreamNodePicker {...defaultProps} onCancel={onCancel} />);
 
-      // Wait for the click outside handler to be registered
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Advance timers to allow the click outside handler to be registered
+      await vi.runAllTimersAsync();
 
       // Click inside the popover
       fireEvent.mouseDown(screen.getByText('Connect from'));

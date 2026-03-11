@@ -1,6 +1,13 @@
 /**
  * Agent conversation API client.
  * Handles conversation CRUD and provides stream URL for SSE.
+ *
+ * @deprecated This API client uses the legacy agent orchestrator which has been
+ * replaced by the Claude Agent SDK-based assisted-flow API. New code should use
+ * `assisted-flow.ts` instead. This client is kept for backward compatibility
+ * during the migration period.
+ *
+ * @see ./assisted-flow.ts for the new SDK-based API
  */
 
 import apiClient from './client';

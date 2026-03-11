@@ -72,7 +72,7 @@
     <router path="api/v2/system.py">System info, GPU status, resource usage</router>
     <router path="api/v2/benchmarks.py">Benchmark CRUD, start/cancel, results endpoints</router>
     <router path="api/v2/benchmark_datasets.py">Dataset upload, list, mapping, delete endpoints</router>
-    <router path="api/v2/agent.py">AI agent conversations for pipeline configuration (SSE streaming)</router>
+    <router path="api/v2/assisted_flow.py">Assisted flow pipeline configuration (Claude Agent SDK, SSE streaming)</router>
     <router path="api/v2/pipeline.py">Pipeline preview, route testing, available predicate fields</router>
     <router path="api/v2/templates.py">Pipeline template listing and details</router>
   </v2-routers>
@@ -189,34 +189,28 @@
     </usage>
   </service>
 
-  <service name="AgentOrchestrator" path="services/agent/">
-    <responsibility>AI-powered pipeline configuration assistant using conversational interface</responsibility>
-    <location>services/agent/orchestrator.py</location>
+  <service name="AssistedFlow" path="services/assisted_flow/">
+    <responsibility>AI-powered pipeline configuration assistant powered by the Claude Agent SDK</responsibility>
+    <location>services/assisted_flow/</location>
     <architecture>
-      Hierarchical orchestrator-subagent pattern with tool-based capabilities:
-      - AgentOrchestrator: Central coordinator managing LLM conversations
-      - MessageStore: Redis-based ephemeral message storage (24h TTL)
-      - AgentConversationRepository: PostgreSQL persistence for conversation state
-      - Subagents: Specialized agents with independent context windows
+      Claude Agent SDK + in-process MCP server:
+      - sdk_service.py: Creates and manages ClaudeSDKClient sessions (in-memory TTL)
+      - session_manager.py: Stores clients with automatic expiry + cleanup
+      - server.py: In-process MCP tool server (list_plugins, get_plugin_details, build_pipeline, apply_pipeline, sample_files, preview_content, detect_patterns, validate_pipeline)
+      - callbacks.py: Question management and tool permission callback
+      - context.py: Shared ToolContext for all tools during a session
+      - source_stats.py: Pre-session source statistics gathering
+      - prompts.py: System and subagent prompts
+      - subagents.py: Optional explorer/validator subagent definitions
     </architecture>
-    <subagents path="services/agent/subagents/">
-      - SourceAnalyzer: Investigates data sources (enumerate files, sample, detect language)
-      - PipelineValidator: Validates pipeline configs against sample files (dry runs, chunk inspection)
-    </subagents>
-    <tools path="services/agent/tools/">
-      - list_plugins / get_plugin_details: Discover available plugins
-      - list_templates / get_template_details: Explore pipeline templates
-      - get_pipeline_state / build_pipeline: View/create pipeline configurations
-      - apply_pipeline: Create collection from configured pipeline
-      - spawn_source_analyzer / spawn_pipeline_validator: Launch subagents
-    </tools>
-    <key-features>
-      - SSE streaming for real-time conversation updates
-      - Tool call parsing from LLM responses (regex-based)
-      - Conversation locking for concurrent access control
-      - 20-turn limit to prevent infinite loops
-      - Uncertainty tracking (blocking, notable, info)
-    </key-features>
+    <api>
+      - POST /api/v2/assisted-flow/start
+      - POST /api/v2/assisted-flow/{session_id}/messages/stream (SSE)
+      - POST /api/v2/assisted-flow/{session_id}/answer
+    </api>
+    <notes>
+      Sessions are currently in-memory only (no persistence); the caller must keep the session_id to continue.
+    </notes>
   </service>
 
   <service name="PipelinePreviewService">

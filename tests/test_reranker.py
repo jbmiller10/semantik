@@ -14,6 +14,7 @@ import pytest
 import torch
 from torch import Tensor
 
+from shared.config import settings
 from vecpipe.reranker import CrossEncoderReranker
 
 # Import the class to test
@@ -177,7 +178,7 @@ class TestModelLoading:
         # Verify correct loading parameters
         model_class.from_pretrained.assert_called_once()
         tokenizer_class.from_pretrained.assert_called_once_with(
-            TEST_MODEL_NAME, trust_remote_code=True, padding_side="left"
+            TEST_MODEL_NAME, trust_remote_code=settings.LLM_TRUST_REMOTE_CODE, padding_side="left"
         )
 
     def test_load_model_with_quantization(

@@ -34,7 +34,7 @@ SPARSE_QUERY_TIMEOUT_SECONDS = 30.0  # 30 seconds for single query
 def _get_vecpipe_base_url() -> str:
     """Get the VecPipe service base URL."""
     host = getattr(settings, "SEARCH_API_HOST", "vecpipe")
-    port = getattr(settings, "SEARCH_API_PORT", 8001)
+    port = getattr(settings, "SEARCH_API_PORT", 8000)
     return f"http://{host}:{port}"
 
 

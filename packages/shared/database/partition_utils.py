@@ -700,17 +700,21 @@ class PartitionImplementationDetector:
 
         try:
             # Get a sample of records to verify
+            if sample_size <= 0:
+                raise ValueError("sample_size must be a positive integer")
+
             result = await session.execute(
                 text(
-                    f"""
+                    """
                     SELECT
                         collection_id,
                         partition_key,
                         abs(hashtext(collection_id::text)) % 100 as computed_key
                     FROM chunks
-                    LIMIT {sample_size}
+                    LIMIT :sample_size
                 """
-                )
+                ),
+                {"sample_size": sample_size},
             )
 
             for row in result:

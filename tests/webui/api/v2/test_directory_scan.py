@@ -6,6 +6,14 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
+from shared.config import settings
+
+
+@pytest.fixture(autouse=True)
+def allow_test_scan_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allow scans within each test's temp directory."""
+    monkeypatch.setattr(settings, "_document_allowed_roots", (tmp_path.resolve(),), raising=False)
+
 
 @pytest.mark.asyncio()
 async def test_scan_directory_preview_returns_supported_files(

@@ -201,6 +201,51 @@ class TestOpenAILLMProvider:
             call_kwargs = mock_client.chat.completions.create.call_args.kwargs
             assert call_kwargs["max_tokens"] == 100
 
+    async def test_generate_filters_reserved_kwargs(self, provider):
+        """Reserved kwargs cannot override model/messages."""
+        with patch("shared.llm.providers.openai_provider.AsyncOpenAI") as mock_class:
+            mock_choice = MagicMock()
+            mock_choice.message.content = "Response"
+            mock_choice.finish_reason = "stop"
+            mock_response = MagicMock()
+            mock_response.choices = [mock_choice]
+            mock_response.model = "test-model"
+            mock_response.usage.prompt_tokens = 5
+            mock_response.usage.completion_tokens = 3
+
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            await provider.initialize(api_key="test-key", model="test-model")
+            await provider.generate("Hello", model="override-model", messages=[{"role": "user", "content": "x"}])
+
+            call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+            assert call_kwargs["model"] == "test-model"
+            assert call_kwargs["messages"] == [{"role": "user", "content": "Hello"}]
+
+    async def test_generate_allows_supported_extra_kwargs(self, provider):
+        """Supported generation kwargs are forwarded to OpenAI SDK."""
+        with patch("shared.llm.providers.openai_provider.AsyncOpenAI") as mock_class:
+            mock_choice = MagicMock()
+            mock_choice.message.content = "Response"
+            mock_choice.finish_reason = "stop"
+            mock_response = MagicMock()
+            mock_response.choices = [mock_choice]
+            mock_response.model = "test-model"
+            mock_response.usage.prompt_tokens = 5
+            mock_response.usage.completion_tokens = 3
+
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            await provider.initialize(api_key="test-key", model="test-model")
+            await provider.generate("Hello", top_p=0.9)
+
+            call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+            assert call_kwargs["top_p"] == 0.9
+
     async def test_authentication_error_conversion(self, provider):
         """Converts OpenAI AuthenticationError to LLMAuthenticationError."""
         import openai

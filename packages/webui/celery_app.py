@@ -105,11 +105,6 @@ def _build_base_config() -> dict[str, Any]:
                 "schedule": 21600.0,  # Every 6 hours
                 "args": (24,),  # 24 hour threshold
             },
-            "cleanup-conversation-pending-secrets": {
-                "task": "webui.tasks.cleanup_conversation_pending_secrets",
-                "schedule": 3600.0,  # Run hourly
-                "args": (24,),  # 24 hour threshold
-            },
         },
     }
 

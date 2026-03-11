@@ -11,6 +11,7 @@ from shared.connectors.imap import (
     ImapConnector,
     _decode_mime_header,
     _format_email_date,
+    _validate_mailbox_name,
 )
 
 
@@ -60,6 +61,21 @@ class TestImapConnectorInit:
         with pytest.raises(ValueError, match=r"username") as exc_info:
             ImapConnector({"host": "imap.example.com"})
         assert "username" in str(exc_info.value)
+
+
+class TestMailboxValidation:
+    """Test mailbox validation helper."""
+
+    def test_accepts_standard_mailbox(self):
+        assert _validate_mailbox_name("INBOX") == "INBOX"
+
+    def test_rejects_control_characters(self):
+        with pytest.raises(ValueError, match=r"Invalid mailbox name"):
+            _validate_mailbox_name("INBOX\r\nUID SEARCH ALL")
+
+    def test_rejects_quotes_and_backslashes(self):
+        with pytest.raises(ValueError, match=r"Invalid mailbox name"):
+            _validate_mailbox_name('"INBOX"')
 
 
 class TestImapConnectorProperties:

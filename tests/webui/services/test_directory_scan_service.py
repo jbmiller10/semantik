@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from shared.config import settings
 from shared.utils.hashing import HASH_CHUNK_SIZE
 from webui.api.schemas import DirectoryScanResponse
 from webui.services.directory_scan_service import MAX_FILE_SIZE, PROGRESS_UPDATE_INTERVAL, DirectoryScanService
@@ -18,6 +19,12 @@ from webui.services.directory_scan_service import MAX_FILE_SIZE, PROGRESS_UPDATE
 def directory_scan_service() -> DirectoryScanService:
     """Create a DirectoryScanService instance."""
     return DirectoryScanService()
+
+
+@pytest.fixture(autouse=True)
+def allow_test_scan_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allow scans within each test's temp directory."""
+    monkeypatch.setattr(settings, "_document_allowed_roots", (tmp_path.resolve(),), raising=False)
 
 
 @pytest.fixture()

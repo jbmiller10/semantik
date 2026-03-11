@@ -6,8 +6,8 @@ import { CollectionWizard } from '../CollectionWizard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
-const { mockCreateConversation, mockAddToast } = vi.hoisted(() => ({
-  mockCreateConversation: vi.fn(),
+const { mockStartAssistedFlow, mockAddToast } = vi.hoisted(() => ({
+  mockStartAssistedFlow: vi.fn(),
   mockAddToast: vi.fn(),
 }));
 
@@ -24,9 +24,9 @@ vi.mock('../steps/ReviewStep', () => ({
 }));
 
 // Mock hooks
-vi.mock('../../../hooks/useAgentConversation', () => ({
-  useCreateConversation: () => ({
-    mutateAsync: mockCreateConversation,
+vi.mock('../../../hooks/useAssistedFlow', () => ({
+  useStartAssistedFlow: () => ({
+    mutateAsync: mockStartAssistedFlow,
     isPending: false,
   }),
 }));
@@ -104,7 +104,7 @@ describe('CollectionWizard Assisted Flow', () => {
   beforeEach(() => {
     queryClient.clear();
     vi.clearAllMocks();
-    mockCreateConversation.mockResolvedValue({ id: 'conv-123' });
+    mockStartAssistedFlow.mockResolvedValue({ session_id: 'conv-123', source_name: 'Test Source' });
   });
 
   it('creates conversation when entering step 3 in assisted mode', async () => {
@@ -184,7 +184,7 @@ describe('CollectionWizard Assisted Flow', () => {
   });
 
   it('shows a toast and does not advance when conversation creation fails', async () => {
-    mockCreateConversation.mockRejectedValueOnce(new Error('nope'));
+    mockStartAssistedFlow.mockRejectedValueOnce(new Error('nope'));
 
     render(<CollectionWizard onClose={vi.fn()} onSuccess={vi.fn()} />, { wrapper });
 

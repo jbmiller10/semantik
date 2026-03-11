@@ -11,7 +11,7 @@ import ErrorBoundary from '../ErrorBoundary';
 import { getInitialWizardState, MANUAL_STEPS, ASSISTED_STEPS } from '../../types/wizard';
 import { useCreateCollection } from '../../hooks/useCollections';
 import { useAddSource } from '../../hooks/useCollectionOperations';
-import { useCreateConversation } from '../../hooks/useAgentConversation';
+import { useStartAssistedFlow } from '../../hooks/useAssistedFlow';
 import { useUIStore } from '../../stores/uiStore';
 import { waitForCollectionReady } from '../../services/api/v2/collections';
 import type { WizardState, WizardFlow } from '../../types/wizard';
@@ -66,7 +66,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
 
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
-  const createConversationMutation = useCreateConversation();
+  const startAssistedFlowMutation = useStartAssistedFlow();
   const { addToast } = useUIStore();
 
   // Assisted flow state - initialize with resume ID if provided
@@ -132,14 +132,14 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       !conversationId
     ) {
       try {
-        const conversation = await createConversationMutation.mutateAsync({
+        const response = await startAssistedFlowMutation.mutateAsync({
           inline_source: {
             source_type: connectorType,
             source_config: configValues,
           },
           secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
         });
-        setConversationId(conversation.id);
+        setConversationId(response.session_id);
       } catch (error) {
         addToast({
           message: error instanceof Error ? error.message : 'Failed to start analysis',
@@ -158,7 +158,7 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
         steps: newSteps,
       };
     });
-  }, [wizardState.currentStep, wizardState.flow, validateBasics, connectorType, configValues, secrets, conversationId, createConversationMutation, addToast]);
+  }, [wizardState.currentStep, wizardState.flow, validateBasics, connectorType, configValues, secrets, conversationId, startAssistedFlowMutation, addToast]);
 
   const handleBack = useCallback(() => {
     setWizardState(prev => ({
@@ -217,7 +217,12 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       const embedderNode = dagWithPathNames.nodes.find(n => n.type === 'embedder');
 
       // Get embedding model from config (if using dense_local plugin) or fall back to plugin_id for legacy compatibility
-      const embeddingModel = (embedderNode?.config?.model as string) || embedderNode?.plugin_id || 'sentence-transformers/all-MiniLM-L6-v2';
+      const embeddingModel = embedderNode?.config?.model as string;
+      if (!embeddingModel) {
+        addToast({ message: 'No embedding model selected. Install a model from Settings > Models first.', type: 'error' });
+        setIsSubmitting(false);
+        return;
+      }
       const quantization = (embedderNode?.config?.quantization as string) || 'float16';
 
       const response = await createCollectionMutation.mutateAsync({
@@ -287,8 +292,12 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
     if (wizardState.currentStep === 0) {
       return !name.trim();
     }
+    if (wizardState.currentStep === 2 && wizardState.flow === 'manual') {
+      const embedderNode = dag.nodes.find(n => n.type === 'embedder');
+      if (embedderNode && !embedderNode.config?.model) return true;
+    }
     return false;
-  }, [wizardState.currentStep, name]);
+  }, [wizardState.currentStep, wizardState.flow, name, dag]);
 
   const isFinalStep = wizardState.currentStep === wizardState.steps.length - 1;
 

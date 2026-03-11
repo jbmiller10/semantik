@@ -88,8 +88,8 @@ function ModelSelectorField({
         ))}
       </select>
       {installedModels.length === 0 && (
-        <p className="text-xs text-amber-400 mt-1">
-          No embedding models installed. Install models from the Model Manager.
+        <p className={`text-xs mt-1 ${!(value as string) ? 'text-red-400 font-medium' : 'text-amber-400'}`}>
+          No embedding models installed. Install models from Settings &gt; Models before creating a collection.
         </p>
       )}
     </div>

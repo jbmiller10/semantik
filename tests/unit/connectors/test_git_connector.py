@@ -64,6 +64,16 @@ class TestGitConnectorInit:
             )
         assert "Invalid auth_method" in str(exc_info.value)
 
+    def test_invalid_ref_is_rejected(self):
+        """Ref values that could be parsed as flags should be rejected."""
+        with pytest.raises(ValueError, match=r"version must not start with '-'"):
+            GitConnector(
+                {
+                    "repo_url": "https://github.com/user/repo.git",
+                    "ref": "--upload-pack=evil",
+                }
+            )
+
 
 class TestGitConnectorProperties:
     """Test GitConnector property methods."""

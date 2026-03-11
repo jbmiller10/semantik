@@ -148,8 +148,8 @@
       - useModels.ts: Available embedding models
       - useRerankingAvailability.ts: Check reranker availability
       - useLLMSettings.ts: LLM provider configuration (settings CRUD, model lists)
-      - useAgentConversation.ts: Agent conversation CRUD with optimistic message management
-      - useAgentStream.ts: SSE streaming for real-time agent updates (content, tool calls, pipeline changes)
+      - useAssistedFlow.ts: Start assisted-flow sessions (Claude Agent SDK)
+      - useAssistedFlowStream.ts: SSE streaming for assisted-flow (text/tool_use/tool_result/done)
       - useDragToConnect.ts: Drag-to-connect state for pipeline builder edges
       - useRoutePreview.ts: File upload and route preview API calls
       - useAvailablePlugins.ts: Plugin listing for pipeline node configuration
@@ -172,7 +172,7 @@
       - projections.ts: UMAP/PCA projections
       - documents.ts: Document content retrieval
       - llm.ts: LLM settings and model API
-      - agent.ts: Agent conversation lifecycle, SSE streaming, question answering
+      - assisted-flow.ts: Assisted-flow session start + stream URL (Claude Agent SDK)
       - pipeline.ts: Pipeline route preview, available predicate fields
       - templates.ts: Pipeline template listing
       - types.ts: API request/response types
@@ -205,7 +205,7 @@
       - projection.ts: Embedding projection types
       - llm.ts: LLM provider, tier, quantization, model types
       - pipeline.ts: PipelineDAG, PipelineNode, PipelineEdge, routing types
-      - agent.ts: AgentConversation, AgentMessage, streaming event types
+      - assisted-flow.ts: Assisted-flow start request/response + streaming event types
       - routePreview.ts: Route preview request/response, path visualization
       - wizard.ts: Wizard step types, mode selection
       - template.ts: Pipeline template types

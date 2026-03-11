@@ -1,6 +1,12 @@
 /**
  * Hook for handling SSE streaming from the agent API.
  * Uses fetch with ReadableStream to parse Server-Sent Events.
+ *
+ * @deprecated This hook is for the legacy agent orchestrator which has been
+ * replaced by the Claude Agent SDK-based assisted-flow API. New code should use
+ * `useAssistedFlowStream` instead.
+ *
+ * @see ./useAssistedFlowStream.ts for the new SDK-based hook
  */
 
 import { useCallback, useRef, useState } from 'react';

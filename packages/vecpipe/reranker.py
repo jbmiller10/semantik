@@ -12,6 +12,8 @@ from typing import Any, cast
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from shared.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Import shims exist for this repo (`vecpipe/` points at `packages/vecpipe/`).
@@ -89,7 +91,7 @@ class CrossEncoderReranker:
                 # Load tokenizer
                 self.tokenizer = AutoTokenizer.from_pretrained(
                     self.model_name,
-                    trust_remote_code=True,
+                    trust_remote_code=settings.LLM_TRUST_REMOTE_CODE,
                     padding_side="left",  # Important for batch processing
                 )
                 if getattr(self.tokenizer, "pad_token", None) is None and getattr(self.tokenizer, "eos_token", None):
@@ -110,7 +112,7 @@ class CrossEncoderReranker:
                 load_kwargs: dict[str, Any] = {
                     "torch_dtype": torch_dtype,
                     "device_map": {"": 0} if self.device == "cuda" else None,
-                    "trust_remote_code": True,
+                    "trust_remote_code": settings.LLM_TRUST_REMOTE_CODE,
                 }
 
                 # Add flash attention if available

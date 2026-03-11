@@ -18,6 +18,7 @@ from webui.api.schemas import ErrorResponse
 from webui.api.v2.llm_schemas import (
     AvailableModel,
     AvailableModelsResponse,
+    LLMModelsRefreshRequest,
     LLMSettingsResponse,
     LLMSettingsUpdate,
     LLMTestRequest,
@@ -195,7 +196,7 @@ async def list_available_models() -> AvailableModelsResponse:
     Returns a static list of recommended models. For custom model IDs,
     use the test endpoint to validate before saving.
 
-    To fetch models directly from provider APIs, use GET /models/refresh
+    To fetch models directly from provider APIs, use POST /models/refresh
     with a valid API key.
     """
     models = get_all_models()
@@ -218,7 +219,7 @@ async def list_available_models() -> AvailableModelsResponse:
     )
 
 
-@router.get(
+@router.post(
     "/models/refresh",
     response_model=AvailableModelsResponse,
     responses={
@@ -230,8 +231,7 @@ async def list_available_models() -> AvailableModelsResponse:
 @limiter.limit(RateLimitConfig.LLM_TEST_RATE)  # Rate limit to prevent API abuse
 async def refresh_models_from_api(
     request: Request,  # noqa: ARG001 - Required for rate limiter
-    provider: str = Query(..., pattern="^(anthropic|openai)$", description="Provider to fetch models from"),
-    api_key: str = Query(..., min_length=1, description="API key for the provider"),
+    refresh_request: LLMModelsRefreshRequest,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
 ) -> AvailableModelsResponse:
     """Fetch available models directly from the provider's API.
@@ -242,6 +242,9 @@ async def refresh_models_from_api(
     Returns models from the provider API, merged with curated registry models.
     Curated models appear first, followed by API-fetched models.
     """
+    provider = refresh_request.provider
+    api_key = refresh_request.api_key
+
     try:
         if provider == "anthropic":
             api_models = await AnthropicLLMProvider.list_models(api_key)
