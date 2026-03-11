@@ -419,12 +419,36 @@ function CollectionDetailsModal() {
                               </td>
                               <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">{formatBytes(doc.file_size)}</td>
                               <td className="px-6 py-4">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${doc.status === 'completed' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' :
-                                    doc.status === 'failed' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
-                                      'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border)]'
-                                  }`}>
-                                  {doc.status}
-                                </span>
+                                <div className="group relative inline-flex items-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${doc.status === 'completed' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' :
+                                      doc.status === 'failed' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
+                                        'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border)]'
+                                    }`}>
+                                    {doc.status}
+                                  </span>
+                                  {doc.status === 'failed' && (doc.error_message || doc.error_category) && (
+                                    <div className="absolute left-0 bottom-full mb-2 w-72 max-h-40 overflow-y-auto p-3 bg-[var(--bg-primary)] border border-[var(--border)] text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                      {doc.error_category && (
+                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider mb-1.5 ${
+                                          doc.error_category === 'permanent' ? 'bg-red-500/10 text-red-600 dark:text-red-400' :
+                                          doc.error_category === 'transient' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                                          'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
+                                        }`}>
+                                          {doc.error_category}
+                                        </span>
+                                      )}
+                                      {doc.error_message && (
+                                        <p className="text-[var(--text-secondary)] leading-relaxed">{doc.error_message}</p>
+                                      )}
+                                      {doc.retry_count > 0 && (
+                                        <p className="text-[var(--text-muted)] mt-1.5 pt-1.5 border-t border-[var(--border)]">
+                                          Retried {doc.retry_count} {doc.retry_count === 1 ? 'time' : 'times'}
+                                          {doc.last_retry_at && ` \u00b7 last ${formatDate(doc.last_retry_at)}`}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-6 py-4 text-sm text-[var(--text-secondary)]">{formatDate(doc.created_at)}</td>
                               <td className="px-6 py-4 text-right">

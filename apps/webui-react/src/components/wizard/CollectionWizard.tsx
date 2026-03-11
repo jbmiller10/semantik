@@ -217,7 +217,12 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
       const embedderNode = dagWithPathNames.nodes.find(n => n.type === 'embedder');
 
       // Get embedding model from config (if using dense_local plugin) or fall back to plugin_id for legacy compatibility
-      const embeddingModel = (embedderNode?.config?.model as string) || embedderNode?.plugin_id || 'sentence-transformers/all-MiniLM-L6-v2';
+      const embeddingModel = embedderNode?.config?.model as string;
+      if (!embeddingModel) {
+        addToast({ message: 'No embedding model selected. Install a model from Settings > Models first.', type: 'error' });
+        setIsSubmitting(false);
+        return;
+      }
       const quantization = (embedderNode?.config?.quantization as string) || 'float16';
 
       const response = await createCollectionMutation.mutateAsync({
@@ -287,8 +292,12 @@ export function CollectionWizard({ onClose, onSuccess, resumeConversationId }: C
     if (wizardState.currentStep === 0) {
       return !name.trim();
     }
+    if (wizardState.currentStep === 2 && wizardState.flow === 'manual') {
+      const embedderNode = dag.nodes.find(n => n.type === 'embedder');
+      if (embedderNode && !embedderNode.config?.model) return true;
+    }
     return false;
-  }, [wizardState.currentStep, name]);
+  }, [wizardState.currentStep, wizardState.flow, name, dag]);
 
   const isFinalStep = wizardState.currentStep === wizardState.steps.length - 1;
 

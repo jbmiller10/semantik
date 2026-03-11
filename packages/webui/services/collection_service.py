@@ -162,6 +162,36 @@ class CollectionService:
             chunking_config = config.get("chunking_config") if config else None
             is_public = (config.get("is_public") if config else None) or False
 
+            # Validate that the embedding model is available
+            # API-based providers are always "available"; local HF models must be cached
+            _local_hf_providers = {"dense_local"}
+            # Determine the provider from pipeline_config or default
+            custom_pipeline_config = config.get("pipeline_config") if config else None
+            embedder_provider = None
+            if custom_pipeline_config and isinstance(custom_pipeline_config, dict):
+                for node in custom_pipeline_config.get("nodes", []):
+                    if node.get("type") == "embedder":
+                        embedder_provider = node.get("plugin_id")
+                        break
+
+            if embedder_provider in _local_hf_providers:
+                try:
+                    from shared.model_manager.hf_cache import scan_hf_cache
+                    cache_info = await asyncio.to_thread(scan_hf_cache)
+                    installed_model_ids = {
+                        repo_id for (repo_type, repo_id) in cache_info.repos if repo_type == "model"
+                    }
+                    if embedding_model not in installed_model_ids:
+                        raise ValueError(
+                            f"Embedding model '{embedding_model}' is not installed. "
+                            f"Install it from the Model Manager."
+                        )
+                except ValueError:
+                    raise
+                except Exception as e:
+                    logger.warning("Could not validate model availability: %s", e)
+                    # Don't block collection creation if cache scan fails
+
             meta = config.get("metadata") if config else None
             sync_mode = (config.get("sync_mode") if config else None) or "one_time"
             sync_interval_minutes = config.get("sync_interval_minutes") if config else None

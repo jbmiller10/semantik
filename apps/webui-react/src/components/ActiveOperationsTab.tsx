@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { operationsV2Api } from '../services/api/v2/operations';
 
 import type { Operation } from '../types/collection';
-import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
+import { RefreshCw, Activity, Clock, AlertCircle, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
@@ -85,6 +85,14 @@ function ActiveOperationsTab() {
     navigate(`/collections/${collectionId}`);
   };
 
+  const operations = data || [];
+
+  // Detect collections stuck in "processing" status with no matching active operation
+  const staleProcessingCollections = useMemo(() => {
+    if (data && data.length > 0) return [];
+    return collections.filter((c) => c.status === 'processing');
+  }, [collections, data]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -114,8 +122,6 @@ function ActiveOperationsTab() {
     );
   }
 
-  const operations = data || [];
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -139,6 +145,43 @@ function ActiveOperationsTab() {
           </button>
         </div>
       </div>
+
+      {/* Stale processing warning */}
+      {staleProcessingCollections.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-amber-400 font-medium">
+                Possible stale operations detected
+              </p>
+              <p className="text-sm text-amber-400/80 mt-1">
+                {staleProcessingCollections.length === 1
+                  ? `The collection "${staleProcessingCollections[0].name}" shows`
+                  : `${staleProcessingCollections.length} collections show`}{' '}
+                a &ldquo;Processing&rdquo; status but {staleProcessingCollections.length === 1 ? 'has' : 'have'} no
+                active operations. This may indicate a worker process stopped unexpectedly.
+                Try re-indexing the affected {staleProcessingCollections.length === 1 ? 'collection' : 'collections'} or
+                restarting the worker service.
+              </p>
+              {staleProcessingCollections.length > 1 && (
+                <ul className="mt-2 text-sm text-amber-400/70 list-disc list-inside">
+                  {staleProcessingCollections.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        onClick={() => navigateToCollection(c.id)}
+                        className="hover:text-amber-300 hover:underline"
+                      >
+                        {c.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Operations List */}
       {operations.length === 0 ? (
